@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://eguvjxisu4a4"
-path="res://.godot/imported/DwarfIdle1.png-713114168b62f2c7f5291e2b3510b6cf.ctex"
+uid="uid://br25w8kixqybw"
+path="res://.godot/imported/Ground.png-aeb7a1d8db49b7237ba0ddac0aaaf99f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/DwarfIdle1.png"
-dest_files=["res://.godot/imported/DwarfIdle1.png-713114168b62f2c7f5291e2b3510b6cf.ctex"]
+source_file="res://Assets/Ground.png"
+dest_files=["res://.godot/imported/Ground.png-aeb7a1d8db49b7237ba0ddac0aaaf99f.ctex"]
 
 [params]
 

@@ -16,8 +16,6 @@ metadata/_edit_group_ = true
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture = ExtResource("1_u6mp0")
 
-[node name="NavObstacle" type="NavigationObstacle2D" parent="."]
-
 [node name="CollisionShape2D2" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_ufnb4")
 
