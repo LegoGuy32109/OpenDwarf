@@ -1,6 +1,5 @@
-[gd_scene load_steps=5 format=3 uid="uid://cg7wphp3ivtby"]
+[gd_scene load_steps=4 format=3 uid="uid://cg7wphp3ivtby"]
 
-[ext_resource type="Script" path="res://DeleteMe.gd" id="1_k0dv2"]
 [ext_resource type="Texture2D" uid="uid://r5u6ssrlvhmq" path="res://Assets/Rock.png" id="1_u6mp0"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ufnb4"]
@@ -10,7 +9,6 @@ size = Vector2(64, 64)
 radius = 58.2409
 
 [node name="Rock" type="StaticBody2D"]
-script = ExtResource("1_k0dv2")
 metadata/_edit_group_ = true
 
 [node name="Sprite2D" type="Sprite2D" parent="."]

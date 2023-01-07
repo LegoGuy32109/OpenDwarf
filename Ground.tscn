@@ -1,17 +1,9 @@
-[gd_scene load_steps=3 format=3 uid="uid://csm6aoqipk4v2"]
+[gd_scene load_steps=2 format=3 uid="uid://csm6aoqipk4v2"]
 
 [ext_resource type="Texture2D" uid="uid://br25w8kixqybw" path="res://Assets/Ground.png" id="1_givf7"]
-
-[sub_resource type="NavigationPolygon" id="NavigationPolygon_wtx12"]
-vertices = PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)
-polygons = [PackedInt32Array(0, 1, 2, 3)]
-outlines = [PackedVector2Array(-16, -16, 16, -16, 16, 16, -16, 16)]
 
 [node name="Ground" type="Node2D"]
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 texture_filter = 1
 texture = ExtResource("1_givf7")
-
-[node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]
-navigation_polygon = SubResource("NavigationPolygon_wtx12")

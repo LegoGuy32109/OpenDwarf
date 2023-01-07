@@ -1,0 +1,28 @@
+[gd_scene load_steps=8 format=3 uid="uid://cfeydoqep4ukp"]
+
+[ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/DwarfIdle1.png" id="1_cnh8p"]
+[ext_resource type="Texture2D" uid="uid://dkpygkrrxp4ty" path="res://Assets/DwarfIdle2.png" id="2_hhvl2"]
+[ext_resource type="Texture2D" uid="uid://cnonqm6cg3vbq" path="res://Assets/DwarfIdle3.png" id="3_21nxi"]
+[ext_resource type="Texture2D" uid="uid://dd5gfijr0yvjq" path="res://Assets/DwarfIdle4.png" id="4_uqglb"]
+[ext_resource type="Texture2D" uid="uid://f7682fblddqg" path="res://Assets/DwarfIdle5.png" id="5_xh3xl"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_xivog"]
+animations = [{
+"frames": [ExtResource("1_cnh8p"), ExtResource("2_hhvl2"), ExtResource("3_21nxi"), ExtResource("4_uqglb"), ExtResource("5_xh3xl")],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_m6gqs"]
+size = Vector2(53, 60)
+
+[node name="Dwarf" type="CharacterBody2D"]
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+frames = SubResource("SpriteFrames_xivog")
+animation = &"idle"
+playing = true
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_m6gqs")
