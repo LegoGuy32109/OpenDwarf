@@ -7,11 +7,13 @@
 [node name="Level1" type="Node2D"]
 script = ExtResource("1_63yvo")
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera" type="Camera2D" parent="."]
 current = true
 position_smoothing_enabled = true
 script = ExtResource("9_kk6fw")
 metadata/_edit_lock_ = true
+
+[node name="Tiles" type="Node2D" parent="."]
 
 [node name="Dwarf" parent="." instance=ExtResource("3_qvydg")]
 position = Vector2(32, 32)

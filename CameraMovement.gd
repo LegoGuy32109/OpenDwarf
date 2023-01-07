@@ -3,7 +3,7 @@ extends Camera2D
 var cameraSpeed : float = 7.0
 @export
 var zoomAmount : float = 0.1
-# If lag is unbearable, change to move on a grid
+#NOTE If lag is unbearable, change to move on a grid
 func _physics_process(_delta):
 	self.position.x += cameraSpeed * (Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left"))
 	self.position.y += cameraSpeed * (Input.get_action_strength("ui_down") - Input.get_action_strength("ui_up"))

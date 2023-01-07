@@ -16,7 +16,7 @@ func _init(startingPosition, newBorders):
 	
 func walk(steps):
 	for stepNumber in steps:
-		if randf() <= 0.25 or stepsSinceTurn >= 4:
+		if randf() <= 0.25 or stepsSinceTurn >= 3:
 			changeDirection()
 			
 		if step():
