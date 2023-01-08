@@ -9,6 +9,7 @@ script = ExtResource("1_63yvo")
 
 [node name="Camera" type="Camera2D" parent="."]
 current = true
+zoom = Vector2(0.4, 0.4)
 position_smoothing_enabled = true
 script = ExtResource("9_kk6fw")
 metadata/_edit_lock_ = true

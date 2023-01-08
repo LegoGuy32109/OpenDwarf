@@ -1,9 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://csm6aoqipk4v2"]
-
-[ext_resource type="Texture2D" uid="uid://br25w8kixqybw" path="res://Assets/Ground.png" id="1_givf7"]
-
-[node name="Ground" type="Node2D"]
-
-[node name="Sprite2D" type="Sprite2D" parent="."]
-texture_filter = 1
-texture = ExtResource("1_givf7")

@@ -5,7 +5,7 @@ const DIRECTIONS = [Vector2i.RIGHT, Vector2i.UP, Vector2i.LEFT, Vector2i.DOWN]
 var position: Vector2i = Vector2i.ZERO
 var direction: Vector2i = Vector2i.RIGHT
 var borders = Rect2()
-var stepHistory = []
+var stepHistory: Array[Vector2i] = []
 var stepsSinceTurn = 0
 
 func _init(startingPosition, newBorders):
