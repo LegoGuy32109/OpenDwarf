@@ -34,6 +34,7 @@ func generateLevel():
 	pathSpawn.queue_free()
 	
 	$Dwarf.position = Vector2i(path[0][0]*gridSize, path[0][1]*gridSize)
+	$Dwarf.coordinates = Vector2i(path[0][0], path[0][1])
 	$Camera.position = $Dwarf.position
 	for location in path:
 		$Tiles.get_children()[location.x].get_children()[location.y].setToGround()

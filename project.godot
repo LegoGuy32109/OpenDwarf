@@ -9,13 +9,25 @@
 config_version=5
 
 _global_script_classes=[{
+"base": "Node2D",
+"class": &"Dwarf",
+"language": &"GDScript",
+"path": "res://Dwarf.gd"
+}, {
 "base": "Node",
 "class": &"RockSpawner",
 "language": &"GDScript",
 "path": "res://RockSpawner.gd"
+}, {
+"base": "Node2D",
+"class": &"Tile",
+"language": &"GDScript",
+"path": "res://Tile.gd"
 }]
 _global_script_class_icons={
-"RockSpawner": ""
+"Dwarf": "",
+"RockSpawner": "",
+"Tile": ""
 }
 
 [application]
@@ -25,6 +37,10 @@ run/main_scene="res://Scene.tscn"
 config/features=PackedStringArray("4.0", "Mobile")
 boot_splash/image="res://Assets/Rock.png"
 config/icon="res://Assets/DwarfIdle1.png"
+
+[autoload]
+
+HUD="*res://HUD.tscn"
 
 [display]
 

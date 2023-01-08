@@ -5,8 +5,12 @@ var cameraSpeed : float = 7.0
 var zoomAmount : float = 0.1
 #NOTE If lag is unbearable, change to move on a grid
 func _physics_process(_delta):
-	self.position.x += cameraSpeed * (Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left"))
-	self.position.y += cameraSpeed * (Input.get_action_strength("ui_down") - Input.get_action_strength("ui_up"))
+	self.global_translate(Vector2(cameraSpeed * \
+	(Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left")),\
+	cameraSpeed * \
+	(Input.get_action_strength("ui_down") - Input.get_action_strength("ui_up"))))
+#	self.position.x += cameraSpeed * (Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left"))
+#	self.position.y += cameraSpeed * (Input.get_action_strength("ui_down") - Input.get_action_strength("ui_up"))
 
 func _unhandled_input(event):
 	if event.is_action_pressed("zoom_in") and self.zoom.x < 2.0:
