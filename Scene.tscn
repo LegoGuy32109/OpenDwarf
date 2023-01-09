@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3 uid="uid://6wlg8ni03sd8"]
+[gd_scene load_steps=4 format=3 uid="uid://dwqitkd07j3xq"]
 
 [ext_resource type="Script" path="res://WorldSpawn.gd" id="1_63yvo"]
 [ext_resource type="PackedScene" uid="uid://cfeydoqep4ukp" path="res://Dwarf.tscn" id="3_qvydg"]

@@ -15,6 +15,7 @@ offset_bottom = 40.0
 script = ExtResource("1_nowex")
 
 [node name="HBoxContainer" type="HBoxContainer" parent="Panel"]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -22,8 +23,8 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="CheckBox" type="CheckBox" parent="Panel/HBoxContainer"]
-offset_right = 156.0
-offset_bottom = 40.0
+layout_mode = 2
+focus_mode = 0
 mouse_filter = 1
 text = "Tooltips Enabled"
 
