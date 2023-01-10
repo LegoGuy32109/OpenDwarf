@@ -2,7 +2,7 @@ extends Node
 # if I need to upgrade this check here: 
 # https://www.geeksforgeeks.org/priority-queue-set-1-introduction/
 class_name PriorityQueue
-
+# the lower the priority number the quicker recieved
 class DictionaryType:
 	var priority : int
 	var thing # could be anything oooo
@@ -23,7 +23,8 @@ func put(thing, priority : int) -> void:
 func peek() -> DictionaryType:
 	var nextOff : DictionaryType = null
 	for item in queue:
-		if nextOff == null or nextOff.priority < item.priority:
+#                                changing < to > fixed everything!!!!
+		if nextOff == null or nextOff.priority > item.priority:
 			nextOff = item
 	return nextOff
 
@@ -33,6 +34,4 @@ func dequeue():
 	var boutToLeave : DictionaryType = peek()
 	queue.erase(boutToLeave)
 	return boutToLeave.thing
-		
-
-		
+	

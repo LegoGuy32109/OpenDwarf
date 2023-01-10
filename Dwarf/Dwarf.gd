@@ -12,11 +12,13 @@ var gridSize : int = 64
 @onready var tiles : Node2D = self.get_parent().find_child("Tiles")
 
 func moveTo(newCoordinates : Vector2i):
-	var tween = create_tween()
-	tween.tween_property(self, "position", mapToWorld(newCoordinates), 1) 
-	await tween.finished
-	_findPathTo(newCoordinates)
-#	findOpenNeighbors(newCoordinates)
+	var path : Array[Vector2i] = _findPathTo(newCoordinates)
+	
+	for tile in path:
+		var tween = create_tween()
+		tween.tween_property(self, "position", mapToWorld(tile), 0.1) 
+		await tween.finished
+
 	coordinates = newCoordinates
 	print("Now at "+str(coordinates))
 
@@ -25,9 +27,9 @@ func moveTo(newCoordinates : Vector2i):
 func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
 
-func _findPathTo(newCoordinates : Vector2i):
+func _findPathTo(newCoordinates : Vector2i) -> Array[Vector2i]:
 	if coordinates == newCoordinates:
-		return
+		return []
 	var queue : PriorityQueue = PriorityQueue.new()
 	queue.put(coordinates, 0)
 	var came_from = {}
@@ -41,19 +43,25 @@ func _findPathTo(newCoordinates : Vector2i):
 		if currentLoc == newCoordinates:
 			break
 		for tile in findOpenNeighbors(currentLoc):
-			# but current is a neighbor of next, so it's confusing
-			#                                     graph.cost(current,next)
-			var new_cost = cost_so_far[currentLoc] + tile.movementCost
+			var new_cost = cost_so_far[currentLoc] \
+			+ tile.movementCost # tile -> new tile
+			
 			if not tile.coordinates in cost_so_far or \
 			new_cost < cost_so_far[tile.coordinates]:
 				cost_so_far[tile.coordinates] = new_cost
 				queue.put(tile.coordinates, new_cost)
 				came_from[tile.coordinates] = currentLoc
-				
-
+	
+	# calculate specific path to destination
+	var path : Array[Vector2i] = []
+	path.append(newCoordinates)
+	var nextStep = came_from[newCoordinates]
+	while nextStep is Vector2i:
+		path.push_front(nextStep) # now current Character loc -> destination
+		nextStep = came_from[nextStep]
+	return path 
 
 func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
-	print("Neighbors for "+str(currentLoc))
 	var neighborTiles: Array[Tile] = []
 	for i in [-1, 0, 1]:
 		if currentLoc.x+i < 0 or currentLoc.x+i > tiles.get_child_count()-1:
