@@ -12,7 +12,7 @@ var tooltipText : String = "Tile"
 
 var mouseInPanel : bool = false
 
-var movementCost : float = 1.0
+var movementCost : float = 0.5
 
 #NOTE I don't know how much 900 process funcs drain, but here we are.
 func _process(_delta) -> void:

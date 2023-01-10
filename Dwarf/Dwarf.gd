@@ -14,9 +14,16 @@ var gridSize : int = 64
 func moveTo(newCoordinates : Vector2i):
 	var path : Array[Vector2i] = _findPathTo(newCoordinates)
 	
-	for tile in path:
+	var pathTiles : Array[Tile] = []
+	for tileCoords in path:
+		pathTiles.append(tiles.get_child(tileCoords.x).get_child(tileCoords.y))
+	
+	for tile in pathTiles:
+		var currentMoveCost : float = tile.movementCost
+		if isDiagNeighbor(self.position, tile.position):
+			currentMoveCost *= 1.2
 		var tween = create_tween()
-		tween.tween_property(self, "position", mapToWorld(tile), 0.1) 
+		tween.tween_property(self, "position", tile.position, currentMoveCost) 
 		await tween.finished
 
 	coordinates = newCoordinates
@@ -43,8 +50,12 @@ func _findPathTo(newCoordinates : Vector2i) -> Array[Vector2i]:
 		if currentLoc == newCoordinates:
 			break
 		for tile in findOpenNeighbors(currentLoc):
+			var currentMovementCost : float = tile.movementCost
+			if isDiagNeighbor(tile.coordinates, currentLoc):
+				currentMovementCost *= 1.2
+
 			var new_cost = cost_so_far[currentLoc] \
-			+ tile.movementCost # tile -> new tile
+			+ currentMovementCost # tile -> new tile
 			
 			if not tile.coordinates in cost_so_far or \
 			new_cost < cost_so_far[tile.coordinates]:
@@ -60,6 +71,13 @@ func _findPathTo(newCoordinates : Vector2i) -> Array[Vector2i]:
 		path.push_front(nextStep) # now current Character loc -> destination
 		nextStep = came_from[nextStep]
 	return path 
+
+func isDiagNeighbor(loc1: Vector2i, loc2: Vector2i) -> bool:
+	var dx = loc2.x - loc1.x
+	var dy = loc2.y - loc1.y
+	if abs(dx) == abs(dy):
+		return true
+	return false
 
 func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
 	var neighborTiles: Array[Tile] = []
