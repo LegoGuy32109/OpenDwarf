@@ -1,10 +1,10 @@
-[gd_scene load_steps=3 format=3 uid="uid://dvgjvjm6c6u6t"]
+[gd_scene load_steps=3 format=3 uid="uid://c18xrl4cjiabu"]
 
-[ext_resource type="Script" path="res://HUD.gd" id="1_jej1l"]
-[ext_resource type="Script" path="res://TopPanelGUI.gd" id="1_nowex"]
+[ext_resource type="Script" path="res://HUD/HUD.gd" id="1_uilpy"]
+[ext_resource type="Script" path="res://HUD/TopPanelGUI.gd" id="2_gtggy"]
 
 [node name="HUD" type="CanvasLayer"]
-script = ExtResource("1_jej1l")
+script = ExtResource("1_uilpy")
 
 [node name="Panel" type="Panel" parent="."]
 top_level = true
@@ -12,10 +12,9 @@ custom_minimum_size = Vector2(990, 0)
 offset_left = 96.0
 offset_right = 1120.0
 offset_bottom = 40.0
-script = ExtResource("1_nowex")
+script = ExtResource("2_gtggy")
 
 [node name="HBoxContainer" type="HBoxContainer" parent="Panel"]
-layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -23,7 +22,8 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="CheckBox" type="CheckBox" parent="Panel/HBoxContainer"]
-layout_mode = 2
+offset_right = 156.0
+offset_bottom = 40.0
 focus_mode = 0
 mouse_filter = 1
 text = "Tooltips Enabled"

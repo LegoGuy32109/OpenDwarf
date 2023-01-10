@@ -1,0 +1,15 @@
+[gd_scene load_steps=4 format=3 uid="uid://cyfe7jp0xqlyj"]
+
+[ext_resource type="Script" path="res://WorldGen/WorldSpawn.gd" id="1_r4v4f"]
+[ext_resource type="PackedScene" path="res://Camera/Camera.tscn" id="2_a12da"]
+[ext_resource type="PackedScene" uid="uid://c85mp6nh4c38v" path="res://Dwarf/Dwarf.tscn" id="3_7ca3o"]
+
+[node name="World" type="Node2D"]
+script = ExtResource("1_r4v4f")
+
+[node name="Camera" parent="." instance=ExtResource("2_a12da")]
+
+[node name="Tiles" type="Node2D" parent="."]
+
+[node name="Dwarf" parent="." instance=ExtResource("3_7ca3o")]
+position = Vector2(32, 32)

@@ -7,10 +7,10 @@ var borderPadding : int = 2
 # should be a const lol
 @export var gridSize: int = 64
 
-@onready var rowScene: PackedScene = load("res://Column.tscn")
-@onready var tileScene: PackedScene = load("res://Tile.tscn")
-
-var map: Array[Array] = []
+@onready 
+var rowScene: PackedScene = load("res://WorldGen/Column.tscn")
+@onready 
+var tileScene: PackedScene = load("res://Tile/Tile.tscn")
 
 func _ready():
 	generateLevel()
@@ -22,14 +22,17 @@ func generateLevel():
 		column.name = "Column "+str(i)
 		$Tiles.add_child(column)
 		for j in range(borderLength+borderPadding):
-			var tile : Node2D = tileScene.instantiate()
+			var tile : Tile = tileScene.instantiate()
 			tile.name = "Tile "+str(j)
 			column.add_child(tile)
-			tile.position = Vector2i((i) * gridSize, (j) * gridSize)
+			tile.position = Vector2i(\
+			(i) * gridSize, (j) * gridSize)
 			tile.coordinates = Vector2i(i, j)
+			tile.actionGiven.connect(_action_given)
 			
 	@warning_ignore(narrowing_conversion, integer_division)
-	var pathSpawn: RockSpawner = RockSpawner.new(Vector2i(borderLength/2,borderLength/2.5), borders)
+	var pathSpawn: RockSpawner = RockSpawner.new(Vector2i(borderLength/2\
+	, borderLength/2.5), borders)
 	var path: Array[Vector2i] = pathSpawn.walk(600)
 	pathSpawn.queue_free()
 	
@@ -39,3 +42,5 @@ func generateLevel():
 	for location in path:
 		$Tiles.get_children()[location.x].get_children()[location.y].setToGround()
 
+func _action_given(coordinates : Vector2i):
+	$Dwarf.moveTo(coordinates)

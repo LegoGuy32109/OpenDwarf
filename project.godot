@@ -12,20 +12,26 @@ _global_script_classes=[{
 "base": "Node2D",
 "class": &"Dwarf",
 "language": &"GDScript",
-"path": "res://Dwarf.gd"
+"path": "res://Dwarf/Dwarf.gd"
+}, {
+"base": "Node",
+"class": &"PriorityQueue",
+"language": &"GDScript",
+"path": "res://Dwarf/PriorityQueue.gd"
 }, {
 "base": "Node",
 "class": &"RockSpawner",
 "language": &"GDScript",
-"path": "res://RockSpawner.gd"
+"path": "res://WorldGen/RockSpawner.gd"
 }, {
 "base": "Node2D",
 "class": &"Tile",
 "language": &"GDScript",
-"path": "res://Tile.gd"
+"path": "res://Tile/Tile.gd"
 }]
 _global_script_class_icons={
 "Dwarf": "",
+"PriorityQueue": "",
 "RockSpawner": "",
 "Tile": ""
 }
@@ -33,14 +39,14 @@ _global_script_class_icons={
 [application]
 
 config/name="Df Clone"
-run/main_scene="res://Scene.tscn"
+run/main_scene="res://WorldGen/World.tscn"
 config/features=PackedStringArray("4.0", "Mobile")
 boot_splash/image="res://Assets/Rock.png"
 config/icon="res://Assets/DwarfIdle1.png"
 
 [autoload]
 
-HUD="*res://HUD.tscn"
+HUD="*res://HUD/HUD.tscn"
 
 [display]
 

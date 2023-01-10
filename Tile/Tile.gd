@@ -1,6 +1,8 @@
 extends Node2D
 class_name Tile
 
+signal actionGiven
+
 @onready var sprite : Sprite2D = $Sprite2D
 var rockImg : Texture2D = load("res://Assets/Rock.png")
 var groundImg : Texture2D = load("res://Assets/Ground.png")
@@ -10,16 +12,18 @@ var tooltipText : String = "Tile"
 
 var mouseInPanel : bool = false
 
+var movementCost : float = 1.0
+
 #NOTE I don't know how much 900 process funcs drain, but here we are.
-func _process(_delta):
+func _process(_delta) -> void:
 	if(HUD.tileTooltipsEnabled):
 		$Panel.tooltip_text = tooltipText
 	else:
 		$Panel.tooltip_text = ""
-		
+
 func _input(_event):
 	if Input.is_action_just_pressed("click") and mouseInPanel:
-		print(tooltipText+" "+str(coordinates))
+		actionGiven.emit(coordinates)
 
 func _ready():
 	sprite.texture = rockImg
