@@ -11,8 +11,10 @@ var coordinates : Vector2i = Vector2i()
 var tooltipText : String = "Tile"
 
 var mouseInPanel : bool = false
+var beenEdited : bool = false
 
 var movementCost : float = 0.5
+var traversable : bool = false
 
 #NOTE I don't know how much 900 process funcs drain, but here we are.
 func _process(_delta) -> void:
@@ -22,19 +24,35 @@ func _process(_delta) -> void:
 		$Panel.tooltip_text = ""
 
 func _input(_event):
-	if Input.is_action_just_pressed("click") and mouseInPanel:
-		actionGiven.emit(coordinates)
-
+	if mouseInPanel:
+		if not beenEdited and Input.is_action_pressed("right-click"):
+			if traversable:
+				setToRock()
+			else:
+				setToGround()
+			beenEdited = true
+		
+		if Input.is_action_just_released("right-click"):
+			beenEdited = false
+		
+		if Input.is_action_just_pressed("click"):
+			actionGiven.emit(self, coordinates)
+	else:
+		beenEdited = false
 func _ready():
+	setToRock()
+	
+func setToRock():
 	sprite.texture = rockImg
 	tooltipText = "Rock"
 	setName(tooltipText)
+	traversable = false
 	
 func setToGround():
 	sprite.texture = groundImg
 	tooltipText = "Ground"
 	setName(tooltipText)
-
+	traversable = true
 
 func setName(text : String):
 	name = text + " " + name.split(" ")[1]
@@ -42,7 +60,6 @@ func setName(text : String):
 
 func _on_panel_mouse_entered():
 	mouseInPanel = true
-
 
 func _on_panel_mouse_exited():
 	mouseInPanel = false

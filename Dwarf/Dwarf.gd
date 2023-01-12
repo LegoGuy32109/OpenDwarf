@@ -11,12 +11,18 @@ var gridSize : int = 64
 #	 needs to grab Tiles group for path finding
 @onready var tiles : Node2D = self.get_parent().find_child("Tiles")
 
-func moveTo(newCoordinates : Vector2i):
+func moveTo(newCoordinates : Vector2i) -> bool:
 	var path : Array[Vector2i] = _findPathTo(newCoordinates)
+	# tile not reachable
+	if path.is_empty():
+		return false
 	
 	var pathTiles : Array[Tile] = []
 	for tileCoords in path:
 		pathTiles.append(tiles.get_child(tileCoords.x).get_child(tileCoords.y))
+		
+#	var nextTile = tiles.get_child(path[0].x).get_child(path[0].y)
+	# path[0] is the coordinates of the next tile
 	
 	for tile in pathTiles:
 		var currentMoveCost : float = tile.movementCost
@@ -24,11 +30,29 @@ func moveTo(newCoordinates : Vector2i):
 			currentMoveCost *= 1.2
 		var tween = create_tween()
 		tween.tween_property(self, "position", tile.position, currentMoveCost) 
+	# while move into tile calculate next move to path
+#	if not _recursiveMoveTo(newCoordinates, tween):
+#		return false
 		await tween.finished
-
+	
 	coordinates = newCoordinates
 	print("Now at "+str(coordinates))
+	return true
 
+func _recursiveMoveTo(newCoordinates : Vector2i, tween : Tween) -> bool:
+	var path : Array[Vector2i] = _findPathTo(newCoordinates)
+	# tile not reachable
+	if path.is_empty():
+		return false
+	var nextTile = tiles.get_child(path[0].x).get_child(path[0].y)
+	var currentMoveCost : float = nextTile.movementCost
+	if isDiagNeighbor(self.position, nextTile.position):
+		currentMoveCost *= 1.2
+	tween.tween_property(self, "position", nextTile.position, currentMoveCost)
+	coordinates = newCoordinates
+	if not _recursiveMoveTo(newCoordinates, tween):
+		return false
+	return true
 
 # Turn grid coordinates -> world/Game coordinates * gridSize
 func mapToWorld(coords: Vector2i) -> Vector2:
@@ -62,6 +86,10 @@ func _findPathTo(newCoordinates : Vector2i) -> Array[Vector2i]:
 				cost_so_far[tile.coordinates] = new_cost
 				queue.put(tile.coordinates, new_cost)
 				came_from[tile.coordinates] = currentLoc
+	
+	# check if destination is in map
+	if not came_from.has(newCoordinates):
+		return []
 	
 	# calculate specific path to destination
 	var path : Array[Vector2i] = []
