@@ -39,6 +39,7 @@ func _input(_event):
 			actionGiven.emit(self, coordinates)
 	else:
 		beenEdited = false
+
 func _ready():
 	setToRock()
 	
@@ -56,7 +57,6 @@ func setToGround():
 
 func setName(text : String):
 	name = text + " " + name.split(" ")[1]
-
 
 func _on_panel_mouse_entered():
 	mouseInPanel = true

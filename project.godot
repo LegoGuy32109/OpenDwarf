@@ -15,9 +15,9 @@ _global_script_classes=[{
 "path": "res://Dwarf/Dwarf.gd"
 }, {
 "base": "Node",
-"class": &"PriorityQueue",
+"class": &"Pathfinder",
 "language": &"GDScript",
-"path": "res://Dwarf/PriorityQueue.gd"
+"path": "res://Pathfinding/Pathfinder.gd"
 }, {
 "base": "Node",
 "class": &"RockSpawner",
@@ -31,7 +31,7 @@ _global_script_classes=[{
 }]
 _global_script_class_icons={
 "Dwarf": "",
-"PriorityQueue": "",
+"Pathfinder": "",
 "RockSpawner": "",
 "Tile": ""
 }

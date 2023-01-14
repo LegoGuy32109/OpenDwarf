@@ -9,8 +9,6 @@ func _physics_process(_delta):
 	(Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left")),\
 	cameraSpeed * \
 	(Input.get_action_strength("ui_down") - Input.get_action_strength("ui_up"))))
-#	self.position.x += cameraSpeed * (Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left"))
-#	self.position.y += cameraSpeed * (Input.get_action_strength("ui_down") - Input.get_action_strength("ui_up"))
 
 func _unhandled_input(event):
 	if event.is_action_pressed("zoom_in") and self.zoom.x < 2.0:
@@ -23,3 +21,4 @@ func _unhandled_input(event):
 		print(self.zoom)
 	if event.is_action_pressed("ui_accept"):
 		get_tree().reload_current_scene()
+

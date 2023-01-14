@@ -1,129 +1,76 @@
 extends Node2D
 class_name Dwarf
 enum direction {N, NE, E, SE, S, SW, W, NW}
-
+enum STATES {IDLE, MINING, DRINKING, PLAYING}
+var state : int = STATES.IDLE
 var coordinates : Vector2i = Vector2i()
+var moving : bool = false
+# might have gridSize set by the game manager
+var gridSize : int = 64
+# time taken off from transtion cost
+var agentSpeed : float = 0.3
+
+# needs to grab Tiles group for path finding
+@onready var tiles : Node2D = self.get_parent().find_child("Tiles")
+# animated sprite child
 #@onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
 
-# might have this be set by the game manager
-var gridSize : int = 64
+@onready var pathfinder : Pathfinder = Pathfinder.new(tiles)
 
-#	 needs to grab Tiles group for path finding
-@onready var tiles : Node2D = self.get_parent().find_child("Tiles")
+func _ready():
+	$StateMenu.clear()
+	var index : int = 0
+	for key in STATES.keys():
+		$StateMenu.add_item(key, index)
+		index+=1
 
+
+func _process(_delta):
+	match state:
+		STATES.IDLE:
+			if randf() < 0.25 and not moving:
+				_moveToNeighbor()
+
+func _moveToNeighbor():
+	await get_tree().create_timer(randf()*10).timeout
+	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
+	var chosenTile : Tile = \
+	neighborTiles[randi_range(0, neighborTiles.size()-1)]
+	await moveTo(chosenTile.coordinates)
+
+# handles visual movement to new location based on path from Pathfinder
 func moveTo(newCoordinates : Vector2i) -> bool:
-	var path : Array[Vector2i] = _findPathTo(newCoordinates)
-	# tile not reachable
-	if path.is_empty():
-		return false
+	moving = true
 	
-	var pathTiles : Array[Tile] = []
-	for tileCoords in path:
-		pathTiles.append(tiles.get_child(tileCoords.x).get_child(tileCoords.y))
+	while not newCoordinates == coordinates:
+		var path : Array[Vector2i] = \
+		pathfinder.findPathTo(newCoordinates, coordinates)
 		
-#	var nextTile = tiles.get_child(path[0].x).get_child(path[0].y)
-	# path[0] is the coordinates of the next tile
-	
-	for tile in pathTiles:
-		var currentMoveCost : float = tile.movementCost
-		if isDiagNeighbor(self.position, tile.position):
-			currentMoveCost *= 1.2
-		var tween = create_tween()
-		tween.tween_property(self, "position", tile.position, currentMoveCost) 
-	# while move into tile calculate next move to path
-#	if not _recursiveMoveTo(newCoordinates, tween):
-#		return false
-		await tween.finished
-	
-	coordinates = newCoordinates
+		# return false if tile not reachable
+		if path.is_empty():
+			moving = false
+			return false
+		
+		var tileCoords : Vector2i = path[1]
+		var nextTile : Tile = tiles.get_child(tileCoords.x).get_child(tileCoords.y)
+		var singleTween = create_tween()
+		var curMoveCost : float = nextTile.movementCost - agentSpeed
+		if pathfinder.isDiagNeighbor(coordinates, tileCoords):
+			curMoveCost *= 1.2
+		# tweening world position instead of tile coordinates
+		singleTween.tween_property(self, "position", nextTile.position, curMoveCost)
+		await singleTween.finished
+		coordinates = tileCoords
+
 	print("Now at "+str(coordinates))
+	moving = false
 	return true
 
-func _recursiveMoveTo(newCoordinates : Vector2i, tween : Tween) -> bool:
-	var path : Array[Vector2i] = _findPathTo(newCoordinates)
-	# tile not reachable
-	if path.is_empty():
-		return false
-	var nextTile = tiles.get_child(path[0].x).get_child(path[0].y)
-	var currentMoveCost : float = nextTile.movementCost
-	if isDiagNeighbor(self.position, nextTile.position):
-		currentMoveCost *= 1.2
-	tween.tween_property(self, "position", nextTile.position, currentMoveCost)
-	coordinates = newCoordinates
-	if not _recursiveMoveTo(newCoordinates, tween):
-		return false
-	return true
 
 # Turn grid coordinates -> world/Game coordinates * gridSize
 func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
 
-func _findPathTo(newCoordinates : Vector2i) -> Array[Vector2i]:
-	if coordinates == newCoordinates:
-		return []
-	var queue : PriorityQueue = PriorityQueue.new()
-	queue.put(coordinates, 0)
-	var came_from = {}
-	var cost_so_far = {}
-	came_from[coordinates] = 0
-	cost_so_far[coordinates] = 0
-
-# https://www.redblobgames.com/pathfinding/a-star/introduction.html
-	while not queue.queue.is_empty():
-		var currentLoc : Vector2i = queue.dequeue()
-		if currentLoc == newCoordinates:
-			break
-		for tile in findOpenNeighbors(currentLoc):
-			var currentMovementCost : float = tile.movementCost
-			if isDiagNeighbor(tile.coordinates, currentLoc):
-				currentMovementCost *= 1.2
-
-			var new_cost = cost_so_far[currentLoc] \
-			+ currentMovementCost # tile -> new tile
-			
-			if not tile.coordinates in cost_so_far or \
-			new_cost < cost_so_far[tile.coordinates]:
-				cost_so_far[tile.coordinates] = new_cost
-				queue.put(tile.coordinates, new_cost)
-				came_from[tile.coordinates] = currentLoc
-	
-	# check if destination is in map
-	if not came_from.has(newCoordinates):
-		return []
-	
-	# calculate specific path to destination
-	var path : Array[Vector2i] = []
-	path.append(newCoordinates)
-	var nextStep = came_from[newCoordinates]
-	while nextStep is Vector2i:
-		path.push_front(nextStep) # now current Character loc -> destination
-		nextStep = came_from[nextStep]
-	return path 
-
-func isDiagNeighbor(loc1: Vector2i, loc2: Vector2i) -> bool:
-	var dx = loc2.x - loc1.x
-	var dy = loc2.y - loc1.y
-	if abs(dx) == abs(dy):
-		return true
-	return false
-
-func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
-	var neighborTiles: Array[Tile] = []
-	for i in [-1, 0, 1]:
-		if currentLoc.x+i < 0 or currentLoc.x+i > tiles.get_child_count()-1:
-			continue
-		var currentColumn : Node2D = tiles.get_child(currentLoc.x+i)
-		for j in [-1, 0, 1]:
-			# the 0,0 tile is where currentLoc is
-			if (i == 0 and j == 0) or currentLoc.y+j < 0 or \
-			currentLoc.y+j > currentColumn.get_child_count()-1:
-				continue
-			var tile : Tile = currentColumn.get_child(currentLoc.y+j)
-			# check impassibleness here
-			if tile.tooltipText != "Rock":
-				neighborTiles.append(tile)
-			
-	return neighborTiles
 
 func _cellMove(dir: direction):
 	match dir:
@@ -145,3 +92,8 @@ func _cellMove(dir: direction):
 			print("NorthWest")
 		_:
 			print("Error in direction")
+
+
+func _on_state_menu_item_selected(index):
+	state = index
+	print("Dwarf now ", STATES.keys()[state])
