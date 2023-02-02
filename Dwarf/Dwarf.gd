@@ -1,7 +1,7 @@
 extends Node2D
 class_name Dwarf
 enum direction {N, NE, E, SE, S, SW, W, NW}
-enum STATES {IDLE, MINING, DRINKING, PLAYING}
+enum STATES {IDLE, MINING, MOVING}
 var state : int = STATES.IDLE
 var coordinates : Vector2i = Vector2i()
 var moving : bool = false
@@ -28,11 +28,12 @@ func _ready():
 func _process(_delta):
 	match state:
 		STATES.IDLE:
-			if randf() < 0.25 and not moving:
-				_moveToNeighbor()
+			if randf() < 0.02:
+				await _moveToNeighbor()
+
+
 
 func _moveToNeighbor():
-	await get_tree().create_timer(randf()*10).timeout
 	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
 	var chosenTile : Tile = \
 	neighborTiles[randi_range(0, neighborTiles.size()-1)]
@@ -40,8 +41,7 @@ func _moveToNeighbor():
 
 # handles visual movement to new location based on path from Pathfinder
 func moveTo(newCoordinates : Vector2i) -> bool:
-	moving = true
-	
+	state = STATES.MOVING
 	while not newCoordinates == coordinates:
 		var path : Array[Vector2i] = \
 		pathfinder.findPathTo(newCoordinates, coordinates)
@@ -62,8 +62,8 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		await singleTween.finished
 		coordinates = tileCoords
 
-	print("Now at "+str(coordinates))
-	moving = false
+	print(self.name+" is now at "+str(coordinates))
+	state = STATES.IDLE
 	return true
 
 
