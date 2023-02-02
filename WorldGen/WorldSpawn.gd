@@ -43,7 +43,7 @@ func generateLevel():
 		$Tiles.get_children()[location.x].get_children()[location.y].setToGround()
 
 func _action_given(tile : Tile, coordinates : Vector2i):
-	if $Dwarf.moving:
+	if $Dwarf.state == Dwarf.STATES.MOVING:
 		print("Dwarf is already moving")
 		return
 	if tile.traversable:

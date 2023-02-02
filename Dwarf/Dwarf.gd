@@ -1,10 +1,10 @@
 extends Node2D
 class_name Dwarf
-enum direction {N, NE, E, SE, S, SW, W, NW}
+
 enum STATES {IDLE, MINING, MOVING}
 var state : int = STATES.IDLE
 var coordinates : Vector2i = Vector2i()
-var moving : bool = false
+
 # might have gridSize set by the game manager
 var gridSize : int = 64
 # time taken off from transtion cost
@@ -48,7 +48,7 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		
 		# return false if tile not reachable
 		if path.is_empty():
-			moving = false
+			state = STATES.IDLE
 			return false
 		
 		var tileCoords : Vector2i = path[1]
@@ -70,29 +70,6 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 # Turn grid coordinates -> world/Game coordinates * gridSize
 func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
-
-
-func _cellMove(dir: direction):
-	match dir:
-		direction.N:
-			print("North")
-		direction.NE:
-			print("NorthEast")
-		direction.E:
-			print("East")
-		direction.SE:
-			print("SouthEast")
-		direction.S:
-			print("South")
-		direction.SW:
-			print("SouthWest")
-		direction.W:
-			print("West")
-		direction.NW:
-			print("NorthWest")
-		_:
-			print("Error in direction")
-
 
 func _on_state_menu_item_selected(index):
 	state = index
