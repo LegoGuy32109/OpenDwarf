@@ -7,6 +7,11 @@ var borderPadding : int = 2
 # should be a const lol
 @export var gridSize: int = 64
 
+# I'm going to spawn entities directly, a reference to the node itself is more useful
+#@onready
+## returns array of nodes, but I assume all are Node2Ds
+#var entities: Array[Node] = $Entities.get_children()
+
 @onready 
 var rowScene: PackedScene = load("res://WorldGen/Column.tscn")
 @onready 
@@ -36,18 +41,22 @@ func generateLevel():
 	var path: Array[Vector2i] = pathSpawn.walk(600)
 	pathSpawn.queue_free()
 	
-	$Dwarf.position = Vector2i(path[0][0]*gridSize, path[0][1]*gridSize)
-	$Dwarf.coordinates = Vector2i(path[0][0], path[0][1])
-	$Camera.position = $Dwarf.position
+	# spawn in entities
+	for entity in $Entities.get_children():
+		assert(entity is Node2D, "Entity in world is not Node2D")
+		entity.position = Vector2i(path[0][0]*gridSize, path[0][1]*gridSize)
+		entity.coordinates = Vector2i(path[0][0], path[0][1])
+		
+	$Camera.position = $Entities/Dwarf.position
 	for location in path:
 		$Tiles.get_children()[location.x].get_children()[location.y].setToGround()
 
-func _action_given(tile : Tile, coordinates : Vector2i):
-	if $Dwarf.state == Dwarf.STATES.MOVING:
-		print("Dwarf is already moving")
-		return
-	if tile.traversable:
-		if(not await $Dwarf.moveTo(coordinates)):
-			print("Can't find path to location")
-	else:
-		print("Cannot move to location")
+func _action_given(tile : Tile, coordinates : Vector2i) -> void:
+	# right now sending all dwarves to clicked location
+	for entity in $Entities.get_children():
+		assert(entity is Node2D, "Entity in world is not Node2D")
+		
+		if tile.traversable:
+			entity.commandQueue.order(Dwarf.Command.new(coordinates))
+		else:
+			print(entity.name+" Cannot move to location")

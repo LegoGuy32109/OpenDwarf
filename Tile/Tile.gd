@@ -23,7 +23,7 @@ func _process(_delta) -> void:
 	else:
 		$Panel.tooltip_text = ""
 
-func _input(_event):
+func _input(_event) -> void:
 	if mouseInPanel:
 		if not beenEdited and Input.is_action_pressed("right-click"):
 			if traversable:
@@ -40,26 +40,26 @@ func _input(_event):
 	else:
 		beenEdited = false
 
-func _ready():
+func _ready() -> void:
 	setToRock()
 	
-func setToRock():
+func setToRock() -> void:
 	sprite.texture = rockImg
 	tooltipText = "Rock"
 	setName(tooltipText)
 	traversable = false
 	
-func setToGround():
+func setToGround() -> void:
 	sprite.texture = groundImg
 	tooltipText = "Ground"
 	setName(tooltipText)
 	traversable = true
 
-func setName(text : String):
+func setName(text : String) -> void:
 	name = text + " " + name.split(" ")[1]
 
-func _on_panel_mouse_entered():
+func _on_panel_mouse_entered() -> void:
 	mouseInPanel = true
 
-func _on_panel_mouse_exited():
+func _on_panel_mouse_exited() -> void:
 	mouseInPanel = false
