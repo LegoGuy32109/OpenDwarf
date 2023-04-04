@@ -35,7 +35,7 @@ func generateLevel():
 			tile.coordinates = Vector2i(i, j)
 			tile.actionGiven.connect(_action_given)
 			
-	@warning_ignore(narrowing_conversion, integer_division)
+
 	var pathSpawn: RockSpawner = RockSpawner.new(Vector2i(borderLength/2, \
 	borderLength/2.5), borders)
 	var path: Array[Vector2i] = pathSpawn.walk(600)

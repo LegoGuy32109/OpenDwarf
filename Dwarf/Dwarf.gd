@@ -17,7 +17,7 @@ var agentSpeed : float = 0.0
 
 @onready var pathfinder : Pathfinder = Pathfinder.new(tiles)
 
-var commandQueue: CommandQueue = CommandQueue.new()
+var commandQueue: CommandQueue = CommandQueue.new(self)
 
 func _ready():
 	$StateMenu.clear()
@@ -40,9 +40,10 @@ func _process(_delta):
 
 func _moveToNeighbor():
 	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
-	var chosenTile : Tile = \
-	neighborTiles[randi_range(0, neighborTiles.size()-1)]
-	await moveTo(chosenTile.coordinates)
+	if (neighborTiles.size() > 0):
+		var chosenTile : Tile = \
+		neighborTiles[randi_range(0, neighborTiles.size()-1)]
+		await moveTo(chosenTile.coordinates)
 
 # handles visual movement to new location based on path from Pathfinder
 func moveTo(newCoordinates : Vector2i) -> bool:
@@ -81,12 +82,21 @@ func _on_state_menu_item_selected(index):
 	state = index
 	print("Dwarf now ", STATES.keys()[state])
 	
+	
+# this will grow more complex
 class CommandQueue:
 	var commandList : Array[Command] = []
 	var currentCommand : Command = null
+	var entity : Dwarf
+	
+	func _init(_entity: Dwarf):
+		entity = _entity
 	
 	func order(command: Command):
-		commandList.append(command)
+		if not entity.state == STATES.MOVING:
+			commandList.append(command)
+		else:
+			print(entity.name + " is already moving")
 	
 	func nextCommand() -> Command:
 		var poppedCommand : Command = commandList.pop_front()
@@ -96,7 +106,6 @@ class CommandQueue:
 	func curCommandDone()-> void:
 		currentCommand = null
 	
-# this will grow more complex
 class Command:
 	var desiredLocation: Vector2i
 	func _init(newLoc:Vector2i):
