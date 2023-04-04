@@ -30,9 +30,14 @@ func _ready():
 func _process(_delta):
 	match state:
 		STATES.IDLE:
-			if not commandQueue.commandList.is_empty():
-				await moveTo(commandQueue.nextCommand().desiredLocation)
-				commandQueue.curCommandDone()
+			if commandQueue.commandList.size() > 0:
+				var actionSuccessfull = await moveTo(commandQueue.commandList[0].desiredLocation)
+				if actionSuccessfull:
+					commandQueue.nextCommand()
+				else:
+					# complain task failed
+					commandQueue.nextCommand()
+
 			elif randf() < 0.02:
 				await _moveToNeighbor()
 
@@ -69,7 +74,7 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		await singleTween.finished
 		coordinates = tileCoords
 
-#	print(self.name+" is now at "+str(coordinates))
+	print(self.name+" is now at "+str(coordinates))
 	state = STATES.IDLE
 	return true
 
@@ -86,25 +91,31 @@ func _on_state_menu_item_selected(index):
 # this will grow more complex
 class CommandQueue:
 	var commandList : Array[Command] = []
-	var currentCommand : Command = null
+#	var currentCommand : Command = null
 	var entity : Dwarf
 	
 	func _init(_entity: Dwarf):
 		entity = _entity
 	
 	func order(command: Command):
-		if not entity.state == STATES.MOVING:
-			commandList.append(command)
-		else:
+		if _isCommandTypeInQueue(command):
 			print(entity.name + " is already moving")
-	
+		else:
+			commandList.append(command)
+
+	func _isCommandTypeInQueue(command: Command) -> bool:
+		#Command will be a abstract class eventually, currently I'm only letting one in at a time
+		if(commandList.size() > 0):
+			return true
+		return false
+		
 	func nextCommand() -> Command:
-		var poppedCommand : Command = commandList.pop_front()
-		currentCommand = poppedCommand
-		return poppedCommand
+#		var poppedCommand : Command = commandList.pop_front()
+#		currentCommand = poppedCommand
+		return commandList.pop_front()
 	
-	func curCommandDone()-> void:
-		currentCommand = null
+#	func curCommandDone()-> void:
+#		currentCommand = null
 	
 class Command:
 	var desiredLocation: Vector2i

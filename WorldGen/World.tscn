@@ -45,15 +45,3 @@ position = Vector2(32, 32)
 
 [node name="Dwarf11" parent="Entities" instance=ExtResource("3_7ca3o")]
 position = Vector2(32, 32)
-
-[node name="Dwarf12" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf13" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf14" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf15" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
