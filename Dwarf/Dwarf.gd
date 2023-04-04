@@ -31,13 +31,17 @@ func _process(_delta):
 	match state:
 		STATES.IDLE:
 			if commandQueue.commandList.size() > 0:
-				var actionSuccessfull = await moveTo(commandQueue.commandList[0].desiredLocation)
-				if actionSuccessfull:
+				if commandQueue.commandList[0] is Move:
+					var actionSuccessfull = await moveTo(commandQueue.commandList[0].desiredLocation)
+					if actionSuccessfull:
+						commandQueue.nextCommand()
+					else:
+						# complain task failed
+						commandQueue.nextCommand()
+				elif commandQueue.commandList[0] is Mine:
 					commandQueue.nextCommand()
-				else:
-					# complain task failed
-					commandQueue.nextCommand()
-
+				elif commandQueue.commandList[0] is Command:
+					print("Huh?")
 			elif randf() < 0.02:
 				await _moveToNeighbor()
 
@@ -74,7 +78,7 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		await singleTween.finished
 		coordinates = tileCoords
 
-	print(self.name+" is now at "+str(coordinates))
+#	print(self.name+" is now at "+str(coordinates))
 	state = STATES.IDLE
 	return true
 
@@ -91,7 +95,6 @@ func _on_state_menu_item_selected(index):
 # this will grow more complex
 class CommandQueue:
 	var commandList : Array[Command] = []
-#	var currentCommand : Command = null
 	var entity : Dwarf
 	
 	func _init(_entity: Dwarf):
@@ -105,19 +108,21 @@ class CommandQueue:
 
 	func _isCommandTypeInQueue(command: Command) -> bool:
 		#Command will be a abstract class eventually, currently I'm only letting one in at a time
-		if(commandList.size() > 0):
-			return true
+		for c in commandList:
+			if typeof(c) == typeof(command):
+				return true
 		return false
 		
 	func nextCommand() -> Command:
-#		var poppedCommand : Command = commandList.pop_front()
-#		currentCommand = poppedCommand
 		return commandList.pop_front()
-	
-#	func curCommandDone()-> void:
-#		currentCommand = null
 	
 class Command:
 	var desiredLocation: Vector2i
-	func _init(newLoc:Vector2i):
-		desiredLocation = newLoc
+	func _init(tile: Tile):
+		desiredLocation = tile.coordinates
+
+class Move extends Command:
+	pass
+
+class Mine extends Command:
+	pass

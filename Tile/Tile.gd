@@ -36,7 +36,7 @@ func _input(_event) -> void:
 			beenEdited = false
 		
 		if Input.is_action_just_pressed("click"):
-			actionGiven.emit(self, coordinates)
+			actionGiven.emit(self)
 	else:
 		beenEdited = false
 

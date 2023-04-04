@@ -9,7 +9,22 @@
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_xivog"]
 animations = [{
-"frames": [ExtResource("1_cnh8p"), ExtResource("2_hhvl2"), ExtResource("3_21nxi"), ExtResource("4_uqglb"), ExtResource("5_xh3xl")],
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_cnh8p")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_hhvl2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_21nxi")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_uqglb")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_xh3xl")
+}],
 "loop": true,
 "name": &"idle",
 "speed": 5.0
@@ -19,9 +34,8 @@ animations = [{
 script = ExtResource("1_5rj7s")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
-frames = SubResource("SpriteFrames_xivog")
+sprite_frames = SubResource("SpriteFrames_xivog")
 animation = &"idle"
-playing = true
 
 [node name="StateMenu" type="OptionButton" parent="."]
 modulate = Color(1, 1, 1, 0)

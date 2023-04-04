@@ -52,12 +52,13 @@ func generateLevel():
 	for location in path:
 		$Tiles.get_children()[location.x].get_children()[location.y].setToGround()
 
-func _action_given(tile : Tile, coordinates : Vector2i) -> void:
+func _action_given(tile : Tile) -> void:
 	# right now sending all dwarves to clicked location
 	for entity in $Entities.get_children():
 		assert(entity is Node2D, "Entity in world is not Node2D")
 		
 		if tile.traversable:
-			entity.commandQueue.order(Dwarf.Command.new(coordinates))
+			entity.commandQueue.order(Dwarf.Move.new(tile))
 		else:
-			print(entity.name+" Cannot move to location")
+			entity.commandQueue.order(Dwarf.Mine.new(tile))
+#			print(entity.name+" Cannot move to location")
