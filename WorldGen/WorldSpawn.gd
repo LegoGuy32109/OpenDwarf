@@ -52,10 +52,14 @@ func generateLevel():
 	for location in path:
 		$Tiles.get_children()[location.x].get_children()[location.y].setToGround()
 
-func _action_given(tile : Tile) -> void:
+func _action_given(tile : Tile, msg : String = "normal") -> void:
 	# right now sending all dwarves to clicked location
 	for entity in $Entities.get_children():
 		assert(entity is Node2D, "Entity in world is not Node2D")
+		
+		# interrupt entity mid command then add new command
+		if msg == "force":
+			entity.commandQueue.clear()
 		
 		if tile.traversable:
 			entity.commandQueue.order(Dwarf.Move.new(tile))

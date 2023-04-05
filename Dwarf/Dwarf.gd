@@ -7,29 +7,32 @@ var coordinates : Vector2i = Vector2i()
 
 # might have gridSize set by the game manager
 var gridSize : int = 64
-# time taken off from transtion cost
-var agentSpeed : float = 0.0
+# 1.0 default, multipies time taken to move over tiles
+var agentSpeed : float = 1.0
 
 # needs to grab Tiles group for path finding
 @onready var tiles : Node2D = self.get_parent().get_parent().find_child("Tiles")
 # animated sprite child
-#@onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
+@onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
 
 @onready var pathfinder : Pathfinder = Pathfinder.new(tiles)
 
 var commandQueue: CommandQueue = CommandQueue.new(self)
 
 func _ready():
-	$StateMenu.clear()
-	var index : int = 0
-	for key in STATES.keys():
-		$StateMenu.add_item(key, index)
-		index+=1
+	agentSpeed = RandomNumberGenerator.new().randf_range(0.85, 1.2)
+#	$StateMenu.clear()
+#	var index : int = 0
+#	for key in STATES.keys():
+#		$StateMenu.add_item(key, index)
+#		index+=1
 
 
 func _process(_delta):
+	# giving code smell 😝 might rename state to 'current_action'
 	match state:
 		STATES.IDLE:
+			sprites.play("idle", agentSpeed)
 			if commandQueue.commandList.size() > 0:
 				if commandQueue.commandList[0] is Move:
 					var actionSuccessfull = await moveTo(commandQueue.commandList[0].desiredLocation)
@@ -44,6 +47,8 @@ func _process(_delta):
 					print("Huh?")
 			elif randf() < 0.02:
 				await _moveToNeighbor()
+		STATES.MOVING:
+			sprites.stop()
 
 
 
@@ -57,7 +62,15 @@ func _moveToNeighbor():
 # handles visual movement to new location based on path from Pathfinder
 func moveTo(newCoordinates : Vector2i) -> bool:
 	state = STATES.MOVING
+	
 	while not newCoordinates == coordinates:
+		
+		# interrupt movement when move command changed
+		if not commandQueue.commandList.is_empty():
+			var curCommandDesLoc : Vector2i = commandQueue.commandList[0].desiredLocation
+			if(newCoordinates != curCommandDesLoc):
+				newCoordinates = curCommandDesLoc
+		
 		var path : Array[Vector2i] = \
 		pathfinder.findPathTo(newCoordinates, coordinates)
 		
@@ -70,7 +83,7 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		var tileCoords : Vector2i = path[1]
 		var nextTile : Tile = tiles.get_child(tileCoords.x).get_child(tileCoords.y)
 		var singleTween = create_tween()
-		var curMoveCost : float = nextTile.movementCost - agentSpeed
+		var curMoveCost : float = nextTile.movementCost * agentSpeed
 		if pathfinder.isDiagNeighbor(coordinates, tileCoords):
 			curMoveCost *= 1.2
 		# tweening world position instead of tile coordinates
@@ -88,8 +101,10 @@ func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
 
 func _on_state_menu_item_selected(index):
-	state = index
-	print("Dwarf now ", STATES.keys()[state])
+#	I don't want user to change state right now, this will be a camera follow button
+#	state = index
+#	print("Dwarf now ", STATES.keys()[state])
+	pass
 	
 	
 # this will grow more complex
@@ -100,7 +115,7 @@ class CommandQueue:
 	func _init(_entity: Dwarf):
 		entity = _entity
 	
-	func order(command: Command):
+	func order(command: Command) -> void:
 		if _isCommandTypeInQueue(command):
 			print(entity.name + " is already moving")
 		else:
@@ -115,6 +130,9 @@ class CommandQueue:
 		
 	func nextCommand() -> Command:
 		return commandList.pop_front()
+	
+	func clear() -> void:
+		commandList.clear()
 	
 class Command:
 	var desiredLocation: Vector2i

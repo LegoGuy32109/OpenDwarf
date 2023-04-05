@@ -6,8 +6,6 @@
 
 [node name="World" type="Node2D"]
 script = ExtResource("1_r4v4f")
-borderLength = null
-gridSize = null
 
 [node name="Camera" parent="." instance=ExtResource("2_a12da")]
 
@@ -43,7 +41,4 @@ position = Vector2(32, 32)
 position = Vector2(32, 32)
 
 [node name="Dwarf10" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf11" parent="Entities" instance=ExtResource("3_7ca3o")]
 position = Vector2(32, 32)

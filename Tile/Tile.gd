@@ -37,6 +37,9 @@ func _input(_event) -> void:
 		
 		if Input.is_action_just_pressed("click"):
 			actionGiven.emit(self)
+			
+		if Input.is_action_just_pressed("shift-click"):
+			actionGiven.emit(self, "force")
 	else:
 		beenEdited = false
 
