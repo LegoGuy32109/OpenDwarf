@@ -7,8 +7,6 @@ var borderPadding : int = 2
 # should be a const lol
 @export var gridSize: int = 64
 
-# I'm going to spawn entities directly, a reference to the node itself is more useful
-#@onready
 ## returns array of nodes, but I assume all are Node2Ds
 #var entities: Array[Node] = $Entities.get_children()
 
@@ -38,7 +36,7 @@ func generateLevel():
 
 	@warning_ignore("narrowing_conversion", "integer_division")
 	var pathSpawn: RockSpawner = RockSpawner.new(Vector2i(borderLength/2, \
-	borderLength/2.5), borders)
+	borderLength/2.5), borders, "godot")
 	var path: Array[Vector2i] = pathSpawn.walk(600)
 	pathSpawn.queue_free()
 	

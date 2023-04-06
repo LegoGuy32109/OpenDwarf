@@ -8,7 +8,11 @@ var borders = Rect2()
 var stepHistory: Array[Vector2i] = []
 var stepsSinceTurn = 0
 
-func _init(startingPosition, newBorders):
+var rnd : RandomNumberGenerator
+
+func _init(startingPosition, newBorders, seed : String):
+	rnd = RandomNumberGenerator.new()
+	rnd.seed = hash(seed)
 	assert(newBorders.has_point(startingPosition))
 	position = startingPosition
 	stepHistory.append(position)
@@ -16,7 +20,7 @@ func _init(startingPosition, newBorders):
 	
 func walk(steps):
 	for stepNumber in steps:
-		if randf() <= 0.25 or stepsSinceTurn >= 3:
+		if rnd.randf() <= 0.25 or stepsSinceTurn >= 3:
 			changeDirection()
 			
 		if step():
@@ -36,7 +40,11 @@ func step():
 func changeDirection():
 	stepsSinceTurn = 0
 	var directions = DIRECTIONS.duplicate()
-	directions.shuffle()
-	direction = directions.pop_front()
+	var order = []
+	while directions.size() > 0:
+		var index : int = rnd.randi_range(0, directions.size()-1)
+		order.append(directions.pop_at(index))
+
+	direction = order.pop_front()
 	while not borders.has_point(position + direction):
-		direction = directions.pop_front()
+		direction = order.pop_front()
