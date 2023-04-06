@@ -21,10 +21,18 @@ var agentSpeed : float = 1.0
 
 var commandQueue: CommandQueue = CommandQueue.new(self)
 
+var tooltipText: String = ""
+
 func _ready():
-	agentSpeed = RandomNumberGenerator.new().randf_range(0.85, 1.2)
+	agentSpeed = RandomNumberGenerator.new().randi_range(85, 120)/100.0
+	tooltipText = name+"\nSpeed: "+str(agentSpeed)
 
 func _process(_delta):
+	if HUD.tileTooltipsEnabled:
+		$StateMenu.tooltip_text = tooltipText
+	else:
+		$StateMenu.tooltip_text = ""
+	
 	# giving code smell 😝 might rename state to 'current_action'
 	match state:
 		STATES.IDLE:
@@ -41,7 +49,7 @@ func _process(_delta):
 					commandQueue.nextCommand()
 				elif commandQueue.commandList[0] is Command:
 					print("Huh?")
-			elif randf() < 0.02:
+			elif HUD.idleMoveEnabled and randf() < 0.02:
 				await _moveToNeighbor()
 		STATES.MOVING:
 			sprites.stop()
@@ -79,7 +87,7 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		var tileCoords : Vector2i = path[1]
 		var nextTile : Tile = tiles.get_child(tileCoords.x).get_child(tileCoords.y)
 		var singleTween = create_tween()
-		var curMoveCost : float = nextTile.movementCost * agentSpeed
+		var curMoveCost : float = nextTile.movementCost * 1/agentSpeed
 		if pathfinder.isDiagNeighbor(coordinates, tileCoords):
 			curMoveCost *= 1.2
 		# tweening world position instead of tile coordinates

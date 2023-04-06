@@ -21,12 +21,20 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="CheckBox" type="CheckBox" parent="Panel/HBoxContainer"]
+[node name="TooltipsCheck" type="CheckBox" parent="Panel/HBoxContainer"]
 layout_mode = 2
 focus_mode = 0
 mouse_filter = 1
 text = "Tooltips Enabled"
 
+[node name="IdleMoveCheck" type="CheckBox" parent="Panel/HBoxContainer"]
+layout_mode = 2
+focus_mode = 0
+mouse_filter = 1
+button_pressed = true
+text = "Idle Walk Enabled"
+
 [connection signal="mouse_entered" from="Panel" to="Panel" method="_on_mouse_entered"]
 [connection signal="mouse_exited" from="Panel" to="Panel" method="_on_mouse_exited"]
-[connection signal="toggled" from="Panel/HBoxContainer/CheckBox" to="." method="_on_check_box_toggled"]
+[connection signal="toggled" from="Panel/HBoxContainer/TooltipsCheck" to="." method="_on_tooltips_check_toggled"]
+[connection signal="toggled" from="Panel/HBoxContainer/IdleMoveCheck" to="." method="_on_idle_move_check_toggled"]
