@@ -50,6 +50,12 @@ func generateLevel():
 	for location in path:
 		$Tiles.get_children()[location.x].get_children()[location.y].setToGround()
 
+func cameraFollow(entity: Dwarf):
+	if $Camera.cameraTarget:
+		$Camera.removeCurrentTarget()
+	print("Following "+ entity.name)
+	$Camera.cameraTarget = entity
+
 func _action_given(tile : Tile, msg : String = "normal") -> void:
 	# right now sending all dwarves to clicked location
 	for entity in $Entities.get_children():

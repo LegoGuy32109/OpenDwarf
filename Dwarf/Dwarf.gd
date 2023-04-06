@@ -10,8 +10,10 @@ var gridSize : int = 64
 # 1.0 default, multipies time taken to move over tiles
 var agentSpeed : float = 1.0
 
+# Communicate with world node
+@onready var world : Node2D = self.get_parent().get_parent()
 # needs to grab Tiles group for path finding
-@onready var tiles : Node2D = self.get_parent().get_parent().find_child("Tiles")
+@onready var tiles : Node2D = world.find_child("Tiles")
 # animated sprite child
 @onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
 
@@ -21,12 +23,6 @@ var commandQueue: CommandQueue = CommandQueue.new(self)
 
 func _ready():
 	agentSpeed = RandomNumberGenerator.new().randf_range(0.85, 1.2)
-#	$StateMenu.clear()
-#	var index : int = 0
-#	for key in STATES.keys():
-#		$StateMenu.add_item(key, index)
-#		index+=1
-
 
 func _process(_delta):
 	# giving code smell 😝 might rename state to 'current_action'
@@ -101,11 +97,9 @@ func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
 
 func _on_state_menu_item_selected(index):
-#	I don't want user to change state right now, this will be a camera follow button
-#	state = index
-#	print("Dwarf now ", STATES.keys()[state])
-	pass
-	
+	# user selected follow on dwarf menu
+	if (index == 0):
+		world.cameraFollow(self)
 	
 # this will grow more complex
 class CommandQueue:

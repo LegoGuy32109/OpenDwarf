@@ -10,9 +10,9 @@ var stepsSinceTurn = 0
 
 var rnd : RandomNumberGenerator
 
-func _init(startingPosition, newBorders, seed : String):
+func _init(startingPosition, newBorders, worldSeed : String):
 	rnd = RandomNumberGenerator.new()
-	rnd.seed = hash(seed)
+	rnd.seed = hash(worldSeed)
 	assert(newBorders.has_point(startingPosition))
 	position = startingPosition
 	stepHistory.append(position)
