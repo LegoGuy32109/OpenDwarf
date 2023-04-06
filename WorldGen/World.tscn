@@ -15,30 +15,3 @@ script = ExtResource("1_r4v4f")
 
 [node name="Dwarf" parent="Entities" instance=ExtResource("3_7ca3o")]
 position = Vector2(32, 32)
-
-[node name="Dwarf2" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf3" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf4" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf5" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf6" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf7" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf8" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf9" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf10" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)

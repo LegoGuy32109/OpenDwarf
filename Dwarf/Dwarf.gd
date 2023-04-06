@@ -46,6 +46,8 @@ func _process(_delta):
 						# complain task failed
 						commandQueue.nextCommand()
 				elif commandQueue.commandList[0] is Mine:
+					print("I'm going to mine!")
+					
 					commandQueue.nextCommand()
 				elif commandQueue.commandList[0] is Command:
 					print("Huh?")
@@ -145,4 +147,5 @@ class Move extends Command:
 	pass
 
 class Mine extends Command:
+	var bounds : Array[Vector2i]
 	pass

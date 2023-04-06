@@ -1,7 +1,8 @@
 extends Node2D
 class_name Tile
 
-signal actionGiven
+signal boundIn
+signal boundOut
 
 @onready var sprite : Sprite2D = $Sprite2D
 var rockImg : Texture2D = load("res://Assets/Rock.png")
@@ -15,6 +16,8 @@ var beenEdited : bool = false
 
 var movementCost : float = 0.5
 var traversable : bool = false
+
+var percentMined : float = 0.0
 
 #NOTE I don't know how much 900 process funcs drain, but here we are.
 func _process(_delta) -> void:
@@ -35,16 +38,28 @@ func _input(_event) -> void:
 		if Input.is_action_just_released("right-click"):
 			beenEdited = false
 		
-		if Input.is_action_just_pressed("click"):
-			actionGiven.emit(self)
+		if Input.is_action_just_pressed("click") or Input.is_action_just_pressed("shift-click"):
+			# this will emit twice when shift-clicked, handled in WorldSpawn
+			print("inbound "+str(coordinates))
+			boundIn.emit(self)
 			
-		if Input.is_action_just_pressed("shift-click"):
-			actionGiven.emit(self, "force")
+		if Input.is_action_just_released("click"):
+			boundOut.emit(self)
+			print("outbound "+str(coordinates))
+			
+		if Input.is_action_just_released("shift-click"):
+			boundOut.emit(self, "force")
 	else:
 		beenEdited = false
 
 func _ready() -> void:
 	setToRock()
+	
+func mine() -> void:
+	# take in entity info, for like mining proficency
+	percentMined += 0.2 # randomize in some way?
+	if percentMined >= 1.0:
+		setToGround()
 	
 func setToRock() -> void:
 	sprite.texture = rockImg

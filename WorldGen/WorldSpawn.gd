@@ -3,7 +3,10 @@ extends Node2D
 @export
 var borderLength : int = 30
 var borders: Rect2i = Rect2i(1,1, borderLength,borderLength)
-var borderPadding : int = 2
+var borderPadding : int = 10
+
+var coordReigon : Array[Vector2i] = []
+
 # should be a const lol
 @export var gridSize: int = 64
 
@@ -31,7 +34,8 @@ func generateLevel():
 			tile.position = Vector2i(\
 			(i) * gridSize, (j) * gridSize)
 			tile.coordinates = Vector2i(i, j)
-			tile.actionGiven.connect(_action_given)
+			tile.boundIn.connect(_inbound)
+			tile.boundOut.connect(_outbound)
 			
 
 	@warning_ignore("narrowing_conversion", "integer_division")
@@ -56,7 +60,33 @@ func cameraFollow(entity: Dwarf):
 	print("Following "+ entity.name)
 	$Camera.cameraTarget = entity
 
-func _action_given(tile : Tile, msg : String = "normal") -> void:
+func _inbound(tile : Tile) -> void:
+	if coordReigon.is_empty():
+		coordReigon.append(tile.coordinates)
+
+func _outbound(tile : Tile, msg : String = "normal") -> void:
+	coordReigon.append(tile.coordinates)
+	# need exactly 2 coordinates to determine reigon, break if error
+	if coordReigon.size() != 2:
+		print("error with selection")
+		coordReigon.clear()
+		return
+	
+	var reigonStart := Vector2i(
+		coordReigon[0].x if coordReigon[0].x < coordReigon[1].x else coordReigon[1].x,\
+		coordReigon[0].y if coordReigon[0].y < coordReigon[1].y else coordReigon[1].y \
+	)
+	
+	var reigonStop := Vector2i(
+		coordReigon[0].x if coordReigon[0].x > coordReigon[1].x else coordReigon[1].x,\
+		coordReigon[0].y if coordReigon[0].y > coordReigon[1].y else coordReigon[1].y \
+	)
+	coordReigon[0] = reigonStart
+	coordReigon[1] = reigonStop
+	print(coordReigon)
+	
+	var traversableInRegion : Array[Tile] = getTilesInRegion(coordReigon)
+	
 	# right now sending all dwarves to clicked location
 	for entity in $Entities.get_children():
 		assert(entity is Node2D, "Entity in world is not Node2D")
@@ -70,3 +100,10 @@ func _action_given(tile : Tile, msg : String = "normal") -> void:
 		else:
 			entity.commandQueue.order(Dwarf.Mine.new(tile))
 #			print(entity.name+" Cannot move to location")
+
+	coordReigon.clear()
+
+# might return arrays for traversable and untraversable in this function
+func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
+	var availableTiles : Array[Tile] = []
+	return availableTiles
