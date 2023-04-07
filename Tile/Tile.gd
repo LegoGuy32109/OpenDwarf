@@ -26,7 +26,7 @@ func _process(_delta) -> void:
 	else:
 		$Panel.tooltip_text = ""
 
-func _input(_event) -> void:
+func _input(event : InputEvent) -> void:
 	if mouseInPanel:
 		if not beenEdited and Input.is_action_pressed("right-click"):
 			if traversable:
@@ -38,17 +38,20 @@ func _input(_event) -> void:
 		if Input.is_action_just_released("right-click"):
 			beenEdited = false
 		
-		if Input.is_action_just_pressed("click") or Input.is_action_just_pressed("shift-click"):
-			# this will emit twice when shift-clicked, handled in WorldSpawn
+		if Input.is_action_just_pressed("click"):
 			print("inbound "+str(coordinates))
 			boundIn.emit(self)
 			
-		if Input.is_action_just_released("click"):
-			boundOut.emit(self)
+		if Input.is_action_just_released("click") and event.is_action("click"):
+			# when holding shift, might trigger an outBound from shift press
+			# Confirm the action is a click
 			print("outbound "+str(coordinates))
-			
-		if Input.is_action_just_released("shift-click"):
-			boundOut.emit(self, "force")
+			# was hoping to find like a mods prop on event, but this works
+			if event.as_text().begins_with("Shift"):
+				boundOut.emit(self, "force")
+			else:
+				boundOut.emit(self)
+
 	else:
 		beenEdited = false
 

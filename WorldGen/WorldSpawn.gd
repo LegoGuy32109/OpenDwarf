@@ -65,9 +65,10 @@ func _inbound(tile : Tile) -> void:
 		coordReigon.append(tile.coordinates)
 
 func _outbound(tile : Tile, msg : String = "normal") -> void:
-	coordReigon.append(tile.coordinates)
-	# need exactly 2 coordinates to determine reigon, break if error
-	if coordReigon.size() != 2:
+	# need exactly 2 coordinates in this array to determine reigon, break if error
+	if coordReigon.size() == 1:
+		coordReigon.append(tile.coordinates)
+	else:
 		print("error with selection")
 		coordReigon.clear()
 		return
@@ -83,7 +84,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 	)
 	coordReigon[0] = reigonStart
 	coordReigon[1] = reigonStop
-	print(coordReigon)
+	print(str(coordReigon)+"\n\n")
 	
 	var traversableInRegion : Array[Tile] = getTilesInRegion(coordReigon)
 	
@@ -93,6 +94,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 		
 		# interrupt entity mid command then add new command
 		if msg == "force":
+			print("FORCING")
 			entity.commandQueue.clear()
 		
 		if tile.traversable:
