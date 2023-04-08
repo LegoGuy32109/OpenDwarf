@@ -34,6 +34,13 @@ mouse_filter = 1
 button_pressed = true
 text = "Idle Walk Enabled"
 
+[node name="ModeLabel" type="Label" parent="."]
+offset_left = 96.0
+offset_top = 64.0
+offset_right = 256.0
+offset_bottom = 90.0
+text = "Mining Mode Active"
+
 [connection signal="mouse_entered" from="Panel" to="Panel" method="_on_mouse_entered"]
 [connection signal="mouse_exited" from="Panel" to="Panel" method="_on_mouse_exited"]
 [connection signal="toggled" from="Panel/HBoxContainer/TooltipsCheck" to="." method="_on_tooltips_check_toggled"]

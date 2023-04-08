@@ -59,6 +59,7 @@ func _ready() -> void:
 	setToRock()
 	
 func mine() -> void:
+	print(name+" was mined a bit")
 	# take in entity info, for like mining proficency
 	percentMined += 0.2 # randomize in some way?
 	if percentMined >= 1.0:

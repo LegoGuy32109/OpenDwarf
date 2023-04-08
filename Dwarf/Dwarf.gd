@@ -13,11 +13,11 @@ var agentSpeed : float = 1.0
 # Communicate with world node
 @onready var world : Node2D = self.get_parent().get_parent()
 # needs to grab Tiles group for path finding
-@onready var tiles : Node2D = world.find_child("Tiles")
+@onready var tiles : TileParent = world.find_child("Tiles")
 # animated sprite child
 @onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
 
-@onready var pathfinder : Pathfinder = Pathfinder.new(tiles)
+@onready var pathfinder : Pathfinder = world.pathfinder
 
 var commandQueue: CommandQueue = CommandQueue.new(self)
 
@@ -26,6 +26,7 @@ var tooltipText: String = ""
 func _ready():
 	agentSpeed = RandomNumberGenerator.new().randi_range(85, 120)/100.0
 	tooltipText = name+"\nSpeed: "+str(agentSpeed)
+
 
 func _process(_delta):
 	if HUD.tileTooltipsEnabled:
@@ -38,25 +39,54 @@ func _process(_delta):
 		STATES.IDLE:
 			sprites.play("idle", agentSpeed)
 			if commandQueue.commandList.size() > 0:
+				
 				if commandQueue.commandList[0] is Move:
-					var actionSuccessfull = await moveTo(commandQueue.commandList[0].desiredLocation)
+					var actionSuccessfull : bool = \
+						await moveTo(commandQueue.commandList[0].desiredLocation)
 					if actionSuccessfull:
 						commandQueue.nextCommand()
 					else:
 						# complain task failed
 						commandQueue.nextCommand()
+				
 				elif commandQueue.commandList[0] is Mine:
-					print("I'm going to mine!")
-					
-					commandQueue.nextCommand()
+					state = STATES.MINING
+					assert(commandQueue.commandList[0] is Mine)
+					var miningBounds : Array[Vector2i] = commandQueue.commandList[0].bounds
+					var currentMineTile : Tile = tiles.getTileAt(miningBounds[0])
+					var tileWasMined : bool = await mineTile(currentMineTile)
+					if tileWasMined:
+						commandQueue.nextCommand()
+					else:
+						# complain task failed
+						commandQueue.nextCommand()
+				
 				elif commandQueue.commandList[0] is Command:
 					print("Huh?")
+			
+			# Idle movement
 			elif HUD.idleMoveEnabled and randf() < 0.02:
 				await _moveToNeighbor()
+		
 		STATES.MOVING:
 			sprites.stop()
+		
+		STATES.MINING:
+			# play mining animation
+			pass
 
 
+func mineTile(tile : Tile) -> bool:
+	var wasInterrupted = false
+	while not (tile.traversable or wasInterrupted): # hehe demorgan
+		await get_tree().create_timer(0.55).timeout
+		print("Mined a bit")
+		tile.mine()
+		
+	state = STATES.IDLE
+	if wasInterrupted:
+		return false
+	return true
 
 func _moveToNeighbor():
 	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
@@ -65,7 +95,7 @@ func _moveToNeighbor():
 		neighborTiles[randi_range(0, neighborTiles.size()-1)]
 		await moveTo(chosenTile.coordinates)
 
-# handles visual movement to new location based on path from Pathfinder
+# handles visual movement to new location based on path from global Pathfinder
 func moveTo(newCoordinates : Vector2i) -> bool:
 	state = STATES.MOVING
 	
@@ -87,11 +117,20 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 			return false
 		
 		var tileCoords : Vector2i = path[1]
-		var nextTile : Tile = tiles.get_child(tileCoords.x).get_child(tileCoords.y)
+		var nextTile : Tile = tiles.getTileAt(tileCoords)
 		var singleTween = create_tween()
 		var curMoveCost : float = nextTile.movementCost * 1/agentSpeed
 		if pathfinder.isDiagNeighbor(coordinates, tileCoords):
 			curMoveCost *= 1.2
+		
+		# change direction entity is facing
+		if(sprites.flip_h):
+			if tileCoords.x > coordinates.x:
+				sprites.flip_h = false
+		else:
+			if tileCoords.x < coordinates.x:
+				sprites.flip_h = true
+		
 		# tweening world position instead of tile coordinates
 		singleTween.tween_property(self, "position", nextTile.position, curMoveCost)
 		await singleTween.finished
@@ -128,7 +167,7 @@ class CommandQueue:
 	func _isCommandTypeInQueue(command: Command) -> bool:
 		#Command will be a abstract class eventually, currently I'm only letting one in at a time
 		for c in commandList:
-			if typeof(c) == typeof(command):
+			if c.getType() == command.getType():
 				return true
 		return false
 		
@@ -140,12 +179,24 @@ class CommandQueue:
 	
 class Command:
 	var desiredLocation: Vector2i
-	func _init(tile: Tile):
-		desiredLocation = tile.coordinates
+
+	func _init(coordinates: Vector2i):
+		desiredLocation = coordinates
+		
+	func getType()->String:
+		var cType := "command"
+		if self is Mine:
+			cType = "mine"
+		if self is Move:
+			cType = "move"
+		return cType
+
 
 class Move extends Command:
 	pass
 
 class Mine extends Command:
 	var bounds : Array[Vector2i]
-	pass
+	func _init(_bounds : Array[Vector2i]):
+		bounds = _bounds
+

@@ -67,6 +67,7 @@ func isDiagNeighbor(loc1: Vector2i, loc2: Vector2i) -> bool:
 		return true
 	return false
 
+# return the adjacent tiles that are walkable
 func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
 	var neighborTiles: Array[Tile] = []
 	for i in [-1, 0, 1]:
@@ -79,12 +80,29 @@ func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
 			currentLoc.y+j > currentColumn.get_child_count()-1:
 				continue
 			var tile : Tile = currentColumn.get_child(currentLoc.y+j)
-			# check impassibleness here
-			if tile.tooltipText != "Rock":
+			# check is it can be walked on here
+			if tile.traversable:
 				neighborTiles.append(tile)
 			
 	return neighborTiles
 
+# return Array[Vector2i] if found, null if not
+func findClosestNeighborPath(targetLoc: Vector2i, myLoc: Vector2i):
+	var neighborTiles: Array[Tile] = findOpenNeighbors(targetLoc)
+	var paths: Array[Array] = []
+	for tile in neighborTiles:
+		var path = findPathTo(tile.coordinates, myLoc)
+		if !path.is_empty():
+			paths.append(path)
+	
+	if not paths.is_empty():
+		var shortestPath = paths[0]
+		for path in paths:
+			if path.size() < shortestPath.size():
+				shortestPath = path
+		return shortestPath
+	
+	return null
 
 # HELPER CLASSES below
 

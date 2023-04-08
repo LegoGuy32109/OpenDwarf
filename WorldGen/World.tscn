@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://WorldGen/WorldSpawn.gd" id="1_r4v4f"]
 [ext_resource type="PackedScene" path="res://Camera/Camera.tscn" id="2_a12da"]
-[ext_resource type="PackedScene" uid="uid://c85mp6nh4c38v" path="res://Dwarf/Dwarf.tscn" id="3_7ca3o"]
+[ext_resource type="Script" path="res://Tile/TileParent.gd" id="3_fqks8"]
 
 [node name="World" type="Node2D"]
 script = ExtResource("1_r4v4f")
@@ -10,53 +10,6 @@ script = ExtResource("1_r4v4f")
 [node name="Camera" parent="." instance=ExtResource("2_a12da")]
 
 [node name="Tiles" type="Node2D" parent="."]
+script = ExtResource("3_fqks8")
 
 [node name="Entities" type="Node" parent="."]
-
-[node name="Dwarf" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf2" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf3" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf4" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf5" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf6" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf7" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf8" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf9" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf10" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf11" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf12" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf13" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf14" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf15" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
-
-[node name="Dwarf16" parent="Entities" instance=ExtResource("3_7ca3o")]
-position = Vector2(32, 32)
