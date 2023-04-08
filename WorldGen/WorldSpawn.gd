@@ -32,7 +32,7 @@ func _ready():
 	
 func addEntities(origin : Vector2i):
 	# spawn in entities
-	for i in range(100):
+	for i in range(2):
 		$Entities.add_child(dwarfScene.instantiate())
 	
 	# move entities into tile coordinates

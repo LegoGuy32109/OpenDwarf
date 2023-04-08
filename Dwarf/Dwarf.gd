@@ -69,7 +69,7 @@ func _process(_delta):
 				await _moveToNeighbor()
 		
 		STATES.MOVING:
-			sprites.stop()
+			sprites.play("walk", agentSpeed)
 		
 		STATES.MINING:
 			# play mining animation
