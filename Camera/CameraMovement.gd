@@ -37,6 +37,6 @@ func _unhandled_input(event):
 		self.zoom.x += -zoomAmount
 		self.zoom.y += -zoomAmount
 		print(self.zoom)
-	if event.is_action_pressed("ui_accept"):
-		get_tree().reload_current_scene()
+	if event.is_action_pressed("ui_cancel"):
+		HUD.exitDialog()
 

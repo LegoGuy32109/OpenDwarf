@@ -12,9 +12,20 @@ var SEED : String = "godot"
 
 var displayText : String = ""
 
+@onready var confirmationDialog = $CenterContainer/ConfirmationDialog
+
+func exitDialog():
+	if confirmationDialog.visible:
+		confirmationDialog.hide()
+	else:
+		confirmationDialog.show()
+
+func _on_confirmation_dialog_confirmed():
+	get_tree().change_scene_to_file("res://Menus/main_menu.tscn")
+
 func _on_tooltips_check_toggled(button_pressed):
 	tileTooltipsEnabled = button_pressed
-
+	
 func _on_idle_move_check_toggled(button_pressed):
 	idleMoveEnabled = button_pressed
 
@@ -29,3 +40,6 @@ func _process(_delta):
 	
 	$ModeLabel.text = displayText
 	displayText = ""
+
+
+

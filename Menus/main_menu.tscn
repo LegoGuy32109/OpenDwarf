@@ -4,7 +4,7 @@
 [ext_resource type="Script" path="res://Menus/ShameplugButton.gd" id="2_4jg4i"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_mntr4"]
-font_size = 20
+font_size = 44
 
 [sub_resource type="LabelSettings" id="LabelSettings_7yqh1"]
 font_size = 21
@@ -14,20 +14,19 @@ outline_color = Color(0, 0.701961, 0.705882, 1)
 [node name="Main Menu" type="Node2D"]
 
 [node name="PanelContainer" type="PanelContainer" parent="."]
-offset_right = 1216.0
-offset_bottom = 736.0
+offset_right = 1280.0
+offset_bottom = 720.0
 
 [node name="MarginContainer" type="MarginContainer" parent="."]
 offset_left = 64.0
 offset_top = 64.0
-offset_right = 1152.0
+offset_right = 1216.0
 offset_bottom = 640.0
-metadata/_edit_group_ = true
-metadata/_edit_lock_ = true
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
+theme_override_constants/separation = 97
 
 [node name="Label" type="Label" parent="MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 200)
@@ -56,18 +55,25 @@ layout_mode = 2
 text = "Generate World"
 script = ExtResource("1_wovib")
 
-[node name="ShameplugButton" type="Button" parent="."]
-offset_left = 384.0
-offset_top = 608.0
-offset_right = 864.0
-offset_bottom = 704.0
+[node name="ShameplugButton" type="Button" parent="MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(500, 80)
+layout_mode = 2
+size_flags_horizontal = 4
 script = ExtResource("2_4jg4i")
 
-[node name="ShamelessPlug" type="Label" parent="ShameplugButton"]
-offset_left = -32.0
-offset_top = 32.0
-offset_right = 512.0
-offset_bottom = 65.0
+[node name="ShamelessPlug" type="Label" parent="MarginContainer/VBoxContainer/ShameplugButton"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -189.5
+offset_top = -16.5
+offset_right = 189.5
+offset_bottom = 16.5
+grow_horizontal = 2
+grow_vertical = 2
 text = "Follow updates @joshhale@toot.io 👋"
 label_settings = SubResource("LabelSettings_7yqh1")
 horizontal_alignment = 1
