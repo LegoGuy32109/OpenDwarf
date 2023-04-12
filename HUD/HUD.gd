@@ -7,7 +7,11 @@ var idleMoveEnabled : bool = true
 var miningModeActive : bool = false
 var moveModeActive : bool = true
 
+# edited when creating a world
+var SEED : String = "godot"
+
 var displayText : String = ""
+
 func _on_tooltips_check_toggled(button_pressed):
 	tileTooltipsEnabled = button_pressed
 

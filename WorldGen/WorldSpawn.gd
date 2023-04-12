@@ -2,7 +2,9 @@ extends Node2D
 
 @export
 var borderLength : int = 30
+# borders for "RockSpawner" to make traversable tiles
 var borders: Rect2i = Rect2i(1,1, borderLength,borderLength)
+# padding around borders, by default a rock border size of 1 is around borders
 var borderPadding : int = 10
 
 var coordReigon : Array[Vector2i] = []
@@ -45,12 +47,12 @@ func addEntities(origin : Vector2i):
 	
 # Returns the traversable coordinates, the origin is the first element
 func generateLevel() -> Array[Vector2i]:
-	# setup grid with rock Tiles
-	for i in range(borderLength+borderPadding):
+	# setup grid with rock Tiles, the +2 makes sure a rock border is present
+	for i in range(borderLength+2):
 		var column : Node2D = rowScene.instantiate()
 		column.name = "Column "+str(i)
 		tileParent.add_child(column)
-		for j in range(borderLength+borderPadding):
+		for j in range(borderLength+2):
 			var tile : Tile = tileScene.instantiate()
 			tile.name = "Tile "+str(j)
 			column.add_child(tile)
@@ -63,11 +65,13 @@ func generateLevel() -> Array[Vector2i]:
 
 	@warning_ignore("narrowing_conversion", "integer_division")
 	var pathSpawn: RockSpawner = RockSpawner.new(Vector2i(borderLength/2, \
-	borderLength/2.5), borders, "godot")
+	borderLength/2.5), borders, HUD.SEED)
 	var path: Array[Vector2i] = pathSpawn.walk(600)
 	pathSpawn.queue_free()
 	for location in path:
-		tileParent.getTileAt(Vector2i(location.x, location.y)).setToGround()
+		var possibleTile : Tile = tileParent.getTileAt(Vector2i(location.x, location.y))
+		if possibleTile:
+			possibleTile.setToGround()
 	
 	return path
 
@@ -133,14 +137,20 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 				
 		elif HUD.miningModeActive:
 			# currently working on one tile being ordered to mine
-			var pathToTile : Array[Vector2i] = pathfinder.findClosestNeighborPath(tile.coordinates, entity.coordinates)
-			if pathToTile.is_empty():
-				print("Can't find tile to move to to mine that")
+			# null if not found, an Array[Vector2i] if found
+			var pathFound = pathfinder.findClosestNeighborPath(tile.coordinates, entity.coordinates)
+			if pathFound:
+				var pathToTile : Array[Vector2i] = pathFound
+				if pathToTile.is_empty():
+					print("Empty Path?")
+				else:
+					var coordsToMoveTo = pathToTile[-1]
+					entity.commandQueue.order(Dwarf.Move.new(coordsToMoveTo))
+					entity.commandQueue.order(Dwarf.Mine.new([tile.coordinates]))
 			else:
-				var coordsToMoveTo = pathToTile[-1]
-				entity.commandQueue.order(Dwarf.Move.new(coordsToMoveTo))
-				entity.commandQueue.order(Dwarf.Mine.new([tile.coordinates]))
-			
+				print("Can't find tile to move to to mine that")
+				
+		
 	coordReigon.clear()
 
 # might return arrays for traversable and untraversable in this function
