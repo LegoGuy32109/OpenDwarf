@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dkpygkrrxp4ty"
-path="res://.godot/imported/DwarfIdle2.png-d12cd8fd509cd9d34a793fede85dee91.ctex"
+uid="uid://dh7yak2u8qxd1"
+path="res://.godot/imported/DwarfMine3.png-c64e0ea4c8aaae15a062133d1a8b6414.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/DwarfIdle2.png"
-dest_files=["res://.godot/imported/DwarfIdle2.png-d12cd8fd509cd9d34a793fede85dee91.ctex"]
+source_file="res://Assets/MineFrames/DwarfMine3.png"
+dest_files=["res://.godot/imported/DwarfMine3.png-c64e0ea4c8aaae15a062133d1a8b6414.ctex"]
 
 [params]
 
@@ -21,11 +21,11 @@ compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
-mipmaps/limit=-1
-roughness/mode=1
+mipmaps/generate=true
+mipmaps/limit=0
+roughness/mode=0
 roughness/src_normal=""
-process/fix_alpha_border=false
+process/fix_alpha_border=true
 process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false

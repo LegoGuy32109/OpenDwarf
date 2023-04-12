@@ -14,7 +14,7 @@ config/name="Df Clone"
 run/main_scene="res://WorldGen/World.tscn"
 config/features=PackedStringArray("4.0", "Mobile")
 boot_splash/image="res://Assets/Rock.png"
-config/icon="res://Assets/DwarfIdle1.png"
+config/icon="res://Assets/IdleFrames/DwarfIdle1.png"
 
 [autoload]
 
@@ -83,6 +83,11 @@ middle-mouse={
 "events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":3,"pressed":false,"double_click":false,"script":null)
 ]
 }
+shift-click={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":false,"meta_pressed":false,"button_mask":1,"position":Vector2(113, 16),"global_position":Vector2(117, 59),"factor":1.0,"button_index":1,"pressed":true,"double_click":false,"script":null)
+]
+}
 mining-mode={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":77,"physical_keycode":0,"key_label":0,"unicode":109,"echo":false,"script":null)
@@ -92,3 +97,4 @@ mining-mode={
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0

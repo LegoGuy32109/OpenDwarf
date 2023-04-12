@@ -1,19 +1,23 @@
-[gd_scene load_steps=16 format=3 uid="uid://c85mp6nh4c38v"]
+[gd_scene load_steps=20 format=3 uid="uid://c85mp6nh4c38v"]
 
 [ext_resource type="Script" path="res://Dwarf/Dwarf.gd" id="1_5rj7s"]
-[ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/DwarfIdle1.png" id="1_cnh8p"]
-[ext_resource type="Texture2D" uid="uid://dkpygkrrxp4ty" path="res://Assets/DwarfIdle2.png" id="2_hhvl2"]
-[ext_resource type="Texture2D" uid="uid://cnonqm6cg3vbq" path="res://Assets/DwarfIdle3.png" id="3_21nxi"]
-[ext_resource type="Texture2D" uid="uid://dd5gfijr0yvjq" path="res://Assets/DwarfIdle4.png" id="4_uqglb"]
-[ext_resource type="Texture2D" uid="uid://f7682fblddqg" path="res://Assets/DwarfIdle5.png" id="5_xh3xl"]
-[ext_resource type="Texture2D" uid="uid://c1fyla4tm2rmr" path="res://Assets/DwarfWalk1.png" id="7_am0uq"]
-[ext_resource type="Texture2D" uid="uid://cgctj528o05ab" path="res://Assets/DwarfWalk2.png" id="8_arjvj"]
-[ext_resource type="Texture2D" uid="uid://dxrx1prhhkalg" path="res://Assets/DwarfWalk3.png" id="9_e4543"]
-[ext_resource type="Texture2D" uid="uid://ctergpfjyoyd4" path="res://Assets/DwarfWalk4.png" id="10_bxpyl"]
-[ext_resource type="Texture2D" uid="uid://bowjbfv8j16qv" path="res://Assets/DwarfWalk5.png" id="11_ya3ea"]
-[ext_resource type="Texture2D" uid="uid://b36vny2qj5sgl" path="res://Assets/DwarfWalk6.png" id="12_d1ijt"]
-[ext_resource type="Texture2D" uid="uid://ck402w1vbu6jo" path="res://Assets/DwarfWalk7.png" id="13_rsj7c"]
-[ext_resource type="Texture2D" uid="uid://cesl7653v0ejg" path="res://Assets/DwarfWalk8.png" id="14_65guc"]
+[ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/IdleFrames/DwarfIdle1.png" id="1_cnh8p"]
+[ext_resource type="Texture2D" uid="uid://dkpygkrrxp4ty" path="res://Assets/IdleFrames/DwarfIdle2.png" id="2_hhvl2"]
+[ext_resource type="Texture2D" uid="uid://cnonqm6cg3vbq" path="res://Assets/IdleFrames/DwarfIdle3.png" id="3_21nxi"]
+[ext_resource type="Texture2D" uid="uid://dd5gfijr0yvjq" path="res://Assets/IdleFrames/DwarfIdle4.png" id="4_uqglb"]
+[ext_resource type="Texture2D" uid="uid://f7682fblddqg" path="res://Assets/IdleFrames/DwarfIdle5.png" id="5_xh3xl"]
+[ext_resource type="Texture2D" uid="uid://c1fyla4tm2rmr" path="res://Assets/WalkFrames/DwarfWalk1.png" id="7_am0uq"]
+[ext_resource type="Texture2D" uid="uid://cogv7f8wkibt0" path="res://Assets/MineFrames/DwarfMine1.png" id="7_y1yr1"]
+[ext_resource type="Texture2D" uid="uid://cgctj528o05ab" path="res://Assets/WalkFrames/DwarfWalk2.png" id="8_arjvj"]
+[ext_resource type="Texture2D" uid="uid://bawtgulbk2hb4" path="res://Assets/MineFrames/DwarfMine2.png" id="8_flal3"]
+[ext_resource type="Texture2D" uid="uid://dxrx1prhhkalg" path="res://Assets/WalkFrames/DwarfWalk3.png" id="9_e4543"]
+[ext_resource type="Texture2D" uid="uid://dh7yak2u8qxd1" path="res://Assets/MineFrames/DwarfMine3.png" id="9_h52u3"]
+[ext_resource type="Texture2D" uid="uid://ctergpfjyoyd4" path="res://Assets/WalkFrames/DwarfWalk4.png" id="10_bxpyl"]
+[ext_resource type="Texture2D" uid="uid://dl4nqcs1koywg" path="res://Assets/MineFrames/DwarfMine4.png" id="10_vmo5r"]
+[ext_resource type="Texture2D" uid="uid://bowjbfv8j16qv" path="res://Assets/WalkFrames/DwarfWalk5.png" id="11_ya3ea"]
+[ext_resource type="Texture2D" uid="uid://b36vny2qj5sgl" path="res://Assets/WalkFrames/DwarfWalk6.png" id="12_d1ijt"]
+[ext_resource type="Texture2D" uid="uid://ck402w1vbu6jo" path="res://Assets/WalkFrames/DwarfWalk7.png" id="13_rsj7c"]
+[ext_resource type="Texture2D" uid="uid://cesl7653v0ejg" path="res://Assets/WalkFrames/DwarfWalk8.png" id="14_65guc"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_xivog"]
 animations = [{
@@ -36,6 +40,23 @@ animations = [{
 "loop": true,
 "name": &"idle",
 "speed": 5.0
+}, {
+"frames": [{
+"duration": 3.0,
+"texture": ExtResource("7_y1yr1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_flal3")
+}, {
+"duration": 3.0,
+"texture": ExtResource("9_h52u3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_vmo5r")
+}],
+"loop": true,
+"name": &"mine",
+"speed": 10.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -73,7 +94,8 @@ script = ExtResource("1_5rj7s")
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 scale = Vector2(1.9978, 2.01897)
 sprite_frames = SubResource("SpriteFrames_xivog")
-animation = &"walk"
+animation = &"idle"
+frame_progress = 0.911202
 
 [node name="StateMenu" type="OptionButton" parent="."]
 modulate = Color(1, 1, 1, 0)

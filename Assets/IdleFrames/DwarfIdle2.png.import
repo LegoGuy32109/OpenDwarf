@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c1fyla4tm2rmr"
-path="res://.godot/imported/DwarfWalk1.png-0f84c8f8b17a7a45a76c3698d3e6a6a7.ctex"
+uid="uid://dkpygkrrxp4ty"
+path="res://.godot/imported/DwarfIdle2.png-b7ab7bf44da4ebe1eca5c61ea4e2905a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/DwarfWalk1.png"
-dest_files=["res://.godot/imported/DwarfWalk1.png-0f84c8f8b17a7a45a76c3698d3e6a6a7.ctex"]
+source_file="res://Assets/IdleFrames/DwarfIdle2.png"
+dest_files=["res://.godot/imported/DwarfIdle2.png-b7ab7bf44da4ebe1eca5c61ea4e2905a.ctex"]
 
 [params]
 
@@ -23,9 +23,9 @@ compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=false
 mipmaps/limit=-1
-roughness/mode=0
+roughness/mode=1
 roughness/src_normal=""
-process/fix_alpha_border=true
+process/fix_alpha_border=false
 process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false

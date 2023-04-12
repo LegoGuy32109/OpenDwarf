@@ -72,12 +72,20 @@ func _process(_delta):
 			sprites.play("walk", agentSpeed)
 		
 		STATES.MINING:
-			# play mining animation
+			sprites.play("mine", 1.0)
 			pass
 
 
 func mineTile(tile : Tile) -> bool:
 	var wasInterrupted = false
+	
+	if(sprites.flip_h):
+		if tile.coordinates.x > coordinates.x:
+			sprites.flip_h = false
+	else:
+		if tile.coordinates.x < coordinates.x:
+			sprites.flip_h = true
+	
 	while not (tile.traversable or wasInterrupted): # hehe demorgan
 		await get_tree().create_timer(0.55).timeout
 		print("Mined a bit")
