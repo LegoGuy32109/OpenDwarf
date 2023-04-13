@@ -7,6 +7,8 @@ var idleMoveEnabled : bool = true
 var miningModeActive : bool = false
 var moveModeActive : bool = true
 
+var readyForDwarfSpawn : bool = false
+
 # edited when creating a world
 var SEED : String = "godot"
 
@@ -42,4 +44,5 @@ func _process(_delta):
 	displayText = ""
 
 
-
+func _on_add_dwarf_but_pressed():
+	readyForDwarfSpawn = true

@@ -157,6 +157,8 @@ func _on_state_menu_item_selected(index):
 	# user selected follow on dwarf menu
 	if (index == 0):
 		world.cameraFollow(self)
+	elif (index == 1):
+		self.queue_free()
 	
 # this will grow more complex
 class CommandQueue:

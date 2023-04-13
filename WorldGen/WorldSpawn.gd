@@ -2,10 +2,16 @@ extends Node2D
 
 @export
 var borderLength : int = 30
+@export
+var startingDwarves : int = 2
+
 # borders for "RockSpawner" to make traversable tiles
 var borders: Rect2i = Rect2i(1,1, borderLength,borderLength)
 # padding around borders, by default a rock border size of 1 is around borders
-var borderPadding : int = 20
+@export
+var borderPadding : int = 2
+
+var origin : Vector2i
 
 var coordReigon : Array[Vector2i] = []
 
@@ -28,19 +34,28 @@ var dwarfScene: PackedScene = load("res://Dwarf/Dwarf.tscn")
 func _ready():
 	var traversableCoordinates : Array[Vector2i] = generateLevel()
 	pathfinder = Pathfinder.new(tileParent)
-	addEntities(traversableCoordinates[0])
+	_addEntities(traversableCoordinates[0])
 	
-func addEntities(origin : Vector2i):
+func _process(_delta):
+	if HUD.readyForDwarfSpawn:
+		print("Dwarf Spawned")
+		addDwarf(origin)
+		HUD.readyForDwarfSpawn = false
+
+func addDwarf(coords: Vector2i):
+	var dwarf : Dwarf = dwarfScene.instantiate()
+	$Entities.add_child(dwarf)
+	dwarf.coordinates = coords
+	dwarf.position = Vector2i(coords.x*gridSize, coords.y*gridSize)
+
+
+func _addEntities(worldOrigin : Vector2i):
+	origin = worldOrigin
 	# spawn in entities
-	for i in range(2):
-		$Entities.add_child(dwarfScene.instantiate())
+	for i in range(startingDwarves):
+		addDwarf(origin)
 	
-	# move entities into tile coordinates
-	for entity in $Entities.get_children():
-		assert(entity is Node2D, "Entity in world is not Node2D")
-		entity.position = Vector2i(origin.x*gridSize, origin.y*gridSize)
-		entity.coordinates = origin
-		
+	
 	$Camera.position = $Entities/Dwarf.position
 	
 # Returns the traversable coordinates, the origin is the first element
