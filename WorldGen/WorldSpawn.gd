@@ -3,7 +3,7 @@ extends Node2D
 @export
 var borderLength : int = 30
 @export
-var startingDwarves : int = 2
+var startingDwarves : int = 1
 
 # borders for "RockSpawner" to make traversable tiles
 var borders: Rect2i = Rect2i(1,1, borderLength,borderLength)
@@ -14,6 +14,7 @@ var borderPadding : int = 2
 var origin : Vector2i
 
 var coordReigon : Array[Vector2i] = []
+var rocksToMine : Array[Vector2i] = []
 
 var pathfinder : Pathfinder
 
@@ -35,18 +36,6 @@ func _ready():
 	var traversableCoordinates : Array[Vector2i] = generateLevel()
 	pathfinder = Pathfinder.new(tileParent)
 	_addEntities(traversableCoordinates[0])
-	
-func _process(_delta):
-	if HUD.readyForDwarfSpawn:
-		print("Dwarf Spawned")
-		addDwarf(origin)
-		HUD.readyForDwarfSpawn = false
-
-func addDwarf(coords: Vector2i):
-	var dwarf : Dwarf = dwarfScene.instantiate()
-	$Entities.add_child(dwarf)
-	dwarf.coordinates = coords
-	dwarf.position = Vector2i(coords.x*gridSize, coords.y*gridSize)
 
 
 func _addEntities(worldOrigin : Vector2i):
@@ -127,9 +116,8 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 	coordReigon[1] = reigonStop
 	print(str(coordReigon)+"\n")
 	
-	var justOneTile : Array[Tile] = [tile]
-	var tilesInReigon : Array[Tile] = getTilesInRegion(coordReigon) \
-		if coordReigon[0] != coordReigon[1] else justOneTile
+
+	var tilesInReigon : Array[Tile] = getTilesInRegion(coordReigon) 
 	
 	# right now sending all dwarves to clicked location
 	for entity in $Entities.get_children():
@@ -155,19 +143,24 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 				print("No possible tile to move to")
 				
 		elif HUD.miningModeActive:
-			# currently working on one tile being ordered to mine
+			# search for minable stuff
+			for potentialTile in tilesInReigon:
+				if not (potentialTile.traversable or potentialTile.coordinates in rocksToMine):
+					print("Adding "+str(potentialTile.coordinates))
+					rocksToMine.append(potentialTile.coordinates)
+			
 			# null if not found, an Array[Vector2i] if found
-			var pathFound = pathfinder.findClosestNeighborPath(tile.coordinates, entity.coordinates)
-			if pathFound:
-				var pathToTile : Array[Vector2i] = pathFound
-				if pathToTile.is_empty():
-					print("Empty Path?")
-				else:
-					var coordsToMoveTo = pathToTile[-1]
-					entity.commandQueue.order(Dwarf.Move.new(coordsToMoveTo))
-					entity.commandQueue.order(Dwarf.Mine.new([tile.coordinates]))
-			else:
-				print("Can't find tile to move to to mine that")
+#			var pathFound = pathfinder.findClosestNeighborPath(tile.coordinates, entity.coordinates)
+#			if pathFound:
+#				var pathToTile : Array[Vector2i] = pathFound
+#				if pathToTile.is_empty():
+#					print("Empty Path?")
+#				else:
+#					var coordsToMoveTo = pathToTile[-1]
+#					entity.commandQueue.order(Dwarf.Move.new(coordsToMoveTo))
+#					entity.commandQueue.order(Dwarf.Mine.new([tile.coordinates]))
+#			else:
+#				print("Can't find tile to move to to mine that")
 	
 	coordReigon.clear()
 
@@ -175,11 +168,26 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
 	var availableTiles : Array[Tile] = []
 
-	var dx : int = region[1].x - region[0].x
-	var dy : int = region[1].y - region[0].y
-	for xIndex in range(dx):
-		for yIndex in range(dy):
+	var xdist : int = region[1].x - region[0].x + 1
+	var ydist : int = region[1].y - region[0].y + 1
+	print(xdist, ydist)
+	for xIndex in range(xdist):
+		for yIndex in range(ydist):
 			availableTiles.append(
 				tileParent.getTileAt(Vector2i(region[0].x + xIndex, region[0].y + yIndex))
 			)
+
 	return availableTiles
+
+
+func _process(_delta):
+	if HUD.readyForDwarfSpawn:
+		print("Dwarf Spawned")
+		addDwarf(origin)
+		HUD.readyForDwarfSpawn = false
+
+func addDwarf(coords: Vector2i):
+	var dwarf : Dwarf = dwarfScene.instantiate()
+	$Entities.add_child(dwarf)
+	dwarf.coordinates = coords
+	dwarf.position = Vector2i(coords.x*gridSize, coords.y*gridSize)
