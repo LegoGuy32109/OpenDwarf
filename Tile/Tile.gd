@@ -78,7 +78,7 @@ func setToGround() -> void:
 	traversable = true
 
 func setName(text : String) -> void:
-	name = text + " " + name.split(" ")[1]
+	name = text + " " + str(coordinates)
 
 func _on_panel_mouse_entered() -> void:
 	mouseInPanel = true

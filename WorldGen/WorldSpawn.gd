@@ -5,7 +5,7 @@ var borderLength : int = 30
 # borders for "RockSpawner" to make traversable tiles
 var borders: Rect2i = Rect2i(1,1, borderLength,borderLength)
 # padding around borders, by default a rock border size of 1 is around borders
-var borderPadding : int = 10
+var borderPadding : int = 20
 
 var coordReigon : Array[Vector2i] = []
 
@@ -20,8 +20,6 @@ var pathfinder : Pathfinder
 @onready
 var tileParent : TileParent = $Tiles
 
-@onready 
-var rowScene: PackedScene = load("res://WorldGen/Column.tscn")
 @onready 
 var tileScene: PackedScene = load("res://Tile/Tile.tscn")
 @onready
@@ -47,29 +45,35 @@ func addEntities(origin : Vector2i):
 	
 # Returns the traversable coordinates, the origin is the first element
 func generateLevel() -> Array[Vector2i]:
-	# setup grid with rock Tiles, the +2 makes sure a rock border is present
-	for i in range(borderLength+2):
-		var column : Node2D = rowScene.instantiate()
-		column.name = "Column "+str(i)
-		tileParent.add_child(column)
-		for j in range(borderLength+2):
+	# setup grid with rock Tiles, the +2 gives a default rock border
+	var actualWorldLength : int = (borderPadding*2)+borderLength+2
+	for i in range(actualWorldLength):
+		var column : Node2D = Node2D.new()
+		for j in range(actualWorldLength):
 			var tile : Tile = tileScene.instantiate()
-			tile.name = "Tile "+str(j)
-			column.add_child(tile)
 			tile.position = Vector2i(\
 			(i) * gridSize, (j) * gridSize)
 			tile.coordinates = Vector2i(i, j)
 			tile.boundIn.connect(_inbound)
 			tile.boundOut.connect(_outbound)
-			
+			column.add_child(tile)
+		tileParent.add_child(column)
 
+	# this could be incorperated as tiles are being added, but whatever
 	@warning_ignore("narrowing_conversion", "integer_division")
 	var pathSpawn: RockSpawner = RockSpawner.new(Vector2i(borderLength/2, \
 	borderLength/2.5), borders, HUD.SEED)
 	var path: Array[Vector2i] = pathSpawn.walk(600)
 	pathSpawn.queue_free()
+	
+	# add border padding to path coordinates
+	if borderPadding > 0:
+		for i in range(path.size()):
+			path[i] += Vector2i(borderPadding, borderPadding)
+
 	for location in path:
-		var possibleTile : Tile = tileParent.getTileAt(Vector2i(location.x, location.y))
+		var possibleTile : Tile = tileParent.getTileAt(Vector2i(\
+		location.x, location.y))
 		if possibleTile:
 			possibleTile.setToGround()
 	
@@ -149,8 +153,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 					entity.commandQueue.order(Dwarf.Mine.new([tile.coordinates]))
 			else:
 				print("Can't find tile to move to to mine that")
-				
-		
+	
 	coordReigon.clear()
 
 # might return arrays for traversable and untraversable in this function
