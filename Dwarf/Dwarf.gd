@@ -73,7 +73,7 @@ func _process(_delta):
 		
 		STATES.MINING:
 			sprites.play("mine", 1.0)
-			pass
+
 
 
 func mineTile(tile : Tile) -> bool:

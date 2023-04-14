@@ -17,6 +17,7 @@ var beenEdited : bool = false
 var movementCost : float = 0.5
 var traversable : bool = false
 
+var orderedToMine : bool = false
 var percentMined : float = 0.0
 
 #NOTE I don't know how much 900 process funcs drain, but here we are.
@@ -25,6 +26,12 @@ func _process(_delta) -> void:
 		$Panel.tooltip_text = tooltipText
 	else:
 		$Panel.tooltip_text = ""
+	
+	# might make flashing i dunno
+	if(orderedToMine and HUD.miningModeActive):
+		$Mine.visible = true
+	else:
+		$Mine.visible = false
 
 func _input(event : InputEvent) -> void:
 	if mouseInPanel:
@@ -58,6 +65,17 @@ func _input(event : InputEvent) -> void:
 func _ready() -> void:
 	setToRock()
 	
+func labelMineable() -> void:
+	if traversable:
+		print("I can't be mined!!")
+		return
+	
+	orderedToMine = true
+
+func removeMineable() -> void:
+	if orderedToMine:
+		orderedToMine = false
+
 func mine() -> void:
 	print(name+" was mined a bit")
 	# take in entity info, for like mining proficency
