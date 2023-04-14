@@ -15,40 +15,7 @@ var origin : Vector2i
 
 var coordReigon : Array[Vector2i] = []
 
-# class in a class, call that a subclass
-class RocksToMine:
-	class MineSite:
-		var tile : Tile
-		var dwarvesCurrentlyMining : Array[Dwarf] = []
-
-	var mineSites : Array[MineSite] = []
-
-	func is_empty()->bool:
-		return mineSites.is_empty()
-
-	func siteExists(coords:Vector2i) -> MineSite:
-		for site in mineSites:
-			if site.tile.coordinates == coords:
-				return site
-		return null 
-
-	func addSite(tile:Tile)->void:
-		if not siteExists(tile.coordinates):
-			var site : MineSite = MineSite.new()
-			tile.labelMineable()
-			site.tile = tile
-			mineSites.append(site)
-
-	func removeSite(tile:Tile):
-		var siteToRemove = siteExists(tile.coordinates)
-		if siteToRemove:
-			tile.removeMineable()
-			mineSites.erase(siteToRemove)
-
-#	func assignSite(entity : Dwarf):
-#		entity.order
-
-var rocksToMine : RocksToMine = RocksToMine.new()
+var sitesToMine : SitesToMine = SitesToMine.new()
 
 var pathfinder : Pathfinder
 
@@ -175,36 +142,25 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 				print("No possible tile to move to")
 			
 	elif HUD.miningModeActive:
-		# logic handled in RocksToMine class
+		# logic handled in SitesToMine class
 		for potentialTile in tilesInReigon:
 			if msg == "force":
-				rocksToMine.removeSite(potentialTile)
+				sitesToMine.removeSite(potentialTile)
 			elif msg != "force" and not potentialTile.traversable:
-				rocksToMine.addSite(potentialTile)
+				sitesToMine.addSite(potentialTile)
 
-		if not rocksToMine.is_empty():
+		if not sitesToMine.is_empty():
 			assignMiningDwarves()
-			# null if not found, an Array[Vector2i] if found
-#			var pathFound = pathfinder.findClosestNeighborPath(tile.coordinates, entity.coordinates)
-#			if pathFound:
-#				var pathToTile : Array[Vector2i] = pathFound
-#				if pathToTile.is_empty():
-#					print("Empty Path?")
-#				else:
-#					var coordsToMoveTo = pathToTile[-1]
-#					entity.commandQueue.order(Dwarf.Move.new(coordsToMoveTo))
-#					entity.commandQueue.order(Dwarf.Mine.new([tile.coordinates]))
-#			else:
-#				print("Can't find tile to move to to mine that")
 	
 	coordReigon.clear()
 
 func assignMiningDwarves():
-	# get dwarf in mining job
-	print("mining")
-#	for entity in $Entities.get_children():
-#		rocksToMine.assignSite(entity)
-	
+	# get dwarves in mining job
+
+	for entity in $Entities.get_children():
+		if entity.state != Dwarf.STATES.MINING:
+			sitesToMine.assignSite(entity, pathfinder)
+
 
 # might return arrays for traversable and untraversable in this function
 func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
@@ -212,7 +168,7 @@ func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
 
 	var xdist : int = region[1].x - region[0].x + 1
 	var ydist : int = region[1].y - region[0].y + 1
-	print(xdist, ydist)
+
 	for xIndex in range(xdist):
 		for yIndex in range(ydist):
 			availableTiles.append(

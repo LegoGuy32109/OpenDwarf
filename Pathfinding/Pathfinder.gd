@@ -11,6 +11,7 @@ func _init(tileMatrix : Node2D):
 
 # might change to just return actual steps needed to take later
 # return a list of coordinates from currentCoordinates -> newCoordinates (inclusive)
+# WILL NOT WORK IF newCoordinates is impassable lol
 func findPathTo(newCoordinates : Vector2i, currentCoordinates : Vector2i) -> Array[Vector2i]:
 	if currentCoordinates == newCoordinates:
 		return []
@@ -104,7 +105,6 @@ func findClosestNeighborPath(targetLoc: Vector2i, myLoc: Vector2i):
 	
 	return null
 
-# HELPER CLASSES below
 
 # the lower the priority number the quicker recieved
 class DictionaryType:

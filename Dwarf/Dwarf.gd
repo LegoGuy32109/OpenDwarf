@@ -5,6 +5,8 @@ enum STATES {IDLE, MINING, MOVING}
 var state : int = STATES.IDLE
 var coordinates : Vector2i = Vector2i()
 
+var iAmMiningStuff : bool = false
+
 # might have gridSize set by the game manager
 var gridSize : int = 64
 # 1.0 default, multipies time taken to move over tiles
@@ -46,7 +48,7 @@ func _process(_delta):
 					if actionSuccessfull:
 						commandQueue.nextCommand()
 					else:
-						# complain task failed
+						print("My move failed")
 						commandQueue.nextCommand()
 				
 				elif commandQueue.commandList[0] is Mine:
@@ -58,7 +60,7 @@ func _process(_delta):
 					if tileWasMined:
 						commandQueue.nextCommand()
 					else:
-						# complain task failed
+						print("My mine failed")
 						commandQueue.nextCommand()
 				
 				elif commandQueue.commandList[0] is Command:
@@ -67,6 +69,11 @@ func _process(_delta):
 			# Idle movement
 			elif HUD.idleMoveEnabled and randf() < 0.02:
 				await _moveToNeighbor()
+
+			# job logic depending on mood or fortress tasks, should I be doing something?
+			elif iAmMiningStuff:
+				if not world.sitesToMine.assignSite(self, pathfinder):
+					iAmMiningStuff = false
 		
 		STATES.MOVING:
 			sprites.play("walk", agentSpeed)
@@ -88,7 +95,6 @@ func mineTile(tile : Tile) -> bool:
 	
 	while not (tile.traversable or wasInterrupted): # hehe demorgan
 		await get_tree().create_timer(0.55).timeout
-		print("Mined a bit")
 		tile.mine()
 		
 	state = STATES.IDLE
