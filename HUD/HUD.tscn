@@ -75,4 +75,5 @@ dialog_autowrap = true
 [connection signal="toggled" from="Panel/HBoxContainer/TooltipsCheck" to="." method="_on_tooltips_check_toggled"]
 [connection signal="toggled" from="Panel/HBoxContainer/IdleMoveCheck" to="." method="_on_idle_move_check_toggled"]
 [connection signal="pressed" from="Panel/HBoxContainer/AddDwarfBut" to="." method="_on_add_dwarf_but_pressed"]
+[connection signal="canceled" from="CenterContainer/ConfirmationDialog" to="." method="_on_confirmation_dialog_canceled"]
 [connection signal="confirmed" from="CenterContainer/ConfirmationDialog" to="." method="_on_confirmation_dialog_confirmed"]

@@ -50,7 +50,7 @@ expand_to_text_length = true
 clear_button_enabled = true
 caret_blink = true
 
-[node name="Button" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
+[node name="NewWorldBut" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
 text = "Generate World"
 script = ExtResource("1_wovib")
@@ -78,4 +78,4 @@ text = "Follow updates @joshhale@toot.io 👋"
 label_settings = SubResource("LabelSettings_7yqh1")
 horizontal_alignment = 1
 
-[connection signal="text_submitted" from="MarginContainer/VBoxContainer/HBoxContainer/SeedInput" to="MarginContainer/VBoxContainer/HBoxContainer/Button" method="_on_line_edit_text_submitted"]
+[connection signal="text_submitted" from="MarginContainer/VBoxContainer/HBoxContainer/SeedInput" to="MarginContainer/VBoxContainer/HBoxContainer/NewWorldBut" method="_on_line_edit_text_submitted"]

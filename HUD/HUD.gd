@@ -3,6 +3,8 @@ extends CanvasLayer
 var tileTooltipsEnabled : bool = false
 var idleMoveEnabled : bool = true
 
+var inMenu : bool = false
+
 # I'll turn this into an enum eventually
 var miningModeActive : bool = false
 var moveModeActive : bool = true
@@ -19,11 +21,17 @@ var displayText : String = ""
 func exitDialog():
 	if confirmationDialog.visible:
 		confirmationDialog.hide()
+		inMenu = false
 	else:
 		confirmationDialog.show()
+		inMenu = true
 
 func _on_confirmation_dialog_confirmed():
+	HUD.inMenu = false
 	get_tree().change_scene_to_file("res://Menus/main_menu.tscn")
+
+func _on_confirmation_dialog_canceled():
+	HUD.inMenu = false
 
 func _on_tooltips_check_toggled(button_pressed):
 	tileTooltipsEnabled = button_pressed
@@ -46,3 +54,5 @@ func _process(_delta):
 
 func _on_add_dwarf_but_pressed():
 	readyForDwarfSpawn = true
+
+

@@ -19,7 +19,7 @@ func _physics_process(_delta):
 		
 	if(cameraTarget):
 		self.position = cameraTarget.position
-	else:
+	elif(not HUD.inMenu):
 		self.global_translate(_getCameraMoveVector())
 
 func _getCameraMoveVector() -> Vector2:
