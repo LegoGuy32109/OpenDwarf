@@ -2,10 +2,11 @@ extends Node2D
 class_name Dwarf
 
 enum STATES {IDLE, MINING, MOVING}
+enum JOBS {NOTHING, MINING}
+
+var job : int = JOBS.NOTHING
 var state : int = STATES.IDLE
 var coordinates : Vector2i = Vector2i()
-
-var iAmMiningStuff : bool = false
 
 # might have gridSize set by the game manager
 var gridSize : int = 64
@@ -20,6 +21,7 @@ var agentSpeed : float = 1.0
 @onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
 
 @onready var pathfinder : Pathfinder = world.pathfinder
+@onready var sitesToMine : SitesToMine = world.sitesToMine
 
 var commandQueue: CommandQueue = CommandQueue.new(self)
 
@@ -28,7 +30,6 @@ var tooltipText: String = ""
 func _ready():
 	agentSpeed = RandomNumberGenerator.new().randi_range(85, 120)/100.0
 	tooltipText = name+"\nSpeed: "+str(agentSpeed)
-
 
 func _process(_delta):
 	if HUD.tileTooltipsEnabled:
@@ -41,11 +42,11 @@ func _process(_delta):
 		STATES.IDLE:
 			sprites.play("idle", agentSpeed)
 			if commandQueue.commandList.size() > 0:
-				
+				# eventually this will just .complete() each command instead of this if elif chain
 				if commandQueue.commandList[0] is Move:
-					var actionSuccessfull : bool = \
-						await moveTo(commandQueue.commandList[0].desiredLocation)
-					if actionSuccessfull:
+					state = STATES.MOVING
+					
+					if await moveTo(commandQueue.commandList[0].desiredLocation):
 						commandQueue.nextCommand()
 					else:
 						print("My move failed")
@@ -53,11 +54,10 @@ func _process(_delta):
 				
 				elif commandQueue.commandList[0] is Mine:
 					state = STATES.MINING
-					assert(commandQueue.commandList[0] is Mine)
-					var miningBounds : Array[Vector2i] = commandQueue.commandList[0].bounds
-					var currentMineTile : Tile = tiles.getTileAt(miningBounds[0])
-					var tileWasMined : bool = await mineTile(currentMineTile)
-					if tileWasMined:
+					
+					var siteTile : Tile = commandQueue.commandList[0].site.tile
+					if await mineTile(siteTile):
+						sitesToMine.removeSite(siteTile)
 						commandQueue.nextCommand()
 					else:
 						print("My mine failed")
@@ -66,15 +66,30 @@ func _process(_delta):
 				elif commandQueue.commandList[0] is Command:
 					print("Huh?")
 			
+			elif job != JOBS.NOTHING:
+				match job:
+					JOBS.MINING:
+						if sitesToMine.is_empty():
+							job = JOBS.NOTHING
+							print("No tiles to mine ig")
+						
+						var returnObj = sitesToMine.nextSite(coordinates)
+						if returnObj:
+							returnObj.site.dwarvesCurrentlyMining.append(self)
+							commandQueue.order(Move.new(returnObj.location))
+							commandQueue.order(Mine.new(returnObj.site))
+						else:
+							job = JOBS.NOTHING
+							print("can't reach any tile to mine")
+						
 			# Idle movement
-			elif HUD.idleMoveEnabled and randf() < 0.02:
+			elif HUD.idleMoveEnabled and randf() < 0.005:
+				state = STATES.MOVING
 				await _moveToNeighbor()
-
-			# job logic depending on mood or fortress tasks, should I be doing something?
-			elif iAmMiningStuff:
-				if not world.sitesToMine.assignSite(self, pathfinder):
-					iAmMiningStuff = false
 		
+			# reached end of current command
+			state = STATES.IDLE
+			
 		STATES.MOVING:
 			sprites.play("walk", agentSpeed)
 		
@@ -97,7 +112,6 @@ func mineTile(tile : Tile) -> bool:
 		await get_tree().create_timer(0.55).timeout
 		tile.mine()
 		
-	state = STATES.IDLE
 	if wasInterrupted:
 		return false
 	return true
@@ -111,8 +125,6 @@ func _moveToNeighbor():
 
 # handles visual movement to new location based on path from global Pathfinder
 func moveTo(newCoordinates : Vector2i) -> bool:
-	state = STATES.MOVING
-	
 	while not newCoordinates == coordinates:
 		
 		# interrupt movement when move command changed
@@ -126,7 +138,6 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		
 		# return false if tile not reachable
 		if path.is_empty():
-			state = STATES.IDLE
 			print(name+" now can't find path to location")
 			return false
 		
@@ -150,10 +161,7 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		await singleTween.finished
 		coordinates = tileCoords
 
-#	print(self.name+" is now at "+str(coordinates))
-	state = STATES.IDLE
 	return true
-
 
 # Turn grid coordinates -> world/Game coordinates * gridSize
 func mapToWorld(coords: Vector2i) -> Vector2:
@@ -165,7 +173,7 @@ func _on_state_menu_item_selected(index):
 		world.cameraFollow(self)
 	elif (index == 1):
 		self.queue_free()
-	
+
 # this will grow more complex
 class CommandQueue:
 	var commandList : Array[Command] = []
@@ -179,7 +187,7 @@ class CommandQueue:
 			print(entity.name + " is already moving")
 		else:
 			commandList.append(command)
-
+	
 	func _isCommandTypeInQueue(command: Command) -> bool:
 		#Command will be a abstract class eventually, currently I'm only letting one in at a time
 		for c in commandList:
@@ -194,11 +202,6 @@ class CommandQueue:
 		commandList.clear()
 	
 class Command:
-	var desiredLocation: Vector2i
-
-	func _init(coordinates: Vector2i):
-		desiredLocation = coordinates
-		
 	func getType()->String:
 		var cType := "command"
 		if self is Mine:
@@ -207,12 +210,12 @@ class Command:
 			cType = "move"
 		return cType
 
-
 class Move extends Command:
-	pass
+	var desiredLocation: Vector2i
+	func _init(coordinates: Vector2i):
+		desiredLocation = coordinates
 
 class Mine extends Command:
-	var bounds : Array[Vector2i]
-	func _init(_bounds : Array[Vector2i]):
-		bounds = _bounds
-
+	var site : SitesToMine.MineSite
+	func _init(_site : SitesToMine.MineSite):
+		site = _site

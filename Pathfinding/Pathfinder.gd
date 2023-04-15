@@ -91,6 +91,10 @@ func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
 func findClosestNeighborPath(targetLoc: Vector2i, myLoc: Vector2i):
 	var neighborTiles: Array[Tile] = findOpenNeighbors(targetLoc)
 	var paths: Array[Array] = []
+	
+	if neighborTiles.is_empty():
+		return null
+	
 	for tile in neighborTiles:
 		var path = findPathTo(tile.coordinates, myLoc)
 		if !path.is_empty():

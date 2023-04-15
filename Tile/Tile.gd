@@ -91,10 +91,10 @@ func setToRock() -> void:
 	traversable = false
 	
 func setToGround() -> void:
+	traversable = true
 	sprite.texture = groundImg
 	tooltipText = "Ground"
 	setName(tooltipText)
-	traversable = true
 
 func setName(text : String) -> void:
 	name = text + " " + str(coordinates)

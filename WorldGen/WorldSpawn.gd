@@ -15,7 +15,7 @@ var origin : Vector2i
 
 var coordReigon : Array[Vector2i] = []
 
-var sitesToMine : SitesToMine = SitesToMine.new()
+var sitesToMine : SitesToMine
 
 var pathfinder : Pathfinder
 
@@ -36,6 +36,7 @@ var dwarfScene: PackedScene = load("res://Dwarf/Dwarf.tscn")
 func _ready():
 	var traversableCoordinates : Array[Vector2i] = generateLevel()
 	pathfinder = Pathfinder.new(tileParent)
+	sitesToMine = SitesToMine.new(pathfinder)
 	_addEntities(traversableCoordinates[0])
 
 
@@ -144,22 +145,20 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 	elif HUD.miningModeActive:
 		# logic handled in SitesToMine class
 		for potentialTile in tilesInReigon:
-			if msg == "force":
-				sitesToMine.removeSite(potentialTile)
-			elif msg != "force" and not potentialTile.traversable:
-				sitesToMine.addSite(potentialTile)
-
-		if not sitesToMine.is_empty():
-			assignMiningDwarves()
+			if not potentialTile.traversable:
+				if msg == "force":
+					sitesToMine.removeSite(potentialTile)
+				elif msg != "force":
+					sitesToMine.addSite(potentialTile)
+		assignMiningDwarves()
 	
 	coordReigon.clear()
 
 func assignMiningDwarves():
 	# get dwarves in mining job
-
 	for entity in $Entities.get_children():
-		if entity.state != Dwarf.STATES.MINING:
-			sitesToMine.assignSite(entity, pathfinder)
+		if entity.job != Dwarf.JOBS.MINING:
+			entity.job = Dwarf.JOBS.MINING
 
 
 # might return arrays for traversable and untraversable in this function
