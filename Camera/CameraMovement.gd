@@ -26,7 +26,7 @@ func _getCameraMoveVector() -> Vector2:
 	return Vector2(cameraSpeed * \
 		(Input.get_action_strength("ui_right") - Input.get_action_strength("ui_left")),\
 		cameraSpeed * \
-		(Input.get_action_strength("ui_down") - Input.get_action_strength("ui_up")))
+		(Input.get_action_strength("my_down") - Input.get_action_strength("ui_up")))
 
 func _unhandled_input(event):
 	if event.is_action_pressed("zoom_in") and self.zoom.x < 2.0:

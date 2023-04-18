@@ -127,20 +127,11 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 			# interrupt entity mid command then add new command
 			if msg == "force":
 				entity.commandQueue.clear()
-			
-			var travesrableTiles : Array[Tile] = []
-			for potentialTile in tilesInReigon:
-				var potentialPath = pathfinder.findPathTo(\
-				potentialTile.coordinates, entity.coordinates)
-				if not potentialPath.is_empty():
-					travesrableTiles.append(potentialTile)
 				
-			if not travesrableTiles.is_empty():
-				var choosenTile = travesrableTiles.pick_random()
-			# BUG where dwarf would only move 2 tiles not giving path
-				entity.commandQueue.order(Dwarf.Move.new(choosenTile.coordinates))
+			if tile.traversable:
+				entity.commandQueue.order(Dwarf.Move.new(tile.coordinates))
 			else:
-				print("No possible tile to move to")
+				entity.commandQueue.order(Dwarf.MoveAdjacent.new(tile.coordinates))
 			
 	elif HUD.miningModeActive:
 		# logic handled in SitesToMine class

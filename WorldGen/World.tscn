@@ -6,6 +6,10 @@
 
 [node name="World" type="Node2D"]
 script = ExtResource("1_r4v4f")
+borderLength = null
+startingDwarves = null
+borderPadding = null
+gridSize = null
 
 [node name="Camera" parent="." instance=ExtResource("2_a12da")]
 
