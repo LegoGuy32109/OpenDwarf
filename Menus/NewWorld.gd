@@ -14,3 +14,6 @@ func _pressed():
 	if worldSeed.length() > 0:
 		HUD.SEED = worldSeed
 	get_tree().change_scene_to_file("res://WorldGen/World.tscn")
+
+func _process(_delta)->void:
+	print(seedInput.has_focus())

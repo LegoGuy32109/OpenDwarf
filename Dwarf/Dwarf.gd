@@ -45,26 +45,13 @@ func _process(_delta):
 				# eventually this will just .complete() each command instead of this if elif chain
 				if commandQueue.commandList[0] is Move:
 					state = STATES.MOVING
+					await commandQueue.commandList[0].run(self)
 					
-					if await moveTo(commandQueue.commandList[0].desiredLocation):
-						commandQueue.nextCommand()
-					else:
-						print("My move failed")
-						commandQueue.nextCommand()
 				
 				elif commandQueue.commandList[0] is MoveAdjacent:
 					state = STATES.MOVING
-					
-					var path : Array[Vector2i] = pathfinder.findClosestNeighborPath(
-						commandQueue.commandList[0].nontraversableTileCoords, coordinates
-					)
-					commandQueue.order(Move.new(path[-1]))
-					commandQueue.nextCommand()
-#					if await moveTo(path[-1]):
-#						commandQueue.nextCommand()
-#					else:
-#						print("I couldn't get next to this tile")
-#						commandQueue.nextCommand()
+					await commandQueue.commandList[0].run(self)
+					# await commandQueue.next(self)
 					
 				elif commandQueue.commandList[0] is Mine:
 					state = STATES.MINING
@@ -90,7 +77,7 @@ func _process(_delta):
 						var returnObj = sitesToMine.nextSite(coordinates)
 						if returnObj:
 							returnObj.site.dwarvesCurrentlyMining.append(self)
-							commandQueue.order(MoveAdjacent.new(returnObj.location))
+							commandQueue.order(MoveAdjacent.new(returnObj.site, tiles.getTileAt(returnObj.location)))
 							commandQueue.order(Mine.new(returnObj.site))
 						else:
 							job = JOBS.NOTHING
@@ -143,9 +130,16 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		
 		# interrupt movement when move command changed
 		if not commandQueue.commandList.is_empty():
-			var curCommandDesLoc : Vector2i = commandQueue.commandList[0].desiredLocation
-			if(newCoordinates != curCommandDesLoc):
-				newCoordinates = curCommandDesLoc
+			if commandQueue.commandList[0] is Move:
+				var curCommandDesLoc : Vector2i = commandQueue.commandList[0].desiredLocation
+				if(newCoordinates != curCommandDesLoc):
+					newCoordinates = curCommandDesLoc
+			elif commandQueue.commandList[0] is MoveAdjacent:
+				var curCommand : MoveAdjacent = commandQueue.commandList[0]
+				var curCommandDesLoc : Vector2i = \
+				curCommand.nontraversableTile.coordinates
+				if(newCoordinates != curCommandDesLoc):
+					newCoordinates = curCommandDesLoc
 		
 		var path : Array[Vector2i] = \
 		pathfinder.findPathTo(newCoordinates, coordinates)
@@ -230,11 +224,32 @@ class Move extends Command:
 	var desiredLocation: Vector2i
 	func _init(coordinates: Vector2i):
 		desiredLocation = coordinates
+		
+	func run(entity: Dwarf):
+		if await entity.moveTo(desiredLocation):
+			entity.commandQueue.nextCommand()
+		else:
+			print("My move failed")
+			entity.commandQueue.nextCommand()
 
 class MoveAdjacent extends Command:
-	var nontraversableTileCoords: Vector2i
-	func _init(coords: Vector2i):
-		nontraversableTileCoords = coords
+	var nontraversableTile: Tile
+	var traversableNeighbor: Tile
+	func _init(rockTile: Tile, neighborTile: Tile = null):
+		nontraversableTile = rockTile
+		traversableNeighbor = neighborTile
+		
+	func run(entity : Dwarf):
+		
+		var path : Array[Vector2i] = entity.pathfinder.findClosestNeighborPath(
+			nontraversableTile.coordinates, entity.coordinates
+		)
+
+		if await entity.moveTo(path[-1]):
+			entity.commandQueue.nextCommand()
+		else:
+			print("I couldn't get next to this tile")
+			entity.commandQueue.nextCommand()
 	
 	
 class Mine extends Command:
