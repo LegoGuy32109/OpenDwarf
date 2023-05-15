@@ -1,11 +1,11 @@
 extends Node2D
 class_name Dwarf
 
-enum STATES {IDLE, MINING, MOVING}
+enum Actions {IDLE, MINING, MOVING}
 enum JOBS {NOTHING, MINING}
 
 var job : int = JOBS.NOTHING
-var state : int = STATES.IDLE
+var currentAction : int = Actions.IDLE
 var coordinates : Vector2i = Vector2i()
 
 # might have gridSize set by the game manager
@@ -37,34 +37,33 @@ func _process(_delta):
 	else:
 		$StateMenu.tooltip_text = ""
 	
-	# giving code smell 😝 might rename state to 'current_action'
-	match state:
-		STATES.IDLE:
+	match currentAction:
+		Actions.IDLE:
 			sprites.play("idle", agentSpeed)
 			if commandQueue.commandList.size() > 0:
 				# eventually this will just .complete() each command instead of this if elif chain
-				if commandQueue.commandList[0] is Move:
-					state = STATES.MOVING
-					await commandQueue.commandList[0].run(self)
-					
+#				if commandQueue.commandList[0] is Move:
+#					state = Actions.MOVING
+#					await commandQueue.commandList[0].run(self)
+#
+#
+#				elif commandQueue.commandList[0] is MoveAdjacent:
+#					state = Actions.MOVING
+#					await commandQueue.commandList[0].run(self)
+#					# await commandQueue.next(self)
+#
+#				elif commandQueue.commandList[0] is Mine:
+#					state = Actions.MINING
+#
+#					var siteTile : Tile = commandQueue.commandList[0].site.tile
+#					if await mineTile(siteTile):
+#						sitesToMine.removeSite(siteTile)
+#						commandQueue.nextCommand()
+#					else:
+#						print("My mine failed")
+#						commandQueue.nextCommand()
 				
-				elif commandQueue.commandList[0] is MoveAdjacent:
-					state = STATES.MOVING
-					await commandQueue.commandList[0].run(self)
-					# await commandQueue.next(self)
-					
-				elif commandQueue.commandList[0] is Mine:
-					state = STATES.MINING
-					
-					var siteTile : Tile = commandQueue.commandList[0].site.tile
-					if await mineTile(siteTile):
-						sitesToMine.removeSite(siteTile)
-						commandQueue.nextCommand()
-					else:
-						print("My mine failed")
-						commandQueue.nextCommand()
-				
-				elif commandQueue.commandList[0] is Command:
+				if commandQueue.commandList[0] is Command:
 					print("Huh?")
 			
 			elif job != JOBS.NOTHING:
@@ -77,26 +76,44 @@ func _process(_delta):
 						var returnObj = sitesToMine.nextSite(coordinates)
 						if returnObj:
 							returnObj.site.dwarvesCurrentlyMining.append(self)
-							commandQueue.order(MoveAdjacent.new(returnObj.site, tiles.getTileAt(returnObj.location)))
-							commandQueue.order(Mine.new(returnObj.site))
+							commandQueue.order(
+								Command.MoveAdjacent.new(
+									returnObj.site, 
+									tiles.getTileAt(returnObj.location)
+								)
+							)
+							commandQueue.order(Command.Mine.new(returnObj.site))
 						else:
 							job = JOBS.NOTHING
 							print("can't reach any tile to mine")
 						
 			# Idle movement
 			elif HUD.idleMoveEnabled and randf() < 0.005:
-				state = STATES.MOVING
+				currentAction = Actions.MOVING
 				await _moveToNeighbor()
 		
 			# reached end of current command
-			state = STATES.IDLE
+			currentAction = Actions.IDLE
 			
-		STATES.MOVING:
+		Actions.MOVING:
 			sprites.play("walk", agentSpeed)
 		
-		STATES.MINING:
+		Actions.MINING:
 			sprites.play("mine", 1.0)
 
+func _on_state_menu_item_selected(index):
+	# user selected follow on dwarf menu
+	if (index == 0):
+		world.cameraFollow(self)
+	elif (index == 1):
+		self.queue_free()
+
+func _moveToNeighbor():
+	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
+	if (neighborTiles.size() > 0):
+		var chosenTile : Tile = \
+		neighborTiles[randi_range(0, neighborTiles.size()-1)]
+		await moveTo(chosenTile.coordinates)
 
 
 func mineTile(tile : Tile) -> bool:
@@ -117,12 +134,6 @@ func mineTile(tile : Tile) -> bool:
 		return false
 	return true
 
-func _moveToNeighbor():
-	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
-	if (neighborTiles.size() > 0):
-		var chosenTile : Tile = \
-		neighborTiles[randi_range(0, neighborTiles.size()-1)]
-		await moveTo(chosenTile.coordinates)
 
 # handles visual movement to new location based on path from global Pathfinder
 func moveTo(newCoordinates : Vector2i) -> bool:
@@ -130,12 +141,12 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		
 		# interrupt movement when move command changed
 		if not commandQueue.commandList.is_empty():
-			if commandQueue.commandList[0] is Move:
+			if commandQueue.commandList[0] is Command.Move:
 				var curCommandDesLoc : Vector2i = commandQueue.commandList[0].desiredLocation
 				if(newCoordinates != curCommandDesLoc):
 					newCoordinates = curCommandDesLoc
-			elif commandQueue.commandList[0] is MoveAdjacent:
-				var curCommand : MoveAdjacent = commandQueue.commandList[0]
+			elif commandQueue.commandList[0] is Command.MoveAdjacent:
+				var curCommand : Command.MoveAdjacent = commandQueue.commandList[0]
 				var curCommandDesLoc : Vector2i = \
 				curCommand.nontraversableTile.coordinates
 				if(newCoordinates != curCommandDesLoc):
@@ -168,21 +179,14 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 		singleTween.tween_property(self, "position", nextTile.position, curMoveCost)
 		await singleTween.finished
 		coordinates = tileCoords
-
+	
 	return true
 
 # Turn grid coordinates -> world/Game coordinates * gridSize
 func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
 
-func _on_state_menu_item_selected(index):
-	# user selected follow on dwarf menu
-	if (index == 0):
-		world.cameraFollow(self)
-	elif (index == 1):
-		self.queue_free()
 
-# this will grow more complex
 class CommandQueue:
 	var commandList : Array[Command] = []
 	var entity : Dwarf
@@ -190,69 +194,21 @@ class CommandQueue:
 	func _init(_entity: Dwarf):
 		entity = _entity
 	
-	func order(command: Command) -> void:
-		if _isCommandTypeInQueue(command):
-			print(entity.name + " is already moving")
-		else:
-			commandList.append(command)
-	
 	func _isCommandTypeInQueue(command: Command) -> bool:
 		#Command will be a abstract class eventually, currently I'm only letting one in at a time
 		for c in commandList:
 			if c.getType() == command.getType():
 				return true
 		return false
-		
+	
+	func order(command: Command) -> void:
+		if _isCommandTypeInQueue(command):
+			print(entity.name + " is already moving")
+		else:
+			commandList.append(command)
+	
 	func nextCommand() -> Command:
 		return commandList.pop_front()
 	
 	func clear() -> void:
 		commandList.clear()
-	
-class Command:
-	func getType()->String:
-		var cType := "command"
-		if self is Mine:
-			cType = "mine"
-		if self is Move:
-			cType = "move"
-		if self is MoveAdjacent:
-			cType = "moveAdjacent"
-		return cType
-
-class Move extends Command:
-	var desiredLocation: Vector2i
-	func _init(coordinates: Vector2i):
-		desiredLocation = coordinates
-		
-	func run(entity: Dwarf):
-		if await entity.moveTo(desiredLocation):
-			entity.commandQueue.nextCommand()
-		else:
-			print("My move failed")
-			entity.commandQueue.nextCommand()
-
-class MoveAdjacent extends Command:
-	var nontraversableTile: Tile
-	var traversableNeighbor: Tile
-	func _init(rockTile: Tile, neighborTile: Tile = null):
-		nontraversableTile = rockTile
-		traversableNeighbor = neighborTile
-		
-	func run(entity : Dwarf):
-		
-		var path : Array[Vector2i] = entity.pathfinder.findClosestNeighborPath(
-			nontraversableTile.coordinates, entity.coordinates
-		)
-
-		if await entity.moveTo(path[-1]):
-			entity.commandQueue.nextCommand()
-		else:
-			print("I couldn't get next to this tile")
-			entity.commandQueue.nextCommand()
-	
-	
-class Mine extends Command:
-	var site : SitesToMine.MineSite
-	func _init(_site : SitesToMine.MineSite):
-		site = _site
