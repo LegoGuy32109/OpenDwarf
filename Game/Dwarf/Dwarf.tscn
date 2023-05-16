@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://byo5s800b2jmr"]
+[gd_scene load_steps=21 format=3 uid="uid://byo5s800b2jmr"]
 
 [ext_resource type="Script" path="res://Game/Dwarf/Dwarf.gd" id="1_isyo4"]
 [ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/IdleFrames/DwarfIdle1.png" id="2_lemkk"]
@@ -18,6 +18,7 @@
 [ext_resource type="Texture2D" uid="uid://b36vny2qj5sgl" path="res://Assets/WalkFrames/DwarfWalk6.png" id="16_17co1"]
 [ext_resource type="Texture2D" uid="uid://ck402w1vbu6jo" path="res://Assets/WalkFrames/DwarfWalk7.png" id="17_223kp"]
 [ext_resource type="Texture2D" uid="uid://cesl7653v0ejg" path="res://Assets/WalkFrames/DwarfWalk8.png" id="18_x0om2"]
+[ext_resource type="PackedScene" uid="uid://b08j6m80dpong" path="res://_debug/CommandNode.tscn" id="19_j15hd"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_xivog"]
 animations = [{
@@ -117,5 +118,14 @@ popup/item_0/text = "Follow"
 popup/item_0/id = 0
 popup/item_1/text = "Delete"
 popup/item_1/id = 1
+
+[node name="CommandContainer" type="HBoxContainer" parent="."]
+offset_left = -62.0
+offset_top = -55.0
+offset_right = 60.0
+offset_bottom = -35.0
+
+[node name="CommandNode" parent="CommandContainer" instance=ExtResource("19_j15hd")]
+layout_mode = 2
 
 [connection signal="item_selected" from="StateMenu" to="." method="_on_state_menu_item_selected"]

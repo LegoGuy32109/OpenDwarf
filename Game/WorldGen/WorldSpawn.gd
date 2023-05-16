@@ -131,7 +131,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 			if tile.traversable:
 				entity.commandQueue.order(Command.Move.new(tile.coordinates))
 			else:
-				entity.commandQueue.order(Command.MoveAdjacent.new(tile))
+				print("Can't move there")
 			
 	elif HUD.miningModeActive:
 		# logic handled in SitesToMine class

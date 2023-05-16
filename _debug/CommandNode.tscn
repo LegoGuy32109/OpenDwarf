@@ -1,0 +1,5 @@
+[gd_scene format=3 uid="uid://b08j6m80dpong"]
+
+[node name="ColorRect" type="ColorRect"]
+custom_minimum_size = Vector2(20, 20)
+color = Color(0, 0.65098, 0.65098, 1)

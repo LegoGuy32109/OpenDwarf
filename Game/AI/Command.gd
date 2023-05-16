@@ -5,8 +5,10 @@ class_name Command
 func getType()->String:
 	return "command"
 
-func run(entity: Dwarf)->bool:
-	return true
+# abstract method to remove warnings
+func run(_entity: Dwarf)->Signal:
+	return get_tree().create_timer(1).timeout
+
 
 class Move extends Command:
 	var desiredLocation: Vector2i
@@ -28,29 +30,6 @@ class Move extends Command:
 			
 	func getType()->String:
 		return "move"
-
-
-class MoveAdjacent extends Command:
-	var nontraversableTile: Tile
-	var traversableNeighbor: Tile
-	
-	func _init(rockTile: Tile, neighborTile: Tile = null):
-		nontraversableTile = rockTile
-		traversableNeighbor = neighborTile
-		
-#	func run(entity : Dwarf):	
-#		var path : Array[Vector2i] = entity.pathfinder.findClosestNeighborPath(
-#			nontraversableTile.coordinates, entity.coordinates
-#		)
-#
-#		if await entity.moveTo(path[-1]):
-#			entity.commandQueue.nextCommand()
-#		else:
-#			print("I couldn't get next to this tile")
-#			entity.commandQueue.nextCommand()
-	
-	func getType()->String:
-		return "moveAdjacent"
 
 
 class Mine extends Command:
