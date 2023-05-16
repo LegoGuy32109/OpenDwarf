@@ -29,9 +29,9 @@ var pathfinder : Pathfinder
 var tileParent : TileParent = $Tiles
 
 @onready 
-var tileScene: PackedScene = load("res://Tile/Tile.tscn")
+var tileScene: PackedScene = load("res://Game/Tile/Tile.tscn")
 @onready
-var dwarfScene: PackedScene = load("res://Dwarf/Dwarf.tscn")
+var dwarfScene: PackedScene = load("res://Game/Dwarf/Dwarf.tscn")
 
 func _ready():
 	var traversableCoordinates : Array[Vector2i] = generateLevel()

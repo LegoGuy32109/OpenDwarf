@@ -1,0 +1,121 @@
+[gd_scene load_steps=20 format=3 uid="uid://byo5s800b2jmr"]
+
+[ext_resource type="Script" path="res://Game/Dwarf/Dwarf.gd" id="1_isyo4"]
+[ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/IdleFrames/DwarfIdle1.png" id="2_lemkk"]
+[ext_resource type="Texture2D" uid="uid://dkpygkrrxp4ty" path="res://Assets/IdleFrames/DwarfIdle2.png" id="3_gxqcp"]
+[ext_resource type="Texture2D" uid="uid://cnonqm6cg3vbq" path="res://Assets/IdleFrames/DwarfIdle3.png" id="4_djvll"]
+[ext_resource type="Texture2D" uid="uid://dd5gfijr0yvjq" path="res://Assets/IdleFrames/DwarfIdle4.png" id="5_1rmao"]
+[ext_resource type="Texture2D" uid="uid://f7682fblddqg" path="res://Assets/IdleFrames/DwarfIdle5.png" id="6_avadc"]
+[ext_resource type="Texture2D" uid="uid://cogv7f8wkibt0" path="res://Assets/MineFrames/DwarfMine1.png" id="7_k87g3"]
+[ext_resource type="Texture2D" uid="uid://bawtgulbk2hb4" path="res://Assets/MineFrames/DwarfMine2.png" id="8_660yu"]
+[ext_resource type="Texture2D" uid="uid://dh7yak2u8qxd1" path="res://Assets/MineFrames/DwarfMine3.png" id="9_bjqep"]
+[ext_resource type="Texture2D" uid="uid://dl4nqcs1koywg" path="res://Assets/MineFrames/DwarfMine4.png" id="10_43u27"]
+[ext_resource type="Texture2D" uid="uid://c1fyla4tm2rmr" path="res://Assets/WalkFrames/DwarfWalk1.png" id="11_gpgcw"]
+[ext_resource type="Texture2D" uid="uid://cgctj528o05ab" path="res://Assets/WalkFrames/DwarfWalk2.png" id="12_xkt1l"]
+[ext_resource type="Texture2D" uid="uid://dxrx1prhhkalg" path="res://Assets/WalkFrames/DwarfWalk3.png" id="13_75xkf"]
+[ext_resource type="Texture2D" uid="uid://ctergpfjyoyd4" path="res://Assets/WalkFrames/DwarfWalk4.png" id="14_ppu66"]
+[ext_resource type="Texture2D" uid="uid://bowjbfv8j16qv" path="res://Assets/WalkFrames/DwarfWalk5.png" id="15_u6fla"]
+[ext_resource type="Texture2D" uid="uid://b36vny2qj5sgl" path="res://Assets/WalkFrames/DwarfWalk6.png" id="16_17co1"]
+[ext_resource type="Texture2D" uid="uid://ck402w1vbu6jo" path="res://Assets/WalkFrames/DwarfWalk7.png" id="17_223kp"]
+[ext_resource type="Texture2D" uid="uid://cesl7653v0ejg" path="res://Assets/WalkFrames/DwarfWalk8.png" id="18_x0om2"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_xivog"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_lemkk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_gxqcp")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_djvll")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_1rmao")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_avadc")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 3.0,
+"texture": ExtResource("7_k87g3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_660yu")
+}, {
+"duration": 3.0,
+"texture": ExtResource("9_bjqep")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_43u27")
+}],
+"loop": true,
+"name": &"mine",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("11_gpgcw")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_xkt1l")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_75xkf")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_ppu66")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_u6fla")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_17co1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_223kp")
+}, {
+"duration": 1.0,
+"texture": ExtResource("18_x0om2")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 10.0
+}]
+
+[node name="Dwarf" type="Node2D"]
+script = ExtResource("1_isyo4")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+scale = Vector2(1.9978, 2.01897)
+sprite_frames = SubResource("SpriteFrames_xivog")
+animation = &"idle"
+frame_progress = 0.911202
+
+[node name="StateMenu" type="OptionButton" parent="."]
+modulate = Color(1, 1, 1, 0)
+custom_minimum_size = Vector2(64, 32)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -47.0
+offset_top = -16.0
+offset_right = 47.0
+offset_bottom = 16.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_default_cursor_shape = 2
+item_count = 2
+popup/item_0/text = "Follow"
+popup/item_0/id = 0
+popup/item_1/text = "Delete"
+popup/item_1/id = 1
+
+[connection signal="item_selected" from="StateMenu" to="." method="_on_state_menu_item_selected"]

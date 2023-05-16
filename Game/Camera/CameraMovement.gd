@@ -32,11 +32,11 @@ func _unhandled_input(event):
 	if event.is_action_pressed("zoom_in") and self.zoom.x < 2.0:
 		self.zoom.x += zoomAmount
 		self.zoom.y += zoomAmount
-		print(self.zoom)
+
 	if event.is_action_pressed("zoom_out") and self.zoom.x > 0.4:
 		self.zoom.x += -zoomAmount
 		self.zoom.y += -zoomAmount
-		print(self.zoom)
+
 	if event.is_action_pressed("ui_cancel"):
 		HUD.exitDialog()
 

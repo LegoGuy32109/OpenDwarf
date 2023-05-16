@@ -1,7 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://b6mk86u2jxrl5"]
+[gd_scene load_steps=5 format=3 uid="uid://cjs18sunm3tss"]
 
-[ext_resource type="Script" path="res://Menus/NewWorld.gd" id="1_wovib"]
-[ext_resource type="Script" path="res://Menus/ShameplugButton.gd" id="2_4jg4i"]
+[ext_resource type="Script" path="res://Game/Menus/NewWorld.gd" id="1_a884f"]
+[ext_resource type="Script" path="res://Game/Menus/ShameplugButton.gd" id="2_vphlf"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_mntr4"]
 font_size = 44
@@ -53,13 +53,13 @@ caret_blink = true
 [node name="NewWorldBut" type="Button" parent="MarginContainer/VBoxContainer/HBoxContainer"]
 layout_mode = 2
 text = "Generate World"
-script = ExtResource("1_wovib")
+script = ExtResource("1_a884f")
 
 [node name="ShameplugButton" type="Button" parent="MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(500, 80)
 layout_mode = 2
 size_flags_horizontal = 4
-script = ExtResource("2_4jg4i")
+script = ExtResource("2_vphlf")
 
 [node name="ShamelessPlug" type="Label" parent="MarginContainer/VBoxContainer/ShameplugButton"]
 layout_mode = 1

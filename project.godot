@@ -11,14 +11,14 @@ config_version=5
 [application]
 
 config/name="Df Clone"
-run/main_scene="res://Menus/main_menu.tscn"
+run/main_scene="res://Game/Menus/main_menu.tscn"
 config/features=PackedStringArray("4.0", "Mobile")
 boot_splash/image="res://Assets/Rock.png"
 config/icon="res://Assets/IdleFrames/DwarfIdle1.png"
 
 [autoload]
 
-HUD="*res://HUD/HUD.tscn"
+HUD="*res://Game/HUD/HUD.tscn"
 
 [display]
 

@@ -28,7 +28,7 @@ func exitDialog():
 
 func _on_confirmation_dialog_confirmed():
 	HUD.inMenu = false
-	get_tree().change_scene_to_file("res://Menus/main_menu.tscn")
+	get_tree().change_scene_to_file("res://Game/Menus/main_menu.tscn")
 
 func _on_confirmation_dialog_canceled():
 	HUD.inMenu = false

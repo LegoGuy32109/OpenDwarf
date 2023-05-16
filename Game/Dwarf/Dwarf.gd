@@ -41,12 +41,8 @@ func _process(_delta):
 		Actions.IDLE:
 			sprites.play("idle", agentSpeed)
 			if commandQueue.commandList.size() > 0:
-				# eventually this will just .complete() each command instead of this if elif chain
-#				if commandQueue.commandList[0] is Move:
-#					state = Actions.MOVING
-#					await commandQueue.commandList[0].run(self)
-#
-#
+				await commandQueue.commandList[0].run(self)
+
 #				elif commandQueue.commandList[0] is MoveAdjacent:
 #					state = Actions.MOVING
 #					await commandQueue.commandList[0].run(self)
@@ -62,9 +58,7 @@ func _process(_delta):
 #					else:
 #						print("My mine failed")
 #						commandQueue.nextCommand()
-				
-				if commandQueue.commandList[0] is Command:
-					print("Huh?")
+
 			
 			elif job != JOBS.NOTHING:
 				match job:
@@ -113,7 +107,7 @@ func _moveToNeighbor():
 	if (neighborTiles.size() > 0):
 		var chosenTile : Tile = \
 		neighborTiles[randi_range(0, neighborTiles.size()-1)]
-		await moveTo(chosenTile.coordinates)
+		await visuallyMoveToCoordinates(chosenTile.coordinates)
 
 
 func mineTile(tile : Tile) -> bool:
@@ -136,24 +130,24 @@ func mineTile(tile : Tile) -> bool:
 
 
 # handles visual movement to new location based on path from global Pathfinder
-func moveTo(newCoordinates : Vector2i) -> bool:
-	while not newCoordinates == coordinates:
-		
+func moveTo(moveCommand : Command.Move) -> bool:
+	while not moveCommand.desiredLocation == coordinates:
+		var targetCoordinates : Vector2i = moveCommand.desiredLocation
 		# interrupt movement when move command changed
-		if not commandQueue.commandList.is_empty():
-			if commandQueue.commandList[0] is Command.Move:
-				var curCommandDesLoc : Vector2i = commandQueue.commandList[0].desiredLocation
-				if(newCoordinates != curCommandDesLoc):
-					newCoordinates = curCommandDesLoc
-			elif commandQueue.commandList[0] is Command.MoveAdjacent:
-				var curCommand : Command.MoveAdjacent = commandQueue.commandList[0]
-				var curCommandDesLoc : Vector2i = \
-				curCommand.nontraversableTile.coordinates
-				if(newCoordinates != curCommandDesLoc):
-					newCoordinates = curCommandDesLoc
+#		if not commandQueue.commandList.is_empty():
+#			if commandQueue.commandList[0] is Command.Move:
+#				var curCommandDesLoc : Vector2i = commandQueue.commandList[0].desiredLocation
+#				if(newCoordinates != curCommandDesLoc):
+#					newCoordinates = curCommandDesLoc
+#			elif commandQueue.commandList[0] is Command.MoveAdjacent:
+#				var curCommand : Command.MoveAdjacent = commandQueue.commandList[0]
+#				var curCommandDesLoc : Vector2i = \
+#				curCommand.nontraversableTile.coordinates
+#				if(newCoordinates != curCommandDesLoc):
+#					newCoordinates = curCommandDesLoc
 		
 		var path : Array[Vector2i] = \
-		pathfinder.findPathTo(newCoordinates, coordinates)
+		pathfinder.findPathTo(targetCoordinates, coordinates)
 		
 		# return false if tile not reachable
 		if path.is_empty():
@@ -161,26 +155,30 @@ func moveTo(newCoordinates : Vector2i) -> bool:
 			return false
 		
 		var tileCoords : Vector2i = path[1]
-		var nextTile : Tile = tiles.getTileAt(tileCoords)
-		var singleTween = create_tween()
-		var curMoveCost : float = nextTile.movementCost * 1/agentSpeed
-		if pathfinder.isDiagNeighbor(coordinates, tileCoords):
-			curMoveCost *= 1.2
-		
-		# change direction entity is facing
-		if(sprites.flip_h):
-			if tileCoords.x > coordinates.x:
-				sprites.flip_h = false
-		else:
-			if tileCoords.x < coordinates.x:
-				sprites.flip_h = true
-		
-		# tweening world position instead of tile coordinates
-		singleTween.tween_property(self, "position", nextTile.position, curMoveCost)
-		await singleTween.finished
-		coordinates = tileCoords
+		await visuallyMoveToCoordinates(tileCoords)
 	
 	return true
+
+func visuallyMoveToCoordinates(tileCoords : Vector2i):
+	var nextTile : Tile = tiles.getTileAt(tileCoords)
+	var singleTween = create_tween()
+	var curMoveCost : float = nextTile.movementCost * 1/agentSpeed
+	if pathfinder.isDiagNeighbor(coordinates, tileCoords):
+		curMoveCost *= 1.2
+	
+	# change direction entity is facing
+	if(sprites.flip_h):
+		if tileCoords.x > coordinates.x:
+			sprites.flip_h = false
+	else:
+		if tileCoords.x < coordinates.x:
+			sprites.flip_h = true
+	
+	# tweening world position instead of tile coordinates
+	singleTween.tween_property(self, "position", nextTile.position, curMoveCost)
+	await singleTween.finished
+	coordinates = tileCoords
+	
 
 # Turn grid coordinates -> world/Game coordinates * gridSize
 func mapToWorld(coords: Vector2i) -> Vector2:
@@ -195,7 +193,7 @@ class CommandQueue:
 		entity = _entity
 	
 	func _isCommandTypeInQueue(command: Command) -> bool:
-		#Command will be a abstract class eventually, currently I'm only letting one in at a time
+		# currently I'm only letting one command of a certain type in at a time
 		for c in commandList:
 			if c.getType() == command.getType():
 				return true
@@ -203,7 +201,7 @@ class CommandQueue:
 	
 	func order(command: Command) -> void:
 		if _isCommandTypeInQueue(command):
-			print(entity.name + " is already moving")
+			print(entity.name + " is already " + command.getType())
 		else:
 			commandList.append(command)
 	

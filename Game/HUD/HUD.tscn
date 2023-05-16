@@ -1,7 +1,7 @@
-[gd_scene load_steps=3 format=3 uid="uid://c18xrl4cjiabu"]
+[gd_scene load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://HUD/HUD.gd" id="1_uilpy"]
-[ext_resource type="Script" path="res://HUD/TopPanelGUI.gd" id="2_gtggy"]
+[ext_resource type="Script" path="res://Game/HUD/HUD.gd" id="1_uilpy"]
+[ext_resource type="Script" path="res://Game/HUD/TopPanelGUI.gd" id="2_gtggy"]
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_uilpy")
