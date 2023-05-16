@@ -13,6 +13,9 @@ var gridSize : int = 64
 # 1.0 default, multipies time taken to move over tiles
 var agentSpeed : float = 1.0
 
+# contain data about tiles dwarf is thinking about, a key is a Vector2i of coordinates
+var tileThoughts = {}
+
 # Communicate with world node
 @onready var world : Node2D = self.get_parent().get_parent()
 # needs to grab Tiles group for path finding
@@ -101,11 +104,30 @@ func _visuallyMoveToCoordinates(tileCoords : Vector2i):
 	singleTween.tween_property(self, "position", nextTile.position, curMoveCost)
 	await singleTween.finished
 	coordinates = tileCoords
+	
+	# Dwarf notices surroundings after each move
+	_lookAround()
+	
+func _lookAround():
+	var radius := 1
+	var xCoord : int = coordinates.x-radius
+	var yCoord : int = coordinates.y-radius
+	# has a square field of knowledge, in the future this should be a raycast thing
+	while xCoord <= coordinates.x+radius:
+		var tempY := yCoord
+		while tempY <= coordinates.y+radius:
+			var tile : Tile = tiles.getTileAt(Vector2i(xCoord,tempY))
+			if tile.orderedToMine and not tileThoughts.has(Vector2i(xCoord, tempY)):
+				print("I should mine at ",Vector2i(xCoord, tempY))
+				commandQueue.order(Command.Mine.new(tile))
+				tileThoughts[Vector2i(xCoord, tempY)] = "mine"
+			tempY+=1
+		xCoord+=1
 
 # handles visual movement to new location based on path from global Pathfinder
-func moveTo(moveCommand : Command.Move) -> bool:
-	while moveCommand and not moveCommand.desiredLocation == coordinates:
-		var targetCoordinates : Vector2i = moveCommand.desiredLocation
+func moveTo(moveCommand : Command) -> bool:
+	while moveCommand and not moveCommand.targetCoordinates == coordinates:
+		var targetCoordinates : Vector2i = moveCommand.targetCoordinates
 		
 		var path : Array[Vector2i] = \
 		pathfinder.findPathTo(targetCoordinates, coordinates)

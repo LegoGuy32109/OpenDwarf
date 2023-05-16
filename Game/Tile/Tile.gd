@@ -9,7 +9,7 @@ var rockImg : Texture2D = load("res://Assets/Rock.png")
 var groundImg : Texture2D = load("res://Assets/Ground.png")
 
 var coordinates : Vector2i = Vector2i()
-var tooltipText : String = "Tile"
+var tooltipText : String = name
 
 var mouseInPanel : bool = false
 var beenEdited : bool = false
@@ -23,12 +23,12 @@ var percentMined : float = 0.0
 #NOTE I don't know how much 900 process funcs drain, but here we are.
 func _process(_delta) -> void:
 	if(HUD.tileTooltipsEnabled):
-		$Panel.tooltip_text = tooltipText
+		$Panel.tooltip_text = name
 	else:
 		$Panel.tooltip_text = ""
 	
 	# might make flashing i dunno
-	if(orderedToMine and HUD.miningModeActive):
+	if(orderedToMine):
 		$Mine.visible = true
 	else:
 		$Mine.visible = false
