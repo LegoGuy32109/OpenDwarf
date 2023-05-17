@@ -51,17 +51,25 @@ func _process(_delta):
 			node.color = "#FFFFFF"
 		$CommandContainer.add_child(node)
 	
+	# run this logic once every 6 process (render) frames
+	if Engine.get_process_frames() % 6 == 0:
+		_lookAround()
+	
 	match currentAction:
 		Actions.IDLE:
 			sprites.play("idle", agentSpeed)
 			if commandQueue.commandList.size() > 0:
 				await commandQueue.commandList[0].run(self)
 			
-			# Idle movement
-			elif HUD.idleMoveEnabled and randf() < 0.005:
-				currentAction = Actions.MOVING
-				await _moveToNeighbor()
-		
+			# what should I do? think every 2 framse
+			elif Engine.get_process_frames() % 2 == 0:
+				if HUD.idleMoveEnabled and randf() < 0.005:
+					currentAction = Actions.MOVING
+					await _moveToNeighbor()
+				
+				if randf() < 0.05:
+					_decideWhatToDo()
+				
 			# reached end of current command
 			currentAction = Actions.IDLE
 			
@@ -70,6 +78,13 @@ func _process(_delta):
 		
 		Actions.MINING:
 			sprites.play("mine", 1.0)
+
+func _decideWhatToDo():
+	if tileThoughts.size() > 0:
+		print("I should mine something")
+		commandQueue.order(Command.Mine.new(
+			tiles.getTileAt(tileThoughts.keys().pick_random())
+		))
 
 func _on_state_menu_item_selected(index):
 	# user selected follow on dwarf menu
@@ -105,11 +120,8 @@ func _visuallyMoveToCoordinates(tileCoords : Vector2i):
 	await singleTween.finished
 	coordinates = tileCoords
 	
-	# Dwarf notices surroundings after each move
-	_lookAround()
-	
 func _lookAround():
-	var radius := 1
+	var radius := 2
 	var xCoord : int = coordinates.x-radius
 	var yCoord : int = coordinates.y-radius
 	# has a square field of knowledge, in the future this should be a raycast thing
@@ -118,8 +130,6 @@ func _lookAround():
 		while tempY <= coordinates.y+radius:
 			var tile : Tile = tiles.getTileAt(Vector2i(xCoord,tempY))
 			if tile.orderedToMine and not tileThoughts.has(Vector2i(xCoord, tempY)):
-				print("I should mine at ",Vector2i(xCoord, tempY))
-				commandQueue.order(Command.Mine.new(tile))
 				tileThoughts[Vector2i(xCoord, tempY)] = "mine"
 			tempY+=1
 		xCoord+=1
@@ -151,7 +161,7 @@ func moveTo(moveCommand : Command) -> bool:
 func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
 
-func mineTile(tile : Tile) -> bool:
+func startMining(tile : Tile) -> bool:
 	var wasInterrupted = false
 	
 	if(sprites.flip_h):

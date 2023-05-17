@@ -23,10 +23,11 @@ class Move extends Command:
 		entity.currentAction = Dwarf.Actions.MOVING
 		# pass instance of self instead of raw coordinates, Move targetCoordinates can change
 		if await entity.moveTo(self):
-			entity.commandQueue.nextCommand()
+			pass 
 		else:
 			print("My move failed")
-			entity.commandQueue.nextCommand()
+			
+		entity.commandQueue.nextCommand()
 			
 	func getType()->String:
 		return "move"
@@ -38,7 +39,7 @@ class Mine extends Command:
 	
 	func _init(tile: Tile):
 		site = tile
-
+	
 	func run(entity: Dwarf):
 		# find a path to a nearby tile
 		var path = entity.pathfinder.findClosestNeighborPath(site.coordinates, entity.coordinates)
@@ -46,12 +47,15 @@ class Mine extends Command:
 		targetCoordinates = path[-1]
 		
 		entity.currentAction = Dwarf.Actions.MOVING
-		if await entity.moveTo(self):
+		if path and await entity.moveTo(self):
 			print("I'm mining a tile")
-			entity.commandQueue.nextCommand()
+			entity.currentAction = Dwarf.Actions.MINING
+			await entity.startMining(site)
+			entity.tileThoughts.erase(site.coordinates)
 		else:
-			print("My move failed")
-			entity.commandQueue.nextCommand()
-
+			print("My move to a mine site failed")
+		
+		entity.commandQueue.nextCommand()
+	
 	func getType()->String:
 		return "mine"
