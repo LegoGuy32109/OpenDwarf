@@ -98,6 +98,9 @@ func findClosestNeighborPath(targetLoc: Vector2i, myLoc: Vector2i):
 		return null
 	
 	for tile in neighborTiles:
+		# we're already there!
+		if tile.coordinates == myLoc:
+			return [myLoc]
 		var path = findPathTo(tile.coordinates, myLoc)
 		if !path.is_empty():
 			paths.append(path)

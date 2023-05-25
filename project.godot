@@ -20,6 +20,10 @@ config/icon="res://Assets/IdleFrames/DwarfIdle1.png"
 
 HUD="*res://Game/HUD/HUD.tscn"
 
+[debug]
+
+gdscript/warnings/unassigned_variable_op_assign=0
+
 [display]
 
 window/size/viewport_width=1280
@@ -99,4 +103,7 @@ my_down={
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
+textures/decals/filter=0
+textures/light_projectors/filter=0
+2d/snap/snap_2d_transforms_to_pixel=true
 textures/canvas_textures/default_texture_filter=0

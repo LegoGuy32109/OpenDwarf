@@ -44,16 +44,21 @@ class Mine extends Command:
 		# find a path to a nearby tile
 		var path = entity.pathfinder.findClosestNeighborPath(site.coordinates, entity.coordinates)
 		print(path)
-		targetCoordinates = path[-1]
 		
-		entity.currentAction = Dwarf.Actions.MOVING
-		if path and await entity.moveTo(self):
-			print("I'm mining a tile")
-			entity.currentAction = Dwarf.Actions.MINING
-			await entity.startMining(site)
-			entity.tileThoughts.erase(site.coordinates)
+		# path exists, prepare to move towards a spot next to mine site
+		if path:
+			targetCoordinates = path[-1]
+			entity.currentAction = Dwarf.Actions.MOVING
+			# moving to the site
+			if await entity.moveTo(self):
+				print("I'm mining a tile")
+				entity.currentAction = Dwarf.Actions.MINING
+				await entity.startMining(site)
+				entity.tileThoughts.erase(site.coordinates)
+			else:
+				print("My move to a mine site failed")
 		else:
-			print("My move to a mine site failed")
+			print("I can't think of a way to get to this mine site")
 		
 		entity.commandQueue.nextCommand()
 	

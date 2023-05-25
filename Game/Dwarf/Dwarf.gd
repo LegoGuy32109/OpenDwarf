@@ -100,6 +100,7 @@ func _moveToNeighbor():
 		neighborTiles[randi_range(0, neighborTiles.size()-1)]
 		await _visuallyMoveToCoordinates(chosenTile.coordinates)
 
+# called when entity moves to a new tile
 func _visuallyMoveToCoordinates(tileCoords : Vector2i):
 	var nextTile : Tile = tiles.getTileAt(tileCoords)
 	var singleTween = create_tween()
@@ -134,7 +135,7 @@ func _lookAround():
 			tempY+=1
 		xCoord+=1
 
-# handles visual movement to new location based on path from global Pathfinder
+# handles movement to new location based on path from global Pathfinder
 func moveTo(moveCommand : Command) -> bool:
 	while moveCommand and not moveCommand.targetCoordinates == coordinates:
 		var targetCoordinates : Vector2i = moveCommand.targetCoordinates
