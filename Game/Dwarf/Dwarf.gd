@@ -2,9 +2,9 @@ extends Node2D
 class_name Dwarf
 
 enum Actions {IDLE, MINING, MOVING}
-enum JOBS {NOTHING, MINING}
+enum Jobs {NOTHING, MINING}
 
-var job : int = JOBS.NOTHING
+var job : int = Jobs.NOTHING
 var currentAction : int = Actions.IDLE
 var coordinates : Vector2i = Vector2i()
 
@@ -12,9 +12,6 @@ var coordinates : Vector2i = Vector2i()
 var gridSize : int = 64
 # 1.0 default, multipies time taken to move over tiles
 var agentSpeed : float = 1.0
-
-# contain data about tiles dwarf is thinking about, a key is a Vector2i of coordinates
-var tileThoughts = {}
 
 # Communicate with world node
 @onready var world : Node2D = self.get_parent().get_parent()
@@ -54,15 +51,28 @@ func _process(_delta):
 	# run this logic once every 6 process (render) frames
 	if Engine.get_process_frames() % 6 == 0:
 		_lookAround()
-	
+
+
 	match currentAction:
 		Actions.IDLE:
 			sprites.play("idle", agentSpeed)
 			if commandQueue.commandList.size() > 0:
 				await commandQueue.commandList[0].run(self)
 			
-			# what should I do? think every 2 framse
+			# what should I do? think every 2 frames
 			elif Engine.get_process_frames() % 2 == 0:
+				match job:
+					# Jobs.NOTHING:
+						# nothing happens
+					
+					Jobs.MINING:
+						# find next tile if command queue empty
+						print("I'm a miner")
+						if not sitesToMine.nextSite(self):
+							print("I couldn't find any tile to mine")
+							job = Jobs.NOTHING
+				
+				# random movement on map
 				if HUD.idleMoveEnabled and randf() < 0.005:
 					currentAction = Actions.MOVING
 					await _moveToNeighbor()
@@ -80,11 +90,9 @@ func _process(_delta):
 			sprites.play("mine", 1.0)
 
 func _decideWhatToDo():
-	if tileThoughts.size() > 0:
-		print("I should mine something")
-		commandQueue.order(Command.Mine.new(
-			tiles.getTileAt(tileThoughts.keys().pick_random())
-		))
+	# logic to pick a random job
+	job = Jobs.MINING
+		
 
 func _on_state_menu_item_selected(index):
 	# user selected follow on dwarf menu
@@ -122,7 +130,7 @@ func _visuallyMoveToCoordinates(tileCoords : Vector2i):
 	coordinates = tileCoords
 	
 func _lookAround():
-	var radius := 2
+	var radius := 1
 	var xCoord : int = coordinates.x-radius
 	var yCoord : int = coordinates.y-radius
 	# has a square field of knowledge, in the future this should be a raycast thing
@@ -130,8 +138,8 @@ func _lookAround():
 		var tempY := yCoord
 		while tempY <= coordinates.y+radius:
 			var tile : Tile = tiles.getTileAt(Vector2i(xCoord,tempY))
-			if tile.orderedToMine and not tileThoughts.has(Vector2i(xCoord, tempY)):
-				tileThoughts[Vector2i(xCoord, tempY)] = "mine"
+			if tile.orderedToMine:
+				commandQueue.order(Command.Mine.new(tile))
 			tempY+=1
 		xCoord+=1
 
@@ -199,7 +207,10 @@ class CommandQueue:
 #		if _isCommandTypeInQueue(command):
 #			print(entity.name + " is already " + command.getType())
 #		else:
-		commandList.append(command)
+
+		# is this a valid command for the entity? Usually true
+		if command.valid(entity):
+			commandList.append(command)
 	
 	func nextCommand() -> Command:
 		return commandList.pop_front()

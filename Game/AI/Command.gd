@@ -9,6 +9,9 @@ func getType()->String:
 func run(_entity: Dwarf)->Signal:
 	return get_tree().create_timer(1).timeout
 
+# used to confirm ordering this command is valid for the entity, usually true
+func valid(_entity: Dwarf)->bool:
+	return true
 
 class Move extends Command:
 	var targetCoordinates: Vector2i
@@ -54,7 +57,6 @@ class Mine extends Command:
 				print("I'm mining a tile")
 				entity.currentAction = Dwarf.Actions.MINING
 				await entity.startMining(site)
-				entity.tileThoughts.erase(site.coordinates)
 			else:
 				print("My move to a mine site failed")
 		else:
@@ -62,5 +64,12 @@ class Mine extends Command:
 		
 		entity.commandQueue.nextCommand()
 	
+	func valid(entity: Dwarf):
+		for c in entity.commandQueue.commandList:
+			if c.getType() == "mine":
+				if c.site.coordinates == site.coordinates:
+					return false
+		return true
+
 	func getType()->String:
 		return "mine"

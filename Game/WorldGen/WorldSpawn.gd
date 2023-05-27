@@ -141,15 +141,9 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 					sitesToMine.removeSite(potentialTile)
 				elif msg != "force":
 					sitesToMine.addSite(potentialTile)
-		assignMiningDwarves()
-	
+
 	coordReigon.clear()
 
-func assignMiningDwarves():
-	# get dwarves in mining job
-	for entity in $Entities.get_children():
-		if entity.job != Dwarf.JOBS.MINING:
-			entity.job = Dwarf.JOBS.MINING
 
 
 # might return arrays for traversable and untraversable in this function
