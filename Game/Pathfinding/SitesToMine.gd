@@ -41,12 +41,15 @@ func removeSite(tile:Tile):
 # find closest site to mine for entity, don't allow more than one dwarf to mine a block  
 # unless no other sites to mine are reachable
 func nextSite(entity: Dwarf):
-	var validSites : Array[MineSite] = []
+	# [{site: MineSite, path: Array[Vector2i]}, ...]
+	var validSites : Array = []
 	for site in mineSites:
 		if site.tile.traversable:
 			mineSites.erase(site)
-		elif pathfinder.findClosestNeighborPath(site.tile.coordinates, entity.coordinates):
-			validSites.append(site)
+		else:
+			var path = pathfinder.findClosestNeighborPath(site.tile.coordinates, entity.coordinates)
+			if path:
+				validSites.append({"site": site, "path": path})
 			
 	if validSites.is_empty():
 		return false
@@ -57,14 +60,11 @@ func nextSite(entity: Dwarf):
 	
 	while otherMinerMax <= max_dwarves_mining_tile:
 	
-		for site in validSites:
-			var pathToSite : Array[Vector2i] = \
-			pathfinder.findClosestNeighborPath(site.tile.coordinates, entity.coordinates)
-			
-			if site.dwarvesCurrentlyMining.size() < otherMinerMax and \
-			(not siteToMine or pathToSite.size() < shortestPath.size()):
-				shortestPath = pathToSite
-				siteToMine = site
+		for siteObj in validSites:
+			if siteObj.path is Array[Vector2i] and siteObj.site.dwarvesCurrentlyMining.size() < otherMinerMax and \
+			(not siteToMine or siteObj.path.size() < shortestPath.size()):
+				shortestPath = siteObj.path
+				siteToMine = siteObj.site
 		
 		otherMinerMax += 1
 	

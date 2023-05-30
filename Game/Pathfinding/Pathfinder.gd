@@ -53,7 +53,6 @@ func findPathTo(newCoordinates : Vector2i, currentCoordinates : Vector2i) -> Arr
 		path.push_front(nextStep) # now current Character loc -> destination
 		nextStep = came_from[nextStep]
 		
-	print(path)
 	return path 
 
 func isNeighbor(loc1: Vector2i, loc2: Vector2i) -> bool:

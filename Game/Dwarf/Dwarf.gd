@@ -49,7 +49,7 @@ func _process(_delta):
 		$CommandContainer.add_child(node)
 	
 	# run this logic once every 6 process (render) frames
-	if Engine.get_process_frames() % 6 == 0:
+	if Engine.get_process_frames() % 10 == 0:
 		_lookAround()
 
 
@@ -68,7 +68,7 @@ func _process(_delta):
 					Jobs.MINING:
 						# find next tile if command queue empty
 						print("I'm a miner")
-						if not sitesToMine.nextSite(self):
+						if not await sitesToMine.nextSite(self):
 							print("I couldn't find any tile to mine")
 							job = Jobs.NOTHING
 				

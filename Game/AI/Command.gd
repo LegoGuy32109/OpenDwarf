@@ -46,7 +46,6 @@ class Mine extends Command:
 	func run(entity: Dwarf):
 		# find a path to a nearby tile
 		var path = entity.pathfinder.findClosestNeighborPath(site.coordinates, entity.coordinates)
-		print(path)
 		
 		# path exists, prepare to move towards a spot next to mine site
 		if path:
