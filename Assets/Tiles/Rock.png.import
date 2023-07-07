@@ -2,23 +2,23 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://br25w8kixqybw"
-path="res://.godot/imported/Ground.png-aeb7a1d8db49b7237ba0ddac0aaaf99f.ctex"
+uid="uid://r5u6ssrlvhmq"
+path="res://.godot/imported/Rock.png-c28ac20d74c7ac6c01d79ba4eb878ae8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/Ground.png"
-dest_files=["res://.godot/imported/Ground.png-aeb7a1d8db49b7237ba0ddac0aaaf99f.ctex"]
+source_file="res://Assets/Tiles/Rock.png"
+dest_files=["res://.godot/imported/Rock.png-c28ac20d74c7ac6c01d79ba4eb878ae8.ctex"]
 
 [params]
 
 compress/mode=0
+compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
-compress/bptc_ldr=0
 compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=false

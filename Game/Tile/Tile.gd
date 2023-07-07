@@ -5,8 +5,8 @@ signal boundIn
 signal boundOut
 
 @onready var sprite : Sprite2D = $Sprite2D
-var rockImg : Texture2D = load("res://Assets/Rock.png")
-var groundImg : Texture2D = load("res://Assets/Ground.png")
+var rockImg : Texture2D = load("res://Assets/Tiles/Rock.png")
+var groundImg : Texture2D = load("res://Assets/Tiles/Ground.png")
 
 var coordinates : Vector2i = Vector2i()
 var tooltipText : String = name
@@ -87,17 +87,13 @@ func mine() -> void:
 func setToRock() -> void:
 	sprite.texture = rockImg
 	tooltipText = "Rock"
-	setName(tooltipText)
 	traversable = false
 	
 func setToGround() -> void:
 	traversable = true
 	sprite.texture = groundImg
 	tooltipText = "Ground"
-	setName(tooltipText)
 
-func setName(text : String) -> void:
-	name = text + " " + str(coordinates)
 
 func _on_panel_mouse_entered() -> void:
 	mouseInPanel = true

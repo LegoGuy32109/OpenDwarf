@@ -2,30 +2,30 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://r5u6ssrlvhmq"
-path="res://.godot/imported/Rock.png-40ab8cfdf1a15d06ef41c1a452871e99.ctex"
+uid="uid://cpccd70iu17v1"
+path="res://.godot/imported/Mineable.png-30a57047f98029f2b8b850ce164237dc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/Rock.png"
-dest_files=["res://.godot/imported/Rock.png-40ab8cfdf1a15d06ef41c1a452871e99.ctex"]
+source_file="res://Assets/Tiles/Mineable.png"
+dest_files=["res://.godot/imported/Mineable.png-30a57047f98029f2b8b850ce164237dc.ctex"]
 
 [params]
 
 compress/mode=0
+compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
-compress/bptc_ldr=0
 compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=false
 mipmaps/limit=-1
-roughness/mode=1
+roughness/mode=0
 roughness/src_normal=""
-process/fix_alpha_border=false
+process/fix_alpha_border=true
 process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
