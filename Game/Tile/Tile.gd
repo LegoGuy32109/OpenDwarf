@@ -29,9 +29,9 @@ func _process(_delta) -> void:
 	
 	# might make flashing i dunno
 	if(orderedToMine):
-		$Mine.visible = true
+		$OrderToMineLabel.visible = true
 	else:
-		$Mine.visible = false
+		$OrderToMineLabel.visible = false
 
 func _input(event : InputEvent) -> void:
 	if mouseInPanel:

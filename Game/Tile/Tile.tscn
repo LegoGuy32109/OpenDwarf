@@ -27,7 +27,7 @@ grow_horizontal = 2
 grow_vertical = 2
 tooltip_text = "Tile"
 
-[node name="Mine" type="Sprite2D" parent="."]
+[node name="OrderToMineLabel" type="Sprite2D" parent="."]
 visible = false
 scale = Vector2(2, 2)
 texture = ExtResource("3_06yte")
