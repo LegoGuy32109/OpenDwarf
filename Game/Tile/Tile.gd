@@ -8,6 +8,8 @@ signal boundOut
 var rockImg : Texture2D = load("res://Assets/Tiles/Rock.png")
 var groundImg : Texture2D = load("res://Assets/Tiles/Ground.png")
 
+var itemScene : PackedScene = load("res://Game/Item/Item.tscn") 
+
 var coordinates : Vector2i = Vector2i()
 var tooltipText : String = name
 
@@ -80,9 +82,10 @@ func mine() -> void:
 	print(name+" was mined a bit")
 	# take in entity info, for like mining proficency
 	percentMined += 0.2 # randomize in some way?
-	if percentMined >= 1.0:
+	if percentMined >= 1.0 and not traversable:
 		removeMineable()
 		setToGround()
+		spawnItem()
 	
 func setToRock() -> void:
 	sprite.texture = rockImg
@@ -93,7 +96,10 @@ func setToGround() -> void:
 	traversable = true
 	sprite.texture = groundImg
 	tooltipText = "Ground"
-
+	
+func spawnItem() -> void:
+	var item : Item = itemScene.instantiate()
+	self.add_child(item)
 
 func _on_panel_mouse_entered() -> void:
 	mouseInPanel = true

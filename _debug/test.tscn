@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3 uid="uid://b2172qbw6vx2f"]
+
+[ext_resource type="PackedScene" uid="uid://0ki0oce2irj2" path="res://Game/Item/Item.tscn" id="1_5xegw"]
+[ext_resource type="PackedScene" uid="uid://dmqmpso7kd4gj" path="res://Game/Tile/Tile.tscn" id="1_rhpsw"]
+
+[node name="Test" type="Node2D"]
+
+[node name="Tile" parent="." instance=ExtResource("1_rhpsw")]
+
+[node name="Item" parent="Tile" instance=ExtResource("1_5xegw")]
+position = Vector2(0, 0)
+
+[node name="Tile2" parent="." instance=ExtResource("1_rhpsw")]
+position = Vector2(172, 0)
+
+[node name="Item" parent="Tile2" instance=ExtResource("1_5xegw")]
+
+[node name="Camera2D" type="Camera2D" parent="."]

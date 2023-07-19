@@ -1,8 +1,5 @@
 extends Node2D
+class_name Item
 
-
-#func _gui_input(event):
-#	if event is InputEventMouseButton:
-##        if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-#		print("cool", event)
-
+@onready var itemSprite : Sprite2D = self.get_child(1)
+@onready var shadowSprite : Sprite2D = self.get_child(0)
