@@ -22,6 +22,14 @@ var traversable : bool = false
 var orderedToMine : bool = false
 var percentMined : float = 0.0
 
+var items : ItemInWorld = itemScene.instantiate()
+
+
+func _ready() -> void:
+	setToRock()
+	self.add_child(items)
+	items.visible = false
+
 #NOTE I don't know how much 900 process funcs drain, but here we are.
 func _process(_delta) -> void:
 	if(HUD.tileTooltipsEnabled):
@@ -34,6 +42,7 @@ func _process(_delta) -> void:
 		$OrderToMineLabel.visible = true
 	else:
 		$OrderToMineLabel.visible = false
+
 
 func _input(event : InputEvent) -> void:
 	if mouseInPanel:
@@ -60,13 +69,10 @@ func _input(event : InputEvent) -> void:
 				boundOut.emit(self, "force")
 			else:
 				boundOut.emit(self)
-
 	else:
 		beenEdited = false
 
-func _ready() -> void:
-	setToRock()
-	
+
 func labelMineable() -> void:
 	if traversable:
 		print("I can't be mined!!")
@@ -85,7 +91,7 @@ func mine() -> void:
 	if percentMined >= 1.0 and not traversable:
 		removeMineable()
 		setToGround()
-		spawnItem()
+		dropItemChance()
 	
 func setToRock() -> void:
 	sprite.texture = rockImg
@@ -97,9 +103,13 @@ func setToGround() -> void:
 	sprite.texture = groundImg
 	tooltipText = "Ground"
 	
-func spawnItem() -> void:
-	var item : Item = itemScene.instantiate()
-	self.add_child(item)
+func dropItemChance() -> void:
+	# make this dependant on seed in future
+	if randf() > 0.3:
+		items.addItem("rock")
+	if randf() > 0.5:
+		items.addItem("flint")
+
 
 func _on_panel_mouse_entered() -> void:
 	mouseInPanel = true

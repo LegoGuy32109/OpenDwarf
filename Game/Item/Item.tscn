@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://0ki0oce2irj2"]
+[gd_scene load_steps=7 format=3 uid="uid://0ki0oce2irj2"]
 
 [ext_resource type="Script" path="res://Game/Item/Item.gd" id="1_4ilar"]
 [ext_resource type="Texture2D" uid="uid://rynwtigq053d" path="res://Assets/Items/Shadow.png" id="1_65s14"]
@@ -15,7 +15,7 @@ tracks/0/path = NodePath(".:position")
 tracks/0/interp = 2
 tracks/0/loop_wrap = true
 tracks/0/keys = {
-"times": PackedFloat32Array(0, 1, 1.9),
+"times": PackedFloat32Array(0, 1, 2),
 "transitions": PackedFloat32Array(1, 1.46409, 1),
 "update": 0,
 "values": [Vector2(0, 0), Vector2(0, -12.32), Vector2(0, 0)]
@@ -24,7 +24,7 @@ tracks/1/type = "value"
 tracks/1/imported = false
 tracks/1/enabled = true
 tracks/1/path = NodePath("Shadow:scale")
-tracks/1/interp = 1
+tracks/1/interp = 2
 tracks/1/loop_wrap = true
 tracks/1/keys = {
 "times": PackedFloat32Array(0, 1),
@@ -32,19 +32,50 @@ tracks/1/keys = {
 "update": 0,
 "values": [Vector2(1, 1), Vector2(1.24616, 1.24616)]
 }
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Shadow:position")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 1),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector2(0, 0), Vector2(0, 6.895)]
+}
+
+[sub_resource type="Animation" id="Animation_nn4u7"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Shadow:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector2(0, 6.895)]
+}
 
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_vhgg0"]
 _data = {
-"Item Hover": SubResource("Animation_jp1tn")
+"Item Hover": SubResource("Animation_jp1tn"),
+"RESET": SubResource("Animation_nn4u7")
 }
 
-[node name="Item" type="Node2D"]
+[node name="ItemInWorld" type="Node2D"]
+position = Vector2(0, -2.42879)
 script = ExtResource("1_4ilar")
 
 [node name="Shadow" type="Sprite2D" parent="."]
+position = Vector2(0, 6.895)
+scale = Vector2(1.04853, 1.04853)
 texture = ExtResource("1_65s14")
 
-[node name="Rock" type="Sprite2D" parent="."]
+[node name="Item" type="Sprite2D" parent="."]
 texture = ExtResource("2_6wxij")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
