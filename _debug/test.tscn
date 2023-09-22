@@ -1,12 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://b2172qbw6vx2f"]
 
-[ext_resource type="PackedScene" uid="uid://dmqmpso7kd4gj" path="res://Game/Tile/Tile.tscn" id="1_rhpsw"]
+[ext_resource type="Script" path="res://Game/Creature/testLimbs.gd" id="1_2t06d"]
 
 [node name="Test" type="Node2D"]
-
-[node name="Tile" parent="." instance=ExtResource("1_rhpsw")]
-
-[node name="Tile2" parent="." instance=ExtResource("1_rhpsw")]
-position = Vector2(172, 0)
-
-[node name="Camera2D" type="Camera2D" parent="."]
+script = ExtResource("1_2t06d")
