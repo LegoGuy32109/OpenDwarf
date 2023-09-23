@@ -20,7 +20,11 @@ class_name Limb
 @export var isHeart: bool = false
 #@export var items: Array[Item] = [] # Will contain bones for Limbs
 
-# You've created the brain
+# autocompleted variables
+@export var isOrgan: bool = false
+@export var needsBlood: bool = false
+
+# Limb must be named
 func _init(
 		_name: String, \
 		_weight: float = 1.0, \
@@ -35,9 +39,6 @@ func _init(
 	primaryConnection = null
 	connections = []
 
-# _init with a Connection parameter first
-# You've created a normal limb
-
 
 # I would love to have creatures with two brains, not right now
 func isBrain() -> bool:
@@ -46,8 +47,53 @@ func isBrain() -> bool:
 func terminates() -> bool:
 	return connections.is_empty()
 
-# Just attach a limb, no other nerves
-func connectLimb(_limb: Limb, ) -> void:
-	var connection = Connection.new(self, _limb)
+# Will identify if limb is an internal limb, and save result
+func findIfOrgan() -> bool:
+	var _isOrgan: bool = false
+	
+	# edge case if organ is brain, check through lower connections
+	if (primaryConnection == null):
+		for connection in connections:
+			for potentialConec in connection.linkTo.internalConnections:
+				if (potentialConec.linkFrom == self):
+					_isOrgan = true
+	else:
+		for conection in primaryConnection.linkFrom.internalConnections:
+			if (conection.linkTo == self):
+				_isOrgan = true
+	isOrgan = _isOrgan
+	return isOrgan
+
+# Find out if limb is in artery network
+# returns { should_be: bool, currently: bool }
+func connectedToHeart(arteryNetwork = []) -> Dictionary:
+	# If you don't have an artery (you're possibly an extremity), who cares?
+	if (primaryConnection && primaryConnection.vessels.artery == 0.0):
+		needsBlood = false
+		return { "should_be": false, "currently": false }
+	
+	var brain: Limb = self
+	while(brain.primaryConnection):
+		brain = brain.primaryConnection.linkFrom
+	
+	
+	
+
+# Attach a limb, making this limb the parent
+func connectLimb(_limb: Limb, _vesselInfo: Dictionary = {}) -> void:
+	var connection = Connection.new(self, _limb, _vesselInfo)
 	connections.append(connection)
+
+# Attach a 'internal' limb
+func connectOrgan(_limb: Limb, _vesselInfo: Dictionary = {}) -> void:
+	var connection = Connection.new(self, _limb, _vesselInfo)
+	connections.append(connection)
+	internalConnections.append(connection)
+
+# Called from a brain, that will be an internal parent of given limb
+func isBrainOf(_limb: Limb, _vesselInfo: Dictionary = {}) -> void:
+	var connection = Connection.new(self, _limb, _vesselInfo)
+	connections.append(connection)
+	_limb.internalConnections.append(connection)
+
 
