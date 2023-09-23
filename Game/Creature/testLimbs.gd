@@ -1,26 +1,38 @@
 extends Node
 
+# this will be fixed in next release
+#const Constants = preload("res://Game/Creature/Limb.gd")
+enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 
 func getLimbData(limb: Limb, levelsDeep = 0) -> void:
 	var depth = ""
 	for i in range(levelsDeep):
 		depth += "-"
 	
+	var isBrain = ""
+	if(levelsDeep == 0):
+		isBrain = "🧠"
+	
 	var isOrgan = ""
 	if(limb.findIfOrgan()):
-		isOrgan = " ORGAN🫁"
+		isOrgan = "🫁"
 	
 	var isHeart = ""
 	if(limb.isHeart):
-		isHeart = " HEART🫀"
+		isHeart = "🫀"
 	
-	print(depth+limb.name+isOrgan+isHeart)
+	var needsBlood = ""
+	var heartConnection: int = limb.connectedToHeart()
+	if (heartConnection == ConnectionToHeart.CONNECTED):
+		needsBlood = "🩸"
+	
+	print(depth+limb.name+" "+isBrain+isHeart+isOrgan+needsBlood)
 	for connection in limb.connections:
 		getLimbData(connection.linkTo, levelsDeep+1)
 
 func _ready() -> void:
 	print("\n==Starting Limb Test==\n")
-	var brain = Limb.new("🧠")
+	var brain = Limb.new("Brain")
 	var head = Limb.new("Head")
 	var eyeR = Limb.new("Right Eye")
 	var eyeL = Limb.new("Left Eye")
@@ -181,5 +193,7 @@ func _ready() -> void:
 	footL.connectLimb(toeL5, humanExtremity)
 	
 	getLimbData(brain)
-
+	
+	print(handR.connectedToHeart())
+	print("Hey")
 

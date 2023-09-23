@@ -20,9 +20,11 @@ class_name Limb
 @export var isHeart: bool = false
 #@export var items: Array[Item] = [] # Will contain bones for Limbs
 
-# autocompleted variables
+# Autocompleted variables
 @export var isOrgan: bool = false
 @export var needsBlood: bool = false
+enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
+@export_enum("NONE", "CONNECTED", "DISCONNECTED") var currentHeartConnection: int
 
 # Limb must be named
 func _init(
@@ -65,19 +67,47 @@ func findIfOrgan() -> bool:
 	return isOrgan
 
 # Find out if limb is in artery network
-# returns { should_be: bool, currently: bool }
-func connectedToHeart(arteryNetwork = []) -> Dictionary:
+# returns connectionToHeart enum
+func connectedToHeart() -> int:
 	# If you don't have an artery (you're possibly an extremity), who cares?
 	if (primaryConnection && primaryConnection.vessels.artery == 0.0):
+		# check if this was set to true before...
+		if(needsBlood):
+			# returning this at creature creation IS AN ERROR
+			return ConnectionToHeart.DISCONNECTED
 		needsBlood = false
-		return { "should_be": false, "currently": false }
+		return ConnectionToHeart.NONE
 	
+	# run connectedToHeart on every Artery Limb so we can confirm \
+	needsBlood = true # will stay false if it doesn't need blood
+	
+	# find brain of the body
 	var brain: Limb = self
-	while(brain.primaryConnection):
+	while (brain.primaryConnection):
+		# the brain needs to be connected to the arteryNetwork, 
+		# at least for humanoids idk
+		assert(brain.primaryConnection.vessels.artery > 0.0)
 		brain = brain.primaryConnection.linkFrom
 	
+	var network = brain.findArteryNetwork()
+	var numHeartsInNetwork: int = 0
+	for limb in network:
+		if limb.isHeart:
+			numHeartsInNetwork += 1
 	
-	
+	if (numHeartsInNetwork >= 1): # required amounts of hearts for creature?
+		return ConnectionToHeart.CONNECTED
+	else:
+		return ConnectionToHeart.DISCONNECTED
+
+# Get limbs connected by Arteries
+func findArteryNetwork(arteryNetwork: Array[Limb] = []):
+	for connection in connections:
+		if (connection.vessels.artery > 0.0):
+			var arteryLimb = connection.linkTo
+			arteryNetwork.append(arteryLimb)
+			arteryLimb.findArteryNetwork(arteryNetwork)
+	return arteryNetwork
 
 # Attach a limb, making this limb the parent
 func connectLimb(_limb: Limb, _vesselInfo: Dictionary = {}) -> void:
