@@ -4,7 +4,14 @@ extends Node
 #const Constants = preload("res://Game/Creature/Limb.gd")
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 
-func completeBody(limb: Limb, levelsDeep = 0) -> void:
+# Function must be run after attaching limbs together to autocomplete variables
+func completeBody(
+	limb: Limb, printToConsole: bool = false, levelsDeep = 0
+) -> void:
+	# print legend if printing information to console
+	if (printToConsole && levelsDeep == 0):
+		print("Legend\nBRAIN 🧠\nORGAN 🫁\nHEART 🫀\nNEEDS BLOOD 🩸\n")
+	
 	var depth = ""
 	for i in range(levelsDeep):
 		depth += "-"
@@ -34,10 +41,10 @@ func completeBody(limb: Limb, levelsDeep = 0) -> void:
 		var newCase:
 			needsBlood=" new heartConnection case:"+str(newCase)
 	
-	
-	print(depth+limb.name+" "+isBrain+isHeart+isOrgan+needsBlood)
+	if (printToConsole):
+		print(depth+limb.name+" "+isBrain+isHeart+isOrgan+needsBlood)
 	for connection in limb.connections:
-		completeBody(connection.linkTo, levelsDeep+1)
+		completeBody(connection.linkTo, printToConsole, levelsDeep+1)
 
 # returns root of body, "brain" 🧠
 func constructHuman() -> Limb:
@@ -209,7 +216,6 @@ func _ready() -> void:
 	print("\n==Starting Limb Test==\n")
 	var humanBrain: Limb = constructHuman()
 	
-	print("Legend\nBRAIN 🧠\nORGAN 🫁\nHEART 🫀\nNEEDS BLOOD 🩸\n")
 	completeBody(humanBrain)
 	
 	print("Hey")

@@ -26,8 +26,6 @@ class_name Limb
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 ## 0: NONE, 1: CONNETCED, 2: DISCONNECTED
 @export var currentHeartConnection: ConnectionToHeart = ConnectionToHeart.NONE
-@export_flags("Fire", "Water", "Earth", "Wind") var spell_elements = 0
-@export_enum("NONE", "CONNECTED", "DISCONNECTED") var character_name: String = "NONE"
 
 # Limb must be named
 func _init(
