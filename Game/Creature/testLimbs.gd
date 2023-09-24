@@ -4,7 +4,7 @@ extends Node
 #const Constants = preload("res://Game/Creature/Limb.gd")
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 
-func getLimbData(limb: Limb, levelsDeep = 0) -> void:
+func completeBody(limb: Limb, levelsDeep = 0) -> void:
 	var depth = ""
 	for i in range(levelsDeep):
 		depth += "-"
@@ -22,16 +22,25 @@ func getLimbData(limb: Limb, levelsDeep = 0) -> void:
 		isHeart = "🫀"
 	
 	var needsBlood = ""
-	var heartConnection: int = limb.connectedToHeart()
-	if (heartConnection == ConnectionToHeart.CONNECTED):
-		needsBlood = "🩸"
+	limb.currentHeartConnection = limb.connectedToHeart()
+	match (limb.currentHeartConnection):
+		ConnectionToHeart.CONNECTED:
+			needsBlood = "🩸"
+		ConnectionToHeart.NONE:
+			# Just a normal limb
+			needsBlood = ""
+		ConnectionToHeart.DISCONNECTED:
+			needsBlood="❌🩸"
+		var newCase:
+			needsBlood=" new heartConnection case:"+str(newCase)
+	
 	
 	print(depth+limb.name+" "+isBrain+isHeart+isOrgan+needsBlood)
 	for connection in limb.connections:
-		getLimbData(connection.linkTo, levelsDeep+1)
+		completeBody(connection.linkTo, levelsDeep+1)
 
-func _ready() -> void:
-	print("\n==Starting Limb Test==\n")
+# returns root of body, "brain" 🧠
+func constructHuman() -> Limb:
 	var brain = Limb.new("Brain")
 	var head = Limb.new("Head")
 	var eyeR = Limb.new("Right Eye")
@@ -92,7 +101,7 @@ func _ready() -> void:
 	var toeL4 = Limb.new("Toe")
 	var toeL5 = Limb.new("Toe")
 	
-	# Brain, Neck, [Torso], [Arm], Hand, [Leg], Foot
+	# Brain, Neck, [Torso], [Arm], [Hand], [Leg], [Foot]
 	var humanCritical = {
 		"tissue": 1.0,
 		"muscle": 1.0,
@@ -122,8 +131,10 @@ func _ready() -> void:
 		"artery": 1.0,
 	}
 	
+	# start connecting from root of the creature, the brain
 	brain.isBrainOf(head, humanCritical)
 	
+	# each limb has it's own block of connecting other limbs
 	head.connectLimb(eyeR, humanExtremity)
 	head.connectLimb(eyeL, humanExtremity)
 	head.connectLimb(earR, humanMayWiggle)
@@ -175,7 +186,7 @@ func _ready() -> void:
 	legRU.connectLimb(legRL, humanCritical)
 	
 	legRL.connectLimb(footR, humanCritical)
-	
+
 	footR.connectLimb(toeR1, humanExtremity)
 	footR.connectLimb(toeR2, humanExtremity)
 	footR.connectLimb(toeR3, humanExtremity)
@@ -192,8 +203,14 @@ func _ready() -> void:
 	footL.connectLimb(toeL4, humanExtremity)
 	footL.connectLimb(toeL5, humanExtremity)
 	
-	getLimbData(brain)
+	return brain
+
+func _ready() -> void:
+	print("\n==Starting Limb Test==\n")
+	var humanBrain: Limb = constructHuman()
 	
-	print(handR.connectedToHeart())
+	print("Legend\nBRAIN 🧠\nORGAN 🫁\nHEART 🫀\nNEEDS BLOOD 🩸\n")
+	completeBody(humanBrain)
+	
 	print("Hey")
 

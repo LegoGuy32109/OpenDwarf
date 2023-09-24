@@ -24,7 +24,10 @@ class_name Limb
 @export var isOrgan: bool = false
 @export var needsBlood: bool = false
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
-@export_enum("NONE", "CONNECTED", "DISCONNECTED") var currentHeartConnection: int
+## 0: NONE, 1: CONNETCED, 2: DISCONNECTED
+@export var currentHeartConnection: ConnectionToHeart = ConnectionToHeart.NONE
+@export_flags("Fire", "Water", "Earth", "Wind") var spell_elements = 0
+@export_enum("NONE", "CONNECTED", "DISCONNECTED") var character_name: String = "NONE"
 
 # Limb must be named
 func _init(
@@ -86,7 +89,8 @@ func connectedToHeart() -> int:
 	while (brain.primaryConnection):
 		# the brain needs to be connected to the arteryNetwork, 
 		# at least for humanoids idk
-		assert(brain.primaryConnection.vessels.artery > 0.0)
+		assert(brain.primaryConnection.vessels.artery > 0.0, \
+				name+" needs artery connection to heart")
 		brain = brain.primaryConnection.linkFrom
 	
 	var network = brain.findArteryNetwork()
