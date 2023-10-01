@@ -1,26 +1,25 @@
+@icon("res://icon.svg")
 @tool
+
 extends Node3D
 
-@export var RUN := false
+@export var RUN: bool = false:
+	set(value):
+		if value:
+			runCode()
 
-var knownVolumeInM := {
-	"Head": 0.00701,
-	"TorsoL": 0.0288,
-	"Guts": 0.00701,
-	"Neck": 0.000518,
-	"TorsoU": 0.0728,
-}
+func runCode() ->void:
+#	var totalBoundry: AABB = self.get_children()[0].mesh.get_aabb()
+	for child in self.get_children():
+		var currentBoundry: AABB = child.mesh.get_aabb()
+		print(child.name + str(child.scale) + str(currentBoundry.size))
+		# multiplying size arguments ~= get_volume()
+		print(currentBoundry.get_volume())
+		
+#		print(str(currentBoundry.position)+" "+str(currentBoundry.end))
+#		assert(str(child.scale) == str(Vector3(1.0, 1.0, 1.0)))
+#		totalBoundry.merge(child.mesh.get_aabb())
+	
+#	print("Hey!!\n"+str(totalBoundry.size))
 
-func _process(delta: float) -> void:
-	if(not RUN):
-		RUN = true
-		# Size seems to be independant of scale of a parent object
-		for child in self.get_children():
-			var mesh : MeshInstance3D = child
-			match child.name:
-				"Head", "Guts", "Neck", "TorsoU", "TorsoL":
-					var volume := mesh.mesh.get_aabb().get_volume()
-					var volumeInM: float = knownVolumeInM[child.name]
-					print(child.name+" "+str(volume)+" "+str(volumeInM))
-					print(volumeInM/volume)
 
