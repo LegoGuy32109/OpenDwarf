@@ -30,14 +30,14 @@ enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 # Limb must be named
 func _init(
 		_name: String, \
-		_weight: float = 1.0, \
+		_volume: float = 1.0, \
 		_material: String = "flesh", \
-		_volume: float = 1.0
+		_weight: float = 1.0
 		):
 	name = _name
-	weight = _weight
-	material = _material
 	volume = _volume
+	material = _material
+	weight = _weight
 	
 	primaryConnection = null
 	connections = []

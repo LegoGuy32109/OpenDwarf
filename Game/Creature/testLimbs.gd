@@ -43,6 +43,7 @@ func completeBody(
 	
 	if (printToConsole):
 		print(depth+limb.name+" "+isBrain+isHeart+isOrgan+needsBlood)
+		print(depth+str(limb.volume)+" m^3")
 	for connection in limb.connections:
 		completeBody(connection.linkTo, printToConsole, levelsDeep+1)
 
@@ -216,7 +217,7 @@ func _ready() -> void:
 	print("\n==Starting Limb Test==\n")
 	var humanBrain: Limb = constructHuman()
 	
-	completeBody(humanBrain)
+	completeBody(humanBrain, true)
 	
 	print("Hey")
 
