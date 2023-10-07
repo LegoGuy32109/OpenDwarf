@@ -57,13 +57,13 @@ func _input(event : InputEvent) -> void:
 			beenEdited = false
 		
 		if Input.is_action_just_pressed("click"):
-			print("inbound "+str(coordinates))
+			print("inbound %s" % coordinates)
 			boundIn.emit(self)
 			
 		if Input.is_action_just_released("click") and event.is_action("click"):
 			# when holding shift, might trigger an outBound from shift press
 			# Confirm the action is a click
-			print("outbound "+str(coordinates))
+			print("outbound %s" % coordinates)
 			# was hoping to find like a mods prop on event, but this works
 			if event.as_text().begins_with("Shift"):
 				boundOut.emit(self, "force")
@@ -85,7 +85,7 @@ func removeMineable() -> void:
 		orderedToMine = false
 
 func mine() -> void:
-	print(name+" was mined a bit")
+	print("%s was mined a bit" % name)
 	# take in entity info, for like mining proficency
 	percentMined += 0.2 # randomize in some way?
 	if percentMined >= 1.0 and not traversable:

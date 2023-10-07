@@ -31,7 +31,7 @@ var tooltipText: String = ""
 
 func _ready():
 	agentSpeed = RandomNumberGenerator.new().randi_range(85, 120)/100.0
-	tooltipText = name+"\nSpeed: "+str(agentSpeed)
+	tooltipText = "%s\nSpeed: %s" % [name, agentSpeed]
 
 func _process(_delta):
 	if HUD.tileTooltipsEnabled:

@@ -1,113 +1,75 @@
 extends Node
 
 # this will be fixed in next release
-#const Constants = preload("res://Game/Creature/Limb.gd")
+#const Constants = preload("res://Game/Creature/Organ.gd")
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 
-# Function must be run after attaching limbs together to autocomplete variables
-func completeBody(
-	limb: Limb, printToConsole: bool = false, levelsDeep = 0
-) -> void:
-	# print legend if printing information to console
-	if (printToConsole && levelsDeep == 0):
-		print("Legend\nBRAIN 🧠\nORGAN 🫁\nHEART 🫀\nNEEDS BLOOD 🩸\n")
-	
-	var depth = ""
-	for i in range(levelsDeep):
-		depth += "-"
-	
-	var isBrain = ""
-	if(levelsDeep == 0):
-		isBrain = "🧠"
-	
-	var isOrgan = ""
-	if(limb.findIfOrgan()):
-		isOrgan = "🫁"
-	
-	var isHeart = ""
-	if(limb.isHeart):
-		isHeart = "🫀"
-	
-	var needsBlood = ""
-	limb.currentHeartConnection = limb.connectedToHeart()
-	match (limb.currentHeartConnection):
-		ConnectionToHeart.CONNECTED:
-			needsBlood = "🩸"
-		ConnectionToHeart.NONE:
-			# Just a normal limb
-			needsBlood = ""
-		ConnectionToHeart.DISCONNECTED:
-			needsBlood="❌🩸"
-		var newCase:
-			needsBlood=" new heartConnection case:"+str(newCase)
-	
-	if (printToConsole):
-		print(depth+limb.name+" "+isBrain+isHeart+isOrgan+needsBlood)
-		print(depth+str(limb.volume)+" m^3")
-	for connection in limb.connections:
-		completeBody(connection.linkTo, printToConsole, levelsDeep+1)
+# Function must be run after attaching organs together to autocomplete variables
+func completeBody(brain: Organ) -> Body:
+	var body = Body.new(brain, true)
+	return body
 
 # returns root of body, "brain" 🧠
-func constructHuman() -> Limb:
-	var brain = Limb.new("Brain", 0.00127387943212)
-	var head = Limb.new("Head", 0.04119239747524)
-	var eyeR = Limb.new("Right Eye", 0.0000923661064)
-	var eyeL = Limb.new("Left Eye", 0.0000923661064)
-	var earR = Limb.new("Right Ear", 0.00010917393956)
-	var earL = Limb.new("Left Ear", 0.00010917393956)
-	var mouth = Limb.new("Mouth", 0.00026071682805)
-	var nose = Limb.new("Nose", 0.00007716972323)
+func constructHuman() -> Organ:
+	var brain = Organ.new("Brain", 0.00127387943212)
+	var head = Organ.new("Head", 0.04119239747524)
+	var eyeR = Organ.new("Right Eye", 0.0000923661064)
+	var eyeL = Organ.new("Left Eye", 0.0000923661064)
+	var earR = Organ.new("Right Ear", 0.00010917393956)
+	var earL = Organ.new("Left Ear", 0.00010917393956)
+	var mouth = Organ.new("Mouth", 0.00026071682805)
+	var nose = Organ.new("Nose", 0.00007716972323)
 	
-	var neck = Limb.new("Neck", 0.00051674747374)
-	var torsoU = Limb.new("Upper Torso", 0.07289374619722)
-	var heart = Limb.new("Heart", 0.00061203143559)
-	var lungR = Limb.new("Right Lung", 0.00409334106371)
-	var lungL = Limb.new("Left Lung", 0.00409334525466)
-	var stomach = Limb.new("Stomach", 0.00044758911827)
-	var liver = Limb.new("Liver", 0.00147630751599)
-	var spleen = Limb.new("Spleen", 0.00014384483802)
-	var pancreas = Limb.new("Pancreas", 0.00009726657299)
+	var neck = Organ.new("Neck", 0.00051674747374)
+	var torsoU = Organ.new("Upper Torso", 0.07289374619722)
+	var heart = Organ.new("Heart", 0.00061203143559)
+	var lungR = Organ.new("Right Lung", 0.00409334106371)
+	var lungL = Organ.new("Left Lung", 0.00409334525466)
+	var stomach = Organ.new("Stomach", 0.00044758911827)
+	var liver = Organ.new("Liver", 0.00147630751599)
+	var spleen = Organ.new("Spleen", 0.00014384483802)
+	var pancreas = Organ.new("Pancreas", 0.00009726657299)
 	
-	var armRU = Limb.new("Right Upper Arm", 0.00300435884856)
-	var armRL = Limb.new("Right Lower Arm", 0.003882199293)
-	var handR = Limb.new("Right Hand", 0.00218579918146)
-	var thumbR = Limb.new("Right Thumb", 0.00009846345347)
-	var fingerR1 = Limb.new("Finger", 0.00015331352188)
-	var fingerR2 = Limb.new("Finger", 0.00015331352188)
-	var fingerR3 = Limb.new("Finger", 0.00015331352188)
-	var fingerR4 = Limb.new("Pinky", 0.00015331352188)
+	var armRU = Organ.new("Right Upper Arm", 0.00300435884856)
+	var armRL = Organ.new("Right Lower Arm", 0.003882199293)
+	var handR = Organ.new("Right Hand", 0.00218579918146)
+	var thumbR = Organ.new("Right Thumb", 0.00009846345347)
+	var fingerR1 = Organ.new("Finger", 0.00015331352188)
+	var fingerR2 = Organ.new("Finger", 0.00015331352188)
+	var fingerR3 = Organ.new("Finger", 0.00015331352188)
+	var fingerR4 = Organ.new("Pinky", 0.00015331352188)
 	
-	var armLU = Limb.new("Left Upper Arm", 0.00300435884856)
-	var armLL = Limb.new("Left Lower Arm", 0.003882199293)
-	var handL = Limb.new("Left Hand", 0.00218579918146)
-	var thumbL = Limb.new("Left Thumb", 0.00009846345347)
-	var fingerL1 = Limb.new("Finger", 0.00015331352188)
-	var fingerL2 = Limb.new("Finger", 0.00015331352188)
-	var fingerL3 = Limb.new("Finger", 0.00015331352188)
-	var fingerL4 = Limb.new("Pinky", 0.00015331352188)
+	var armLU = Organ.new("Left Upper Arm", 0.00300435884856)
+	var armLL = Organ.new("Left Lower Arm", 0.003882199293)
+	var handL = Organ.new("Left Hand", 0.00218579918146)
+	var thumbL = Organ.new("Left Thumb", 0.00009846345347)
+	var fingerL1 = Organ.new("Finger", 0.00015331352188)
+	var fingerL2 = Organ.new("Finger", 0.00015331352188)
+	var fingerL3 = Organ.new("Finger", 0.00015331352188)
+	var fingerL4 = Organ.new("Pinky", 0.00015331352188)
 	
-	var torsoL = Limb.new("Lower Torso", 0.02879198081791)
-	var kidneyL = Limb.new("Left Kidney", 0.00014577648835)
-	var kidneyR = Limb.new("Right Kidney", 0.00013417842274)
-	var guts = Limb.new("Guts", 0.00700118485838)
+	var torsoL = Organ.new("Lower Torso", 0.02879198081791)
+	var kidneyL = Organ.new("Left Kidney", 0.00014577648835)
+	var kidneyR = Organ.new("Right Kidney", 0.00013417842274)
+	var guts = Organ.new("Guts", 0.00700118485838)
 	
-	var legRU = Limb.new("Right Upper Leg", 0.00600656634197)
-	var legRL = Limb.new("Right Lower Leg", 0.00980964675546)
-	var footR = Limb.new("Right Foot", 0.00232410663739)
-	var toeR1 = Limb.new("Toe", 0.00002738583316)
-	var toeR2 = Limb.new("Toe", 0.00002738583316)
-	var toeR3 = Limb.new("Toe", 0.00002738583316)
-	var toeR4 = Limb.new("Toe", 0.00002738583316)
-	var toeR5 = Limb.new("Toe", 0.00002738583316)
+	var legRU = Organ.new("Right Upper Leg", 0.00600656634197)
+	var legRL = Organ.new("Right Lower Leg", 0.00980964675546)
+	var footR = Organ.new("Right Foot", 0.00232410663739)
+	var toeR1 = Organ.new("Toe", 0.00002738583316)
+	var toeR2 = Organ.new("Toe", 0.00002738583316)
+	var toeR3 = Organ.new("Toe", 0.00002738583316)
+	var toeR4 = Organ.new("Toe", 0.00002738583316)
+	var toeR5 = Organ.new("Toe", 0.00002738583316)
 	
-	var legLU = Limb.new("Left Upper Leg", 0.00600656680763)
-	var legLL = Limb.new("Left Lower Leg", 0.00980964768678)
-	var footL = Limb.new("Left Foot", 0.00232410663739)
-	var toeL1 = Limb.new("Toe", 0.00002738583316)
-	var toeL2 = Limb.new("Toe", 0.00002738583316)
-	var toeL3 = Limb.new("Toe", 0.00002738583316)
-	var toeL4 = Limb.new("Toe", 0.00002738583316)
-	var toeL5 = Limb.new("Toe", 0.00002738583316)
+	var legLU = Organ.new("Left Upper Leg", 0.00600656680763)
+	var legLL = Organ.new("Left Lower Leg", 0.00980964768678)
+	var footL = Organ.new("Left Foot", 0.00232410663739)
+	var toeL1 = Organ.new("Toe", 0.00002738583316)
+	var toeL2 = Organ.new("Toe", 0.00002738583316)
+	var toeL3 = Organ.new("Toe", 0.00002738583316)
+	var toeL4 = Organ.new("Toe", 0.00002738583316)
+	var toeL5 = Organ.new("Toe", 0.00002738583316)
 	
 	# Brain, Neck, [Torso], [Arm], [Hand], [Leg], [Foot]
 	var humanCritical = {
@@ -142,16 +104,16 @@ func constructHuman() -> Limb:
 	# start connecting from root of the creature, the brain
 	brain.isBrainOf(head, humanCritical)
 	
-	# each limb has it's own block of connecting other limbs
-	head.connectLimb(eyeR, humanExtremity)
-	head.connectLimb(eyeL, humanExtremity)
-	head.connectLimb(earR, humanMayWiggle)
-	head.connectLimb(earL, humanMayWiggle)
-	head.connectLimb(nose, humanMayWiggle)
-	head.connectLimb(mouth, humanExtremity)
-	head.connectLimb(neck, humanCritical)
+	# each organ has it's own block of connecting other organs
+	head.connectOrgan(eyeR, humanExtremity)
+	head.connectOrgan(eyeL, humanExtremity)
+	head.connectOrgan(earR, humanMayWiggle)
+	head.connectOrgan(earL, humanMayWiggle)
+	head.connectOrgan(nose, humanMayWiggle)
+	head.connectOrgan(mouth, humanExtremity)
+	head.connectOrgan(neck, humanCritical)
 	
-	neck.connectLimb(torsoU, humanCritical)
+	neck.connectOrgan(torsoU, humanCritical)
 	
 	heart.isHeart = true
 	torsoU.connectOrgan(heart, humanMuscleOrgan)
@@ -161,63 +123,67 @@ func constructHuman() -> Limb:
 	torsoU.connectOrgan(liver, humanOrgan)
 	torsoU.connectOrgan(spleen, humanOrgan)
 	torsoU.connectOrgan(pancreas, humanOrgan)
-	torsoU.connectLimb(armRU, humanCritical)
-	torsoU.connectLimb(armLU, humanCritical)
-	torsoU.connectLimb(torsoL, humanCritical)
+	torsoU.connectOrgan(armRU, humanCritical)
+	torsoU.connectOrgan(armLU, humanCritical)
+	torsoU.connectOrgan(torsoL, humanCritical)
 	
-	armRU.connectLimb(armRL, humanCritical)
+	armRU.connectOrgan(armRL, humanCritical)
 	
-	armRL.connectLimb(handR, humanCritical)
+	armRL.connectOrgan(handR, humanCritical)
 	
-	handR.connectLimb(thumbR, humanExtremity)
-	handR.connectLimb(fingerR1, humanExtremity)
-	handR.connectLimb(fingerR2, humanExtremity)
-	handR.connectLimb(fingerR3, humanExtremity)
-	handR.connectLimb(fingerR4, humanExtremity)
+	handR.connectOrgan(thumbR, humanExtremity)
+	handR.connectOrgan(fingerR1, humanExtremity)
+	handR.connectOrgan(fingerR2, humanExtremity)
+	handR.connectOrgan(fingerR3, humanExtremity)
+	handR.connectOrgan(fingerR4, humanExtremity)
 	
-	armLU.connectLimb(armLL, humanCritical)
+	armLU.connectOrgan(armLL, humanCritical)
 	
-	armLL.connectLimb(handL, humanCritical)
+	armLL.connectOrgan(handL, humanCritical)
 	
-	handL.connectLimb(thumbL, humanExtremity)
-	handL.connectLimb(fingerL1, humanExtremity)
-	handL.connectLimb(fingerL2, humanExtremity)
-	handL.connectLimb(fingerL3, humanExtremity)
-	handL.connectLimb(fingerL4, humanExtremity)
+	handL.connectOrgan(thumbL, humanExtremity)
+	handL.connectOrgan(fingerL1, humanExtremity)
+	handL.connectOrgan(fingerL2, humanExtremity)
+	handL.connectOrgan(fingerL3, humanExtremity)
+	handL.connectOrgan(fingerL4, humanExtremity)
 	
 	torsoL.connectOrgan(guts, humanMuscleOrgan)
 	torsoL.connectOrgan(kidneyR, humanOrgan)
 	torsoL.connectOrgan(kidneyL, humanOrgan)
-	torsoL.connectLimb(legRU, humanCritical)
-	torsoL.connectLimb(legLU, humanCritical)
+	torsoL.connectOrgan(legRU, humanCritical)
+	torsoL.connectOrgan(legLU, humanCritical)
 	
-	legRU.connectLimb(legRL, humanCritical)
+	legRU.connectOrgan(legRL, humanCritical)
 	
-	legRL.connectLimb(footR, humanCritical)
+	legRL.connectOrgan(footR, humanCritical)
 
-	footR.connectLimb(toeR1, humanExtremity)
-	footR.connectLimb(toeR2, humanExtremity)
-	footR.connectLimb(toeR3, humanExtremity)
-	footR.connectLimb(toeR4, humanExtremity)
-	footR.connectLimb(toeR5, humanExtremity)
+	footR.connectOrgan(toeR1, humanExtremity)
+	footR.connectOrgan(toeR2, humanExtremity)
+	footR.connectOrgan(toeR3, humanExtremity)
+	footR.connectOrgan(toeR4, humanExtremity)
+	footR.connectOrgan(toeR5, humanExtremity)
 	
-	legLU.connectLimb(legLL, humanCritical)
+	legLU.connectOrgan(legLL, humanCritical)
 	
-	legLL.connectLimb(footL, humanCritical)
+	legLL.connectOrgan(footL, humanCritical)
 	
-	footL.connectLimb(toeL1, humanExtremity)
-	footL.connectLimb(toeL2, humanExtremity)
-	footL.connectLimb(toeL3, humanExtremity)
-	footL.connectLimb(toeL4, humanExtremity)
-	footL.connectLimb(toeL5, humanExtremity)
+	footL.connectOrgan(toeL1, humanExtremity)
+	footL.connectOrgan(toeL2, humanExtremity)
+	footL.connectOrgan(toeL3, humanExtremity)
+	footL.connectOrgan(toeL4, humanExtremity)
+	footL.connectOrgan(toeL5, humanExtremity)
 	
 	return brain
 
 func _ready() -> void:
-	print("\n==Starting Limb Test==\n")
-	var humanBrain: Limb = constructHuman()
+	print("\n==Starting Organ Test==\n")
+	var humanBrain: Organ = constructHuman()
 	
-	completeBody(humanBrain, true)
-	
-	print("Hey")
+	var body = completeBody(humanBrain)
+	var organs: Array[Organ] = body.getAllOrgans()
+	organs.sort_custom(
+		func(organA: Organ, organB: Organ): return organA.volume > organB.volume
+	)
+	for organ in organs:
+		print("%s\n%s m^3\n%s cm^3" % [organ.name, organ.volume, organ.volume*1000000])
 
