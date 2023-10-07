@@ -32,3 +32,4 @@ environment = SubResource("Environment_yimp0")
 
 [node name="AnatomyOpenDwarf" parent="." instance=ExtResource("2_yir2u")]
 script = ExtResource("2_emqsr")
+fileName = "human_female.json"

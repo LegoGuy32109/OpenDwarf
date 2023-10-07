@@ -31,3 +31,8 @@ func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary = {}):
 		var vesselInfo: Array = connectionData.keys()
 		for vesselName in vesselInfo: 
 			vessels[vesselName] = connectionData[vesselName]
+
+func getInfo():
+	var infoObj = vessels
+	infoObj["isMagic"] = isMagic
+	return infoObj

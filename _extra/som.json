@@ -1,0 +1,30 @@
+{
+ "id": "Brain",
+ "name": "Brain",
+ "volume": "0.0201",
+ "isInternal": true,
+ "connections": {
+  "internal": [
+   [
+    {
+     "organ": {
+      "id": "Head",
+      "name": "Head",
+      "volume": "0.2031",
+      "connections": {
+       "internal": [],
+       "external": []
+      }
+     },
+     "connection": {
+      "tissue": 1.0,
+      "muscle": 1.0,
+      "nerve": 1.0,
+      "artery": 1.0
+     }
+    }
+   ]
+  ],
+  "external": []
+ }
+}

@@ -9,11 +9,18 @@ var externalOrgans: Array[Organ]
 # Organs ...
 var internalOrgans: Array[Organ]
 
-func _init(_rootOrgan: Organ, printToConsole = false) -> void:
-	rootOrgan = _rootOrgan
-	var buildLog = _traverseBody(_rootOrgan)
-	if (printToConsole):
-		print(buildLog)
+## Construct a Body from a chain of limbs, or a template
+func _init(params: Dictionary, printToConsole = false) -> void:
+	# constructing from a chain of limbs, starting with brain or "root"
+	if params.has("rootOrgan"):
+		rootOrgan = params.rootOrgan
+		var buildLog = _traverseBody(rootOrgan)
+		if (printToConsole):
+			print(buildLog)
+		return
+	
+	# constructing from template parameters
+	print(params)
 
 func getAllOrgans():
 	var allOrgans = externalOrgans.duplicate()

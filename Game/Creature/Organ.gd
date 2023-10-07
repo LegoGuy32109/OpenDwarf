@@ -3,15 +3,17 @@ extends Resource
 class_name Organ
 
 # Required variables
+@export var organId: String # connects it to template
 @export var name: String
-@export var weight: float
-@export var material: String # material will be class
-@export var volume: float
+@export var volume: float = 1.0
+@export var material: String = "flesh" # will be class soon
+@export var weight: float = 1.0
 
 # Right now, OpenDwarf creatures have to be directional non-cyclical
 @export var primaryConnection: Connection
-@export var connections: Array[Connection]
-# subset of connections, leadsTo organs that are internal
+# leadsTo organs that are external, or completely cover the current organ
+@export var externalConnections: Array[Connection]
+# leadsTo organs that are internal
 @export var internalConnections: Array[Connection]
 
 # Optional variables
@@ -22,51 +24,64 @@ class_name Organ
 #@export var items: Array[Item] = [] # Will contain bones for Organs
 
 # Autocompleted variables
-@export var isOrgan: bool = false
+@export var isInternal: bool = false
 @export var needsBlood: bool = false
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 ## 0: NONE, 1: CONNETCED, 2: DISCONNECTED
 @export var currentHeartConnection: ConnectionToHeart = ConnectionToHeart.NONE
 
 # Organ must be named
-func _init(
-		_name: String, \
-		_volume: float = 1.0, \
-		_material: String = "flesh", \
-		_weight: float = 1.0
-		):
-	name = _name
-	volume = _volume
-	material = _material
-	weight = _weight
+#func _init( 
+#		_organId: String, \
+#		_name: String, \
+#		_volume: float = 1.0, \
+#		_material: String = "flesh", \
+#		_weight: float = 1.0):
+func _init(params: Dictionary):
+	organId = params.id
+	name = params.id # will be overwritten if exists in pramas
+	
+	var propList = self.get_property_list().map(
+		func (prop: Dictionary): return prop.name
+	)
+	for prop in propList:
+		if params.has(prop):
+			self.set(prop, params[prop])
 	
 	primaryConnection = null
-	connections = []
 
+func getInfo() -> Dictionary:
+	return {
+		"organId": organId,
+		"name": name,
+		"volume": volume,
+		"material": material,
+		"weight": weight,
+		"isHeart": isHeart,
+		"isInternal": isInternal,
+		"needsBlood": needsBlood,
+	}
 
 # I would love to have creatures with two brains, not right now
 func isBrain() -> bool:
 	return primaryConnection == null
 
 func terminates() -> bool:
-	return connections.is_empty()
+	return externalConnections.is_empty() and internalConnections.is_empty()
 
 # Will identify if Organ is an internal Organ, and save result
 func findIfInternal() -> bool:
-	var _isOrgan: bool = false
+	var _isInternal: bool = false
 	
-	# edge case if organ is brain, check through lower connections
+	# edge case if organ is brain, must have been set in body creation
 	if (primaryConnection == null):
-		for connection in connections:
-			for potentialConec in connection.linkTo.internalConnections:
-				if (potentialConec.linkFrom == self):
-					_isOrgan = true
+		return isInternal
 	else:
 		for conection in primaryConnection.linkFrom.internalConnections:
 			if (conection.linkTo == self):
-				_isOrgan = true
-	isOrgan = _isOrgan
-	return isOrgan
+				_isInternal = true
+	isInternal = _isInternal
+	return isInternal
 
 # Find out if Organ is in artery network
 # returns connectionToHeart enum
@@ -103,9 +118,19 @@ func connectedToHeart() -> ConnectionToHeart:
 	else:
 		return ConnectionToHeart.DISCONNECTED
 
+func getAllInternalOrgans() -> Array[Organ]:
+	var internalOrgans = internalConnections.map(
+		func (connec: Connection): return connec.linkTo
+	)
+	if primaryConnection.linkFrom.isInternal:
+		internalOrgans.append(primaryConnection.linkFrom)
+	return internalOrgans
+
 # Get Organs connected by Arteries
 func findArteryNetwork(arteryNetwork: Array[Organ] = []):
-	for connection in connections:
+	var allConnections := externalConnections
+	allConnections.append_array(internalConnections)
+	for connection in allConnections:
 		if (connection.vessels.artery > 0.0):
 			var arteryOrgan = connection.linkTo
 			arteryNetwork.append(arteryOrgan)
@@ -115,18 +140,11 @@ func findArteryNetwork(arteryNetwork: Array[Organ] = []):
 # Attach a Organ, making this Organ the parent
 func connectOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
 	var connection = Connection.new(self, _organ, _vesselInfo)
-	connections.append(connection)
+	externalConnections.append(connection)
 
 # Attach a 'internal' organ
 func connectInternalOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
 	var connection = Connection.new(self, _organ, _vesselInfo)
-	connections.append(connection)
 	internalConnections.append(connection)
-
-# Called from a brain, that will be an internal parent of given organ
-func isBrainOf(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
-	var connection = Connection.new(self, _organ, _vesselInfo)
-	connections.append(connection)
-	_organ.internalConnections.append(connection)
 
 
