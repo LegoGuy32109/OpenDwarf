@@ -57,13 +57,9 @@ func saveFile() ->void:
 			"size":currentBoundry.size,
 		}
 	
-	var output = JSON.stringify(outputObj, "	")
-	
-	print("=====\nOrgan Information\n=====")
-	print(output)
+	var output: String = JSON.stringify(outputObj, "	")
 	
 	var file = FileAccess.open(filePath, FileAccess.WRITE)
-	
 	file.store_string(output)
 	file.close()
 

@@ -28,11 +28,27 @@ func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary = {}):
 	if connectionData.is_empty():
 		vessels.tissue = 1.0
 	else:
-		var vesselInfo: Array = connectionData.keys()
+		var vesselInfo: Array = vessels.keys()
 		for vesselName in vesselInfo: 
-			vessels[vesselName] = connectionData[vesselName]
+			if connectionData.has(vesselName):
+				vessels[vesselName] = connectionData[vesselName]
+			else:
+				vessels[vesselName] = 0.0
+		
+		# I will think of a better way to do this then hardcode eventually
+		if connectionData.has("isMagic"):
+			isMagic = connectionData.isMagic
+		
+		if vessels.artery > 0.0:
+			linkFrom.needsBlood = true
+			linkTo.needsBlood = true
 
-func getInfo():
+func getInfo(all: bool = false):
 	var infoObj = vessels
 	infoObj["isMagic"] = isMagic
+	if not all:
+		for key in infoObj.keys():
+			if (infoObj[key] is float and infoObj[key] == 0.0) \
+				or (infoObj[key] is bool and infoObj[key] == false):
+				infoObj.erase(key)
 	return infoObj

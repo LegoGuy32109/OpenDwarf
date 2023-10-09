@@ -1,75 +1,69 @@
 extends Node
 
-# this will be fixed in next release
-#const Constants = preload("res://Game/Creature/Organ.gd")
-enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
-
-# Function must be run after attaching organs together to autocomplete variables
-func completeBody(brain: Organ) -> Body:
-	var body = Body.new({"rootOrgan": brain}, true)
-	return body
+@export_dir var organDataFilePath: String = "res://Game/Creature/templates"
+@export var fileName: String = "human_male_template.json"
 
 # returns root of body, "brain" 🧠
 func constructHuman() -> Organ:
-	var brain = Organ.new({"id": "Brain", "volume": 0.00127387943212})
-	var head = Organ.new({"id": "Head", "volume": 0.04119239747524})
-	var eyeR = Organ.new({"id": "EyeR", "name": "Right Eye", "volume": 0.0000923661064})
-	var eyeL = Organ.new({"id": "EyeL", "name": "Left Eye", "volume": 0.0000923661064})
-	var earR = Organ.new({"id": "EarR", "name": "Right Ear", "volume": 0.00010917393956})
-	var earL = Organ.new({"id": "EarL", "name": "Left Ear", "volume": 0.00010917393956})
-	var mouth = Organ.new({"id": "Mouth", "volume": 0.00026071682805})
-	var nose = Organ.new({"id": "Nose", "volume": 0.00007716972323})
+	var brain = Organ.new({"isInternal": true, "id": "Brain", "volume": 0.00127387943212, "weight": 1.37})
+	var head = Organ.new({"id": "Head", "volume": 0.04119239747524, "weight": 5.5})
+	var eyeR = Organ.new({"id": "EyeR", "name": "Right Eye", "volume": 0.0000923661064, "weight": 0.0075})
+	var eyeL = Organ.new({"id": "EyeL", "name": "Left Eye", "volume": 0.0000923661064, "weight": 0.0075})
+	var earR = Organ.new({"id": "EarR", "name": "Right Ear", "volume": 0.00010917393956, "weight": 0.0014})
+	var earL = Organ.new({"id": "EarL", "name": "Left Ear", "volume": 0.00010917393956, "weight": 0.0014})
+	var mouth = Organ.new({"id": "Mouth", "volume": 0.00026071682805, "weight": 0.025})
+	var nose = Organ.new({"id": "Nose", "volume": 0.00007716972323, "weight": 0.008})
 	
-	var neck = Organ.new({"id": "Neck", "volume": 0.00051674747374})
-	var torsoU = Organ.new({"id": "TorsoU", "name": "Upper Torso", "volume": 0.07289374619722})
-	var heart = Organ.new({"id": "Heart", "volume": 0.00061203143559})
-	var lungR = Organ.new({"id": "LungR", "name": "Right Lung", "volume": 0.00409334106371})
-	var lungL = Organ.new({"id": "LungL", "name": "Left Lung", "volume": 0.00409334525466})
-	var stomach = Organ.new({"id": "Stomach", "volume": 0.00044758911827})
-	var liver = Organ.new({"id": "Liver", "volume": 0.00147630751599})
-	var spleen = Organ.new({"id": "Spleen", "volume": 0.00014384483802})
-	var pancreas = Organ.new({"id": "Pancreas", "volume":  0.00009726657299})
+	var neck = Organ.new({"id": "Neck", "volume": 0.00051674747374, "weight": 3})
+	var torsoU = Organ.new({"id": "TorsoU", "name": "Upper Torso", "volume": 0.07289374619722, "weight": 15})
+	var heart = Organ.new({"isHeart": true, "id": "Heart", "volume": 0.00061203143559, "weight": 0.35})
+	var lungR = Organ.new({"id": "LungR", "name": "Right Lung", "volume": 0.00409334106371, "weight": 1.05})
+	var lungL = Organ.new({"id": "LungL", "name": "Left Lung", "volume": 0.00409334525466, "weight": 1.05})
+	var stomach = Organ.new({"id": "Stomach", "volume": 0.00044758911827, "weight": 1.75})
+	var liver = Organ.new({"id": "Liver", "volume": 0.00147630751599, "weight": 1.5})
+	var spleen = Organ.new({"id": "Spleen", "volume": 0.00014384483802, "weight": 0.175})
+	var pancreas = Organ.new({"id": "Pancreas", "volume":  0.00009726657299, "weight": 0.085})
 	
-	var armRU = Organ.new({"id": "ArmRU", "name": "Right Upper Arm", "volume": 0.00300435884856})
-	var armRL = Organ.new({"id": "ArmRL", "name": "Right Lower Arm", "volume": 0.003882199293})
-	var handR = Organ.new({"id": "HandR", "name": "Right Hand", "volume": 0.00218579918146})
-	var thumbR = Organ.new({"id": "ThumbR", "name": "Right Thumb", "volume": 0.00009846345347})
-	var fingerR1 = Organ.new({"id": "FingerR1", "name": "Finger", "volume": 0.00015331352188})
-	var fingerR2 = Organ.new({"id": "FingerR2", "name": "Finger", "volume": 0.00015331352188})
-	var fingerR3 = Organ.new({"id": "FingerR3", "name": "Finger", "volume": 0.00015331352188})
-	var fingerR4 = Organ.new({"id": "FingerR4", "name": "Pinky", "volume": 0.00015331352188})
+	var armRU = Organ.new({"limbName": "Right Arm", "id": "ArmRU", "name": "Right Upper Arm", "volume": 0.00300435884856, "weight": 3})
+	var armRL = Organ.new({"limbName": "Right Arm", "id": "ArmRL", "name": "Right Lower Arm", "volume": 0.003882199293, "weight": 1.9})
+	var handR = Organ.new({"limbName": "Right Arm", "id": "HandR", "name": "Right Hand", "volume": 0.00218579918146, "weight": 0.25})
+	var thumbR = Organ.new({"limbName": "Right Arm", "id": "ThumbR", "name": "Right Thumb", "volume": 0.00009846345347, "weight": 0.015})
+	var fingerR1 = Organ.new({"limbName": "Right Arm", "id": "FingerR1", "name": "Finger", "volume": 0.00015331352188, "weight": 0.0075})
+	var fingerR3 = Organ.new({"limbName": "Right Arm", "id": "FingerR3", "name": "Finger", "volume": 0.00015331352188, "weight": 0.0075})
+	var fingerR2 = Organ.new({"limbName": "Right Arm", "id": "FingerR2", "name": "Finger", "volume": 0.00015331352188, "weight": 0.0075})
+	var fingerR4 = Organ.new({"limbName": "Right Arm", "id": "FingerR4", "name": "Pinky", "volume": 0.00015331352188, "weight": 0.0075})
 	
-	var armLU = Organ.new({"id": "ArmLU", "name": "Left Upper Arm", "volume": 0.00300435884856})
-	var armLL = Organ.new({"id": "ArmLL", "name": "Left Lower Arm", "volume": 0.003882199293})
-	var handL = Organ.new({"id": "HandL", "name": "Left Hand", "volume": 0.00218579918146})
-	var thumbL = Organ.new({"id": "ThumbL", "name": "Left Thumb", "volume": 0.00009846345347})
-	var fingerL1 = Organ.new({"id": "FingerL1", "name": "Finger", "volume": 0.00015331352188})
-	var fingerL2 = Organ.new({"id": "FingerL2", "name": "Finger", "volume": 0.00015331352188})
-	var fingerL3 = Organ.new({"id": "FingerL3", "name": "Finger", "volume": 0.00015331352188})
-	var fingerL4 = Organ.new({"id": "FingerL4", "name": "Pinky", "volume": 0.00015331352188})
+	var armLU = Organ.new({"limbName": "Left Arm", "id": "ArmLU", "name": "Left Upper Arm", "volume": 0.00300435884856, "weight": 3})
+	var armLL = Organ.new({"limbName": "Left Arm", "id": "ArmLL", "name": "Left Lower Arm", "volume": 0.003882199293, "weight": 1.9})
+	var handL = Organ.new({"limbName": "Left Arm", "id": "HandL", "name": "Left Hand", "volume": 0.00218579918146, "weight": 0.25})
+	var thumbL = Organ.new({"limbName": "Left Arm", "id": "ThumbL", "name": "Left Thumb", "volume": 0.00009846345347, "weight": 0.015})
+	var fingerL1 = Organ.new({"limbName": "Left Arm", "id": "FingerL1", "name": "Finger", "volume": 0.00015331352188, "weight": 0.0075})
+	var fingerL2 = Organ.new({"limbName": "Left Arm", "id": "FingerL2", "name": "Finger", "volume": 0.00015331352188, "weight": 0.0075})
+	var fingerL3 = Organ.new({"limbName": "Left Arm", "id": "FingerL3", "name": "Finger", "volume": 0.00015331352188, "weight": 0.0075})
+	var fingerL4 = Organ.new({"limbName": "Left Arm", "id": "FingerL4", "name": "Pinky", "volume": 0.00015331352188, "weight": 0.0075})
 	
-	var torsoL = Organ.new({"id": "TorsoL", "name": "Lower Torso", "volume": 0.02879198081791})
-	var kidneyL = Organ.new({"id": "Left Kidney", "volume": 0.00014577648835})
-	var kidneyR = Organ.new({"id": "Right Kidney", "volume": 0.00013417842274})
-	var guts = Organ.new({"id": "Guts", "volume": 0.00700118485838})
+	var torsoL = Organ.new({"id": "TorsoL", "name": "Lower Torso", "volume": 0.02879198081791, "weight": 20})
+	var kidneyL = Organ.new({"id": "Left Kidney", "volume": 0.00014577648835, "weight": 0.145})
+	var kidneyR = Organ.new({"id": "Right Kidney", "volume": 0.00013417842274, "weight": 0.145})
+	var guts = Organ.new({"id": "Guts", "volume": 0.00700118485838, "weight": 1.5})
 	
-	var legRU = Organ.new({"id": "LegRU", "name": "Right Upper Leg", "volume": 0.00600656634197})
-	var legRL = Organ.new({"id": "LegRL", "name": "Right Lower Leg", "volume": 0.00980964675546})
-	var footR = Organ.new({"id": "FootR", "name": "Right Foot", "volume": 0.00232410663739})
-	var toeR1 = Organ.new({"id": "ToeR1", "name": "Toe", "volume": 0.00002738583316})
-	var toeR2 = Organ.new({"id": "ToeR2", "name": "Toe", "volume": 0.00002738583316})
-	var toeR3 = Organ.new({"id": "ToeR3", "name": "Toe", "volume": 0.00002738583316})
-	var toeR4 = Organ.new({"id": "ToeR4", "name": "Toe", "volume": 0.00002738583316})
-	var toeR5 = Organ.new({"id": "ToeR5", "name": "Toe", "volume": 0.00002738583316})
+	var legRU = Organ.new({"limbName": "Right Leg", "id": "LegRU", "name": "Right Upper Leg", "volume": 0.00600656634197, "weight": 12.5})
+	var legRL = Organ.new({"limbName": "Right Leg", "id": "LegRL", "name": "Right Lower Leg", "volume": 0.00980964675546, "weight": 5})
+	var footR = Organ.new({"limbName": "Right Leg", "id": "FootR", "name": "Right Foot", "volume": 0.00232410663739, "weight": 1.25})
+	var toeR1 = Organ.new({"limbName": "Right Leg", "id": "ToeR1", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeR2 = Organ.new({"limbName": "Right Leg", "id": "ToeR2", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeR3 = Organ.new({"limbName": "Right Leg", "id": "ToeR3", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeR4 = Organ.new({"limbName": "Right Leg", "id": "ToeR4", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeR5 = Organ.new({"limbName": "Right Leg", "id": "ToeR5", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
 	
-	var legLU = Organ.new({"id": "LegLU", "name": "Left Upper Leg", "volume": 0.00600656680763})
-	var legLL = Organ.new({"id": "LegLL", "name": "Left Lower Leg", "volume": 0.00980964768678})
-	var footL = Organ.new({"id": "FootL", "name": "Left Foot", "volume": 0.00232410663739})
-	var toeL2 = Organ.new({"id": "ToeL1", "name": "Toe", "volume": 0.00002738583316})
-	var toeL1 = Organ.new({"id": "ToeL2", "name": "Toe", "volume": 0.00002738583316})
-	var toeL3 = Organ.new({"id": "ToeL3", "name": "Toe", "volume": 0.00002738583316})
-	var toeL4 = Organ.new({"id": "ToeL4", "name": "Toe", "volume": 0.00002738583316})
-	var toeL5 = Organ.new({"id": "ToeL5", "name": "Toe", "volume": 0.00002738583316})
+	var legLU = Organ.new({"limbName": "Left Leg", "id": "LegLU", "name": "Left Upper Leg", "volume": 0.00600656680763, "weight": 12.5})
+	var legLL = Organ.new({"limbName": "Left Leg", "id": "LegLL", "name": "Left Lower Leg", "volume": 0.00980964768678, "weight": 5})
+	var footL = Organ.new({"limbName": "Left Leg", "id": "FootL", "name": "Left Foot", "volume": 0.00232410663739, "weight": 1.25})
+	var toeL2 = Organ.new({"limbName": "Left Leg", "id": "ToeL1", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeL1 = Organ.new({"limbName": "Left Leg", "id": "ToeL2", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeL3 = Organ.new({"limbName": "Left Leg", "id": "ToeL3", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeL4 = Organ.new({"limbName": "Left Leg", "id": "ToeL4", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	var toeL5 = Organ.new({"limbName": "Left Leg", "id": "ToeL5", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
 	
 	# Brain, Head, Neck, [Torso], [Arm], [Hand], [Leg], [Foot]
 	var humanCritical = {
@@ -102,7 +96,7 @@ func constructHuman() -> Organ:
 	}
 	
 	# start connecting from root of the creature, the brain
-	brain.isBrainOf(head, humanCritical)
+	brain.connectOrgan(head, humanCritical)
 	
 	# each organ has it's own block of connecting other organs
 	head.connectOrgan(eyeR, humanExtremity)
@@ -115,14 +109,13 @@ func constructHuman() -> Organ:
 	
 	neck.connectOrgan(torsoU, humanCritical)
 	
-	torsoU.connectOrgan(heart, humanMuscleOrgan)
-	heart.isHeart = true
-	torsoU.connectOrgan(lungR, humanMuscleOrgan)
-	torsoU.connectOrgan(lungL, humanMuscleOrgan)
-	torsoU.connectOrgan(stomach, humanOrgan)
-	torsoU.connectOrgan(liver, humanOrgan)
-	torsoU.connectOrgan(spleen, humanOrgan)
-	torsoU.connectOrgan(pancreas, humanOrgan)
+	torsoU.connectInternalOrgan(heart, humanMuscleOrgan)
+	torsoU.connectInternalOrgan(lungR, humanMuscleOrgan)
+	torsoU.connectInternalOrgan(lungL, humanMuscleOrgan)
+	torsoU.connectInternalOrgan(stomach, humanOrgan)
+	torsoU.connectInternalOrgan(liver, humanOrgan)
+	torsoU.connectInternalOrgan(spleen, humanOrgan)
+	torsoU.connectInternalOrgan(pancreas, humanOrgan)
 	torsoU.connectOrgan(armRU, humanCritical)
 	torsoU.connectOrgan(armLU, humanCritical)
 	torsoU.connectOrgan(torsoL, humanCritical)
@@ -147,9 +140,9 @@ func constructHuman() -> Organ:
 	handL.connectOrgan(fingerL3, humanExtremity)
 	handL.connectOrgan(fingerL4, humanExtremity)
 	
-	torsoL.connectOrgan(guts, humanMuscleOrgan)
-	torsoL.connectOrgan(kidneyR, humanOrgan)
-	torsoL.connectOrgan(kidneyL, humanOrgan)
+	torsoL.connectInternalOrgan(guts, humanMuscleOrgan)
+	torsoL.connectInternalOrgan(kidneyR, humanOrgan)
+	torsoL.connectInternalOrgan(kidneyL, humanOrgan)
 	torsoL.connectOrgan(legRU, humanCritical)
 	torsoL.connectOrgan(legLU, humanCritical)
 	
@@ -179,34 +172,46 @@ func _ready() -> void:
 	print("\n==Starting Organ Test==\n")
 	var humanBrain: Organ = constructHuman()
 	
-	var body = completeBody(humanBrain)
-	var organs: Array[Organ] = body.getAllOrgans()
-	organs.sort_custom(
-		func(organA: Organ, organB: Organ): return organA.volume > organB.volume
-	)
-	for organ in organs:
-		print("%s\n%s m^3\n%s cm^3" % [organ.name, organ.volume, organ.volume*1000000])
+	var body = Body.new({"rootOrgan": humanBrain}) # why green?
+	
+	var bodyDataString: String = JSON.stringify(getBodyData(humanBrain), " ")
+	
+	var file = FileAccess.open("%s/%s" % [organDataFilePath, fileName], FileAccess.WRITE)
+	file.store_string(bodyDataString)
+	file.close()
+	
+	var body2 = Body.new(JSON.parse_string(bodyDataString))
+	
+	print(body.getGraph())
+	print(body2.getGraph())
+	print(body.getGraph() == body2.getGraph())
 
-	print(JSON.stringify(getBodyData(humanBrain), "	"))
-	
-	
 func getBodyData(rootOrgan: Organ) -> Dictionary:
 	var bodyData: Dictionary = {}
 	bodyData = rootOrgan.getInfo()
-	var connectionData = {
-		"internal": [],
-		"external": []
-	}
-	for connection in rootOrgan.connections:
+	var connectionData = {}
+	var internal: Array[Dictionary] = []
+	var external: Array[Dictionary] = []
+	for connection in rootOrgan.internalConnections:
 		var nextOrgan = connection.linkTo
 		var curConnData = {
+			"organ": getBodyData(nextOrgan),
 			"connection": connection.getInfo(),
-			"_organ": getBodyData(nextOrgan)
 		}
-		if connection in rootOrgan.internalConnections:
-			connectionData.internal.push_back(curConnData)
-		else:
-			connectionData.external.push_back(curConnData)
+		internal.push_back(curConnData)
+	for connection in rootOrgan.externalConnections:
+		var nextOrgan = connection.linkTo
+		var curConnData = {
+			"organ": getBodyData(nextOrgan),
+			"connection": connection.getInfo(),
+		}
+		external.push_back(curConnData)
 	
-	bodyData["ZZconnections"] = connectionData
+	if not internal.is_empty():
+		connectionData["internal"] = internal
+	if not external.is_empty():
+		connectionData["external"] = external
+	if not connectionData.is_empty():
+		bodyData["connections"] = connectionData
+	
 	return bodyData
