@@ -176,15 +176,14 @@ func _ready() -> void:
 	
 	var bodyDataString: String = JSON.stringify(getBodyData(humanBrain), " ")
 	
-	var file = FileAccess.open("%s/%s" % [organDataFilePath, fileName], FileAccess.WRITE)
-	file.store_string(bodyDataString)
-	file.close()
+#	var file = FileAccess.open("%s/%s" % [organDataFilePath, fileName], FileAccess.WRITE)
+#	file.store_string(bodyDataString)
+#	file.close()
 	
 	var body2 = Body.new(JSON.parse_string(bodyDataString))
 	
-	print(body.getGraph())
-	print(body2.getGraph())
-	print(body.getGraph() == body2.getGraph())
+	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)
+
 
 func getBodyData(rootOrgan: Organ) -> Dictionary:
 	var bodyData: Dictionary = {}

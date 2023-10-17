@@ -2,867 +2,867 @@
  "connections": {
   "external": [
    {
-    "connection": {
-     "artery": 1,
-     "muscle": 1,
-     "nerve": 1,
-     "tissue": 1
-    },
-    "organ": {
-     "connections": {
-      "external": [
-       {
-        "connection": {
-         "muscle": 1,
-         "nerve": 1,
-         "tissue": 1
-        },
-        "organ": {
-         "id": "EyeR",
-         "material": "flesh",
-         "name": "Right Eye",
-         "volume": 0.0000923661064,
-         "weight": 0.0075
-        }
-       },
-       {
-        "connection": {
-         "muscle": 1,
-         "nerve": 1,
-         "tissue": 1
-        },
-        "organ": {
-         "id": "EyeL",
-         "material": "flesh",
-         "name": "Left Eye",
-         "volume": 0.0000923661064,
-         "weight": 0.0075
-        }
-       },
-       {
-        "connection": {
-         "muscle": 0.2,
-         "nerve": 1,
-         "tissue": 1
-        },
-        "organ": {
-         "id": "EarR",
-         "material": "flesh",
-         "name": "Right Ear",
-         "volume": 0.00010917393956,
-         "weight": 0.0014
-        }
-       },
-       {
-        "connection": {
-         "muscle": 0.2,
-         "nerve": 1,
-         "tissue": 1
-        },
-        "organ": {
-         "id": "EarL",
-         "material": "flesh",
-         "name": "Left Ear",
-         "volume": 0.00010917393956,
-         "weight": 0.0014
-        }
-       },
-       {
-        "connection": {
-         "muscle": 0.2,
-         "nerve": 1,
-         "tissue": 1
-        },
-        "organ": {
-         "id": "Nose",
-         "material": "flesh",
-         "name": "Nose",
-         "volume": 0.00007716972323,
-         "weight": 0.008
-        }
-       },
-       {
-        "connection": {
-         "muscle": 1,
-         "nerve": 1,
-         "tissue": 1
-        },
-        "organ": {
-         "id": "Mouth",
-         "material": "flesh",
-         "name": "Mouth",
-         "volume": 0.00026071682805,
-         "weight": 0.025
-        }
-       },
-       {
-        "connection": {
-         "artery": 1,
-         "muscle": 1,
-         "nerve": 1,
-         "tissue": 1
-        },
-        "organ": {
-         "connections": {
-          "external": [
-           {
-            "connection": {
-             "artery": 1,
-             "muscle": 1,
-             "nerve": 1,
-             "tissue": 1
-            },
-            "organ": {
-             "connections": {
-              "external": [
-               {
-                "connection": {
-                 "artery": 1,
-                 "muscle": 1,
-                 "nerve": 1,
-                 "tissue": 1
-                },
-                "organ": {
-                 "connections": {
-                  "external": [
-                   {
-                    "connection": {
-                     "artery": 1,
-                     "muscle": 1,
-                     "nerve": 1,
-                     "tissue": 1
-                    },
-                    "organ": {
-                     "connections": {
-                      "external": [
-                       {
-                        "connection": {
-                         "artery": 1,
-                         "muscle": 1,
-                         "nerve": 1,
-                         "tissue": 1
-                        },
-                        "organ": {
-                         "connections": {
-                          "external": [
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "ThumbR",
-                             "limbName": "Right Arm",
-                             "material": "flesh",
-                             "name": "Right Thumb",
-                             "volume": 0.00009846345347,
-                             "weight": 0.015
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerR1",
-                             "limbName": "Right Arm",
-                             "material": "flesh",
-                             "name": "Finger",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerR2",
-                             "limbName": "Right Arm",
-                             "material": "flesh",
-                             "name": "Finger",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerR3",
-                             "limbName": "Right Arm",
-                             "material": "flesh",
-                             "name": "Finger",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerR4",
-                             "limbName": "Right Arm",
-                             "material": "flesh",
-                             "name": "Pinky",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           }
-                          ]
-                         },
-                         "id": "HandR",
-                         "limbName": "Right Arm",
-                         "material": "flesh",
-                         "name": "Right Hand",
-                         "needsBlood": true,
-                         "volume": 0.00218579918146,
-                         "weight": 0.25
-                        }
-                       }
-                      ]
-                     },
-                     "id": "ArmRL",
-                     "limbName": "Right Arm",
-                     "material": "flesh",
-                     "name": "Right Lower Arm",
-                     "needsBlood": true,
-                     "volume": 0.003882199293,
-                     "weight": 1.9
-                    }
-                   }
-                  ]
-                 },
-                 "id": "ArmRU",
-                 "limbName": "Right Arm",
-                 "material": "flesh",
-                 "name": "Right Upper Arm",
-                 "needsBlood": true,
-                 "volume": 0.00300435884856,
-                 "weight": 3
-                }
-               },
-               {
-                "connection": {
-                 "artery": 1,
-                 "muscle": 1,
-                 "nerve": 1,
-                 "tissue": 1
-                },
-                "organ": {
-                 "connections": {
-                  "external": [
-                   {
-                    "connection": {
-                     "artery": 1,
-                     "muscle": 1,
-                     "nerve": 1,
-                     "tissue": 1
-                    },
-                    "organ": {
-                     "connections": {
-                      "external": [
-                       {
-                        "connection": {
-                         "artery": 1,
-                         "muscle": 1,
-                         "nerve": 1,
-                         "tissue": 1
-                        },
-                        "organ": {
-                         "connections": {
-                          "external": [
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "ThumbL",
-                             "limbName": "Left Arm",
-                             "material": "flesh",
-                             "name": "Left Thumb",
-                             "volume": 0.00009846345347,
-                             "weight": 0.015
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerL1",
-                             "limbName": "Left Arm",
-                             "material": "flesh",
-                             "name": "Finger",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerL2",
-                             "limbName": "Left Arm",
-                             "material": "flesh",
-                             "name": "Finger",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerL3",
-                             "limbName": "Left Arm",
-                             "material": "flesh",
-                             "name": "Finger",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           },
-                           {
-                            "connection": {
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "id": "FingerL4",
-                             "limbName": "Left Arm",
-                             "material": "flesh",
-                             "name": "Pinky",
-                             "volume": 0.00015331352188,
-                             "weight": 0.0075
-                            }
-                           }
-                          ]
-                         },
-                         "id": "HandL",
-                         "limbName": "Left Arm",
-                         "material": "flesh",
-                         "name": "Left Hand",
-                         "needsBlood": true,
-                         "volume": 0.00218579918146,
-                         "weight": 0.25
-                        }
-                       }
-                      ]
-                     },
-                     "id": "ArmLL",
-                     "limbName": "Left Arm",
-                     "material": "flesh",
-                     "name": "Left Lower Arm",
-                     "needsBlood": true,
-                     "volume": 0.003882199293,
-                     "weight": 1.9
-                    }
-                   }
-                  ]
-                 },
-                 "id": "ArmLU",
-                 "limbName": "Left Arm",
-                 "material": "flesh",
-                 "name": "Left Upper Arm",
-                 "needsBlood": true,
-                 "volume": 0.00300435884856,
-                 "weight": 3
-                }
-               },
-               {
-                "connection": {
-                 "artery": 1,
-                 "muscle": 1,
-                 "nerve": 1,
-                 "tissue": 1
-                },
-                "organ": {
-                 "connections": {
-                  "external": [
-                   {
-                    "connection": {
-                     "artery": 1,
-                     "muscle": 1,
-                     "nerve": 1,
-                     "tissue": 1
-                    },
-                    "organ": {
-                     "connections": {
-                      "external": [
-                       {
-                        "connection": {
-                         "artery": 1,
-                         "muscle": 1,
-                         "nerve": 1,
-                         "tissue": 1
-                        },
-                        "organ": {
-                         "connections": {
-                          "external": [
-                           {
-                            "connection": {
-                             "artery": 1,
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "connections": {
-                              "external": [
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeR1",
-                                 "limbName": "Right Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeR2",
-                                 "limbName": "Right Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeR3",
-                                 "limbName": "Right Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeR4",
-                                 "limbName": "Right Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeR5",
-                                 "limbName": "Right Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               }
-                              ]
-                             },
-                             "id": "FootR",
-                             "limbName": "Right Leg",
-                             "material": "flesh",
-                             "name": "Right Foot",
-                             "needsBlood": true,
-                             "volume": 0.00232410663739,
-                             "weight": 1.25
-                            }
-                           }
-                          ]
-                         },
-                         "id": "LegRL",
-                         "limbName": "Right Leg",
-                         "material": "flesh",
-                         "name": "Right Lower Leg",
-                         "needsBlood": true,
-                         "volume": 0.00980964675546,
-                         "weight": 5
-                        }
-                       }
-                      ]
-                     },
-                     "id": "LegRU",
-                     "limbName": "Right Leg",
-                     "material": "flesh",
-                     "name": "Right Upper Leg",
-                     "needsBlood": true,
-                     "volume": 0.00600656634197,
-                     "weight": 12.5
-                    }
-                   },
-                   {
-                    "connection": {
-                     "artery": 1,
-                     "muscle": 1,
-                     "nerve": 1,
-                     "tissue": 1
-                    },
-                    "organ": {
-                     "connections": {
-                      "external": [
-                       {
-                        "connection": {
-                         "artery": 1,
-                         "muscle": 1,
-                         "nerve": 1,
-                         "tissue": 1
-                        },
-                        "organ": {
-                         "connections": {
-                          "external": [
-                           {
-                            "connection": {
-                             "artery": 1,
-                             "muscle": 1,
-                             "nerve": 1,
-                             "tissue": 1
-                            },
-                            "organ": {
-                             "connections": {
-                              "external": [
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeL2",
-                                 "limbName": "Left Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeL1",
-                                 "limbName": "Left Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeL3",
-                                 "limbName": "Left Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeL4",
-                                 "limbName": "Left Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               },
-                               {
-                                "connection": {
-                                 "muscle": 1,
-                                 "nerve": 1,
-                                 "tissue": 1
-                                },
-                                "organ": {
-                                 "id": "ToeL5",
-                                 "limbName": "Left Leg",
-                                 "material": "flesh",
-                                 "name": "Toe",
-                                 "volume": 0.00002738583316,
-                                 "weight": 0.002
-                                }
-                               }
-                              ]
-                             },
-                             "id": "FootL",
-                             "limbName": "Left Leg",
-                             "material": "flesh",
-                             "name": "Left Foot",
-                             "needsBlood": true,
-                             "volume": 0.00232410663739,
-                             "weight": 1.25
-                            }
-                           }
-                          ]
-                         },
-                         "id": "LegLL",
-                         "limbName": "Left Leg",
-                         "material": "flesh",
-                         "name": "Left Lower Leg",
-                         "needsBlood": true,
-                         "volume": 0.00980964768678,
-                         "weight": 5
-                        }
-                       }
-                      ]
-                     },
-                     "id": "LegLU",
-                     "limbName": "Left Leg",
-                     "material": "flesh",
-                     "name": "Left Upper Leg",
-                     "needsBlood": true,
-                     "volume": 0.00600656680763,
-                     "weight": 12.5
-                    }
-                   }
-                  ],
-                  "internal": [
-                   {
-                    "connection": {
-                     "artery": 1,
-                     "muscle": 1,
-                     "tissue": 1
-                    },
-                    "organ": {
-                     "id": "Guts",
-                     "isInternal": true,
-                     "material": "flesh",
-                     "name": "Guts",
-                     "needsBlood": true,
-                     "volume": 0.00700118485838,
-                     "weight": 1.5
-                    }
-                   },
-                   {
-                    "connection": {
-                     "tissue": 1
-                    },
-                    "organ": {
-                     "id": "Right Kidney",
-                     "isInternal": true,
-                     "material": "flesh",
-                     "name": "Right Kidney",
-                     "volume": 0.00013417842274,
-                     "weight": 0.145
-                    }
-                   },
-                   {
-                    "connection": {
-                     "tissue": 1
-                    },
-                    "organ": {
-                     "id": "Left Kidney",
-                     "isInternal": true,
-                     "material": "flesh",
-                     "name": "Left Kidney",
-                     "volume": 0.00014577648835,
-                     "weight": 0.145
-                    }
-                   }
-                  ]
-                 },
-                 "id": "TorsoL",
-                 "material": "flesh",
-                 "name": "Lower Torso",
-                 "needsBlood": true,
-                 "volume": 0.02879198081791,
-                 "weight": 20
-                }
-               }
-              ],
-              "internal": [
-               {
-                "connection": {
-                 "artery": 1,
-                 "muscle": 1,
-                 "tissue": 1
-                },
-                "organ": {
-                 "id": "Heart",
-                 "isHeart": true,
-                 "isInternal": true,
-                 "material": "flesh",
-                 "name": "Heart",
-                 "needsBlood": true,
-                 "volume": 0.00061203143559,
-                 "weight": 0.35
-                }
-               },
-               {
-                "connection": {
-                 "artery": 1,
-                 "muscle": 1,
-                 "tissue": 1
-                },
-                "organ": {
-                 "id": "LungR",
-                 "isInternal": true,
-                 "material": "flesh",
-                 "name": "Right Lung",
-                 "needsBlood": true,
-                 "volume": 0.00409334106371,
-                 "weight": 1.05
-                }
-               },
-               {
-                "connection": {
-                 "artery": 1,
-                 "muscle": 1,
-                 "tissue": 1
-                },
-                "organ": {
-                 "id": "LungL",
-                 "isInternal": true,
-                 "material": "flesh",
-                 "name": "Left Lung",
-                 "needsBlood": true,
-                 "volume": 0.00409334525466,
-                 "weight": 1.05
-                }
-               },
-               {
-                "connection": {
-                 "tissue": 1
-                },
-                "organ": {
-                 "id": "Stomach",
-                 "isInternal": true,
-                 "material": "flesh",
-                 "name": "Stomach",
-                 "volume": 0.00044758911827,
-                 "weight": 1.75
-                }
-               },
-               {
-                "connection": {
-                 "tissue": 1
-                },
-                "organ": {
-                 "id": "Liver",
-                 "isInternal": true,
-                 "material": "flesh",
-                 "name": "Liver",
-                 "volume": 0.00147630751599,
-                 "weight": 1.5
-                }
-               },
-               {
-                "connection": {
-                 "tissue": 1
-                },
-                "organ": {
-                 "id": "Spleen",
-                 "isInternal": true,
-                 "material": "flesh",
-                 "name": "Spleen",
-                 "volume": 0.00014384483802,
-                 "weight": 0.175
-                }
-               },
-               {
-                "connection": {
-                 "tissue": 1
-                },
-                "organ": {
-                 "id": "Pancreas",
-                 "isInternal": true,
-                 "material": "flesh",
-                 "name": "Pancreas",
-                 "volume": 0.00009726657299,
-                 "weight": 0.085
-                }
-               }
-              ]
-             },
-             "id": "TorsoU",
-             "material": "flesh",
-             "name": "Upper Torso",
-             "needsBlood": true,
-             "volume": 0.07289374619722,
-             "weight": 15
-            }
-           }
-          ]
-         },
-         "id": "Neck",
-         "material": "flesh",
-         "name": "Neck",
-         "needsBlood": true,
-         "volume": 0.00051674747374,
-         "weight": 3
-        }
-       }
-      ]
-     },
-     "id": "Head",
-     "material": "flesh",
-     "name": "Head",
-     "needsBlood": true,
-     "volume": 0.04119239747524,
-     "weight": 5.5
-    }
+	"connection": {
+	 "artery": 1,
+	 "muscle": 1,
+	 "nerve": 1,
+	 "tissue": 1
+	},
+	"organ": {
+	 "connections": {
+	  "external": [
+	   {
+		"connection": {
+		 "muscle": 1,
+		 "nerve": 1,
+		 "tissue": 1
+		},
+		"organ": {
+		 "id": "EyeR",
+		 "material": "flesh",
+		 "name": "Right Eye",
+		 "volume": 0.0000923661064,
+		 "weight": 0.0075
+		}
+	   },
+	   {
+		"connection": {
+		 "muscle": 1,
+		 "nerve": 1,
+		 "tissue": 1
+		},
+		"organ": {
+		 "id": "EyeL",
+		 "material": "flesh",
+		 "name": "Left Eye",
+		 "volume": 0.0000923661064,
+		 "weight": 0.0075
+		}
+	   },
+	   {
+		"connection": {
+		 "muscle": 0.2,
+		 "nerve": 1,
+		 "tissue": 1
+		},
+		"organ": {
+		 "id": "EarR",
+		 "material": "flesh",
+		 "name": "Right Ear",
+		 "volume": 0.00010917393956,
+		 "weight": 0.0014
+		}
+	   },
+	   {
+		"connection": {
+		 "muscle": 0.2,
+		 "nerve": 1,
+		 "tissue": 1
+		},
+		"organ": {
+		 "id": "EarL",
+		 "material": "flesh",
+		 "name": "Left Ear",
+		 "volume": 0.00010917393956,
+		 "weight": 0.0014
+		}
+	   },
+	   {
+		"connection": {
+		 "muscle": 0.2,
+		 "nerve": 1,
+		 "tissue": 1
+		},
+		"organ": {
+		 "id": "Nose",
+		 "material": "flesh",
+		 "name": "Nose",
+		 "volume": 0.00007716972323,
+		 "weight": 0.008
+		}
+	   },
+	   {
+		"connection": {
+		 "muscle": 1,
+		 "nerve": 1,
+		 "tissue": 1
+		},
+		"organ": {
+		 "id": "Mouth",
+		 "material": "flesh",
+		 "name": "Mouth",
+		 "volume": 0.00026071682805,
+		 "weight": 0.025
+		}
+	   },
+	   {
+		"connection": {
+		 "artery": 1,
+		 "muscle": 1,
+		 "nerve": 1,
+		 "tissue": 1
+		},
+		"organ": {
+		 "connections": {
+		  "external": [
+		   {
+			"connection": {
+			 "artery": 1,
+			 "muscle": 1,
+			 "nerve": 1,
+			 "tissue": 1
+			},
+			"organ": {
+			 "connections": {
+			  "external": [
+			   {
+				"connection": {
+				 "artery": 1,
+				 "muscle": 1,
+				 "nerve": 1,
+				 "tissue": 1
+				},
+				"organ": {
+				 "connections": {
+				  "external": [
+				   {
+					"connection": {
+					 "artery": 1,
+					 "muscle": 1,
+					 "nerve": 1,
+					 "tissue": 1
+					},
+					"organ": {
+					 "connections": {
+					  "external": [
+					   {
+						"connection": {
+						 "artery": 1,
+						 "muscle": 1,
+						 "nerve": 1,
+						 "tissue": 1
+						},
+						"organ": {
+						 "connections": {
+						  "external": [
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "ThumbR",
+							 "limbName": "Right Arm",
+							 "material": "flesh",
+							 "name": "Right Thumb",
+							 "volume": 0.00009846345347,
+							 "weight": 0.015
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerR1",
+							 "limbName": "Right Arm",
+							 "material": "flesh",
+							 "name": "Finger",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerR2",
+							 "limbName": "Right Arm",
+							 "material": "flesh",
+							 "name": "Finger",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerR3",
+							 "limbName": "Right Arm",
+							 "material": "flesh",
+							 "name": "Finger",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerR4",
+							 "limbName": "Right Arm",
+							 "material": "flesh",
+							 "name": "Pinky",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   }
+						  ]
+						 },
+						 "id": "HandR",
+						 "limbName": "Right Arm",
+						 "material": "flesh",
+						 "name": "Right Hand",
+						 "needsBlood": true,
+						 "volume": 0.00218579918146,
+						 "weight": 0.25
+						}
+					   }
+					  ]
+					 },
+					 "id": "ArmRL",
+					 "limbName": "Right Arm",
+					 "material": "flesh",
+					 "name": "Right Lower Arm",
+					 "needsBlood": true,
+					 "volume": 0.003882199293,
+					 "weight": 1.9
+					}
+				   }
+				  ]
+				 },
+				 "id": "ArmRU",
+				 "limbName": "Right Arm",
+				 "material": "flesh",
+				 "name": "Right Upper Arm",
+				 "needsBlood": true,
+				 "volume": 0.00300435884856,
+				 "weight": 3
+				}
+			   },
+			   {
+				"connection": {
+				 "artery": 1,
+				 "muscle": 1,
+				 "nerve": 1,
+				 "tissue": 1
+				},
+				"organ": {
+				 "connections": {
+				  "external": [
+				   {
+					"connection": {
+					 "artery": 1,
+					 "muscle": 1,
+					 "nerve": 1,
+					 "tissue": 1
+					},
+					"organ": {
+					 "connections": {
+					  "external": [
+					   {
+						"connection": {
+						 "artery": 1,
+						 "muscle": 1,
+						 "nerve": 1,
+						 "tissue": 1
+						},
+						"organ": {
+						 "connections": {
+						  "external": [
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "ThumbL",
+							 "limbName": "Left Arm",
+							 "material": "flesh",
+							 "name": "Left Thumb",
+							 "volume": 0.00009846345347,
+							 "weight": 0.015
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerL1",
+							 "limbName": "Left Arm",
+							 "material": "flesh",
+							 "name": "Finger",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerL2",
+							 "limbName": "Left Arm",
+							 "material": "flesh",
+							 "name": "Finger",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerL3",
+							 "limbName": "Left Arm",
+							 "material": "flesh",
+							 "name": "Finger",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   },
+						   {
+							"connection": {
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "id": "FingerL4",
+							 "limbName": "Left Arm",
+							 "material": "flesh",
+							 "name": "Pinky",
+							 "volume": 0.00015331352188,
+							 "weight": 0.0075
+							}
+						   }
+						  ]
+						 },
+						 "id": "HandL",
+						 "limbName": "Left Arm",
+						 "material": "flesh",
+						 "name": "Left Hand",
+						 "needsBlood": true,
+						 "volume": 0.00218579918146,
+						 "weight": 0.25
+						}
+					   }
+					  ]
+					 },
+					 "id": "ArmLL",
+					 "limbName": "Left Arm",
+					 "material": "flesh",
+					 "name": "Left Lower Arm",
+					 "needsBlood": true,
+					 "volume": 0.003882199293,
+					 "weight": 1.9
+					}
+				   }
+				  ]
+				 },
+				 "id": "ArmLU",
+				 "limbName": "Left Arm",
+				 "material": "flesh",
+				 "name": "Left Upper Arm",
+				 "needsBlood": true,
+				 "volume": 0.00300435884856,
+				 "weight": 3
+				}
+			   },
+			   {
+				"connection": {
+				 "artery": 1,
+				 "muscle": 1,
+				 "nerve": 1,
+				 "tissue": 1
+				},
+				"organ": {
+				 "connections": {
+				  "external": [
+				   {
+					"connection": {
+					 "artery": 1,
+					 "muscle": 1,
+					 "nerve": 1,
+					 "tissue": 1
+					},
+					"organ": {
+					 "connections": {
+					  "external": [
+					   {
+						"connection": {
+						 "artery": 1,
+						 "muscle": 1,
+						 "nerve": 1,
+						 "tissue": 1
+						},
+						"organ": {
+						 "connections": {
+						  "external": [
+						   {
+							"connection": {
+							 "artery": 1,
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "connections": {
+							  "external": [
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeR1",
+								 "limbName": "Right Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeR2",
+								 "limbName": "Right Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeR3",
+								 "limbName": "Right Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeR4",
+								 "limbName": "Right Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeR5",
+								 "limbName": "Right Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   }
+							  ]
+							 },
+							 "id": "FootR",
+							 "limbName": "Right Leg",
+							 "material": "flesh",
+							 "name": "Right Foot",
+							 "needsBlood": true,
+							 "volume": 0.00232410663739,
+							 "weight": 1.25
+							}
+						   }
+						  ]
+						 },
+						 "id": "LegRL",
+						 "limbName": "Right Leg",
+						 "material": "flesh",
+						 "name": "Right Lower Leg",
+						 "needsBlood": true,
+						 "volume": 0.00980964675546,
+						 "weight": 5
+						}
+					   }
+					  ]
+					 },
+					 "id": "LegRU",
+					 "limbName": "Right Leg",
+					 "material": "flesh",
+					 "name": "Right Upper Leg",
+					 "needsBlood": true,
+					 "volume": 0.00600656634197,
+					 "weight": 12.5
+					}
+				   },
+				   {
+					"connection": {
+					 "artery": 1,
+					 "muscle": 1,
+					 "nerve": 1,
+					 "tissue": 1
+					},
+					"organ": {
+					 "connections": {
+					  "external": [
+					   {
+						"connection": {
+						 "artery": 1,
+						 "muscle": 1,
+						 "nerve": 1,
+						 "tissue": 1
+						},
+						"organ": {
+						 "connections": {
+						  "external": [
+						   {
+							"connection": {
+							 "artery": 1,
+							 "muscle": 1,
+							 "nerve": 1,
+							 "tissue": 1
+							},
+							"organ": {
+							 "connections": {
+							  "external": [
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeL2",
+								 "limbName": "Left Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeL1",
+								 "limbName": "Left Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeL3",
+								 "limbName": "Left Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeL4",
+								 "limbName": "Left Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   },
+							   {
+								"connection": {
+								 "muscle": 1,
+								 "nerve": 1,
+								 "tissue": 1
+								},
+								"organ": {
+								 "id": "ToeL5",
+								 "limbName": "Left Leg",
+								 "material": "flesh",
+								 "name": "Toe",
+								 "volume": 0.00002738583316,
+								 "weight": 0.002
+								}
+							   }
+							  ]
+							 },
+							 "id": "FootL",
+							 "limbName": "Left Leg",
+							 "material": "flesh",
+							 "name": "Left Foot",
+							 "needsBlood": true,
+							 "volume": 0.00232410663739,
+							 "weight": 1.25
+							}
+						   }
+						  ]
+						 },
+						 "id": "LegLL",
+						 "limbName": "Left Leg",
+						 "material": "flesh",
+						 "name": "Left Lower Leg",
+						 "needsBlood": true,
+						 "volume": 0.00980964768678,
+						 "weight": 5
+						}
+					   }
+					  ]
+					 },
+					 "id": "LegLU",
+					 "limbName": "Left Leg",
+					 "material": "flesh",
+					 "name": "Left Upper Leg",
+					 "needsBlood": true,
+					 "volume": 0.00600656680763,
+					 "weight": 12.5
+					}
+				   }
+				  ],
+				  "internal": [
+				   {
+					"connection": {
+					 "artery": 1,
+					 "muscle": 1,
+					 "tissue": 1
+					},
+					"organ": {
+					 "id": "Guts",
+					 "isInternal": true,
+					 "material": "flesh",
+					 "name": "Guts",
+					 "needsBlood": true,
+					 "volume": 0.00700118485838,
+					 "weight": 1.5
+					}
+				   },
+				   {
+					"connection": {
+					 "tissue": 1
+					},
+					"organ": {
+					 "id": "Right Kidney",
+					 "isInternal": true,
+					 "material": "flesh",
+					 "name": "Right Kidney",
+					 "volume": 0.00013417842274,
+					 "weight": 0.145
+					}
+				   },
+				   {
+					"connection": {
+					 "tissue": 1
+					},
+					"organ": {
+					 "id": "Left Kidney",
+					 "isInternal": true,
+					 "material": "flesh",
+					 "name": "Left Kidney",
+					 "volume": 0.00014577648835,
+					 "weight": 0.145
+					}
+				   }
+				  ]
+				 },
+				 "id": "TorsoL",
+				 "material": "flesh",
+				 "name": "Lower Torso",
+				 "needsBlood": true,
+				 "volume": 0.02879198081791,
+				 "weight": 20
+				}
+			   }
+			  ],
+			  "internal": [
+			   {
+				"connection": {
+				 "artery": 1,
+				 "muscle": 1,
+				 "tissue": 1
+				},
+				"organ": {
+				 "id": "Heart",
+				 "isHeart": true,
+				 "isInternal": true,
+				 "material": "flesh",
+				 "name": "Heart",
+				 "needsBlood": true,
+				 "volume": 0.00061203143559,
+				 "weight": 0.35
+				}
+			   },
+			   {
+				"connection": {
+				 "artery": 1,
+				 "muscle": 1,
+				 "tissue": 1
+				},
+				"organ": {
+				 "id": "LungR",
+				 "isInternal": true,
+				 "material": "flesh",
+				 "name": "Right Lung",
+				 "needsBlood": true,
+				 "volume": 0.00409334106371,
+				 "weight": 1.05
+				}
+			   },
+			   {
+				"connection": {
+				 "artery": 1,
+				 "muscle": 1,
+				 "tissue": 1
+				},
+				"organ": {
+				 "id": "LungL",
+				 "isInternal": true,
+				 "material": "flesh",
+				 "name": "Left Lung",
+				 "needsBlood": true,
+				 "volume": 0.00409334525466,
+				 "weight": 1.05
+				}
+			   },
+			   {
+				"connection": {
+				 "tissue": 1
+				},
+				"organ": {
+				 "id": "Stomach",
+				 "isInternal": true,
+				 "material": "flesh",
+				 "name": "Stomach",
+				 "volume": 0.00044758911827,
+				 "weight": 1.75
+				}
+			   },
+			   {
+				"connection": {
+				 "tissue": 1
+				},
+				"organ": {
+				 "id": "Liver",
+				 "isInternal": true,
+				 "material": "flesh",
+				 "name": "Liver",
+				 "volume": 0.00147630751599,
+				 "weight": 1.5
+				}
+			   },
+			   {
+				"connection": {
+				 "tissue": 1
+				},
+				"organ": {
+				 "id": "Spleen",
+				 "isInternal": true,
+				 "material": "flesh",
+				 "name": "Spleen",
+				 "volume": 0.00014384483802,
+				 "weight": 0.175
+				}
+			   },
+			   {
+				"connection": {
+				 "tissue": 1
+				},
+				"organ": {
+				 "id": "Pancreas",
+				 "isInternal": true,
+				 "material": "flesh",
+				 "name": "Pancreas",
+				 "volume": 0.00009726657299,
+				 "weight": 0.085
+				}
+			   }
+			  ]
+			 },
+			 "id": "TorsoU",
+			 "material": "flesh",
+			 "name": "Upper Torso",
+			 "needsBlood": true,
+			 "volume": 0.07289374619722,
+			 "weight": 15
+			}
+		   }
+		  ]
+		 },
+		 "id": "Neck",
+		 "material": "flesh",
+		 "name": "Neck",
+		 "needsBlood": true,
+		 "volume": 0.00051674747374,
+		 "weight": 3
+		}
+	   }
+	  ]
+	 },
+	 "id": "Head",
+	 "material": "flesh",
+	 "name": "Head",
+	 "needsBlood": true,
+	 "volume": 0.04119239747524,
+	 "weight": 5.5
+	}
    }
   ]
  },
