@@ -6,7 +6,7 @@ class_name Body
 var rootOrgan: Organ
 # Organs covered in skin, or visible to air...
 var externalOrgans: Array[Organ]
-# Organs ...
+# Organs covered by another, heart, kidney, pancreas...
 var internalOrgans: Array[Organ]
 
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
@@ -125,4 +125,13 @@ func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0
 
 ## TODO traverse artery networks
 func getBloodStatus(organ: Organ)-> ConnectionToHeart:
+	## hard coded right now, will fix later
+	if (not organ.primaryConnection):
+		return ConnectionToHeart.CONNECTED
+	
+	if (organ.primaryConnection.vessels.has("artery")):
+		if organ.primaryConnection.vessels.artery > 0.0:
+			return ConnectionToHeart.CONNECTED
+		else:
+			return ConnectionToHeart.DISCONNECTED
 	return ConnectionToHeart.NONE

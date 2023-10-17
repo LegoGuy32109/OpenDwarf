@@ -3,13 +3,8 @@ extends Resource
 class_name Connection
 
 # connection vessels, each pathway a float 1.0 - 0.0
-@export var vessels: Dictionary = { 
-	"tissue": 0.0,
-	"muscle": 0.0,
-	"nerve": 0.0,
-	"artery": 0.0,
-	"magic": 0.0
-}
+@export var vessels: Dictionary = {}
+
 @export var linkFrom: Organ # dominant organ
 @export var linkTo: Organ # submissive organ
 
@@ -28,24 +23,23 @@ func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary = {}):
 	if connectionData.is_empty():
 		vessels.tissue = 1.0
 	else:
-		var vesselInfo: Array = vessels.keys()
-		for vesselName in vesselInfo: 
-			if connectionData.has(vesselName):
+		var newVesselInfo: Array = connectionData.keys()
+		for vesselName in newVesselInfo: 
+			if connectionData[vesselName] is float:
 				vessels[vesselName] = connectionData[vesselName]
-			else:
-				vessels[vesselName] = 0.0
 		
 		# I will think of a better way to do this then hardcode eventually
 		if connectionData.has("isMagic"):
 			isMagic = connectionData.isMagic
 		
-		if vessels.artery > 0.0:
+		if vessels.has("artery") && vessels.artery > 0.0:
 			linkFrom.needsBlood = true
 			linkTo.needsBlood = true
 
 func getInfo(all: bool = false):
 	var infoObj = vessels
 	infoObj["isMagic"] = isMagic
+	# by default, don't include values that are false or 0.0
 	if not all:
 		for key in infoObj.keys():
 			if (infoObj[key] is float and infoObj[key] == 0.0) \
