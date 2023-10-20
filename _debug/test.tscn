@@ -1,6 +1,10 @@
-[gd_scene load_steps=2 format=3 uid="uid://na7arm4udeaa"]
+[gd_scene load_steps=3 format=3 uid="uid://na7arm4udeaa"]
 
 [ext_resource type="Script" path="res://Game/Creature/testLimbs.gd" id="1_2t06d"]
+[ext_resource type="Script" path="res://_debug/textXMLsaving.gd" id="2_wb0b2"]
 
 [node name="Test" type="Node2D"]
 script = ExtResource("1_2t06d")
+
+[node name="Test2" type="Node" parent="."]
+script = ExtResource("2_wb0b2")
