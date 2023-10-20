@@ -1,6 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- A test for parsing XML through Godot's tools -->
+
 <organ name="Brain" id="brain">
     <!-- weight stuff -->
-    <internalConnection label="humanCritical">
+    <props onLoad="<![CDATA[func hello world()]]>">
+        <![CDATA[
+         <message> Welcome to TutorialsPoint </message>
+        ]]>
+    </props>
+    <connection type="internal" label="humanCritical">
         <vessel name="artery" value='1.0'/>
         <vessel name="tissue" value='1.0'/>
         <vessel name="nerve" value='1.0'/>
@@ -8,7 +16,7 @@
         <isMagic/> <!-- but not really  -->
         <organ name="Head" id="head">
 
-             <externalConnection label="humanExtremity">
+             <connection label="humanExtremity">
                 <vessel name="tissue" value='1.0'/>
                 <vessel name="nerve" value='1.0'/>
                 <vessel name="muscle" value='1.0'/>
@@ -16,17 +24,17 @@
                 <organ name="Right Ear" id="earR">
                     <!-- need weight information -->
                 </organ>
-             </externalConnection>
-             <externalConnection label="humanExtremity">
+             </connection>
+             <connection label="humanExtremity">
                 <!-- I don't need the vessel information the label was
                     already defined lol  -->
                 <organ name="Left Ear" id="earL">
                     <!-- need weight information -->
                 </organ>
-             </externalConnection>
+             </connection>
         </organ type="off">
-    </internalConnection>
-    <externalConnection>
+    </connection type="internal">
+    <connection>
         <vessel name="branch" value="cool"/>
-    </externalConnection>
+    </connection>
 </organ>

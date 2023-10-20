@@ -30,7 +30,8 @@ func getAllNodeInfo(parser: XMLParser)->String:
 	
 	if nodeType == XMLParser.NODE_ELEMENT \
 		|| nodeType == XMLParser.NODE_ELEMENT_END \
-		|| nodeType == XMLParser.NODE_COMMENT:
+		|| nodeType == XMLParser.NODE_COMMENT \
+		|| nodeType == XMLParser.NODE_CDATA:
 		output += "<%s>\n" % parser.get_node_name()
 	
 	output += "%s\nIs Empty: %s\n%s\nOn line: %s, offset: %s" % [
