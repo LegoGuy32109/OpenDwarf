@@ -1,7 +1,8 @@
 # OpenDwarf
 
-I will look at pull requests or issues on this repository, feel free to share ideas or give suggestions!
+## [Play on itch.io!](https://josh-hale.itch.io/dfclone)
 
+I will look at pull requests or issues on this repository, feel free to share ideas or give suggestions!
 
 I had a weird issue not being able to delete when typing a Markdown doc, anyway
 
