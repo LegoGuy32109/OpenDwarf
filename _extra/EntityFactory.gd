@@ -2,7 +2,7 @@ extends Resource
 
 class_name EntityFactory
 
-## Take one time functions to establish networks and properties in Body, and put them here returning a Body object`
+## Take one time functions to establish networks and properties in Body, and put them here returning a [Body] object
 
 enum SPECIES {
 	HUMAN_MALE, 

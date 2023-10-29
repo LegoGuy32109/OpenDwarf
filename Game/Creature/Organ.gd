@@ -11,10 +11,8 @@ class_name Organ
 
 # Right now, OpenDwarf creatures have to be directional non-cyclical
 @export var primaryConnection: Connection
-# leadsTo organs that are external, or completely cover the current organ
-@export var externalConnections: Array[Connection]
-# leadsTo organs that are internal
-@export var internalConnections: Array[Connection]
+# leadsTo other organs
+@export var connections: Array[Connection]
 
 # Optional variables
 @export var skin: String = ""
@@ -61,18 +59,6 @@ func getInfo(all: bool = false) -> Dictionary:
 				allInfo.erase(key)
 	return allInfo
 
-func getAllConnections() -> Array[Connection]:
-	var allConnections = externalConnections.duplicate()
-	allConnections.append_array(internalConnections)
-	return allConnections
-
-# I would love to have creatures with two brains, not right now
-func isBrain() -> bool:
-	return primaryConnection == null
-
-func terminates() -> bool:
-	return externalConnections.is_empty() and internalConnections.is_empty()
-
 # Will identify if Organ is an internal Organ, and save result
 func findIfInternal() -> bool:
 	var _isInternal: bool = false
@@ -81,29 +67,32 @@ func findIfInternal() -> bool:
 	if (primaryConnection == null):
 		return isInternal
 	else:
-		for conection in primaryConnection.linkFrom.internalConnections:
-			if (conection.linkTo == self):
+		for connection in primaryConnection.linkFrom.connections:
+			if (connection.type == Connection.TYPE.INTERNAL and connection.linkTo == self):
 				_isInternal = true
 	isInternal = _isInternal
 	return isInternal
 
 func getAllInternalOrgans() -> Array[Organ]:
-	var internalOrgans = internalConnections.map(
-		func (connec: Connection): return connec.linkTo
-	)
-	if primaryConnection.linkFrom.isInternal:
+	var internalOrgans = connections.reduce(
+		func (internalOrgans: Array[Organ], connec: Connection): 
+			if connec.type == Connection.TYPE.INTERNAL:
+				internalOrgans.append(connec.linkTo)
+	, [])
+
+	if primaryConnection.type == Connection.TYPE.INTERNAL:
 		internalOrgans.append(primaryConnection.linkFrom)
 	return internalOrgans
 
-# Attach a Organ, making this Organ the parent
+# Attach a Organ
 func connectOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
 	var connection = Connection.new(self, _organ, _vesselInfo)
-	externalConnections.append(connection)
+	connections.append(connection)
 
 # Attach a 'internal' organ
-func connectInternalOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
-	var connection = Connection.new(self, _organ, _vesselInfo)
-	internalConnections.append(connection)
-	_organ.isInternal = true
+#func connectInternalOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
+#	var connection = Connection.new(self, _organ, _vesselInfo)
+#	internalConnections.append(connection)
+#	_organ.isInternal = true
 
 

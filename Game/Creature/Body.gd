@@ -4,10 +4,8 @@ class_name Body
 
 # Brain of the creature
 var rootOrgan: Organ
-# Organs covered in skin, or visible to air...
-var externalOrgans: Array[Organ]
-# Organs covered by another, heart, kidney, pancreas...
-var internalOrgans: Array[Organ]
+# Organs could be internal, external, even magic!
+var organs: Array[Organ]
 
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 
@@ -21,8 +19,6 @@ func _init(params: Dictionary) -> void:
 	# constructing from json object, not existing organ resources
 	else:
 		rootOrgan = _constructBodyFromObj(params)
-		if (rootOrgan.isInternal):
-			internalOrgans.push_front(rootOrgan)
 
 
 ## returns false if object failed
@@ -33,36 +29,23 @@ func _constructBodyFromObj(obj: Dictionary)->Organ:
 	var organ: Organ = Organ.new(organInfo)
 	
 	if obj.has("connections"):
-		if obj.connections.has("internal"):
-			for connection in obj.connections.internal:
-				var childOrgan: Organ = _constructBodyFromObj(connection.organ)
-				organ.connectInternalOrgan(childOrgan, connection.connection)
-				internalOrgans.push_back(childOrgan)
-		if obj.connections.has("external"):
-			for connection in obj.connections.external:
-				var childOrgan: Organ = _constructBodyFromObj(connection.organ)
-				organ.connectOrgan(childOrgan, connection.connection)
-				externalOrgans.push_back(childOrgan)
+		for connection in obj.connections.internal:
+			var childOrgan: Organ = _constructBodyFromObj(connection.organ)
+			organ.connectOrgan(childOrgan, connection.connection)
+			organs.push_back(childOrgan)
 	return organ
-
-func getAllOrgans():
-	var allOrgans = externalOrgans.duplicate()
-	allOrgans.append_array(internalOrgans)
-	return allOrgans
 
 ## Find all hearts in the body
 func getAllHearts()->Array[Organ]:
 	var hearts: Array[Organ] = []
-	var allOrgans = externalOrgans.duplicate()
-	allOrgans.append_array(internalOrgans)
-	for organ in allOrgans:
+	for organ in organs:
 		if organ.isHeart:
 			hearts.push_back(organ)
 	return hearts
 
 ## Lists in decending order
-func getExternalOrgansByVolume():
-	var sortedOrgans = externalOrgans.duplicate()
+func getOrgansByVolume():
+	var sortedOrgans = organs.duplicate()
 	sortedOrgans.sort_custom(
 		func(organA: Organ, organB: Organ): return organA.volume > organB.volume
 	)
@@ -70,11 +53,9 @@ func getExternalOrgansByVolume():
 
 ## Must be ran in initialization from rootOrgan if chain of limbs
 func _traverseBody(organ: Organ):
-	if (organ.findIfInternal()):
-		internalOrgans.push_back(organ)
-	else:
-		externalOrgans.push_back(organ)
-	for connection in organ.getAllConnections():
+	organ.findIfInternal() ## TODO might need to remove this, uneccesary. 
+	organs.push_back(organ)
+	for connection in organ.connections:
 		_traverseBody(connection.linkTo)
 
 func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0) -> String:

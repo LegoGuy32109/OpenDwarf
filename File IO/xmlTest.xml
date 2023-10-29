@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<organ name="Brain" id="brain">
+	<!-- weight stuff -->
+	<connection type="internal" label="humanCritical">
+		<vessel name="artery" value='1.0'/>
+		<vessel name="tissue" value='1.0'/>
+		<vessel name="nerve" value='1.0'/>
+		<vessel name="muscle" value='1.0'/>
+
+		<organ name="Head" id="head">
+			 <connection type="external" label="humanExtremity">
+				<vessel name="tissue" value='1.0'/>
+				<vessel name="nerve" value='1.0'/>
+				<vessel name="muscle" value='1.0'/>
+
+				<organ name="Right Ear" id="earR">
+					<!-- need weight information -->
+				</organ>
+			 </connection>
+			 <connection label="humanExtremity">
+				<organ name="Left Ear" id="earL">
+					<!-- need weight information -->
+				</organ>
+			 </connection>
+		</organ>
+	</connection>
+	<connection>
+		<vessel name="branch" value="cool"/>
+	</connection>
+</organ>

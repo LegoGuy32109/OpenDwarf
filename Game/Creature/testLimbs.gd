@@ -71,28 +71,33 @@ func constructHuman() -> Organ:
 		"muscle": 1.0,
 		"nerve": 1.0,
 		"artery": 1.0,
+		"type": Connection.TYPE.EXTERNAL,
 	}
 	# Eye, Mouth, Finger, Thumb, Toe
 	var humanExtremity = {
 		"tissue": 1.0,
 		"muscle": 1.0,
 		"nerve": 1.0,
+		"type": Connection.TYPE.EXTERNAL,
 	}
 	# Ear, Nose
 	var humanMayWiggle = {
 		"tissue": 1.0,
 		"muscle": 0.2, # influence by genetics or random chance
 		"nerve": 1.0,
+		"type": Connection.TYPE.EXTERNAL,
 	}
 	# Stomach, Liver, Spleen, Pancreas
 	var humanOrgan = {
 		"tissue": 1.0,
+		"type": Connection.TYPE.INTERNAL,
 	}
 	# Heart, Lung, Guts
 	var humanMuscleOrgan = { 
 		"tissue": 1.0,
 		"muscle": 1.0,
 		"artery": 1.0,
+		"type": Connection.TYPE.INTERNAL,
 	}
 	
 	# start connecting from root of the creature, the brain
@@ -109,13 +114,13 @@ func constructHuman() -> Organ:
 	
 	neck.connectOrgan(torsoU, humanCritical)
 	
-	torsoU.connectInternalOrgan(heart, humanMuscleOrgan)
-	torsoU.connectInternalOrgan(lungR, humanMuscleOrgan)
-	torsoU.connectInternalOrgan(lungL, humanMuscleOrgan)
-	torsoU.connectInternalOrgan(stomach, humanOrgan)
-	torsoU.connectInternalOrgan(liver, humanOrgan)
-	torsoU.connectInternalOrgan(spleen, humanOrgan)
-	torsoU.connectInternalOrgan(pancreas, humanOrgan)
+	torsoU.connectOrgan(heart, humanMuscleOrgan)
+	torsoU.connectOrgan(lungR, humanMuscleOrgan)
+	torsoU.connectOrgan(lungL, humanMuscleOrgan)
+	torsoU.connectOrgan(stomach, humanOrgan)
+	torsoU.connectOrgan(liver, humanOrgan)
+	torsoU.connectOrgan(spleen, humanOrgan)
+	torsoU.connectOrgan(pancreas, humanOrgan)
 	torsoU.connectOrgan(armRU, humanCritical)
 	torsoU.connectOrgan(armLU, humanCritical)
 	torsoU.connectOrgan(torsoL, humanCritical)
@@ -140,9 +145,9 @@ func constructHuman() -> Organ:
 	handL.connectOrgan(fingerL3, humanExtremity)
 	handL.connectOrgan(fingerL4, humanExtremity)
 	
-	torsoL.connectInternalOrgan(guts, humanMuscleOrgan)
-	torsoL.connectInternalOrgan(kidneyR, humanOrgan)
-	torsoL.connectInternalOrgan(kidneyL, humanOrgan)
+	torsoL.connectOrgan(guts, humanMuscleOrgan)
+	torsoL.connectOrgan(kidneyR, humanOrgan)
+	torsoL.connectOrgan(kidneyL, humanOrgan)
 	torsoL.connectOrgan(legRU, humanCritical)
 	torsoL.connectOrgan(legLU, humanCritical)
 	
@@ -173,44 +178,11 @@ func _ready() -> void:
 	var humanBrain: Organ = constructHuman()
 	
 	var body = Body.new({"rootOrgan": humanBrain}) # why green?
-	
-	var bodyDataString: String = JSON.stringify(getBodyData(humanBrain), " ")
+	print("hi")
 	
 #	var file = FileAccess.open("%s/%s" % [organDataFilePath, fileName], FileAccess.WRITE)
 #	file.store_string(bodyDataString)
 #	file.close()
 	
-	var body2 = Body.new(JSON.parse_string(bodyDataString))
 	
-	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)
-
-
-func getBodyData(rootOrgan: Organ) -> Dictionary:
-	var bodyData: Dictionary = {}
-	bodyData = rootOrgan.getInfo()
-	var connectionData = {}
-	var internal: Array[Dictionary] = []
-	var external: Array[Dictionary] = []
-	for connection in rootOrgan.internalConnections:
-		var nextOrgan = connection.linkTo
-		var curConnData = {
-			"organ": getBodyData(nextOrgan),
-			"connection": connection.getInfo(),
-		}
-		internal.push_back(curConnData)
-	for connection in rootOrgan.externalConnections:
-		var nextOrgan = connection.linkTo
-		var curConnData = {
-			"organ": getBodyData(nextOrgan),
-			"connection": connection.getInfo(),
-		}
-		external.push_back(curConnData)
-	
-	if not internal.is_empty():
-		connectionData["internal"] = internal
-	if not external.is_empty():
-		connectionData["external"] = external
-	if not connectionData.is_empty():
-		bodyData["connections"] = connectionData
-	
-	return bodyData
+#	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)
