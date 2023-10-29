@@ -178,6 +178,10 @@ func _ready() -> void:
 	var humanBrain: Organ = constructHuman()
 	
 	var body = Body.new({"rootOrgan": humanBrain}) # why green?
+	
+	var fileMaker = XMLData.new()
+	fileMaker.readBodyFile("res://File IO/xmlTest.xml")
+	
 	print("hi")
 	
 #	var file = FileAccess.open("%s/%s" % [organDataFilePath, fileName], FileAccess.WRITE)

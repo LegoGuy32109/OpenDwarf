@@ -62,19 +62,20 @@ func readBodyFile(filepath: String): # return custom error probably
 		print("error with opening file, %s" % error_string(error))
 		return
 	
-	var nodeStack: Array[String] = []
+	var nodeStack: = []
 	var currentNodeName: String = ""
 	
 	while true:
-		var nodeError = parser.read()
+		var nodeError = parser.read() 
 		if nodeError != OK:
+			if nodeError == ERR_FILE_EOF:
+				break
 			print("error with data, %s" % error_string(nodeError)) 
 			return
 
 		if parser.get_node_type() == XMLParser.NODE_ELEMENT:
 			currentNodeName = parser.get_node_name()
-			var attributes: Dictionary =  parser.getAttributes()
-			attributes["NODE_NAME"] = currentNodeName
+			var attributes: Dictionary =  getAttributes(parser)
 			nodeStack.push_back(attributes)
 			if parser.is_empty():
 				nodeStack.push_back(currentNodeName)
@@ -82,9 +83,7 @@ func readBodyFile(filepath: String): # return custom error probably
 		if parser.get_node_type() == XMLParser.NODE_ELEMENT_END:
 			var nodeName: String = parser.get_node_name()
 			nodeStack.push_back(nodeName)
-#			if currentNodeName == nodeName:
-#				nodeStack.pop_back()
-#			else:
+
 #				print("closing tag for <%s> not found, found </%s>\nat line %s: '%s'" % [
 #					currentNodeName,
 #					nodeName,
@@ -105,8 +104,23 @@ func readBodyFile(filepath: String): # return custom error probably
 #					return
 				
 	
-	parser.close()
 	print(nodeStack)
+
+#func parseBody(parser: XMLParser)-> Dictionary:
+#	var nodeError = parser.read() 
+#	if nodeError != OK:
+#		return {
+#			"ERROR": "error with data, %s" % error_string(nodeError)
+#		} 
+#	var output: Dictionary = {}
+#	if parser.get_node_type() == XMLParser.NODE_ELEMENT:
+#		var nodeName: String = parser.get_node_name()
+#		var attributes: Dictionary =  getAttributes(parser)
+#		if parser.is_empty():
+#
+#
+#	if parser.get_node_type() == XMLParser.NODE_ELEMENT_END:
+#		var nodeName: String = parser.get_node_name()
 
 func run():
 	# Just to flex, also get the text content of the file
@@ -132,5 +146,3 @@ func run():
 			getAllNodeInfo(parser),
 			fileLines[parser.get_current_line()].replace('\r', '')
 		])
-	
-	parser.close()
