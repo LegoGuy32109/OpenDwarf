@@ -22,6 +22,7 @@ func getAttributes(parser: XMLParser) -> Dictionary:
 	var output := {}
 	for i in parser.get_attribute_count():
 		output[parser.get_attribute_name(i)] = parser.get_attribute_value(i)
+	output["node"] = parser.get_node_name()
 	return output
 
 func getAllNodeInfo(parser: XMLParser)->String:
@@ -62,6 +63,7 @@ func readBodyFile(filepath: String): # return custom error probably
 		print("error with opening file, %s" % error_string(error))
 		return
 	
+	var root = {}
 	var nodeStack: = []
 	var currentNodeName: String = ""
 	
@@ -76,51 +78,28 @@ func readBodyFile(filepath: String): # return custom error probably
 		if parser.get_node_type() == XMLParser.NODE_ELEMENT:
 			currentNodeName = parser.get_node_name()
 			var attributes: Dictionary =  getAttributes(parser)
-			nodeStack.push_back(attributes)
+			
 			if parser.is_empty():
-				nodeStack.push_back(currentNodeName)
+				if not nodeStack.back().has("children"):
+					nodeStack.back()["children"] = []
+				nodeStack.back()["children"].push_back(attributes)
+			else:
+				nodeStack.push_back(attributes)
 		
 		if parser.get_node_type() == XMLParser.NODE_ELEMENT_END:
 			var nodeName: String = parser.get_node_name()
-			nodeStack.push_back(nodeName)
-
-#				print("closing tag for <%s> not found, found </%s>\nat line %s: '%s'" % [
-#					currentNodeName,
-#					nodeName,
-#					parser.get_current_line()+1,
-#					fileLines[parser.get_current_line()]
-#				]) 
-#				return
-				
-		
-#		match(currentNodeName):
-#			"organ":
-#				# confirm organ has required attributes
-#				if(not attributes.has_all(["name", "id"])):
-#					print("Line %s: organ does not have all required attributes\n'%s'" % [
-#						parser.get_current_line()+1,
-#						fileLines[parser.get_current_line()]
-#					])
-#					return
-				
+			var poppedNode = nodeStack.pop_back()
+			if nodeStack.is_empty():
+				root = poppedNode
+				break
+			if not nodeStack.back().has("children"):
+				nodeStack.back()["children"] = []
+			nodeStack.back()["children"].push_back(poppedNode)
 	
-	print(nodeStack)
+	print(JSON.stringify(root, " ", false))
 
-#func parseBody(parser: XMLParser)-> Dictionary:
-#	var nodeError = parser.read() 
-#	if nodeError != OK:
-#		return {
-#			"ERROR": "error with data, %s" % error_string(nodeError)
-#		} 
-#	var output: Dictionary = {}
-#	if parser.get_node_type() == XMLParser.NODE_ELEMENT:
-#		var nodeName: String = parser.get_node_name()
-#		var attributes: Dictionary =  getAttributes(parser)
-#		if parser.is_empty():
-#
-#
-#	if parser.get_node_type() == XMLParser.NODE_ELEMENT_END:
-#		var nodeName: String = parser.get_node_name()
+
+	
 
 func run():
 	# Just to flex, also get the text content of the file
