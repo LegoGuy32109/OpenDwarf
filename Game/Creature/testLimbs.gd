@@ -179,8 +179,8 @@ func _ready() -> void:
 	
 	var body = Body.new({"rootOrgan": humanBrain}) # why green?
 	
-	var fileMaker = XMLData.new()
-	fileMaker.readBodyFile("res://File IO/xmlTest.xml")
+	var xmlParser = XMLData.new()
+	xmlParser.readBodyFile("res://File IO/xmlTest.xml")
 	
 	print("hi")
 	

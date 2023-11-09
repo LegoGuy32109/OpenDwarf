@@ -7,6 +7,19 @@ class_name XMLData
 enum NodeType {NODE_NONE, NODE_ELEMENT, NODE_ELEMENT_END, NODE_TEXT, 
 NODE_COMMENT, NODE_CDATA, NODE_UNKNOWN}
 
+const NODE_FIELD = "node_name"
+const CHILDREN_FIELD = "children"
+const PRESET_RULES = {
+	"connection": {
+		"attributes": [
+			"type",
+		],
+		"children": [
+			"vessel",
+		],
+	}
+}
+
 func getNodeTypeName(nodeType: int):
 	return NodeType.keys()[nodeType]
 
@@ -22,7 +35,7 @@ func getAttributes(parser: XMLParser) -> Dictionary:
 	var output := {}
 	for i in parser.get_attribute_count():
 		output[parser.get_attribute_name(i)] = parser.get_attribute_value(i)
-	output["node"] = parser.get_node_name()
+	output[NODE_FIELD] = parser.get_node_name()
 	return output
 
 func getAllNodeInfo(parser: XMLParser)->String:
@@ -49,7 +62,7 @@ func getAllNodeInfo(parser: XMLParser)->String:
 	
 	return output
 
-## read XML file and create a body object
+## read XML file and create a body dictionary
 func readBodyFile(filepath: String): # return custom error probably
 	var file = FileAccess.open(filepath, FileAccess.READ)
 	var fileContents = file.get_as_text()
@@ -63,9 +76,11 @@ func readBodyFile(filepath: String): # return custom error probably
 		print("error with opening file, %s" % error_string(error))
 		return
 	
-	var root = {}
+	var root: = {}
 	var nodeStack: = []
 	var currentNodeName: String = ""
+	
+	var presets: = {}
 	
 	while true:
 		var nodeError = parser.read() 
@@ -80,9 +95,9 @@ func readBodyFile(filepath: String): # return custom error probably
 			var attributes: Dictionary =  getAttributes(parser)
 			
 			if parser.is_empty():
-				if not nodeStack.back().has("children"):
-					nodeStack.back()["children"] = []
-				nodeStack.back()["children"].push_back(attributes)
+				if not nodeStack.back().has(CHILDREN_FIELD):
+					nodeStack.back()[CHILDREN_FIELD] = []
+				nodeStack.back()[CHILDREN_FIELD].push_back(attributes)
 			else:
 				nodeStack.push_back(attributes)
 		
@@ -92,15 +107,47 @@ func readBodyFile(filepath: String): # return custom error probably
 			if nodeStack.is_empty():
 				root = poppedNode
 				break
-			if not nodeStack.back().has("children"):
-				nodeStack.back()["children"] = []
-			nodeStack.back()["children"].push_back(poppedNode)
+			if not nodeStack.back().has(CHILDREN_FIELD):
+				nodeStack.back()[CHILDREN_FIELD] = []
+			
+			# apply preset to node
+			if poppedNode.has("preset"):
+				setPreset(poppedNode, presets)
+#			print(JSON.stringify(poppedNode, " ", false))
+			
+			nodeStack.back()[CHILDREN_FIELD].push_back(poppedNode)
 	
-	print(JSON.stringify(root, " ", false))
+	print(JSON.stringify(presets, " ", false))
 
-
+## Given dictionary that has preset field, if the preset does not yet exist it's attributes and children will be saved as a preset according to the PRESET_RULES
+func setPreset(node: Dictionary, existingPresets: Dictionary):
+	if existingPresets.has(node["preset"]):
+		# push preset attributes into node
+		var nodePreset = existingPresets[node["preset"]]
+		for key in nodePreset.keys():
+			node[key] = nodePreset[key]
+		# push preset children into node
+		if nodePreset.has(CHILDREN_FIELD):
+			if not node.has(CHILDREN_FIELD):
+				node[CHILDREN_FIELD] = []
+			node[CHILDREN_FIELD].append_array(nodePreset[CHILDREN_FIELD])
+		return
 	
-
+	var presetAttributes := {}
+	if PRESET_RULES.has(node[NODE_FIELD]):
+		# save attributes to preset
+		for attrName in PRESET_RULES[node[NODE_FIELD]].attributes:
+			presetAttributes[attrName] = node[attrName]
+		# save children to preset
+		if node.has("children"):
+			presetAttributes.children = []
+			for child in node.children:
+				if child[NODE_FIELD] in PRESET_RULES[node[NODE_FIELD]].children: 
+					presetAttributes.children.push_back(child)
+	else:
+		presetAttributes = node
+	existingPresets[node["preset"]] = presetAttributes
+	
 func run():
 	# Just to flex, also get the text content of the file
 	var file = FileAccess.open("res://_extra/xmlTest.xml", FileAccess.READ)
