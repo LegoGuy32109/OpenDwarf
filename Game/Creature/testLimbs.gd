@@ -188,5 +188,4 @@ func _ready() -> void:
 #	file.store_string(bodyDataString)
 #	file.close()
 	
-	
 #	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)

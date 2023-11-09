@@ -117,7 +117,7 @@ func readBodyFile(filepath: String): # return custom error probably
 			
 			nodeStack.back()[CHILDREN_FIELD].push_back(poppedNode)
 	
-	print(JSON.stringify(presets, " ", false))
+	print(JSON.stringify(root, " ", false))
 
 ## Given dictionary that has preset field, if the preset does not yet exist it's attributes and children will be saved as a preset according to the PRESET_RULES
 func setPreset(node: Dictionary, existingPresets: Dictionary):
