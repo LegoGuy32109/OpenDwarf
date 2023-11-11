@@ -1,23 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!-- Human Male Body Template --> 
 <organ name="Brain" 
 	id="brain"
 	weight="03.402"
 	volume="883"
 >
-	
-	<!-- weight stuff -->
+	<!-- weight stuff needed in organ node -->
 	<connection type="internal" preset="humanCritical">
-		<vessel name="artery" value='1.0'/>
-		<vessel name="tissue" value='1.0'/>
-		<vessel name="nerve" value='1.0'/>
-		<vessel name="muscle" value='1.0'/>
-
+		<vessel name="artery" value="1.0"/>
+		<vessel name="tissue" value="1.0"/>
+		<vessel name="nerve" value="1.0"/>
+		<vessel name="muscle" value="1.0"/>
 		<organ name="Head" id="head">
 			 <connection type="external" preset="humanExtremity">
-				<vessel name="tissue" value='1.0'/>
-				<vessel name="nerve" value='1.0'/>
-				<vessel name="muscle" value='1.0'/>
-
+				<vessel name="tissue" value="1.0"/>
+				<vessel name="nerve" value="1.0"/>
+				<vessel name="muscle" value="1.0"/>
 				<organ name="Right Ear" id="earR">
 					<!-- need weight information -->
 				</organ>
@@ -28,8 +26,5 @@
 				</organ>
 			 </connection>
 		</organ>
-	</connection>
-	<connection>
-		<vessel name="branch" value="cool"/>
 	</connection>
 </organ>

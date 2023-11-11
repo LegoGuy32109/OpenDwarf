@@ -28,21 +28,26 @@ func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary = {}):
 			if connectionData[vesselName] is float:
 				vessels[vesselName] = connectionData[vesselName]
 		
-		# make sure this is being passed as an int, not a string
 		if connectionData.has("type"):
-			type = connectionData.type
+			assert(
+				connectionData.type is int or connectionData.type is String, 
+				"incorrect type for 'type', looking for int or string."
+			)
+			# check if passing enum or string
+			if connectionData.type is int:
+				type = connectionData.type
+			elif connectionData.type is String:
+				# determine enum value by converting type label to uppercase
+				var enumName = connectionData.type.to_upper()
+				type = TYPE[enumName]
 		
 		if vessels.has("artery") && vessels.artery > 0.0:
 			linkFrom.needsBlood = true
 			linkTo.needsBlood = true
 
-func getInfo(all: bool = false):
-	var infoObj = vessels
-	infoObj["type"] = TYPE.keys()[type]
-	# by default, don't include values that are false or 0.0
-	if not all:
-		for key in infoObj.keys():
-			if (infoObj[key] is float and infoObj[key] == 0.0) \
-				or (infoObj[key] is bool and infoObj[key] == false):
-				infoObj.erase(key)
+## Return info about the connection itself as a Dictionary
+func getInfo()->Dictionary:
+	var infoObj := {}
+	infoObj.vessels = vessels
+	infoObj["type"] = TYPE.keys()[type].to_lower()
 	return infoObj

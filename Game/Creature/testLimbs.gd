@@ -180,12 +180,11 @@ func _ready() -> void:
 	var body = Body.new({"rootOrgan": humanBrain}) # why green?
 	
 	var xmlParser = XMLData.new()
-	xmlParser.readBodyFile("res://File IO/xmlTest.xml")
+	xmlParser.saveToFile(body._saveBodyToObj(), "res://File IO/human_male_body.xml")
 	
-	print("hi")
+	var bodyData = xmlParser.readBodyFile("res://File IO/human_male_body.xml")
 	
-#	var file = FileAccess.open("%s/%s" % [organDataFilePath, fileName], FileAccess.WRITE)
-#	file.store_string(bodyDataString)
-#	file.close()
+	var body2 = Body.new(bodyData)
+	print(JSON.stringify(bodyData, " ", false))
 	
 #	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)

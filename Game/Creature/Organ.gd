@@ -40,10 +40,11 @@ func _init(params: Dictionary):
 	
 	primaryConnection = null
 
+## Return attributes of organ, not it's connection, as a Dictionary
 func getInfo(all: bool = false) -> Dictionary:
 	var allInfo: Dictionary = {
-		"id": id,
 		"name": name,
+		"id": id,
 		"limbName": limbName,
 		"volume": volume,
 		"material": material,
@@ -52,6 +53,7 @@ func getInfo(all: bool = false) -> Dictionary:
 		"isInternal": isInternal,
 		"needsBlood": needsBlood,
 	}
+	# if not returning 'all' info, don't include attributes that are false or empty
 	if not all:
 		for key in allInfo.keys():
 			if (allInfo[key] is bool and allInfo[key] == false) \
@@ -88,11 +90,3 @@ func getAllInternalOrgans() -> Array[Organ]:
 func connectOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
 	var connection = Connection.new(self, _organ, _vesselInfo)
 	connections.append(connection)
-
-# Attach a 'internal' organ
-#func connectInternalOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
-#	var connection = Connection.new(self, _organ, _vesselInfo)
-#	internalConnections.append(connection)
-#	_organ.isInternal = true
-
-
