@@ -8,29 +8,11 @@
 	isInternal="true"
 	needsBlood="true"
 >
-	<connection
-		type="external"
-	>
-		<vessel
-			name="tissue"
-			value="1"
-		>
-		</vessel>
-		<vessel
-			name="muscle"
-			value="1"
-		>
-		</vessel>
-		<vessel
-			name="nerve"
-			value="1"
-		>
-		</vessel>
-		<vessel
-			name="artery"
-			value="1"
-		>
-		</vessel>
+	<connection type="external">
+		<vessel name="tissue" value="1"/>
+		<vessel name="muscle" value="1"/>
+		<vessel name="nerve" value="1"/>
+		<vessel name="artery" value="1"/>
 		<organ
 			name="Head"
 			id="Head"
@@ -39,191 +21,83 @@
 			weight="5.5"
 			needsBlood="true"
 		>
-			<connection
-				type="external"
-			>
-				<vessel
-					name="tissue"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="muscle"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="nerve"
-					value="1"
-				>
-				</vessel>
+			<connection type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="1"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Right Eye"
 					id="EyeR"
 					volume="0.0000923661064"
 					material="flesh"
 					weight="0.0075"
-				>
-				</organ>
+				/>
 			</connection>
-			<connection
-				type="external"
-			>
-				<vessel
-					name="tissue"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="muscle"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="nerve"
-					value="1"
-				>
-				</vessel>
+			<connection type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="1"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Left Eye"
 					id="EyeL"
 					volume="0.0000923661064"
 					material="flesh"
 					weight="0.0075"
-				>
-				</organ>
+				/>
 			</connection>
-			<connection
-				type="external"
-			>
-				<vessel
-					name="tissue"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="muscle"
-					value="0.2"
-				>
-				</vessel>
-				<vessel
-					name="nerve"
-					value="1"
-				>
-				</vessel>
+			<connection type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="0.2"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Right Ear"
 					id="EarR"
 					volume="0.00010917393956"
 					material="flesh"
 					weight="0.0014"
-				>
-				</organ>
+				/>
 			</connection>
-			<connection
-				type="external"
-			>
-				<vessel
-					name="tissue"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="muscle"
-					value="0.2"
-				>
-				</vessel>
-				<vessel
-					name="nerve"
-					value="1"
-				>
-				</vessel>
+			<connection type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="0.2"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Left Ear"
 					id="EarL"
 					volume="0.00010917393956"
 					material="flesh"
 					weight="0.0014"
-				>
-				</organ>
+				/>
 			</connection>
-			<connection
-				type="external"
-			>
-				<vessel
-					name="tissue"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="muscle"
-					value="0.2"
-				>
-				</vessel>
-				<vessel
-					name="nerve"
-					value="1"
-				>
-				</vessel>
+			<connection type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="0.2"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Nose"
 					id="Nose"
 					volume="0.00007716972323"
 					material="flesh"
 					weight="0.008"
-				>
-				</organ>
+				/>
 			</connection>
-			<connection
-				type="external"
-			>
-				<vessel
-					name="tissue"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="muscle"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="nerve"
-					value="1"
-				>
-				</vessel>
+			<connection type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="1"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Mouth"
 					id="Mouth"
 					volume="0.00026071682805"
 					material="flesh"
 					weight="0.025"
-				>
-				</organ>
+				/>
 			</connection>
-			<connection
-				type="external"
-			>
-				<vessel
-					name="tissue"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="muscle"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="nerve"
-					value="1"
-				>
-				</vessel>
-				<vessel
-					name="artery"
-					value="1"
-				>
-				</vessel>
+			<connection type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="1"/>
+				<vessel name="nerve" value="1"/>
+				<vessel name="artery" value="1"/>
 				<organ
 					name="Neck"
 					id="Neck"
@@ -232,29 +106,11 @@
 					weight="3"
 					needsBlood="true"
 				>
-					<connection
-						type="external"
-					>
-						<vessel
-							name="tissue"
-							value="1"
-						>
-						</vessel>
-						<vessel
-							name="muscle"
-							value="1"
-						>
-						</vessel>
-						<vessel
-							name="nerve"
-							value="1"
-						>
-						</vessel>
-						<vessel
-							name="artery"
-							value="1"
-						>
-						</vessel>
+					<connection type="external">
+						<vessel name="tissue" value="1"/>
+						<vessel name="muscle" value="1"/>
+						<vessel name="nerve" value="1"/>
+						<vessel name="artery" value="1"/>
 						<organ
 							name="Upper Torso"
 							id="TorsoU"
@@ -263,24 +119,10 @@
 							weight="15"
 							needsBlood="true"
 						>
-							<connection
-								type="internal"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="muscle"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="artery"
-									value="1"
-								>
-								</vessel>
+							<connection type="internal">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Heart"
 									id="Heart"
@@ -290,27 +132,12 @@
 									isHeart="true"
 									isInternal="true"
 									needsBlood="true"
-								>
-								</organ>
+								/>
 							</connection>
-							<connection
-								type="internal"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="muscle"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="artery"
-									value="1"
-								>
-								</vessel>
+							<connection type="internal">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Right Lung"
 									id="LungR"
@@ -319,27 +146,12 @@
 									weight="1.05"
 									isInternal="true"
 									needsBlood="true"
-								>
-								</organ>
+								/>
 							</connection>
-							<connection
-								type="internal"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="muscle"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="artery"
-									value="1"
-								>
-								</vessel>
+							<connection type="internal">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Left Lung"
 									id="LungL"
@@ -348,17 +160,10 @@
 									weight="1.05"
 									isInternal="true"
 									needsBlood="true"
-								>
-								</organ>
+								/>
 							</connection>
-							<connection
-								type="internal"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
+							<connection type="internal">
+								<vessel name="tissue" value="1"/>
 								<organ
 									name="Stomach"
 									id="Stomach"
@@ -366,17 +171,10 @@
 									material="flesh"
 									weight="1.75"
 									isInternal="true"
-								>
-								</organ>
+								/>
 							</connection>
-							<connection
-								type="internal"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
+							<connection type="internal">
+								<vessel name="tissue" value="1"/>
 								<organ
 									name="Liver"
 									id="Liver"
@@ -384,17 +182,10 @@
 									material="flesh"
 									weight="1.5"
 									isInternal="true"
-								>
-								</organ>
+								/>
 							</connection>
-							<connection
-								type="internal"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
+							<connection type="internal">
+								<vessel name="tissue" value="1"/>
 								<organ
 									name="Spleen"
 									id="Spleen"
@@ -402,17 +193,10 @@
 									material="flesh"
 									weight="0.175"
 									isInternal="true"
-								>
-								</organ>
+								/>
 							</connection>
-							<connection
-								type="internal"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
+							<connection type="internal">
+								<vessel name="tissue" value="1"/>
 								<organ
 									name="Pancreas"
 									id="Pancreas"
@@ -420,32 +204,13 @@
 									material="flesh"
 									weight="0.085"
 									isInternal="true"
-								>
-								</organ>
+								/>
 							</connection>
-							<connection
-								type="external"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="muscle"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="nerve"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="artery"
-									value="1"
-								>
-								</vessel>
+							<connection type="external">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="nerve" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Right Upper Arm"
 									id="ArmRU"
@@ -455,29 +220,11 @@
 									weight="3"
 									needsBlood="true"
 								>
-									<connection
-										type="external"
-									>
-										<vessel
-											name="tissue"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="muscle"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="nerve"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="artery"
-											value="1"
-										>
-										</vessel>
+									<connection type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Right Lower Arm"
 											id="ArmRL"
@@ -487,29 +234,11 @@
 											weight="1.9"
 											needsBlood="true"
 										>
-											<connection
-												type="external"
-											>
-												<vessel
-													name="tissue"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="muscle"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="nerve"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="artery"
-													value="1"
-												>
-												</vessel>
+											<connection type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Right Hand"
 													id="HandR"
@@ -519,24 +248,10 @@
 													weight="0.25"
 													needsBlood="true"
 												>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Right Thumb"
 															id="ThumbR"
@@ -544,27 +259,12 @@
 															volume="0.00009846345347"
 															material="flesh"
 															weight="0.015"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerR1"
@@ -572,27 +272,12 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerR2"
@@ -600,27 +285,12 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerR3"
@@ -628,27 +298,12 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Pinky"
 															id="FingerR4"
@@ -656,8 +311,7 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
 												</organ>
 											</connection>
@@ -665,29 +319,11 @@
 									</connection>
 								</organ>
 							</connection>
-							<connection
-								type="external"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="muscle"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="nerve"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="artery"
-									value="1"
-								>
-								</vessel>
+							<connection type="external">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="nerve" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Left Upper Arm"
 									id="ArmLU"
@@ -697,29 +333,11 @@
 									weight="3"
 									needsBlood="true"
 								>
-									<connection
-										type="external"
-									>
-										<vessel
-											name="tissue"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="muscle"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="nerve"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="artery"
-											value="1"
-										>
-										</vessel>
+									<connection type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Left Lower Arm"
 											id="ArmLL"
@@ -729,29 +347,11 @@
 											weight="1.9"
 											needsBlood="true"
 										>
-											<connection
-												type="external"
-											>
-												<vessel
-													name="tissue"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="muscle"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="nerve"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="artery"
-													value="1"
-												>
-												</vessel>
+											<connection type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Left Hand"
 													id="HandL"
@@ -761,24 +361,10 @@
 													weight="0.25"
 													needsBlood="true"
 												>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Left Thumb"
 															id="ThumbL"
@@ -786,27 +372,12 @@
 															volume="0.00009846345347"
 															material="flesh"
 															weight="0.015"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerL1"
@@ -814,27 +385,12 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerL2"
@@ -842,27 +398,12 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerL3"
@@ -870,27 +411,12 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Pinky"
 															id="FingerL4"
@@ -898,8 +424,7 @@
 															volume="0.00015331352188"
 															material="flesh"
 															weight="0.0075"
-														>
-														</organ>
+														/>
 													</connection>
 												</organ>
 											</connection>
@@ -907,29 +432,11 @@
 									</connection>
 								</organ>
 							</connection>
-							<connection
-								type="external"
-							>
-								<vessel
-									name="tissue"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="muscle"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="nerve"
-									value="1"
-								>
-								</vessel>
-								<vessel
-									name="artery"
-									value="1"
-								>
-								</vessel>
+							<connection type="external">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="nerve" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Lower Torso"
 									id="TorsoL"
@@ -938,24 +445,10 @@
 									weight="20"
 									needsBlood="true"
 								>
-									<connection
-										type="internal"
-									>
-										<vessel
-											name="tissue"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="muscle"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="artery"
-											value="1"
-										>
-										</vessel>
+									<connection type="internal">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Guts"
 											id="Guts"
@@ -964,17 +457,10 @@
 											weight="1.5"
 											isInternal="true"
 											needsBlood="true"
-										>
-										</organ>
+										/>
 									</connection>
-									<connection
-										type="internal"
-									>
-										<vessel
-											name="tissue"
-											value="1"
-										>
-										</vessel>
+									<connection type="internal">
+										<vessel name="tissue" value="1"/>
 										<organ
 											name="Right Kidney"
 											id="Right Kidney"
@@ -982,17 +468,10 @@
 											material="flesh"
 											weight="0.145"
 											isInternal="true"
-										>
-										</organ>
+										/>
 									</connection>
-									<connection
-										type="internal"
-									>
-										<vessel
-											name="tissue"
-											value="1"
-										>
-										</vessel>
+									<connection type="internal">
+										<vessel name="tissue" value="1"/>
 										<organ
 											name="Left Kidney"
 											id="Left Kidney"
@@ -1000,32 +479,13 @@
 											material="flesh"
 											weight="0.145"
 											isInternal="true"
-										>
-										</organ>
+										/>
 									</connection>
-									<connection
-										type="external"
-									>
-										<vessel
-											name="tissue"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="muscle"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="nerve"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="artery"
-											value="1"
-										>
-										</vessel>
+									<connection type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Right Upper Leg"
 											id="LegRU"
@@ -1035,29 +495,11 @@
 											weight="12.5"
 											needsBlood="true"
 										>
-											<connection
-												type="external"
-											>
-												<vessel
-													name="tissue"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="muscle"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="nerve"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="artery"
-													value="1"
-												>
-												</vessel>
+											<connection type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Right Lower Leg"
 													id="LegRL"
@@ -1067,29 +509,11 @@
 													weight="5"
 													needsBlood="true"
 												>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="artery"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
+														<vessel name="artery" value="1"/>
 														<organ
 															name="Right Foot"
 															id="FootR"
@@ -1099,24 +523,10 @@
 															weight="1.25"
 															needsBlood="true"
 														>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR1"
@@ -1124,27 +534,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR2"
@@ -1152,27 +547,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR3"
@@ -1180,27 +560,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR4"
@@ -1208,27 +573,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR5"
@@ -1236,8 +586,7 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
 														</organ>
 													</connection>
@@ -1245,29 +594,11 @@
 											</connection>
 										</organ>
 									</connection>
-									<connection
-										type="external"
-									>
-										<vessel
-											name="tissue"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="muscle"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="nerve"
-											value="1"
-										>
-										</vessel>
-										<vessel
-											name="artery"
-											value="1"
-										>
-										</vessel>
+									<connection type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Left Upper Leg"
 											id="LegLU"
@@ -1277,29 +608,11 @@
 											weight="12.5"
 											needsBlood="true"
 										>
-											<connection
-												type="external"
-											>
-												<vessel
-													name="tissue"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="muscle"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="nerve"
-													value="1"
-												>
-												</vessel>
-												<vessel
-													name="artery"
-													value="1"
-												>
-												</vessel>
+											<connection type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Left Lower Leg"
 													id="LegLL"
@@ -1309,29 +622,11 @@
 													weight="5"
 													needsBlood="true"
 												>
-													<connection
-														type="external"
-													>
-														<vessel
-															name="tissue"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="muscle"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="nerve"
-															value="1"
-														>
-														</vessel>
-														<vessel
-															name="artery"
-															value="1"
-														>
-														</vessel>
+													<connection type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
+														<vessel name="artery" value="1"/>
 														<organ
 															name="Left Foot"
 															id="FootL"
@@ -1341,24 +636,10 @@
 															weight="1.25"
 															needsBlood="true"
 														>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL2"
@@ -1366,27 +647,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL1"
@@ -1394,27 +660,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL3"
@@ -1422,27 +673,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL4"
@@ -1450,27 +686,12 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
-															<connection
-																type="external"
-															>
-																<vessel
-																	name="tissue"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="muscle"
-																	value="1"
-																>
-																</vessel>
-																<vessel
-																	name="nerve"
-																	value="1"
-																>
-																</vessel>
+															<connection type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL5"
@@ -1478,8 +699,7 @@
 																	volume="0.00002738583316"
 																	material="flesh"
 																	weight="0.002"
-																>
-																</organ>
+																/>
 															</connection>
 														</organ>
 													</connection>

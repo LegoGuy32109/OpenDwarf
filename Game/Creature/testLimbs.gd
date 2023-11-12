@@ -182,9 +182,10 @@ func _ready() -> void:
 	var xmlParser = XMLData.new()
 	xmlParser.saveToFile(body._saveBodyToObj(), "res://File IO/human_male_body.xml")
 	
-	var bodyData = xmlParser.readBodyFile("res://File IO/human_male_body.xml")
-	
-	var body2 = Body.new(bodyData)
-	print(JSON.stringify(bodyData, " ", false))
+	# working on setting up custom presets right now
+#	var bodyData = xmlParser.readBodyFile("res://File IO/human_male_body.xml")
+#	var body2 = Body.new(bodyData)
+
+#	print(JSON.stringify(bodyData, " ", false))
 	
 #	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)

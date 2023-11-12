@@ -10,10 +10,11 @@ NODE_COMMENT, NODE_CDATA, NODE_UNKNOWN}
 func getNodeTypeName(nodeType: int):
 	return NodeType.keys()[nodeType]
 
-const NODE_FIELD = "node_name"
-const CHILDREN_FIELD = "children"
-const PRESET_FIELD = "preset"
-const PRESET_RULES = {
+const ATTR_LINE_MAX := 80
+const NODE_FIELD := "node_name"
+const CHILDREN_FIELD := "children"
+const PRESET_FIELD := "preset"
+const PRESET_RULES := {
 	"connection": {
 		"attributes": [
 			"type",
@@ -24,8 +25,10 @@ const PRESET_RULES = {
 	}
 }
 
+var presets := {}
+
 ## Get all attributes out of an XML element, could be NODE_ELEMENT or NODE_TEXT
-func getAttributes(parser: XMLParser) -> Dictionary:
+func _getAttributes(parser: XMLParser) -> Dictionary:
 	var output := {}
 	for i in parser.get_attribute_count():
 		output[parser.get_attribute_name(i)] = parser.get_attribute_value(i)
@@ -48,27 +51,106 @@ func saveToFile(data: Dictionary, filePath: String):
 	file.close()
 	print("file successfully saved at %s" % filePath)
 
+## Recursive helper function to compute xml file output of a Dictionary
 func _parseData(data: Dictionary, indent: String = "")->String:
 	var output := ""
 	
 	if not data.has(NODE_FIELD):
-		printerr()
 		printerr("'%s' not found in data" % NODE_FIELD)
 		return ""
 	
-	output += "<%s\n" % [data[NODE_FIELD]]
-	var keys = data.keys()
-	keys.erase(NODE_FIELD)
-	keys.erase(CHILDREN_FIELD)
-	for key in keys:
-		output+="%s	%s=\"%s\"\n" % [indent, key, data[key]]
-	output += "%s>\n" % indent
+	output += "<%s" % data[NODE_FIELD]
+	var nodeAttributes = data.keys()
+	var nodeAttrTexts: Array[String] = []
+	# erase XML meta information
+	nodeAttributes.erase(NODE_FIELD)
+	nodeAttributes.erase(CHILDREN_FIELD)
+	for attrName in nodeAttributes:
+		nodeAttrTexts.push_back("%s=\"%s\"" % [attrName, data[attrName]])
 	
+	# index is -1 so when while loop ends the index is correct, scoped higher to be used later
+	var presetIndex := -1
+	var presetFound := false
+	# find if preset rules exist for this Dictionary, if so then a preset should be generated
+	if PRESET_RULES.has(data[NODE_FIELD]):
+		var nodePresetRules: Dictionary = PRESET_RULES[data[NODE_FIELD]]
+		# find if a preset exists with these attributes
+		if presets.has(data[NODE_FIELD]):
+			var potentialPresetNames: Array = presets[data[NODE_FIELD]].keys()
+			# presetIndex and presetFound scoped higher to be used when saving attributes to string
+			while not presetFound and presetIndex < potentialPresetNames.size() - 1:
+				presetIndex += 1 
+				var potentialPresetName = potentialPresetNames[presetIndex]
+				var potentialPreset = presets[data[NODE_FIELD]][potentialPresetName]
+				
+				# determine what attributes a preset of this node contains
+				var presetAttr = {}
+				if nodePresetRules.has("attributes"):
+					for attrName in nodePresetRules.attributes:
+						if data.has(attrName):
+							presetAttr[attrName] = data[attrName]
+				if nodePresetRules.has("children") and data.has(CHILDREN_FIELD):
+					for child in data[CHILDREN_FIELD]:
+						if child[NODE_FIELD] in nodePresetRules.children:
+							if not presetAttr.has("children"):
+								presetAttr.children = []
+							presetAttr.children.push_back(child.duplicate())
+				
+				# check if the potential preset matches this node's presettable attributes
+				if JSON.stringify(potentialPreset) == JSON.stringify(presetAttr):
+					presetFound = true
+				
+				# check next preset already created
+		
+		# if no existing presets match this node's attributes/children, make a new one!
+		if not presetFound:
+			# create preset with new name
+			presets[data[NODE_FIELD]] = {}
+			presets[data[NODE_FIELD]]["preset_%s" % presets.keys().size()] = {}
+			var newPreset: Dictionary = presets[data[NODE_FIELD]]["preset_%s" % presets.keys().size()]
+			
+			
+			if nodePresetRules.has("attributes"):
+				for attrName in nodePresetRules.attributes:
+					if data.has(attrName):
+						newPreset[attrName] = data[attrName]
+			if nodePresetRules.has("children") and data.has(CHILDREN_FIELD):
+				for child in data[CHILDREN_FIELD]:
+					if child[NODE_FIELD] in nodePresetRules.children:
+						if not newPreset.has("children"):
+							newPreset.children = []
+						newPreset.children.push_back(child.duplicate())
+	
+	# determine how to diplay attributes
+	# get the width of all of the attributes on one line
+	var lengthOfAllAttr: int = nodeAttrTexts.reduce(
+		func(totalLength: int, attributeText: String):
+			# add 'attr="value"' length plus space
+			totalLength += attributeText.length() + 1
+			return totalLength
+	# add opening/closing signs and node name to calculation 
+	, ["<%s >" % data[NODE_FIELD]][0].length())
+	
+	# display attributes on multiple lines, or one if short enough.
+	if lengthOfAllAttr > ATTR_LINE_MAX:
+		output += "\n"
+		for text in nodeAttrTexts:
+			output+="%s	%s\n" % [indent, text]
+	else:
+		for text in nodeAttrTexts:
+			output += " %s" % text
+	
+	# display children if node has them
 	if data.has("children"):
+		# close attributes, with indent if they're too long
+		output += "%s>\n" % indent if lengthOfAllAttr > ATTR_LINE_MAX else ">\n"
+		# apply indent for each child, then an extra one as it goes one level deeper.
 		for child in data.children:
 			output += "%s	%s" % [indent, _parseData(child, indent+"	")]
-	
-	output += "%s</%s>\n" % [indent, data[NODE_FIELD]]
+		output += "%s</%s>\n" % [indent, data[NODE_FIELD]]
+	else:
+		# close attributes, but node is empty so we can end it here
+		output += "%s/>\n" % [indent if lengthOfAllAttr > ATTR_LINE_MAX else ""]
 	
 	return output
 
@@ -110,7 +192,7 @@ func readBodyFile(filepath: String)-> Dictionary: # return custom error probably
 		
 		# opening tag found
 		if parser.get_node_type() == XMLParser.NODE_ELEMENT:
-			var node: Dictionary = getAttributes(parser)
+			var node: Dictionary = _getAttributes(parser)
 			currentNodeName = node[NODE_FIELD]
 			# this tag closes itself, we know it has no children
 			if parser.is_empty():
