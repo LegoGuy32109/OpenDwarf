@@ -67,8 +67,8 @@ func generateLevel() -> Array[Vector2i]:
 
 	# this could be incorperated as tiles are being added, but whatever
 	@warning_ignore("narrowing_conversion", "integer_division")
-	var pathSpawn: RockSpawner = RockSpawner.new(Vector2i(borderLength/2, \
-	borderLength/2.5), borders, HUD.SEED)
+	var pathSpawn: RockSpawner = \
+			RockSpawner.new(Vector2i(borderLength/2, borderLength/2.5), borders, HUD.SEED)
 	var path: Array[Vector2i] = pathSpawn.walk(600)
 	pathSpawn.queue_free()
 	
@@ -106,13 +106,13 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 		return
 	
 	var reigonStart := Vector2i(
-		coordReigon[0].x if coordReigon[0].x < coordReigon[1].x else coordReigon[1].x,\
-		coordReigon[0].y if coordReigon[0].y < coordReigon[1].y else coordReigon[1].y \
+		coordReigon[0].x if coordReigon[0].x < coordReigon[1].x else coordReigon[1].x,
+		coordReigon[0].y if coordReigon[0].y < coordReigon[1].y else coordReigon[1].y
 	)
 	
 	var reigonStop := Vector2i(
-		coordReigon[0].x if coordReigon[0].x > coordReigon[1].x else coordReigon[1].x,\
-		coordReigon[0].y if coordReigon[0].y > coordReigon[1].y else coordReigon[1].y \
+		coordReigon[0].x if coordReigon[0].x > coordReigon[1].x else coordReigon[1].x,
+		coordReigon[0].y if coordReigon[0].y > coordReigon[1].y else coordReigon[1].y
 	)
 	coordReigon[0] = reigonStart
 	coordReigon[1] = reigonStop

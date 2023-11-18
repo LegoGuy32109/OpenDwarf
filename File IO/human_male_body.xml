@@ -33,7 +33,15 @@
 					weight="0.0075"
 				/>
 			</connection>
-			<connection preset="preset_1"/>
+			<connection preset="preset_1">
+				<organ
+					name="Left Eye"
+					id="EyeL"
+					volume="0.0000923661064"
+					material="flesh"
+					weight="0.0075"
+				/>
+			</connection>
 			<connection preset="preset_2" type="external">
 				<vessel name="tissue" value="1"/>
 				<vessel name="muscle" value="0.2"/>
@@ -46,10 +54,519 @@
 					weight="0.0014"
 				/>
 			</connection>
-			<connection preset="preset_2"/>
-			<connection preset="preset_2"/>
-			<connection preset="preset_1"/>
-			<connection preset="preset_0"/>
+			<connection preset="preset_2">
+				<organ
+					name="Left Ear"
+					id="EarL"
+					volume="0.00010917393956"
+					material="flesh"
+					weight="0.0014"
+				/>
+			</connection>
+			<connection preset="preset_2">
+				<organ
+					name="Nose"
+					id="Nose"
+					volume="0.00007716972323"
+					material="flesh"
+					weight="0.008"
+				/>
+			</connection>
+			<connection preset="preset_1">
+				<organ
+					name="Mouth"
+					id="Mouth"
+					volume="0.00026071682805"
+					material="flesh"
+					weight="0.025"
+				/>
+			</connection>
+			<connection preset="preset_0">
+				<organ
+					name="Neck"
+					id="Neck"
+					volume="0.00051674747374"
+					material="flesh"
+					weight="3"
+					needsBlood="true"
+				>
+					<connection preset="preset_0">
+						<organ
+							name="Upper Torso"
+							id="TorsoU"
+							volume="0.07289374619722"
+							material="flesh"
+							weight="15"
+							needsBlood="true"
+						>
+							<connection preset="preset_3" type="internal">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="artery" value="1"/>
+								<organ
+									name="Heart"
+									id="Heart"
+									volume="0.00061203143559"
+									material="flesh"
+									weight="0.35"
+									isHeart="true"
+									isInternal="true"
+									needsBlood="true"
+								/>
+							</connection>
+							<connection preset="preset_3">
+								<organ
+									name="Right Lung"
+									id="LungR"
+									volume="0.00409334106371"
+									material="flesh"
+									weight="1.05"
+									isInternal="true"
+									needsBlood="true"
+								/>
+							</connection>
+							<connection preset="preset_3">
+								<organ
+									name="Left Lung"
+									id="LungL"
+									volume="0.00409334525466"
+									material="flesh"
+									weight="1.05"
+									isInternal="true"
+									needsBlood="true"
+								/>
+							</connection>
+							<connection preset="preset_4" type="internal">
+								<vessel name="tissue" value="1"/>
+								<organ
+									name="Stomach"
+									id="Stomach"
+									volume="0.00044758911827"
+									material="flesh"
+									weight="1.75"
+									isInternal="true"
+								/>
+							</connection>
+							<connection preset="preset_4">
+								<organ
+									name="Liver"
+									id="Liver"
+									volume="0.00147630751599"
+									material="flesh"
+									weight="1.5"
+									isInternal="true"
+								/>
+							</connection>
+							<connection preset="preset_4">
+								<organ
+									name="Spleen"
+									id="Spleen"
+									volume="0.00014384483802"
+									material="flesh"
+									weight="0.175"
+									isInternal="true"
+								/>
+							</connection>
+							<connection preset="preset_4">
+								<organ
+									name="Pancreas"
+									id="Pancreas"
+									volume="0.00009726657299"
+									material="flesh"
+									weight="0.085"
+									isInternal="true"
+								/>
+							</connection>
+							<connection preset="preset_0">
+								<organ
+									name="Right Upper Arm"
+									id="ArmRU"
+									limbName="Right Arm"
+									volume="0.00300435884856"
+									material="flesh"
+									weight="3"
+									needsBlood="true"
+								>
+									<connection preset="preset_0">
+										<organ
+											name="Right Lower Arm"
+											id="ArmRL"
+											limbName="Right Arm"
+											volume="0.003882199293"
+											material="flesh"
+											weight="1.9"
+											needsBlood="true"
+										>
+											<connection preset="preset_0">
+												<organ
+													name="Right Hand"
+													id="HandR"
+													limbName="Right Arm"
+													volume="0.00218579918146"
+													material="flesh"
+													weight="0.25"
+													needsBlood="true"
+												>
+													<connection preset="preset_1">
+														<organ
+															name="Right Thumb"
+															id="ThumbR"
+															limbName="Right Arm"
+															volume="0.00009846345347"
+															material="flesh"
+															weight="0.015"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Finger"
+															id="FingerR1"
+															limbName="Right Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Finger"
+															id="FingerR2"
+															limbName="Right Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Finger"
+															id="FingerR3"
+															limbName="Right Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Pinky"
+															id="FingerR4"
+															limbName="Right Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+												</organ>
+											</connection>
+										</organ>
+									</connection>
+								</organ>
+							</connection>
+							<connection preset="preset_0">
+								<organ
+									name="Left Upper Arm"
+									id="ArmLU"
+									limbName="Left Arm"
+									volume="0.00300435884856"
+									material="flesh"
+									weight="3"
+									needsBlood="true"
+								>
+									<connection preset="preset_0">
+										<organ
+											name="Left Lower Arm"
+											id="ArmLL"
+											limbName="Left Arm"
+											volume="0.003882199293"
+											material="flesh"
+											weight="1.9"
+											needsBlood="true"
+										>
+											<connection preset="preset_0">
+												<organ
+													name="Left Hand"
+													id="HandL"
+													limbName="Left Arm"
+													volume="0.00218579918146"
+													material="flesh"
+													weight="0.25"
+													needsBlood="true"
+												>
+													<connection preset="preset_1">
+														<organ
+															name="Left Thumb"
+															id="ThumbL"
+															limbName="Left Arm"
+															volume="0.00009846345347"
+															material="flesh"
+															weight="0.015"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Finger"
+															id="FingerL1"
+															limbName="Left Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Finger"
+															id="FingerL2"
+															limbName="Left Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Finger"
+															id="FingerL3"
+															limbName="Left Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+													<connection preset="preset_1">
+														<organ
+															name="Pinky"
+															id="FingerL4"
+															limbName="Left Arm"
+															volume="0.00015331352188"
+															material="flesh"
+															weight="0.0075"
+														/>
+													</connection>
+												</organ>
+											</connection>
+										</organ>
+									</connection>
+								</organ>
+							</connection>
+							<connection preset="preset_0">
+								<organ
+									name="Lower Torso"
+									id="TorsoL"
+									volume="0.02879198081791"
+									material="flesh"
+									weight="20"
+									needsBlood="true"
+								>
+									<connection preset="preset_3">
+										<organ
+											name="Guts"
+											id="Guts"
+											volume="0.00700118485838"
+											material="flesh"
+											weight="1.5"
+											isInternal="true"
+											needsBlood="true"
+										/>
+									</connection>
+									<connection preset="preset_4">
+										<organ
+											name="Right Kidney"
+											id="Right Kidney"
+											volume="0.00013417842274"
+											material="flesh"
+											weight="0.145"
+											isInternal="true"
+										/>
+									</connection>
+									<connection preset="preset_4">
+										<organ
+											name="Left Kidney"
+											id="Left Kidney"
+											volume="0.00014577648835"
+											material="flesh"
+											weight="0.145"
+											isInternal="true"
+										/>
+									</connection>
+									<connection preset="preset_0">
+										<organ
+											name="Right Upper Leg"
+											id="LegRU"
+											limbName="Right Leg"
+											volume="0.00600656634197"
+											material="flesh"
+											weight="12.5"
+											needsBlood="true"
+										>
+											<connection preset="preset_0">
+												<organ
+													name="Right Lower Leg"
+													id="LegRL"
+													limbName="Right Leg"
+													volume="0.00980964675546"
+													material="flesh"
+													weight="5"
+													needsBlood="true"
+												>
+													<connection preset="preset_0">
+														<organ
+															name="Right Foot"
+															id="FootR"
+															limbName="Right Leg"
+															volume="0.00232410663739"
+															material="flesh"
+															weight="1.25"
+															needsBlood="true"
+														>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeR1"
+																	limbName="Right Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeR2"
+																	limbName="Right Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeR3"
+																	limbName="Right Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeR4"
+																	limbName="Right Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeR5"
+																	limbName="Right Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+														</organ>
+													</connection>
+												</organ>
+											</connection>
+										</organ>
+									</connection>
+									<connection preset="preset_0">
+										<organ
+											name="Left Upper Leg"
+											id="LegLU"
+											limbName="Left Leg"
+											volume="0.00600656680763"
+											material="flesh"
+											weight="12.5"
+											needsBlood="true"
+										>
+											<connection preset="preset_0">
+												<organ
+													name="Left Lower Leg"
+													id="LegLL"
+													limbName="Left Leg"
+													volume="0.00980964768678"
+													material="flesh"
+													weight="5"
+													needsBlood="true"
+												>
+													<connection preset="preset_0">
+														<organ
+															name="Left Foot"
+															id="FootL"
+															limbName="Left Leg"
+															volume="0.00232410663739"
+															material="flesh"
+															weight="1.25"
+															needsBlood="true"
+														>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeL2"
+																	limbName="Left Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeL1"
+																	limbName="Left Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeL3"
+																	limbName="Left Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeL4"
+																	limbName="Left Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+															<connection preset="preset_1">
+																<organ
+																	name="Toe"
+																	id="ToeL5"
+																	limbName="Left Leg"
+																	volume="0.00002738583316"
+																	material="flesh"
+																	weight="0.002"
+																/>
+															</connection>
+														</organ>
+													</connection>
+												</organ>
+											</connection>
+										</organ>
+									</connection>
+								</organ>
+							</connection>
+						</organ>
+					</connection>
+				</organ>
+			</connection>
 		</organ>
 	</connection>
 </organ>

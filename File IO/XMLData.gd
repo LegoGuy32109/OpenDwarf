@@ -99,7 +99,7 @@ func _parseData(data: Dictionary, indent: String = "")->String:
 						func(attributeText: String):
 							# only if the attribute before the = isn't covered in the preset
 							return not attributeText.substr(0, attributeText.find("=")) \
-							in potentialPreset.keys()
+									in potentialPreset.keys()
 					)
 				
 				# check next preset already created
@@ -150,12 +150,22 @@ func _parseData(data: Dictionary, indent: String = "")->String:
 	if data.has("children"):
 		# close attributes, with indent if they're too long
 		output += "%s>\n" % indent if lengthOfAllAttr > ATTR_LINE_MAX else ">\n"
+		
+		# filter the children to not include children in preset, if no preset if found or this is 
+		# the first instance of this preset don't filter anything
+		if presetFound:
+			data.children = data.children.filter(
+				func(child): return not child[NODE_FIELD] \
+						in Preset.getRules()[data[NODE_FIELD]][CHILDREN_FIELD]
+			)
+		
 		# apply indent for each child, then an extra one as it goes one level deeper.
-		for child in data.children: # TODO filter the children to not include children in preset
+		for child in data.children: 
 			output += "%s	%s" % [indent, _parseData(child, indent+"	")]
+		
 		output += "%s</%s>\n" % [indent, data[NODE_FIELD]]
 	else:
-		# close attributes, but node is empty so we can end it here
+		# close attributes, and if node is empty we can end it here
 		output += "%s/>\n" % [indent if lengthOfAllAttr > ATTR_LINE_MAX else ""]
 	
 	return output

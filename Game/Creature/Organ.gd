@@ -57,7 +57,7 @@ func getInfo(all: bool = false) -> Dictionary:
 	if not all:
 		for key in allInfo.keys():
 			if (allInfo[key] is bool and allInfo[key] == false) \
-				or (allInfo[key] is String and allInfo[key] == ""):
+					or (allInfo[key] is String and allInfo[key] == ""):
 				allInfo.erase(key)
 	return allInfo
 

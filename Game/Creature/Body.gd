@@ -46,9 +46,9 @@ func _constructBodyFromObj(obj: Dictionary)->Organ:
 				# create child organ to connect in connection
 				# should return an array with onr element, if not throw error
 				var connectionOrganChildren = \
-				child[XMLData.CHILDREN_FIELD].filter(
-					func(connecChild): return connecChild[XMLData.NODE_FIELD] == "organ"
-				)
+						child[XMLData.CHILDREN_FIELD].filter(
+							func(connecChild): return connecChild[XMLData.NODE_FIELD] == "organ"
+						)
 				if connectionOrganChildren.is_empty():
 					printerr("Connection does not have organ")
 					return
@@ -146,7 +146,7 @@ func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0
 			printerr("%s: %s" % [organ.name, bloodMessage])
 	
 	buildLog += "\n%s%s %s%s%s%s" % \
-		[depth, organ.name, isBrain, isHeart, isOrgan, bloodMessage]
+			[depth, organ.name, isBrain, isHeart, isOrgan, bloodMessage]
 	
 	if withVolume:
 		buildLog += "\n%s%s m^3" % [depth, organ.volume]

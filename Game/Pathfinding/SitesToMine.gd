@@ -61,8 +61,9 @@ func nextSite(entity: Dwarf):
 	while otherMinerMax <= max_dwarves_mining_tile:
 	
 		for siteObj in validSites:
-			if siteObj.path is Array[Vector2i] and siteObj.site.dwarvesCurrentlyMining.size() < otherMinerMax and \
-			(not siteToMine or siteObj.path.size() < shortestPath.size()):
+			if siteObj.path is Array[Vector2i] \
+					and siteObj.site.dwarvesCurrentlyMining.size() < otherMinerMax \
+					and (not siteToMine or siteObj.path.size() < shortestPath.size()):
 				shortestPath = siteObj.path
 				siteToMine = siteObj.site
 		

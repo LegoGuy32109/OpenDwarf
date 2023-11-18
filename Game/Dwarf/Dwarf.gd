@@ -105,7 +105,7 @@ func _moveToNeighbor():
 	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
 	if (neighborTiles.size() > 0):
 		var chosenTile : Tile = \
-		neighborTiles[randi_range(0, neighborTiles.size()-1)]
+				neighborTiles[randi_range(0, neighborTiles.size()-1)]
 		await _visuallyMoveToCoordinates(chosenTile.coordinates)
 
 # called when entity moves to a new tile
@@ -149,7 +149,7 @@ func moveTo(moveCommand : Command) -> bool:
 		var targetCoordinates : Vector2i = moveCommand.targetCoordinates
 		
 		var path : Array[Vector2i] = \
-		pathfinder.findPathTo(targetCoordinates, coordinates)
+				pathfinder.findPathTo(targetCoordinates, coordinates)
 		
 		# return false if tile not reachable
 		if path.is_empty():

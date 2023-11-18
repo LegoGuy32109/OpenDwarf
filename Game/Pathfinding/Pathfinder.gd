@@ -32,11 +32,10 @@ func findPathTo(newCoordinates : Vector2i, currentCoordinates : Vector2i) -> Arr
 			if isDiagNeighbor(tile.coordinates, currentLoc):
 				currentMovementCost *= 1.2
 
-			var new_cost = cost_so_far[currentLoc] \
-			+ currentMovementCost # tile -> new tile
+			var new_cost = cost_so_far[currentLoc] + currentMovementCost # tile -> new tile
 			
-			if not tile.coordinates in cost_so_far or \
-			new_cost < cost_so_far[tile.coordinates]:
+			if not tile.coordinates in cost_so_far \
+					or new_cost < cost_so_far[tile.coordinates]:
 				cost_so_far[tile.coordinates] = new_cost
 				queue.put(tile.coordinates, new_cost)
 				came_from[tile.coordinates] = currentLoc
@@ -78,8 +77,8 @@ func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
 		var currentColumn : Node2D = tiles.get_child(currentLoc.x+i)
 		for j in [-1, 0, 1]:
 			# the 0,0 tile is where currentLoc is
-			if (i == 0 and j == 0) or currentLoc.y+j < 0 or \
-			currentLoc.y+j > currentColumn.get_child_count()-1:
+			if (i == 0 and j == 0) or currentLoc.y+j < 0 \
+					or currentLoc.y+j > currentColumn.get_child_count()-1:
 				continue
 			var tile : Tile = currentColumn.get_child(currentLoc.y+j)
 			# check is it can be walked on here
