@@ -116,7 +116,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 	)
 	coordReigon[0] = reigonStart
 	coordReigon[1] = reigonStop
-	print("%s\n" % coordReigon)
+	print("%s\n" % str(coordReigon))
 	
 	var tilesInReigon : Array[Tile] = getTilesInRegion(coordReigon) 
 	

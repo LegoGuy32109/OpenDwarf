@@ -79,7 +79,7 @@ texture = ExtResource("1_65s14")
 texture = ExtResource("2_6wxij")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
-autoplay = "Item Hover"
 libraries = {
 "": SubResource("AnimationLibrary_vhgg0")
 }
+autoplay = "Item Hover"

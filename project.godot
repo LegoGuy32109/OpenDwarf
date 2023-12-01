@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Df Clone"
 run/main_scene="res://Game/Menus/main_menu.tscn"
-config/features=PackedStringArray("4.1", "Mobile")
+config/features=PackedStringArray("4.2", "Mobile")
 boot_splash/image="res://Assets/Tiles/Rock.png"
 config/icon="res://Assets/IdleFrames/DwarfIdle1.png"
 
@@ -29,6 +29,15 @@ gdscript/warnings/unassigned_variable_op_assign=0
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/size/resizable=false
+
+[file_customization]
+
+folder_colors={
+"res://Assets/": "green",
+"res://File IO/": "gray",
+"res://Game/": "blue",
+"res://_extra/": "red"
+}
 
 [input]
 
