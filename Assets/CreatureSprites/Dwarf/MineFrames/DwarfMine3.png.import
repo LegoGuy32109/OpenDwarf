@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cesl7653v0ejg"
-path="res://.godot/imported/DwarfWalk8.png-8bbcd0ed5a126ab1be3cf16c05acc64d.ctex"
+uid="uid://dh7yak2u8qxd1"
+path="res://.godot/imported/DwarfMine3.png-00f36545c735facc9d6dff39fcc184bc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/WalkFrames/DwarfWalk8.png"
-dest_files=["res://.godot/imported/DwarfWalk8.png-8bbcd0ed5a126ab1be3cf16c05acc64d.ctex"]
+source_file="res://Assets/CreatureSprites/Dwarf/MineFrames/DwarfMine3.png"
+dest_files=["res://.godot/imported/DwarfMine3.png-00f36545c735facc9d6dff39fcc184bc.ctex"]
 
 [params]
 
@@ -21,8 +21,8 @@ compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
-mipmaps/limit=-1
+mipmaps/generate=true
+mipmaps/limit=0
 roughness/mode=0
 roughness/src_normal=""
 process/fix_alpha_border=true

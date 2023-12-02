@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ctergpfjyoyd4"
-path="res://.godot/imported/DwarfWalk4.png-f85d392e8264359ca0d460578a203a62.ctex"
+uid="uid://ck402w1vbu6jo"
+path="res://.godot/imported/DwarfWalk7.png-0948925c4e78bb4275d60f3a86846b4b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/WalkFrames/DwarfWalk4.png"
-dest_files=["res://.godot/imported/DwarfWalk4.png-f85d392e8264359ca0d460578a203a62.ctex"]
+source_file="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk7.png"
+dest_files=["res://.godot/imported/DwarfWalk7.png-0948925c4e78bb4275d60f3a86846b4b.ctex"]
 
 [params]
 

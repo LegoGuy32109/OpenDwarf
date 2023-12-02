@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Human Male Body Structure -->
 <organ
 	name="Brain"
 	id="Brain"
@@ -8,7 +8,7 @@
 	isInternal="true"
 	needsBlood="true"
 >
-	<connection preset="preset_0" type="external">
+	<connection preset="preset_0" type="inside_of">
 		<vessel name="tissue" value="1"/>
 		<vessel name="muscle" value="1"/>
 		<vessel name="nerve" value="1"/>
@@ -33,7 +33,10 @@
 					weight="0.0075"
 				/>
 			</connection>
-			<connection preset="preset_1">
+			<connection preset="preset_2" type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="1"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Left Eye"
 					id="EyeL"
@@ -42,7 +45,7 @@
 					weight="0.0075"
 				/>
 			</connection>
-			<connection preset="preset_2" type="external">
+			<connection preset="preset_3" type="external">
 				<vessel name="tissue" value="1"/>
 				<vessel name="muscle" value="0.2"/>
 				<vessel name="nerve" value="1"/>
@@ -54,7 +57,10 @@
 					weight="0.0014"
 				/>
 			</connection>
-			<connection preset="preset_2">
+			<connection preset="preset_4" type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="0.2"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Left Ear"
 					id="EarL"
@@ -63,7 +69,10 @@
 					weight="0.0014"
 				/>
 			</connection>
-			<connection preset="preset_2">
+			<connection preset="preset_5" type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="0.2"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Nose"
 					id="Nose"
@@ -72,7 +81,10 @@
 					weight="0.008"
 				/>
 			</connection>
-			<connection preset="preset_1">
+			<connection preset="preset_6" type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="1"/>
+				<vessel name="nerve" value="1"/>
 				<organ
 					name="Mouth"
 					id="Mouth"
@@ -81,7 +93,11 @@
 					weight="0.025"
 				/>
 			</connection>
-			<connection preset="preset_0">
+			<connection preset="preset_7" type="external">
+				<vessel name="tissue" value="1"/>
+				<vessel name="muscle" value="1"/>
+				<vessel name="nerve" value="1"/>
+				<vessel name="artery" value="1"/>
 				<organ
 					name="Neck"
 					id="Neck"
@@ -90,7 +106,11 @@
 					weight="3"
 					needsBlood="true"
 				>
-					<connection preset="preset_0">
+					<connection preset="preset_8" type="external">
+						<vessel name="tissue" value="1"/>
+						<vessel name="muscle" value="1"/>
+						<vessel name="nerve" value="1"/>
+						<vessel name="artery" value="1"/>
 						<organ
 							name="Upper Torso"
 							id="TorsoU"
@@ -99,7 +119,7 @@
 							weight="15"
 							needsBlood="true"
 						>
-							<connection preset="preset_3" type="internal">
+							<connection preset="preset_9" type="internal">
 								<vessel name="tissue" value="1"/>
 								<vessel name="muscle" value="1"/>
 								<vessel name="artery" value="1"/>
@@ -114,7 +134,10 @@
 									needsBlood="true"
 								/>
 							</connection>
-							<connection preset="preset_3">
+							<connection preset="preset_10" type="internal">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Right Lung"
 									id="LungR"
@@ -125,7 +148,10 @@
 									needsBlood="true"
 								/>
 							</connection>
-							<connection preset="preset_3">
+							<connection preset="preset_11" type="internal">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Left Lung"
 									id="LungL"
@@ -136,7 +162,7 @@
 									needsBlood="true"
 								/>
 							</connection>
-							<connection preset="preset_4" type="internal">
+							<connection preset="preset_12" type="internal">
 								<vessel name="tissue" value="1"/>
 								<organ
 									name="Stomach"
@@ -147,7 +173,8 @@
 									isInternal="true"
 								/>
 							</connection>
-							<connection preset="preset_4">
+							<connection preset="preset_13" type="internal">
+								<vessel name="tissue" value="1"/>
 								<organ
 									name="Liver"
 									id="Liver"
@@ -157,7 +184,8 @@
 									isInternal="true"
 								/>
 							</connection>
-							<connection preset="preset_4">
+							<connection preset="preset_14" type="internal">
+								<vessel name="tissue" value="1"/>
 								<organ
 									name="Spleen"
 									id="Spleen"
@@ -167,7 +195,8 @@
 									isInternal="true"
 								/>
 							</connection>
-							<connection preset="preset_4">
+							<connection preset="preset_15" type="internal">
+								<vessel name="tissue" value="1"/>
 								<organ
 									name="Pancreas"
 									id="Pancreas"
@@ -177,7 +206,11 @@
 									isInternal="true"
 								/>
 							</connection>
-							<connection preset="preset_0">
+							<connection preset="preset_16" type="external">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="nerve" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Right Upper Arm"
 									id="ArmRU"
@@ -187,7 +220,11 @@
 									weight="3"
 									needsBlood="true"
 								>
-									<connection preset="preset_0">
+									<connection preset="preset_17" type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Right Lower Arm"
 											id="ArmRL"
@@ -197,7 +234,11 @@
 											weight="1.9"
 											needsBlood="true"
 										>
-											<connection preset="preset_0">
+											<connection preset="preset_18" type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Right Hand"
 													id="HandR"
@@ -207,7 +248,10 @@
 													weight="0.25"
 													needsBlood="true"
 												>
-													<connection preset="preset_1">
+													<connection preset="preset_19" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Right Thumb"
 															id="ThumbR"
@@ -217,7 +261,10 @@
 															weight="0.015"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_20" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerR1"
@@ -227,7 +274,10 @@
 															weight="0.0075"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_21" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerR2"
@@ -237,7 +287,10 @@
 															weight="0.0075"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_22" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerR3"
@@ -247,7 +300,10 @@
 															weight="0.0075"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_23" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Pinky"
 															id="FingerR4"
@@ -263,7 +319,11 @@
 									</connection>
 								</organ>
 							</connection>
-							<connection preset="preset_0">
+							<connection preset="preset_24" type="external">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="nerve" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Left Upper Arm"
 									id="ArmLU"
@@ -273,7 +333,11 @@
 									weight="3"
 									needsBlood="true"
 								>
-									<connection preset="preset_0">
+									<connection preset="preset_25" type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Left Lower Arm"
 											id="ArmLL"
@@ -283,7 +347,11 @@
 											weight="1.9"
 											needsBlood="true"
 										>
-											<connection preset="preset_0">
+											<connection preset="preset_26" type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Left Hand"
 													id="HandL"
@@ -293,7 +361,10 @@
 													weight="0.25"
 													needsBlood="true"
 												>
-													<connection preset="preset_1">
+													<connection preset="preset_27" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Left Thumb"
 															id="ThumbL"
@@ -303,7 +374,10 @@
 															weight="0.015"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_28" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerL1"
@@ -313,7 +387,10 @@
 															weight="0.0075"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_29" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerL2"
@@ -323,7 +400,10 @@
 															weight="0.0075"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_30" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Finger"
 															id="FingerL3"
@@ -333,7 +413,10 @@
 															weight="0.0075"
 														/>
 													</connection>
-													<connection preset="preset_1">
+													<connection preset="preset_31" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
 														<organ
 															name="Pinky"
 															id="FingerL4"
@@ -349,7 +432,11 @@
 									</connection>
 								</organ>
 							</connection>
-							<connection preset="preset_0">
+							<connection preset="preset_32" type="external">
+								<vessel name="tissue" value="1"/>
+								<vessel name="muscle" value="1"/>
+								<vessel name="nerve" value="1"/>
+								<vessel name="artery" value="1"/>
 								<organ
 									name="Lower Torso"
 									id="TorsoL"
@@ -358,7 +445,10 @@
 									weight="20"
 									needsBlood="true"
 								>
-									<connection preset="preset_3">
+									<connection preset="preset_33" type="internal">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Guts"
 											id="Guts"
@@ -369,7 +459,8 @@
 											needsBlood="true"
 										/>
 									</connection>
-									<connection preset="preset_4">
+									<connection preset="preset_34" type="internal">
+										<vessel name="tissue" value="1"/>
 										<organ
 											name="Right Kidney"
 											id="Right Kidney"
@@ -379,7 +470,8 @@
 											isInternal="true"
 										/>
 									</connection>
-									<connection preset="preset_4">
+									<connection preset="preset_35" type="internal">
+										<vessel name="tissue" value="1"/>
 										<organ
 											name="Left Kidney"
 											id="Left Kidney"
@@ -389,7 +481,11 @@
 											isInternal="true"
 										/>
 									</connection>
-									<connection preset="preset_0">
+									<connection preset="preset_36" type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Right Upper Leg"
 											id="LegRU"
@@ -399,7 +495,11 @@
 											weight="12.5"
 											needsBlood="true"
 										>
-											<connection preset="preset_0">
+											<connection preset="preset_37" type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Right Lower Leg"
 													id="LegRL"
@@ -409,7 +509,11 @@
 													weight="5"
 													needsBlood="true"
 												>
-													<connection preset="preset_0">
+													<connection preset="preset_38" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
+														<vessel name="artery" value="1"/>
 														<organ
 															name="Right Foot"
 															id="FootR"
@@ -419,7 +523,10 @@
 															weight="1.25"
 															needsBlood="true"
 														>
-															<connection preset="preset_1">
+															<connection preset="preset_39" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR1"
@@ -429,7 +536,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_40" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR2"
@@ -439,7 +549,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_41" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR3"
@@ -449,7 +562,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_42" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR4"
@@ -459,7 +575,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_43" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeR5"
@@ -475,7 +594,11 @@
 											</connection>
 										</organ>
 									</connection>
-									<connection preset="preset_0">
+									<connection preset="preset_44" type="external">
+										<vessel name="tissue" value="1"/>
+										<vessel name="muscle" value="1"/>
+										<vessel name="nerve" value="1"/>
+										<vessel name="artery" value="1"/>
 										<organ
 											name="Left Upper Leg"
 											id="LegLU"
@@ -485,7 +608,11 @@
 											weight="12.5"
 											needsBlood="true"
 										>
-											<connection preset="preset_0">
+											<connection preset="preset_45" type="external">
+												<vessel name="tissue" value="1"/>
+												<vessel name="muscle" value="1"/>
+												<vessel name="nerve" value="1"/>
+												<vessel name="artery" value="1"/>
 												<organ
 													name="Left Lower Leg"
 													id="LegLL"
@@ -495,7 +622,11 @@
 													weight="5"
 													needsBlood="true"
 												>
-													<connection preset="preset_0">
+													<connection preset="preset_46" type="external">
+														<vessel name="tissue" value="1"/>
+														<vessel name="muscle" value="1"/>
+														<vessel name="nerve" value="1"/>
+														<vessel name="artery" value="1"/>
 														<organ
 															name="Left Foot"
 															id="FootL"
@@ -505,7 +636,10 @@
 															weight="1.25"
 															needsBlood="true"
 														>
-															<connection preset="preset_1">
+															<connection preset="preset_47" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL2"
@@ -515,7 +649,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_48" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL1"
@@ -525,7 +662,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_49" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL3"
@@ -535,7 +675,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_50" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL4"
@@ -545,7 +688,10 @@
 																	weight="0.002"
 																/>
 															</connection>
-															<connection preset="preset_1">
+															<connection preset="preset_51" type="external">
+																<vessel name="tissue" value="1"/>
+																<vessel name="muscle" value="1"/>
+																<vessel name="nerve" value="1"/>
 																<organ
 																	name="Toe"
 																	id="ToeL5"

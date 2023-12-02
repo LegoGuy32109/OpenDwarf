@@ -14,7 +14,7 @@ config/name="Df Clone"
 run/main_scene="res://Game/Menus/main_menu.tscn"
 config/features=PackedStringArray("4.2", "Mobile")
 boot_splash/image="res://Assets/Tiles/Rock.png"
-config/icon="res://Assets/IdleFrames/DwarfIdle1.png"
+config/icon="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png"
 
 [autoload]
 
@@ -34,9 +34,11 @@ window/size/resizable=false
 
 folder_colors={
 "res://Assets/": "green",
+"res://Assets/CreatureSprites/": "orange",
+"res://Assets/CreatureSprites/Dwarf/IdleFrames/": "orange",
 "res://File IO/": "gray",
 "res://Game/": "blue",
-"res://_extra/": "red"
+"res://_WipCreatureCreator/": "red"
 }
 
 [input]

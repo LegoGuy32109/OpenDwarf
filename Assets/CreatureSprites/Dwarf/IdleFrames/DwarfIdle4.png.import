@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dd5gfijr0yvjq"
-path="res://.godot/imported/DwarfIdle4.png-ffedbf7cb18d2d941074187b3749d1c8.ctex"
+path="res://.godot/imported/DwarfIdle4.png-a476f991903844cd9a66a5142e43749d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/IdleFrames/DwarfIdle4.png"
-dest_files=["res://.godot/imported/DwarfIdle4.png-ffedbf7cb18d2d941074187b3749d1c8.ctex"]
+source_file="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle4.png"
+dest_files=["res://.godot/imported/DwarfIdle4.png-a476f991903844cd9a66a5142e43749d.ctex"]
 
 [params]
 

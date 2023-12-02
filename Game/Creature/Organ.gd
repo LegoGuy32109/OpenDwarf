@@ -61,7 +61,7 @@ func getInfo(all: bool = false) -> Dictionary:
 				allInfo.erase(key)
 	return allInfo
 
-# Will identify if Organ is an internal Organ, and save result
+## Will identify if Organ is an internal Organ, and save result
 func findIfInternal() -> bool:
 	var _isInternal: bool = false
 	
@@ -75,18 +75,20 @@ func findIfInternal() -> bool:
 	isInternal = _isInternal
 	return isInternal
 
+## Identify all internal Organs one level down the tree
 func getAllInternalOrgans() -> Array[Organ]:
 	var internalOrgans = connections.reduce(
-		func (internalOrgans: Array[Organ], connec: Connection): 
+		func (intOrgans: Array[Organ], connec: Connection): 
 			if connec.type == Connection.TYPE.INTERNAL:
-				internalOrgans.append(connec.linkTo)
+				intOrgans.append(connec.linkTo)
 	, [])
 
-	if primaryConnection.type == Connection.TYPE.INTERNAL:
+	# check if parent organ is inside this organ
+	if primaryConnection.type == Connection.TYPE.INSIDE_OF:
 		internalOrgans.append(primaryConnection.linkFrom)
 	return internalOrgans
 
-# Attach a Organ
+## Attach a Organ
 func connectOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
 	var connection = Connection.new(self, _organ, _vesselInfo)
 	connections.append(connection)

@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3 uid="uid://bqnm4mtgu6j5u"]
 
-[ext_resource type="PackedScene" uid="uid://clkxg7kmwnd7j" path="res://_extra/AnatomyOpenDwarf.glb" id="2_yir2u"]
+[ext_resource type="PackedScene" uid="uid://clkxg7kmwnd7j" path="res://_WipCreatureCreator/AnatomyOpenDwarf.glb" id="2_yir2u"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_pc5co"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -103,4 +103,3 @@ environment = SubResource("Environment_yimp0")
 
 [node name="AnatomyOpenDwarf" parent="." instance=ExtResource("2_yir2u")]
 script = SubResource("GDScript_we5g8")
-fileName = "human_female.json"

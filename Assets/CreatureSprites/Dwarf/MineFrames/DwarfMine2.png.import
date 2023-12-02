@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dl4nqcs1koywg"
-path="res://.godot/imported/DwarfMine4.png-7741d957c23258efbb1376e8dbae8c82.ctex"
+uid="uid://bawtgulbk2hb4"
+path="res://.godot/imported/DwarfMine2.png-97c425d6bd4d6921d90e092bd019a7c8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Assets/MineFrames/DwarfMine4.png"
-dest_files=["res://.godot/imported/DwarfMine4.png-7741d957c23258efbb1376e8dbae8c82.ctex"]
+source_file="res://Assets/CreatureSprites/Dwarf/MineFrames/DwarfMine2.png"
+dest_files=["res://.godot/imported/DwarfMine2.png-97c425d6bd4d6921d90e092bd019a7c8.ctex"]
 
 [params]
 

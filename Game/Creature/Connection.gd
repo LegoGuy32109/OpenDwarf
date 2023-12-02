@@ -8,7 +8,7 @@ class_name Connection
 @export var linkFrom: Organ # dominant organ
 @export var linkTo: Organ # submissive organ
 
-enum TYPE {EXTERNAL, INTERNAL, MAGIC}
+enum TYPE {EXTERNAL, INTERNAL, INSIDE_OF, MAGIC}
 @export var type: TYPE = TYPE.EXTERNAL
 
 # Connections must be made to link two organs together, they cannot be created without two organs. ~Losing a organ will make that connection cease to exist~

@@ -3,8 +3,9 @@ extends Node
 @export_dir var organDataFilePath: String = "res://Game/Creature/templates"
 @export var fileName: String = "human_male_template.json"
 
-# returns root of body, "brain" 🧠
+## returns root of body, "brain" 🧠
 func constructHuman() -> Organ:
+	#region Human Organ Creation
 	var brain = Organ.new({"isInternal": true, "id": "Brain", "volume": 0.00127387943212, "weight": 1.37})
 	var head = Organ.new({"id": "Head", "volume": 0.04119239747524, "weight": 5.5})
 	var eyeR = Organ.new({"id": "EyeR", "name": "Right Eye", "volume": 0.0000923661064, "weight": 0.0075})
@@ -64,8 +65,20 @@ func constructHuman() -> Organ:
 	var toeL3 = Organ.new({"limbName": "Left Leg", "id": "ToeL3", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
 	var toeL4 = Organ.new({"limbName": "Left Leg", "id": "ToeL4", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
 	var toeL5 = Organ.new({"limbName": "Left Leg", "id": "ToeL5", "name": "Toe", "volume": 0.00002738583316, "weight": 0.002})
+	#endregion
 	
-	# Brain, Head, Neck, [Torso], [Arm], [Hand], [Leg], [Foot]
+	#region define template presets
+	# Brain, duh...
+	var brainConnection = {
+		"tissue": 1.0,
+		"muscle": 1.0,
+		"nerve": 1.0,
+		"artery": 1.0,
+		# indicates this is an internal organ being the parent of an external organ
+		"type": Connection.TYPE.INSIDE_OF, 
+	}
+	
+	# Head, Neck, [Torso], [Arm], [Hand], [Leg], [Foot]
 	var humanCritical = {
 		"tissue": 1.0,
 		"muscle": 1.0,
@@ -99,9 +112,11 @@ func constructHuman() -> Organ:
 		"artery": 1.0,
 		"type": Connection.TYPE.INTERNAL,
 	}
+	#endregion
 	
+	#region connect organs together with presets
 	# start connecting from root of the creature, the brain
-	brain.connectOrgan(head, humanCritical)
+	brain.connectOrgan(head, brainConnection)
 	
 	# each organ has it's own block of connecting other organs
 	head.connectOrgan(eyeR, humanExtremity)
@@ -170,6 +185,7 @@ func constructHuman() -> Organ:
 	footL.connectOrgan(toeL3, humanExtremity)
 	footL.connectOrgan(toeL4, humanExtremity)
 	footL.connectOrgan(toeL5, humanExtremity)
+	#endregion
 	
 	return brain
 
@@ -177,12 +193,12 @@ func _ready() -> void:
 	print("\n==Starting Organ Test==\n")
 	var humanBrain: Organ = constructHuman()
 	
-	var body = Body.new({"rootOrgan": humanBrain}) # why green?
+	var body = Body.new({"rootOrgan": humanBrain})
 	
 	var xmlParser = XMLData.new()
 	xmlParser.saveToFile(body._saveBodyToObj(), "res://File IO/human_male_body.xml")
 	
-	var bodyData = xmlParser.readFile("res://File IO/human_male_body.xml")
+	var bodyData = xmlParser.readFile("res://File IO/IDEAL_human_male_body.xml")
 	var body2 = Body.new(bodyData)
 #	var preset = XMLData.Preset.new()
 	
