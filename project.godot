@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Df Clone"
-run/main_scene="res://_debug/test.tscn"
+run/main_scene="res://Game/Menus/main_menu.tscn"
 config/features=PackedStringArray("4.2", "Mobile")
 boot_splash/image="res://Assets/Tiles/Rock.png"
 config/icon="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png"

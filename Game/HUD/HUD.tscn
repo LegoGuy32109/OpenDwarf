@@ -1,4 +1,4 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=3 format=3 uid="uid://becbedxsykegf"]
 
 [ext_resource type="Script" path="res://Game/HUD/HUD.gd" id="1_uilpy"]
 [ext_resource type="Script" path="res://Game/HUD/TopPanelGUI.gd" id="2_gtggy"]
