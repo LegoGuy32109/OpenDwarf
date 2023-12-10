@@ -110,10 +110,50 @@ func _saveBodyToObj(organ: Organ = rootOrgan)->Dictionary:
 
 ## helper function to get the presets in [XMLData] readable form
 func _savePresetsToObj()->Dictionary:
-	var output := {}
+	if presets.is_empty():
+		return {}
+	var output := {
+		XMLData.NODE_FIELD: "presets",
+		XMLData.CHILDREN_FIELD: [
+			{
+				XMLData.NODE_FIELD: "preset_rules",
+				XMLData.CHILDREN_FIELD: [
+					{
+						XMLData.NODE_FIELD: "connection",
+						"type": "true",
+						XMLData.CHILDREN_FIELD: [
+							{
+								XMLData.NODE_FIELD: "vessel",
+							}
+						]
+					}
+				]
+			}
+		]
+	}
+	## TODO presets should be saved in XMLData form instead of converting and assuming 'type' here
 	for presetName in presets:
-		pass
-	return {}
+		var presetObj := {
+			XMLData.NODE_FIELD: "connection",
+			"preset": presetName,
+			"type": Connection.TYPE.keys()[presets[presetName].type],
+			XMLData.CHILDREN_FIELD: [], 
+		}
+
+		# get all vessel names, they're every attribute that isn't type
+		var vesselNames: Array = presets[presetName].keys().filter(
+			func(attrName): return attrName != "type"
+		)
+		for keyName in vesselNames:
+			var vesselObj := {
+				XMLData.NODE_FIELD: "vessel",
+				"name": keyName,
+				"value": presets[presetName][keyName]
+			}
+			presetObj[XMLData.CHILDREN_FIELD].push_back(vesselObj)	
+
+		output[XMLData.CHILDREN_FIELD].push_back(presetObj)
+	return output
 
 ## Find all hearts in the body
 func getAllHearts()->Array[Organ]:
