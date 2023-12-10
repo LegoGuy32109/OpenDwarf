@@ -234,6 +234,6 @@ func _ready() -> void:
 	var bodyData = xmlParser.readFile("res://File IO/IDEAL_human_male_body.xml")
 	# var body2 = Body.new(bodyData)
 	
-	# print(JSON.stringify(bodyData, " ", false))
+	print(JSON.stringify(bodyData, " ", false))
 	
 #	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)

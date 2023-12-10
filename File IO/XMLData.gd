@@ -32,6 +32,18 @@ func _getAttributes(parser: XMLParser) -> Dictionary:
 	output[NODE_FIELD] = parser.get_node_name()
 	return output
 
+## remove singular instances of 'preset="presetName"'
+func _removeSingularPresets(textWithPresets: String)->String:
+	var allPresetNames = presets.values().map(func(preset): return preset.keys())
+	for nodePresets in allPresetNames:
+		for presetName in nodePresets:
+			var phrase = " %s=\"%s\"" % ["preset", presetName] 
+			var instanceCount = textWithPresets.count(phrase)	
+			if instanceCount == 1:
+				textWithPresets = textWithPresets.replace(phrase, "")
+
+	return textWithPresets
+
 ## Save JSON data as an xml document
 func saveToFile(
 	jsonData: Dictionary, filePath: String, xmlTitle: String = ""
@@ -40,8 +52,10 @@ func saveToFile(
 	var output: String = ("<!-- %s -->\n" % xmlTitle) if xmlTitle != "" else ""
 	
 	var xmlFileAsText: String = _parseData(jsonData)
-	output += xmlFileAsText
-	
+	# remove presets that are only used once
+	var filteredText = _removeSingularPresets(xmlFileAsText) 
+	output += filteredText 
+
 	if xmlFileAsText != "":
 		var file = FileAccess.open(filePath, FileAccess.WRITE)
 		file.store_string(output)
@@ -58,6 +72,13 @@ func _parseData(data: Dictionary, indent: String = "")->String:
 		printerr("'%s' not found in data" % NODE_FIELD)
 		return ""
 	
+	# if this is the presets tag, add explanation to it
+	if data[NODE_FIELD] == "presets":
+		output += "<!-- Presets define what is copied from the first labeling of a preset, -->\n"
+		output += "%s<!-- to every other preset of the same name -->\n" % indent
+		output += "%s<!-- the attributes indicate what attributes to copy -->\n" % indent
+		output += "%s<!-- the tags define the names of the child tags that will be copied -->\n%s" % [indent, indent]
+	 
 	output += "<%s" % data[NODE_FIELD]
 	var nodeAttributes = data.keys()
 	var nodeAttrTexts: Array = []
@@ -70,8 +91,30 @@ func _parseData(data: Dictionary, indent: String = "")->String:
 	# index is -1 so when while loop ends the index is correct, scoped higher to be used later
 	var presetIndex := -1
 	var presetFound := false
+
+	# does this obj already have a preset? Save it and skip trying to apply presetRules
+	if data.has("preset"):
+		# create preset Dictionary for this node name/type
+		if not presets.has(data[NODE_FIELD]):
+			presets[data[NODE_FIELD]] = {}
+		# create preset with existing name
+		var newPresetName: String = data.preset
+		presets[data[NODE_FIELD]][newPresetName] = {}
+		var newPreset: Dictionary = presets[data[NODE_FIELD]][newPresetName]
+		
+		var nodePresetRules: Array = presetRules[data[NODE_FIELD]]
+		for attrName in nodePresetRules[0]:
+			if data.has(attrName):
+				newPreset[attrName] = data[attrName]
+		if data.has(CHILDREN_FIELD):
+			for child in data[CHILDREN_FIELD]:
+				if child[NODE_FIELD] in nodePresetRules[1]:
+					if not newPreset.has("children"):
+						newPreset.children = []
+					newPreset.children.push_back(child.duplicate())
+
 	# find if preset rules exist for this Dictionary, if so then a preset should be generated
-	if presetRules.has(data[NODE_FIELD]):
+	elif presetRules.has(data[NODE_FIELD]):
 		var nodePresetRules: Array = presetRules[data[NODE_FIELD]]
 		# find if a preset exists with these attributes
 		if presets.has(data[NODE_FIELD]):

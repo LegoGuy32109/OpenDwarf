@@ -70,12 +70,6 @@ func getBodyInfo()->Dictionary:
 	return {
 		XMLData.NODE_FIELD: "body",
 		XMLData.CHILDREN_FIELD: [
-			# {
-			# 	XMLData.NODE_FIELD: "presets",	
-			# 	XMLData.CHILDREN_FIELD: [
-					
-			# 	]
-			# },
 			presetsAsObj,
 			organTree
 		],
@@ -136,7 +130,7 @@ func _savePresetsToObj()->Dictionary:
 		var presetObj := {
 			XMLData.NODE_FIELD: "connection",
 			"preset": presetName,
-			"type": Connection.TYPE.keys()[presets[presetName].type],
+			"type": Connection.TYPE.keys()[presets[presetName].type].to_lower(),
 			XMLData.CHILDREN_FIELD: [], 
 		}
 
