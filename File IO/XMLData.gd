@@ -33,21 +33,22 @@ func _getAttributes(parser: XMLParser) -> Dictionary:
 	return output
 
 ## Save JSON data as an xml document
-func saveToFile(data: Dictionary, filePath: String):
-	# TODO take input param
-	var output := "<!-- %s -->\n" % "Human Male Body Structure"
+func saveToFile(
+	jsonData: Dictionary, filePath: String, xmlTitle: String = ""
+):
+	# if xmlTitle is given, append a comment at the top
+	var output: String = ("<!-- %s -->\n" % xmlTitle) if xmlTitle != "" else ""
 	
-	if not data.has(NODE_FIELD):
-		printerr("'%s' not found in data" % NODE_FIELD)
-		return
+	var xmlFileAsText: String = _parseData(jsonData)
+	output += xmlFileAsText
 	
-	output += _parseData(data)
-	
-	if output != "":
+	if xmlFileAsText != "":
 		var file = FileAccess.open(filePath, FileAccess.WRITE)
 		file.store_string(output)
 		file.close()
 		print("file successfully saved at %s" % filePath)
+	else:
+		printerr("file not successfully saved.")
 
 ## Recursive helper function to compute xml file output of a Dictionary
 func _parseData(data: Dictionary, indent: String = "")->String:
@@ -123,11 +124,10 @@ func _parseData(data: Dictionary, indent: String = "")->String:
 			# add preset attribute to save to file
 			nodeAttrTexts.push_front("%s=\"%s\"" % ["preset", newPresetName])
 			
-			if nodePresetRules.has("attributes"):
-				for attrName in nodePresetRules[0]:
-					if data.has(attrName):
-						newPreset[attrName] = data[attrName]
-			if nodePresetRules.has("children") and data.has(CHILDREN_FIELD):
+			for attrName in nodePresetRules[0]:
+				if data.has(attrName):
+					newPreset[attrName] = data[attrName]
+			if data.has(CHILDREN_FIELD):
 				for child in data[CHILDREN_FIELD]:
 					if child[NODE_FIELD] in nodePresetRules[1]:
 						if not newPreset.has("children"):

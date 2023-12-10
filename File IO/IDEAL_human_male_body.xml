@@ -1,15 +1,40 @@
+<!-- Human Male Body Structure -->
 <body>
 	<!-- Presets define what is copied from the first labeling of a preset, -->
 	<!-- to every other preset of the same name -->
-	<!-- the text are whitespaced seperate attributes that will be copied -->
+	<!-- the attributes indicate what attributes to copy -->
 	<!-- the tags define the names of the child tags that will be copied --> 
 	<presets>
-		<connection>
-			type
-			<vessel/>
+		<preset_rules>
+			<connection type="true">
+				<vessel/>
+			</connection>
+		</preset_rules>
+		<connection preset="humanExtremity" type="external">
+			<vessel name="tissue" value="1"/>
+			<vessel name="muscle" value="1"/>
+			<vessel name="nerve" value="1"/>
+		</connection>
+		<connection preset="humanMayWiggle" type="external">
+			<vessel name="tissue" value="1"/>
+			<vessel name="muscle" value="0.2"/>
+			<vessel name="nerve" value="1"/>
+		</connection>
+		<connection preset="humanCritical" type="external">
+			<vessel name="tissue" value="1"/>
+			<vessel name="muscle" value="1"/>
+			<vessel name="nerve" value="1"/>
+			<vessel name="artery" value="1"/>
+		</connection>
+		<connection preset="humanOrgan" type="internal">
+			<vessel name="tissue" value="1"/>
+		</connection>
+		<connection preset="humanMuscleOrgan" type="internal">
+			<vessel name="tissue" value="1"/>
+			<vessel name="muscle" value="1"/>
+			<vessel name="artery" value="1"/>
 		</connection>
 	</presets>
-	<!-- Human Male Body Structure -->
 	<organ
 		name="Brain"
 		id="Brain"

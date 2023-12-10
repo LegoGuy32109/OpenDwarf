@@ -9,6 +9,9 @@ var organs: Array[Organ]
 
 enum ConnectionToHeart {NONE, CONNECTED, DISCONNECTED}
 
+## used when exporting for human readable labels for organ attributes/children presets
+var presets: Dictionary = {}
+
 ## Construct a Body from a chain of limbs, or a template
 func _init(params: Dictionary) -> void:
 	# constructing from a chain of limbs, starting with brain or "root"
@@ -60,10 +63,27 @@ func _constructBodyFromObj(obj: Dictionary)->Organ:
 	organs.push_back(organ)
 	return organ
 
-## return all information about the body in an organ tree
+## return all information about the body in an organ tree, including organ presets
+func getBodyInfo()->Dictionary:
+	var organTree := _saveBodyToObj()
+	var presetsAsObj := _savePresetsToObj()
+	return {
+		XMLData.NODE_FIELD: "body",
+		XMLData.CHILDREN_FIELD: [
+			# {
+			# 	XMLData.NODE_FIELD: "presets",	
+			# 	XMLData.CHILDREN_FIELD: [
+					
+			# 	]
+			# },
+			presetsAsObj,
+			organTree
+		],
+	}
+
+## recursive helper function to get the organ tree for [getBodyInfo]
 func _saveBodyToObj(organ: Organ = rootOrgan)->Dictionary:
-	var outputObj := {}
-	outputObj = organ.getInfo()
+	var outputObj: Dictionary = organ.getInfo()
 	outputObj[XMLData.NODE_FIELD] = "organ"
 	
 	if not organ.connections.is_empty():
@@ -87,6 +107,13 @@ func _saveBodyToObj(organ: Organ = rootOrgan)->Dictionary:
 			outputObj[XMLData.CHILDREN_FIELD].push_back(connectionObj)
 	
 	return outputObj
+
+## helper function to get the presets in [XMLData] readable form
+func _savePresetsToObj()->Dictionary:
+	var output := {}
+	for presetName in presets:
+		pass
+	return {}
 
 ## Find all hearts in the body
 func getAllHearts()->Array[Organ]:

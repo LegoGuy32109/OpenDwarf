@@ -194,14 +194,46 @@ func _ready() -> void:
 	var humanBrain: Organ = constructHuman()
 	
 	var body = Body.new({"rootOrgan": humanBrain})
-	
+	body.presets = {
+		"humanCritical": {
+			"tissue": 1.0,
+			"muscle": 1.0,
+			"nerve": 1.0,
+			"artery": 1.0,
+			"type": Connection.TYPE.EXTERNAL,
+		},
+		"humanExtremity": {
+			"tissue": 1.0,
+			"muscle": 1.0,
+			"nerve": 1.0,
+			"type": Connection.TYPE.EXTERNAL,
+		},
+		"humanMayWiggle": {
+			"tissue": 1.0,
+			"muscle": 0.2,
+			"nerve": 1.0,
+			"type": Connection.TYPE.EXTERNAL,
+		},
+		"humanOrgan": {
+			"tissue": 1.0,
+			"type": Connection.TYPE.INTERNAL,
+		},
+		"humanMuscleOrgan": { 
+			"tissue": 1.0,
+			"muscle": 1.0,
+			"artery": 1.0,
+			"type": Connection.TYPE.INTERNAL,
+		}
+	}	
+
 	var xmlParser = XMLData.new()
-	xmlParser.saveToFile(body._saveBodyToObj(), "res://File IO/human_male_body.xml")
+	var fileParams = body.getBodyInfo()
+	fileParams[XMLData.NODE_FIELD] = "body"
+	xmlParser.saveToFile(fileParams, "res://File IO/human_male_body.xml", "Human Male Body Structure")
 	
 	var bodyData = xmlParser.readFile("res://File IO/IDEAL_human_male_body.xml")
-	var body2 = Body.new(bodyData)
-#	var preset = XMLData.Preset.new()
+	# var body2 = Body.new(bodyData)
 	
-	print(JSON.stringify(bodyData, " ", false))
+	# print(JSON.stringify(bodyData, " ", false))
 	
 #	var humanFactory = EntityFactory.new(EntityFactory.SPECIES.HUMAN_MALE)
