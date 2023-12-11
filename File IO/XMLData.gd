@@ -41,6 +41,7 @@ func _removeSingularPresets(textWithPresets: String)->String:
 			var instanceCount = textWithPresets.count(phrase)	
 			if instanceCount == 1:
 				textWithPresets = textWithPresets.replace(phrase, "")
+				# TODO delete presets that are only used once
 
 	return textWithPresets
 
@@ -242,10 +243,6 @@ func readFile(filepath: String)-> Dictionary: # return custom error probably
 			nodeStack.back()[CHILDREN_FIELD] = []
 		nodeStack.back()[CHILDREN_FIELD].push_back(child)
 	
-	# TODO presets save common attributes for nodes including children, will save all unless 
-	# whitelisted attributes/children are specified in PRESET_RULES
-#	var objectPresets: = {} needs to be global for this class
-	
 	var nodeError = parser.read() 
 	while nodeError != ERR_FILE_EOF:
 		# TEST
@@ -278,24 +275,24 @@ func readFile(filepath: String)-> Dictionary: # return custom error probably
 				]) 
 				return {}
 			
-			var poppedNode: Dictionary = nodeStack.pop_back()
-			if !poppedNode:
+			var poppedTag: Dictionary = nodeStack.pop_back()
+			if !poppedTag:
 				printerr("ending tag found before opening tag.\nLine %s: (%s)" % [
 					parser.get_current_line()+1,
 					fileLines[parser.get_current_line()]
 				])
 				return {}
 			
-			# apply preset to node
-			#if poppedNode.has(Preset.PRESET_FIELD):
-				#setPreset(poppedNode, presets)
+			# if preset labled, apply preset to node
+			if poppedTag.has("preset"):
+				setPreset(poppedTag)
 			
 			# if stack now empty, assume document is done
 			if nodeStack.is_empty():
-				return poppedNode
+				return poppedTag
 			
 			# if stack not empty, make this node a child of the current open node
-			_mergeChildInStack.call(poppedNode)
+			_mergeChildInStack.call(poppedTag)
 		
 		# read next node in xml
 		nodeError = parser.read()
@@ -303,43 +300,13 @@ func readFile(filepath: String)-> Dictionary: # return custom error probably
 	printerr("alreadsy at EOF, %s" % error_string(nodeError)) 
 	return {}
 
-## Given dictionary/node that has preset field, if the preset does not yet exist it's attributes and children will be saved as a preset according to the PRESET_RULES
-func setPreset(node:  Dictionary, existingPresets: Dictionary):
-	# if node has a preset label in existingPresets, append in data 
-	if existingPresets.has(node["preset"]):
-		# push preset attributes into node
-		var nodePreset = existingPresets[node["preset"]]
-		for key in nodePreset.keys():
-			# children will be handled later, don't overwrite current children
-			if key != CHILDREN_FIELD:
-				node[key] = nodePreset[key]
-		# push preset children into node
-		if nodePreset.has(CHILDREN_FIELD):
-			# create 'children' field if it doesn't exist
-			if not node.has(CHILDREN_FIELD):
-				node[CHILDREN_FIELD] = []
-			node[CHILDREN_FIELD].append_array(nodePreset[CHILDREN_FIELD])
-		return
-	
-	# if node has a preset label that doesn't exist yet, create the preset for later nodes
-	var presetAttributes := {}
-	# the preset has rules but hasn't been filled out yet
-	if presetRules.has(node[NODE_FIELD]):
-		# only save attributes mentioned in PRESET_RULES
-		for attrName in presetRules[node[NODE_FIELD]].attributes:
-			presetAttributes[attrName] = node[attrName]
-		# save children to preset
-		if node.has("children"):
-			presetAttributes.children = []
-			for child in node.children:
-				# only save children with node names in PRESET_RULES
-				if child[NODE_FIELD] in presetRules[node[NODE_FIELD]].children: 
-					presetAttributes.children.push_back(child)
-	# the preset has no rules, copy everything about the node
-	else:
-		presetAttributes = node
-	existingPresets[node["preset"]] = presetAttributes
-
+## Given tag that has preset field, if the preset does not yet exist it's attributes and children will be saved as a preset according to the PRESET_RULES
+func setPreset(tag: Dictionary):
+	# if preset already exists, apply it to tag
+	if presets.has(tag[NODE_FIELD]):
+		if presets[tag[NODE_FIELD]].has(tag["preset"]):
+			var presetToApply = presets[tag[NODE_FIELD]][tag["preset"]]
+			
 func getAllNodeInfo(parser: XMLParser)->Dictionary:
 	var output = {}
 	var nodeType = parser.get_node_type()
