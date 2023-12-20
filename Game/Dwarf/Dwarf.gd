@@ -4,6 +4,7 @@ class_name Dwarf
 enum Actions {IDLE, MINING, MOVING}
 enum Jobs {NOTHING, MINING}
 
+var brainDisabled : bool = false
 var job : int = Jobs.NOTHING
 var currentAction : int = Actions.IDLE
 var coordinates : Vector2i = Vector2i()
@@ -33,6 +34,9 @@ func _ready():
 	agentSpeed = RandomNumberGenerator.new().randi_range(85, 120)/100.0
 	tooltipText = "%s\nSpeed: %s" % [name, agentSpeed]
 
+	# connect control option to HUD
+	$StateMenu.item_selected.connect(HUD._on_add_dwarf_but_pressed) 
+
 func _process(_delta):
 	if HUD.tileTooltipsEnabled:
 		$StateMenu.tooltip_text = tooltipText
@@ -48,58 +52,70 @@ func _process(_delta):
 			node.color = "#FFFFFF"
 		$CommandContainer.add_child(node)
 	
-	# run this logic once every 6 process (render) frames
-	if Engine.get_process_frames() % 10 == 0:
-		_lookAround()
+	# entity logic
+	# check if being possesed
+	if brainDisabled:
+		# defer actions to it's controller
+		pass
+	# normal behavior
+	else:
+		# run this logic once every 6 process (render) frames
+		if Engine.get_process_frames() % 10 == 0:
+			_lookAround()
 
 
-	match currentAction:
-		Actions.IDLE:
-			sprites.play("idle", agentSpeed)
-			if commandQueue.commandList.size() > 0:
-				await commandQueue.commandList[0].run(self)
-			
-			# what should I do? think every 2 frames
-			elif Engine.get_process_frames() % 2 == 0:
-				match job:
-					# Jobs.NOTHING:
-						# nothing happens
+		match currentAction:
+			Actions.IDLE:
+				sprites.play("idle", agentSpeed)
+				if commandQueue.commandList.size() > 0:
+					await commandQueue.commandList[0].run(self)
+				
+				# what should I do? think every 2 frames
+				elif Engine.get_process_frames() % 2 == 0:
+					match job:
+						# Jobs.NOTHING:
+							# nothing happens
+						
+						Jobs.MINING:
+							# find next tile if command queue empty
+							print("I'm a miner")
+							if not await sitesToMine.nextSite(self):
+								print("I couldn't find any tile to mine")
+								job = Jobs.NOTHING
 					
-					Jobs.MINING:
-						# find next tile if command queue empty
-						print("I'm a miner")
-						if not await sitesToMine.nextSite(self):
-							print("I couldn't find any tile to mine")
-							job = Jobs.NOTHING
+					# random movement on map
+					if HUD.idleMoveEnabled and randf() < 0.005:
+						currentAction = Actions.MOVING
+						await _moveToNeighbor()
+					
+					if randf() < 0.05:
+						_decideWhatToDo()
+					
+				# reached end of current command
+				currentAction = Actions.IDLE
 				
-				# random movement on map
-				if HUD.idleMoveEnabled and randf() < 0.005:
-					currentAction = Actions.MOVING
-					await _moveToNeighbor()
-				
-				if randf() < 0.05:
-					_decideWhatToDo()
-				
-			# reached end of current command
-			currentAction = Actions.IDLE
+			Actions.MOVING:
+				sprites.play("walk", agentSpeed)
 			
-		Actions.MOVING:
-			sprites.play("walk", agentSpeed)
-		
-		Actions.MINING:
-			sprites.play("mine", 1.0)
+			Actions.MINING:
+				sprites.play("mine", 1.0)
 
 func _decideWhatToDo():
 	# logic to pick a random job
 	job = Jobs.MINING
 		
-
+## User selected something in the dwarf context menu
 func _on_state_menu_item_selected(index):
-	# user selected follow on dwarf menu
-	if (index == 0):
-		world.cameraFollow(self)
-	elif (index == 1):
-		self.queue_free()
+	match index:
+		0:
+			# user selected follow on dwarf menu
+			world.cameraFollow(self)
+			self.brainDisabled = false
+		1:
+			self.queue_free()
+		3:
+			self.brainDisabled = true
+	
 
 func _moveToNeighbor():
 	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
@@ -166,7 +182,8 @@ func moveTo(moveCommand : Command) -> bool:
 	
 	return true
 
-# Turn grid coordinates -> world/Game coordinates * gridSize
+# TODO this should be a in a util class autoload
+## Turn grid coordinates -> world/Game coordinates * gridSize
 func mapToWorld(coords: Vector2i) -> Vector2:
 	return Vector2(coords.x * gridSize, coords.y * gridSize)
 

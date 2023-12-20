@@ -3,6 +3,8 @@ extends CanvasLayer
 var tileTooltipsEnabled : bool = false
 var idleMoveEnabled : bool = true
 
+enum Mode {GOD, ENTITY}
+var currentMode : Mode = Mode.GOD
 var inMenu : bool = false
 
 # I'll turn this into an enum eventually
@@ -56,3 +58,5 @@ func _on_add_dwarf_but_pressed():
 	readyForDwarfSpawn = true
 
 
+func _on_entity_controlled(entity: Dwarf):
+	pass
