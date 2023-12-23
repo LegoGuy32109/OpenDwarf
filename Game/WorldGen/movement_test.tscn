@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3 uid="uid://c1iqaed1upwls"]
+
+[ext_resource type="Script" path="res://MovementTest.gd" id="1_vfjr1"]
+[ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="2_40gfw"]
+[ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png" id="2_ypoux"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0o54w"]
+size = Vector2(64, 64)
+
+[node name="MovementTest" type="Node2D"]
+script = ExtResource("1_vfjr1")
+
+[node name="Player" type="CharacterBody2D" parent="."]
+unique_name_in_owner = true
+z_index = 1
+script = ExtResource("2_40gfw")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
+shape = SubResource("RectangleShape2D_0o54w")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player"]
+scale = Vector2(2, 2)
+texture = ExtResource("2_ypoux")
+
+[node name="Camera" type="Camera2D" parent="Player"]
+unique_name_in_owner = true

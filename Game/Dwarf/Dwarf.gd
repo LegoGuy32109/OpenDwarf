@@ -63,7 +63,6 @@ func _process(_delta):
 		if Engine.get_process_frames() % 10 == 0:
 			_lookAround()
 
-
 		match currentAction:
 			Actions.IDLE:
 				sprites.play("idle", agentSpeed)

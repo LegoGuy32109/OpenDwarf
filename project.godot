@@ -22,7 +22,8 @@ HUD="*res://Game/HUD/HUD.tscn"
 
 [debug]
 
-gdscript/warnings/unassigned_variable_op_assign=0
+gdscript/warnings/unassigned_variable=2
+gdscript/warnings/integer_division=0
 
 [display]
 
