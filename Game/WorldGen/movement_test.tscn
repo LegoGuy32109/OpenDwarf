@@ -1,26 +1,35 @@
-[gd_scene load_steps=5 format=3 uid="uid://c1iqaed1upwls"]
+[gd_scene load_steps=4 format=3 uid="uid://dbw04ssn58117"]
 
 [ext_resource type="Script" path="res://MovementTest.gd" id="1_vfjr1"]
 [ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="2_40gfw"]
 [ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png" id="2_ypoux"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_0o54w"]
-size = Vector2(64, 64)
-
 [node name="MovementTest" type="Node2D"]
 script = ExtResource("1_vfjr1")
 
-[node name="Player" type="CharacterBody2D" parent="."]
+[node name="PlayerSprite" type="Sprite2D" parent="."]
 unique_name_in_owner = true
 z_index = 1
-script = ExtResource("2_40gfw")
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
-shape = SubResource("RectangleShape2D_0o54w")
-
-[node name="Sprite2D" type="Sprite2D" parent="Player"]
 scale = Vector2(2, 2)
 texture = ExtResource("2_ypoux")
+script = ExtResource("2_40gfw")
 
-[node name="Camera" type="Camera2D" parent="Player"]
+[node name="Camera" type="Camera2D" parent="PlayerSprite"]
 unique_name_in_owner = true
+scale = Vector2(0.5, 0.5)
+
+[node name="TextureProgressBar" type="ProgressBar" parent="PlayerSprite"]
+show_behind_parent = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -16.0
+offset_top = -16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+max_value = 1.0
+value = 1.0
+fill_mode = 3
+show_percentage = false

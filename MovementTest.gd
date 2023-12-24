@@ -11,7 +11,7 @@ var moisture = FastNoiseLite.new()
 var temperature = FastNoiseLite.new()
 var altitude = FastNoiseLite.new()
 
-@onready var player = %Player
+@onready var player = %PlayerSprite
 
 func _ready() -> void:
 	moisture.seed = randi()
@@ -60,16 +60,6 @@ func generate_chunk(pos: Vector2i) -> void:
 		
 		loadedChunks.append(pos)
 
-func clear_chunk(pos: Vector2i) -> void:
-	for x in range(CHUNK_SIZE.x):
-		for y in range(CHUNK_SIZE.y):
-			var cordInWord := pos + Vector2i(x, y) - CHUNK_SIZE/2
-			var nodeToDelete = self.get_node_or_null( "TILE%s" % str(cordInWord) )
-			if(nodeToDelete):
-				nodeToDelete.queue_free()
-	
-	loadedChunks.erase(pos)
-
 func unload_distant_chunks(fromPos: Vector2i) -> void:
 	var unloadDistance = (CHUNK_SIZE.x * 2) + 1
 	
@@ -77,3 +67,13 @@ func unload_distant_chunks(fromPos: Vector2i) -> void:
 		var distanceToPos = getDistance(chunk, fromPos)
 		if distanceToPos > unloadDistance:
 			clear_chunk(chunk)
+
+func clear_chunk(pos: Vector2i) -> void:
+	for x in range(CHUNK_SIZE.x):
+		for y in range(CHUNK_SIZE.y):
+			var cordInWord := pos + Vector2i(x, y) - CHUNK_SIZE/2
+			var nodeToDelete = self.get_node_or_null( "TILE%s" % str(cordInWord) )
+			if(nodeToDelete):
+				nodeToDelete.queue_free()
+
+	loadedChunks.erase(pos)
