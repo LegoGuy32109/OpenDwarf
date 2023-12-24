@@ -1,11 +1,18 @@
-[gd_scene load_steps=4 format=3 uid="uid://dbw04ssn58117"]
+[gd_scene load_steps=5 format=3 uid="uid://dbw04ssn58117"]
 
 [ext_resource type="Script" path="res://MovementTest.gd" id="1_vfjr1"]
 [ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="2_40gfw"]
+[ext_resource type="Script" path="res://Game/Camera/FloatingCamera.gd" id="2_uxoir"]
 [ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png" id="2_ypoux"]
 
 [node name="MovementTest" type="Node2D"]
 script = ExtResource("1_vfjr1")
+
+[node name="Camera" type="Camera2D" parent="."]
+unique_name_in_owner = true
+position_smoothing_enabled = true
+rotation_smoothing_enabled = true
+script = ExtResource("2_uxoir")
 
 [node name="PlayerSprite" type="Sprite2D" parent="."]
 unique_name_in_owner = true
@@ -14,11 +21,7 @@ scale = Vector2(2, 2)
 texture = ExtResource("2_ypoux")
 script = ExtResource("2_40gfw")
 
-[node name="Camera" type="Camera2D" parent="PlayerSprite"]
-unique_name_in_owner = true
-scale = Vector2(0.5, 0.5)
-
-[node name="TextureProgressBar" type="ProgressBar" parent="PlayerSprite"]
+[node name="NextMoveProgress" type="ProgressBar" parent="PlayerSprite"]
 show_behind_parent = true
 anchors_preset = 15
 anchor_right = 1.0

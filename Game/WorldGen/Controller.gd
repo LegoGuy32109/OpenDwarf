@@ -6,7 +6,8 @@ var zoomMax = Vector2(2, 2)
 
 var moving: bool = false
 var sprinting: bool = false
-# var 
+
+var moveTimer: Timer = Timer.new()
 var waitAfterMove: float = 0.7
 var tileMoveTime: float = 0.2
 
@@ -16,26 +17,29 @@ var tileMoveTime: float = 0.2
 var playerMovement := Vector2i(0,0)
 
 func _process(_delta: float) -> void:
-	# if playerMovement != Vector2i(0,0):
-		# if !sprinting:
-		# 	waitaftermove = defaultmovetime
-		# else:
-		# 	waitaftermove = defaultmovetime / 4
-	
 	if !moving && playerMovement != Vector2i(0,0):
 		processMovementRequest()
+	
+	# if !moveTimer.is_stopped():
+	# 	set
 
 func processMovementRequest()->void:
 	moving = true
 	# input delay, I can move diagonally from rest
 	await get_tree().create_timer(0.05).timeout
+	
+	var moveWait = 0.75
+	moveTimer.wait_time = moveWait
+	moveTimer.start()
+
 	var singleTween := create_tween()
 	singleTween.tween_property(
 		self, "position", self.position + Vector2(playerMovement), tileMoveTime
 	)
 	await singleTween.finished
-	tileMoveTime = 0.0
-	await get_tree().create_timer(0.05).timeout
+
+	$NextMoveProgress.value = singleTween.get_total_elapsed_time()
+	# await moveTimer.timeout
 	moving = false
 
 var keyMap: Dictionary = {
