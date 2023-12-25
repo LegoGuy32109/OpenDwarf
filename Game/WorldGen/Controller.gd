@@ -8,39 +8,49 @@ var moving: bool = false
 var sprinting: bool = false
 
 var moveTimer: Timer = Timer.new()
-var waitAfterMove: float = 0.7
+var waitAfterExhaust: float = 4
 var tileMoveTime: float = 0.2
+
+var staminaExhaustion: float = 0.0
+var staminaMax: float = 100.0
+var moveStamCost := 1.0
+var restStamAmt := 0.1
 
 # how far to move player character to align on tile size
 @onready var playerMovementOnWorld = self.get_parent().TILE_SIZE
 # can be 9 possible values (-1,-1) ... (1,1)
 var playerMovement := Vector2i(0,0)
 
+@onready var nextMoveProgBar = $NextMoveProgress
+
+func _physics_process(_delta):
+	if !moving && staminaExhaustion > 0.0: 
+		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
+		nextMoveProgBar.visible = staminaExhaustion > 0.0
+
+	nextMoveProgBar.value = staminaExhaustion
+
 func _process(_delta: float) -> void:
 	if !moving && playerMovement != Vector2i(0,0):
 		processMovementRequest()
-	
-	# if !moveTimer.is_stopped():
-	# 	set
 
 func processMovementRequest()->void:
-	moving = true
-	# input delay, I can move diagonally from rest
-	await get_tree().create_timer(0.05).timeout
-	
-	var moveWait = 0.75
-	moveTimer.wait_time = moveWait
-	moveTimer.start()
+	if staminaExhaustion < staminaMax:
+		moving = true
+		staminaExhaustion += moveStamCost
+		# input delay, I can move diagonally from rest
+		await get_tree().create_timer(0.05).timeout
+		
+		var singleTween := create_tween()
+		singleTween.tween_property(
+			self, "position", self.position + Vector2(playerMovement), tileMoveTime
+		)
+		await singleTween.finished
 
-	var singleTween := create_tween()
-	singleTween.tween_property(
-		self, "position", self.position + Vector2(playerMovement), tileMoveTime
-	)
-	await singleTween.finished
-
-	$NextMoveProgress.value = singleTween.get_total_elapsed_time()
-	# await moveTimer.timeout
-	moving = false
+		moving = false
+	else:
+		print("EXHAUSTED")
+		staminaExhaustion += 20.0
 
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
