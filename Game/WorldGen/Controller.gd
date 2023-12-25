@@ -2,14 +2,13 @@ extends Node
 
 var zoomAmount = Vector2(0.1, 0.1)
 var zoomMin = Vector2(0.3, 0.3)
-var zoomMax = Vector2(2, 2)
+var zoomMax = Vector2(1.8, 1.8)
 
+var processingMovement: bool = false
 var moving: bool = false
 var sprinting: bool = false
 
-var moveTimer: Timer = Timer.new()
-var waitAfterExhaust: float = 4
-var tileMoveTime: float = 0.2
+var tileMoveTime: float = 0.5
 
 var staminaExhaustion: float = 0.0
 var staminaMax: float = 100.0
@@ -28,29 +27,29 @@ func _physics_process(_delta):
 		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
 		nextMoveProgBar.visible = staminaExhaustion > 0.0
 
+	if staminaExhaustion >= staminaMax:
+		tileMoveTime = 0.5
+	elif staminaExhaustion < staminaMax:
+		tileMoveTime = 0.2
+	
 	nextMoveProgBar.value = staminaExhaustion
-
-func _process(_delta: float) -> void:
-	if !moving && playerMovement != Vector2i(0,0):
+	if !processingMovement && playerMovement != Vector2i(0,0):
 		processMovementRequest()
 
 func processMovementRequest()->void:
-	if staminaExhaustion < staminaMax:
-		moving = true
-		staminaExhaustion += moveStamCost
-		# input delay, I can move diagonally from rest
-		await get_tree().create_timer(0.05).timeout
-		
-		var singleTween := create_tween()
-		singleTween.tween_property(
-			self, "position", self.position + Vector2(playerMovement), tileMoveTime
-		)
-		await singleTween.finished
+	processingMovement = true
 
-		moving = false
-	else:
-		print("EXHAUSTED")
-		staminaExhaustion += 20.0
+	staminaExhaustion += moveStamCost
+
+	moving = true
+	var singleTween := create_tween()
+	singleTween.tween_property(
+		self, "position", self.position + Vector2(playerMovement), tileMoveTime
+	)
+	await singleTween.finished
+	moving = false
+
+	processingMovement = false
 
 var keyMap: Dictionary = {
 	"move_up": KEY_E,

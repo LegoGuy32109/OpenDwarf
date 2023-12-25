@@ -1,9 +1,13 @@
-[gd_scene load_steps=5 format=3 uid="uid://dbw04ssn58117"]
+[gd_scene load_steps=6 format=3 uid="uid://dbw04ssn58117"]
 
 [ext_resource type="Script" path="res://MovementTest.gd" id="1_vfjr1"]
 [ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="2_40gfw"]
 [ext_resource type="Script" path="res://Game/Camera/FloatingCamera.gd" id="2_uxoir"]
 [ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png" id="2_ypoux"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_suaua"]
+radius = 6.0
+height = 12.0
 
 [node name="MovementTest" type="Node2D"]
 script = ExtResource("1_vfjr1")
@@ -34,3 +38,6 @@ grow_horizontal = 2
 grow_vertical = 2
 fill_mode = 3
 show_percentage = false
+
+[node name="MeshInstance2D" type="MeshInstance2D" parent="PlayerSprite"]
+mesh = SubResource("SphereMesh_suaua")
