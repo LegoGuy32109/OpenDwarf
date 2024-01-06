@@ -11,7 +11,7 @@ var moisture = FastNoiseLite.new()
 var temperature = FastNoiseLite.new()
 var altitude = FastNoiseLite.new()
 
-@onready var player = %PlayerSprite
+@onready var player = %Entity
 
 func _ready() -> void:
 	moisture.seed = randi()

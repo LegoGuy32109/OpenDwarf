@@ -1,4 +1,4 @@
-extends Node
+extends Node2D
 
 var zoomAmount = Vector2(0.1, 0.1)
 var zoomMin = Vector2(0.3, 0.3)
@@ -17,9 +17,12 @@ var restStamAmt := 0.1
 
 # how far to move player character to align on tile size
 @onready var playerMovementOnWorld = self.get_parent().TILE_SIZE
-# can be 9 possible values (-1,-1) ... (1,1)
-var playerMovement := Vector2i(0,0)
 
+# both can be 9 possible values (-1,-1) ... (1,1)
+var playerMovement := Vector2i(0,0) 
+var reachDirection := Vector2i(0,0)
+
+@onready var reachIndicator = $ReachIndicator
 @onready var nextMoveProgBar = $NextMoveProgress
 
 func _physics_process(_delta):
@@ -35,6 +38,12 @@ func _physics_process(_delta):
 	nextMoveProgBar.value = staminaExhaustion
 	if !processingMovement && playerMovement != Vector2i(0,0):
 		processMovementRequest()
+	
+	reachIndicator.position = reachDirection
+	if reachDirection != Vector2i(0,0):
+		reachIndicator.visible = true
+	else:
+		reachIndicator.visible = false
 
 func processMovementRequest()->void:
 	processingMovement = true
@@ -44,7 +53,10 @@ func processMovementRequest()->void:
 	moving = true
 	var singleTween := create_tween()
 	singleTween.tween_property(
-		self, "position", self.position + Vector2(playerMovement), tileMoveTime
+		self,
+		"position",
+		self.position + Vector2(playerMovement),
+		tileMoveTime
 	)
 	await singleTween.finished
 	moving = false
@@ -56,37 +68,58 @@ var keyMap: Dictionary = {
 	"move_left": KEY_S,
 	"move_down": KEY_D,
 	"move_right": KEY_F,
+	"reach_up": KEY_I,
+	"reach_left": KEY_J,
+	"reach_down": KEY_K,
+	"reach_right": KEY_L,
 	"toggle_sprint": KEY_SHIFT,
+	"toggle_crouch": KEY_CTRL,
 	"camera_zoom_in": KEY_COMMA,
 	"camera_zoom_out": KEY_PERIOD,
 }
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event.is_pressed():
+	if event.is_pressed() && !event.is_echo():
 		match event.keycode:
 			keyMap.move_up:
-				playerMovement.y = -playerMovementOnWorld.y
+				playerMovement.y += -playerMovementOnWorld.y
 			keyMap.move_left:
-				playerMovement.x = -playerMovementOnWorld.x
+				playerMovement.x += -playerMovementOnWorld.x
 			keyMap.move_down:
-				playerMovement.y = playerMovementOnWorld.y
+				playerMovement.y += playerMovementOnWorld.y
 			keyMap.move_right:
-				playerMovement.x = playerMovementOnWorld.x
+				playerMovement.x += playerMovementOnWorld.x
+			keyMap.reach_up:
+				reachDirection.y += -playerMovementOnWorld.y
+			keyMap.reach_left:
+				reachDirection.x += -playerMovementOnWorld.x
+			keyMap.reach_down:
+				reachDirection.y += playerMovementOnWorld.y
+			keyMap.reach_right:
+				reachDirection.x += playerMovementOnWorld.x
 			keyMap.toggle_sprint:
 				sprinting = !sprinting
 			keyMap.camera_zoom_in:
-				%Camera.zoom += zoomAmount
+				%Camera.zoom += zoomAmount * %Camera.zoom
 				%Camera.zoom = clamp(%Camera.zoom, zoomMin, zoomMax)
 			keyMap.camera_zoom_out:
-				%Camera.zoom -= zoomAmount
+				%Camera.zoom -= zoomAmount * %Camera.zoom
 				%Camera.zoom = clamp(%Camera.zoom, zoomMin, zoomMax)
 	elif event.is_released():
 		match event.keycode:
 			keyMap.move_up:
-				playerMovement.y = 0
+				playerMovement.y -= -playerMovementOnWorld.y
 			keyMap.move_left:
-				playerMovement.x = 0
+				playerMovement.x -= -playerMovementOnWorld.x
 			keyMap.move_down:
-				playerMovement.y = 0
+				playerMovement.y -= playerMovementOnWorld.y
 			keyMap.move_right:
-				playerMovement.x = 0
+				playerMovement.x -= playerMovementOnWorld.x
+			keyMap.reach_up:
+				reachDirection.y -= -playerMovementOnWorld.y
+			keyMap.reach_left:
+				reachDirection.x -= -playerMovementOnWorld.x
+			keyMap.reach_down:
+				reachDirection.y -= playerMovementOnWorld.y
+			keyMap.reach_right:
+				reachDirection.x -= playerMovementOnWorld.x

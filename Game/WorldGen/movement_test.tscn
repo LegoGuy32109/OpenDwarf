@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3 uid="uid://dbw04ssn58117"]
+[gd_scene load_steps=6 format=3 uid="uid://c1iqaed1upwls"]
 
 [ext_resource type="Script" path="res://MovementTest.gd" id="1_vfjr1"]
 [ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="2_40gfw"]
@@ -6,8 +6,8 @@
 [ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png" id="2_ypoux"]
 
 [sub_resource type="SphereMesh" id="SphereMesh_suaua"]
-radius = 6.0
-height = 12.0
+radius = 15.0
+height = 30.0
 
 [node name="MovementTest" type="Node2D"]
 script = ExtResource("1_vfjr1")
@@ -18,26 +18,28 @@ position_smoothing_enabled = true
 rotation_smoothing_enabled = true
 script = ExtResource("2_uxoir")
 
-[node name="PlayerSprite" type="Sprite2D" parent="."]
+[node name="Entity" type="Node2D" parent="."]
 unique_name_in_owner = true
+script = ExtResource("2_40gfw")
+
+[node name="ReachIndicator" type="MeshInstance2D" parent="Entity"]
+z_index = 1
+mesh = SubResource("SphereMesh_suaua")
+
+[node name="EntitySprite" type="Sprite2D" parent="Entity"]
 z_index = 1
 scale = Vector2(2, 2)
 texture = ExtResource("2_ypoux")
-script = ExtResource("2_40gfw")
 
-[node name="NextMoveProgress" type="ProgressBar" parent="PlayerSprite"]
-show_behind_parent = true
+[node name="NextMoveProgress" type="ProgressBar" parent="Entity"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -16.0
-offset_top = -16.0
-offset_right = -16.0
-offset_bottom = -16.0
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
 grow_horizontal = 2
 grow_vertical = 2
 fill_mode = 3
 show_percentage = false
-
-[node name="MeshInstance2D" type="MeshInstance2D" parent="PlayerSprite"]
-mesh = SubResource("SphereMesh_suaua")
