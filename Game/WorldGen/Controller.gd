@@ -11,12 +11,14 @@ var zooms = [
 	Vector2(0.4, 0.4),
 	Vector2(0.3, 0.3),
 ]
-var currentZoomIndex = 2
+# default 2
+var currentZoomIndex = 8
 
 var processingMovement: bool = false
 var moving: bool = false
 var sprinting: bool = false
 
+var currentTileCords := Vector2i(0,0)
 var tileMoveTime: float = 0.5
 
 var staminaExhaustion: float = 0.0
@@ -35,25 +37,31 @@ var reachDirection := NO_DIRECTION
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
+func _ready() -> void:
+	%Camera.targetZoom = zooms[currentZoomIndex]
+	
 func _physics_process(_delta):
 	# movement logic
 	if !processingMovement && playerMovement != NO_DIRECTION:
 		processMovementRequest()
 	
 	# stamina logic
-	if !moving&&staminaExhaustion > 0.0:
+	if !moving && staminaExhaustion > 0.0:
 		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
 		exhaustionMeter.visible = staminaExhaustion > 0.0
 
 	if staminaExhaustion >= staminaMax:
 		tileMoveTime = 0.5
 	elif staminaExhaustion < staminaMax:
-		tileMoveTime = 0.2
+		if sprinting:
+			tileMoveTime = 0.2
+		else:
+			tileMoveTime = 0.4
 	
 	exhaustionMeter.value = staminaExhaustion
 
 	# reaching logic IJKL
-	reachIndicator.position = reachDirection
+	reachIndicator.global_position = currentTileCords * playerMovementOnWorld + reachDirection
 	if reachDirection != NO_DIRECTION:
 		reachIndicator.visible = true
 	else:
@@ -62,8 +70,12 @@ func _physics_process(_delta):
 func processMovementRequest() -> void:
 	processingMovement = true
 
-	staminaExhaustion += moveStamCost
+	staminaExhaustion += moveStamCost if sprinting else moveStamCost/2.5 
 
+	# input delay for diagonal movement
+	if !moving:
+		await get_tree().create_timer(0.06).timeout
+	
 	moving = true
 	var singleTween := create_tween()
 	singleTween.tween_property(
@@ -73,7 +85,12 @@ func processMovementRequest() -> void:
 		tileMoveTime
 	)
 	await singleTween.finished
-	print("finished moving a tile")
+	
+	# could have been interupted since that movement
+
+	currentTileCords = Vector2i( self.position / Vector2(playerMovementOnWorld) )
+
+	# no movement input detected
 	if playerMovement == NO_DIRECTION:
 		moving = false
 
