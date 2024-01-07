@@ -29,6 +29,7 @@ mesh = SubResource("SphereMesh_suaua")
 
 [node name="EntitySprite" type="Sprite2D" parent="Entity"]
 z_index = 1
+position = Vector2(-2, 1)
 scale = Vector2(2, 2)
 texture = ExtResource("2_ypoux")
 

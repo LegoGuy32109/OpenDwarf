@@ -27,14 +27,20 @@ var restStamAmt := 0.1
 # how far to move player character to align on tile size
 @onready var playerMovementOnWorld = self.get_parent().TILE_SIZE
 
+const NO_DIRECTION = Vector2i(0, 0)
 # both can be 9 possible values (-1,-1) ... (1,1)
-var playerMovement := Vector2i(0, 0)
-var reachDirection := Vector2i(0, 0)
+var playerMovement := NO_DIRECTION
+var reachDirection := NO_DIRECTION
 
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
 func _physics_process(_delta):
+	# movement logic
+	if !processingMovement && playerMovement != NO_DIRECTION:
+		processMovementRequest()
+	
+	# stamina logic
 	if !moving&&staminaExhaustion > 0.0:
 		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
 		exhaustionMeter.visible = staminaExhaustion > 0.0
@@ -45,11 +51,10 @@ func _physics_process(_delta):
 		tileMoveTime = 0.2
 	
 	exhaustionMeter.value = staminaExhaustion
-	if !processingMovement&&playerMovement != Vector2i(0, 0):
-		processMovementRequest()
-	
+
+	# reaching logic IJKL
 	reachIndicator.position = reachDirection
-	if reachDirection != Vector2i(0, 0):
+	if reachDirection != NO_DIRECTION:
 		reachIndicator.visible = true
 	else:
 		reachIndicator.visible = false
@@ -68,7 +73,9 @@ func processMovementRequest() -> void:
 		tileMoveTime
 	)
 	await singleTween.finished
-	moving = false
+	print("finished moving a tile")
+	if playerMovement == NO_DIRECTION:
+		moving = false
 
 	processingMovement = false
 
@@ -88,6 +95,15 @@ var keyMap: Dictionary = {
 }
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	# event key is held down
+	if event.is_pressed():
+		match event.keycode:
+			keyMap.camera_zoom_in:
+				currentZoomIndex = clamp(currentZoomIndex - 1, 0, zooms.size() - 1)
+				%Camera.targetZoom = zooms[currentZoomIndex]
+			keyMap.camera_zoom_out:
+				currentZoomIndex = clamp(currentZoomIndex + 1, 0, zooms.size() - 1)
+				%Camera.targetZoom = zooms[currentZoomIndex]
 	# event key was just pressed
 	if event.is_pressed() && !event.is_echo():
 		match event.keycode:
@@ -109,15 +125,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				reachDirection.x += playerMovementOnWorld.x
 			keyMap.toggle_sprint:
 				sprinting = !sprinting
-	# event key was just pressed, or held down
-	if event.is_pressed():
-		match event.keycode:
-			keyMap.camera_zoom_in:
-				currentZoomIndex = clamp(currentZoomIndex - 1, 0, zooms.size() - 1)
-				%Camera.zoom = zooms[currentZoomIndex]
-			keyMap.camera_zoom_out:
-				currentZoomIndex = clamp(currentZoomIndex + 1, 0, zooms.size() - 1)
-				%Camera.zoom = zooms[currentZoomIndex]
 	elif event.is_released():
 		match event.keycode:
 			keyMap.move_up:
