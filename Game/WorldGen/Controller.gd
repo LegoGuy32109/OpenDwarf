@@ -1,8 +1,17 @@
 extends Node2D
 
-var zoomAmount = Vector2(0.1, 0.1)
-var zoomMin = Vector2(0.3, 0.3)
-var zoomMax = Vector2(1.8, 1.8)
+var zooms = [
+	Vector2(1.4, 1.4),
+	Vector2(1.2, 1.2),
+	Vector2(1.0, 1.0),
+	Vector2(0.8, 0.8),
+	Vector2(0.7, 0.7),
+	Vector2(0.6, 0.6),
+	Vector2(0.5, 0.5),
+	Vector2(0.4, 0.4),
+	Vector2(0.3, 0.3),
+]
+var currentZoomIndex = 2
 
 var processingMovement: bool = false
 var moving: bool = false
@@ -19,33 +28,33 @@ var restStamAmt := 0.1
 @onready var playerMovementOnWorld = self.get_parent().TILE_SIZE
 
 # both can be 9 possible values (-1,-1) ... (1,1)
-var playerMovement := Vector2i(0,0) 
-var reachDirection := Vector2i(0,0)
+var playerMovement := Vector2i(0, 0)
+var reachDirection := Vector2i(0, 0)
 
 @onready var reachIndicator = $ReachIndicator
-@onready var nextMoveProgBar = $NextMoveProgress
+@onready var exhaustionMeter = $ExhaustionMeter
 
 func _physics_process(_delta):
-	if !moving && staminaExhaustion > 0.0: 
+	if !moving&&staminaExhaustion > 0.0:
 		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
-		nextMoveProgBar.visible = staminaExhaustion > 0.0
+		exhaustionMeter.visible = staminaExhaustion > 0.0
 
 	if staminaExhaustion >= staminaMax:
 		tileMoveTime = 0.5
 	elif staminaExhaustion < staminaMax:
 		tileMoveTime = 0.2
 	
-	nextMoveProgBar.value = staminaExhaustion
-	if !processingMovement && playerMovement != Vector2i(0,0):
+	exhaustionMeter.value = staminaExhaustion
+	if !processingMovement&&playerMovement != Vector2i(0, 0):
 		processMovementRequest()
 	
 	reachIndicator.position = reachDirection
-	if reachDirection != Vector2i(0,0):
+	if reachDirection != Vector2i(0, 0):
 		reachIndicator.visible = true
 	else:
 		reachIndicator.visible = false
 
-func processMovementRequest()->void:
+func processMovementRequest() -> void:
 	processingMovement = true
 
 	staminaExhaustion += moveStamCost
@@ -79,46 +88,50 @@ var keyMap: Dictionary = {
 }
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	# event key was just pressed
 	if event.is_pressed() && !event.is_echo():
 		match event.keycode:
 			keyMap.move_up:
-				playerMovement.y += -playerMovementOnWorld.y
+				playerMovement.y += - playerMovementOnWorld.y
 			keyMap.move_left:
-				playerMovement.x += -playerMovementOnWorld.x
+				playerMovement.x += - playerMovementOnWorld.x
 			keyMap.move_down:
 				playerMovement.y += playerMovementOnWorld.y
 			keyMap.move_right:
 				playerMovement.x += playerMovementOnWorld.x
 			keyMap.reach_up:
-				reachDirection.y += -playerMovementOnWorld.y
+				reachDirection.y += - playerMovementOnWorld.y
 			keyMap.reach_left:
-				reachDirection.x += -playerMovementOnWorld.x
+				reachDirection.x += - playerMovementOnWorld.x
 			keyMap.reach_down:
 				reachDirection.y += playerMovementOnWorld.y
 			keyMap.reach_right:
 				reachDirection.x += playerMovementOnWorld.x
 			keyMap.toggle_sprint:
 				sprinting = !sprinting
+	# event key was just pressed, or held down
+	if event.is_pressed():
+		match event.keycode:
 			keyMap.camera_zoom_in:
-				%Camera.zoom += zoomAmount * %Camera.zoom
-				%Camera.zoom = clamp(%Camera.zoom, zoomMin, zoomMax)
+				currentZoomIndex = clamp(currentZoomIndex - 1, 0, zooms.size() - 1)
+				%Camera.zoom = zooms[currentZoomIndex]
 			keyMap.camera_zoom_out:
-				%Camera.zoom -= zoomAmount * %Camera.zoom
-				%Camera.zoom = clamp(%Camera.zoom, zoomMin, zoomMax)
+				currentZoomIndex = clamp(currentZoomIndex + 1, 0, zooms.size() - 1)
+				%Camera.zoom = zooms[currentZoomIndex]
 	elif event.is_released():
 		match event.keycode:
 			keyMap.move_up:
-				playerMovement.y -= -playerMovementOnWorld.y
+				playerMovement.y -= - playerMovementOnWorld.y
 			keyMap.move_left:
-				playerMovement.x -= -playerMovementOnWorld.x
+				playerMovement.x -= - playerMovementOnWorld.x
 			keyMap.move_down:
 				playerMovement.y -= playerMovementOnWorld.y
 			keyMap.move_right:
 				playerMovement.x -= playerMovementOnWorld.x
 			keyMap.reach_up:
-				reachDirection.y -= -playerMovementOnWorld.y
+				reachDirection.y -= - playerMovementOnWorld.y
 			keyMap.reach_left:
-				reachDirection.x -= -playerMovementOnWorld.x
+				reachDirection.x -= - playerMovementOnWorld.x
 			keyMap.reach_down:
 				reachDirection.y -= playerMovementOnWorld.y
 			keyMap.reach_right:

@@ -20,6 +20,7 @@ script = ExtResource("2_uxoir")
 
 [node name="Entity" type="Node2D" parent="."]
 unique_name_in_owner = true
+z_index = 1
 script = ExtResource("2_40gfw")
 
 [node name="ReachIndicator" type="MeshInstance2D" parent="Entity"]
@@ -31,14 +32,11 @@ z_index = 1
 scale = Vector2(2, 2)
 texture = ExtResource("2_ypoux")
 
-[node name="NextMoveProgress" type="ProgressBar" parent="Entity"]
+[node name="ExhaustionMeter" type="ProgressBar" parent="Entity"]
+custom_minimum_size = Vector2(64, 64)
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -32.0
-offset_top = -32.0
-offset_right = 32.0
-offset_bottom = 32.0
 grow_horizontal = 2
 grow_vertical = 2
 fill_mode = 3
