@@ -1,4 +1,4 @@
-extends Node2D
+extends Node
 
 var zooms = [
 	Vector2(1.4, 1.4),
@@ -31,9 +31,11 @@ var restStamAmt := 0.1
 
 const NO_DIRECTION = Vector2i(0, 0)
 # both can be 9 possible values (-1,-1) ... (1,1)
-var playerMovement := NO_DIRECTION
+var moveVector := NO_DIRECTION
 var reachDirection := NO_DIRECTION
 
+## Entity to control/follow/focus on 
+var entity: Node2D
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
@@ -42,31 +44,37 @@ func _ready() -> void:
 	
 func _physics_process(_delta):
 	# movement logic
-	if !processingMovement && playerMovement != NO_DIRECTION:
-		processMovementRequest()
+	if moveVector != NO_DIRECTION:
+		if entity && !processingMovement:
+			processMovementRequest()
+		else:
+			cameraMove()
 	
 	# stamina logic
-	if !moving && staminaExhaustion > 0.0:
-		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
-		exhaustionMeter.visible = staminaExhaustion > 0.0
+	if exhaustionMeter:
+		if !moving && staminaExhaustion > 0.0:
+			staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
+			exhaustionMeter.visible = staminaExhaustion > 0.0
 
-	if staminaExhaustion >= staminaMax:
-		tileMoveTime = 0.5
-	elif staminaExhaustion < staminaMax:
-		if sprinting:
-			tileMoveTime = 0.2
-		else:
-			tileMoveTime = 0.4
-	
-	exhaustionMeter.value = staminaExhaustion
+		if staminaExhaustion >= staminaMax:
+			tileMoveTime = 0.5
+		elif staminaExhaustion < staminaMax:
+			if sprinting:
+				tileMoveTime = 0.2
+			else:
+				tileMoveTime = 0.4
+		
+		exhaustionMeter.value = staminaExhaustion
 
 	# reaching logic IJKL
-	reachIndicator.global_position = currentTileCords * playerMovementOnWorld + reachDirection
-	if reachDirection != NO_DIRECTION:
-		reachIndicator.visible = true
-	else:
-		reachIndicator.visible = false
+	if reachIndicator:
+		reachIndicator.global_position = currentTileCords * playerMovementOnWorld + reachDirection
+		if reachDirection != NO_DIRECTION:
+			reachIndicator.visible = true
+		else:
+			reachIndicator.visible = false
 
+## called when moving an entity
 func processMovementRequest() -> void:
 	processingMovement = true
 
@@ -79,22 +87,27 @@ func processMovementRequest() -> void:
 	moving = true
 	var singleTween := create_tween()
 	singleTween.tween_property(
-		self,
+		entity,
 		"position",
-		self.position + Vector2(playerMovement),
+		entity.position + Vector2(moveVector),
 		tileMoveTime
 	)
 	await singleTween.finished
 	
 	# could have been interupted since that movement
 
-	currentTileCords = Vector2i( self.position / Vector2(playerMovementOnWorld) )
+	currentTileCords = Vector2i( entity.position / Vector2(playerMovementOnWorld) )
 
 	# no movement input detected
-	if playerMovement == NO_DIRECTION:
+	if moveVector == NO_DIRECTION:
 		moving = false
 
 	processingMovement = false
+
+## called when no entity is being controlled
+func cameraMove() -> void:
+	var cameraSpeed: float = float(currentZoomIndex+1)/zooms.size()
+	%Camera.position += Vector2(moveVector) * cameraSpeed
 
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
@@ -125,13 +138,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if event.is_pressed() && !event.is_echo():
 		match event.keycode:
 			keyMap.move_up:
-				playerMovement.y += - playerMovementOnWorld.y
+				moveVector.y += - playerMovementOnWorld.y
 			keyMap.move_left:
-				playerMovement.x += - playerMovementOnWorld.x
+				moveVector.x += - playerMovementOnWorld.x
 			keyMap.move_down:
-				playerMovement.y += playerMovementOnWorld.y
+				moveVector.y += playerMovementOnWorld.y
 			keyMap.move_right:
-				playerMovement.x += playerMovementOnWorld.x
+				moveVector.x += playerMovementOnWorld.x
 			keyMap.reach_up:
 				reachDirection.y += - playerMovementOnWorld.y
 			keyMap.reach_left:
@@ -145,13 +158,13 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif event.is_released():
 		match event.keycode:
 			keyMap.move_up:
-				playerMovement.y -= - playerMovementOnWorld.y
+				moveVector.y -= - playerMovementOnWorld.y
 			keyMap.move_left:
-				playerMovement.x -= - playerMovementOnWorld.x
+				moveVector.x -= - playerMovementOnWorld.x
 			keyMap.move_down:
-				playerMovement.y -= playerMovementOnWorld.y
+				moveVector.y -= playerMovementOnWorld.y
 			keyMap.move_right:
-				playerMovement.x -= playerMovementOnWorld.x
+				moveVector.x -= playerMovementOnWorld.x
 			keyMap.reach_up:
 				reachDirection.y -= - playerMovementOnWorld.y
 			keyMap.reach_left:

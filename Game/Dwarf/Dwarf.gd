@@ -4,7 +4,7 @@ class_name Dwarf
 enum Actions {IDLE, MINING, MOVING}
 enum Jobs {NOTHING, MINING}
 
-var brainDisabled : bool = false
+var brainDisabled : bool = true
 var job : int = Jobs.NOTHING
 var currentAction : int = Actions.IDLE
 var coordinates : Vector2i = Vector2i()
@@ -59,10 +59,6 @@ func _process(_delta):
 		pass
 	# normal behavior
 	else:
-		# run this logic once every 6 process (render) frames
-		if Engine.get_process_frames() % 10 == 0:
-			_lookAround()
-
 		match currentAction:
 			Actions.IDLE:
 				sprites.play("idle", agentSpeed)

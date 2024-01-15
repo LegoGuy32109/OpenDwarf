@@ -7,16 +7,20 @@ var snapToTarget: bool = false
 var lerpWeight: float = 0.2
 
 @export
-var targetZoom: Vector2 = Vector2(1.0, 1.0)
+var targetZoom: Vector2 = Vector2(0.2, 0.2)
 
 @onready
-var cameraTarget: Node2D = %Entity
+var cameraTarget: Node2D 
+
+func _ready() -> void:
+	cameraTarget = %Entity
 
 func _physics_process(_delta):
-	if snapToTarget:
-		self.position = cameraTarget.position
-	elif (self.position.distance_squared_to(cameraTarget.position) > 1):
-		self.position = self.position.lerp(cameraTarget.position, lerpWeight)
+	if cameraTarget:
+		if snapToTarget:
+			self.position = cameraTarget.position
+		elif (self.position.distance_squared_to(cameraTarget.position) > 1):
+			self.position = self.position.lerp(cameraTarget.position, lerpWeight)
 
 	if self.zoom != targetZoom:
 		_changeZoom()

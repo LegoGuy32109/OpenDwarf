@@ -4,7 +4,7 @@ class_name Tile
 signal boundIn
 signal boundOut
 
-@onready var sprite : Sprite2D = $Sprite2D
+@onready var sprite : Sprite2D = $Sprite
 var rockImg : Texture2D = load("res://Assets/Tiles/Rock.png")
 var groundImg : Texture2D = load("res://Assets/Tiles/Ground.png")
 
@@ -26,7 +26,10 @@ var items : ItemInWorld = itemScene.instantiate()
 
 
 func _ready() -> void:
-	setToRock()
+	if traversable:
+		setToGround()
+	else:
+		setToRock()
 	self.add_child(items)
 	items.visible = false
 

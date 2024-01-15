@@ -1,7 +1,7 @@
 extends CanvasLayer
 
 var tileTooltipsEnabled : bool = false
-var idleMoveEnabled : bool = true
+var idleMoveEnabled : bool = false
 
 enum Mode {GOD, ENTITY}
 var currentMode : Mode = Mode.GOD

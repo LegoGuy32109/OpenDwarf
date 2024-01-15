@@ -1,24 +1,26 @@
 extends Node2D
 
+# in pixels
+const TILE_SIZE := Vector2i(64, 64)
+# in tiles
+const CHUNK_SIZE := Vector2i(32, 32)
+
 @export
 var startingDwarves : int = 1
 
 var creatureSpawn : Vector2i
 
-var coordReigon : Array[Vector2i] = []
+var selectedCords : Array[Vector2i] = []
 
 var sitesToMine : SitesToMine
 
 var pathfinder : Pathfinder
 
-# should be a const lol
-@export var gridSize: int = 64
-
-## returns array of nodes, but I assume all are Node2Ds
-#var entities: Array[Node] = $Entities.get_children()
+var rockOrNah = FastNoiseLite.new()
 
 @onready
-var tileParent : TileParent = $Tiles
+var chunkParent : Node = $Chunks
+var loadedChunks: Dictionary = {}
 
 @onready 
 var tileScene: PackedScene = load("res://Game/Tile/Tile.tscn")
@@ -26,12 +28,12 @@ var tileScene: PackedScene = load("res://Game/Tile/Tile.tscn")
 var dwarfScene: PackedScene = load("res://Game/Dwarf/Dwarf.tscn")
 
 func _ready():
-	# I am not saving traversable coordinates, it will be auto generated
-	# right now no traversable coordinates
-	# var traversableCoordinates : Array[Vector2i] = generateChunk()
-	pathfinder = Pathfinder.new(tileParent)
-	sitesToMine = SitesToMine.new(pathfinder)
-	_addEntities(Vector2i(0, 0))
+	# define noise
+	var hashedSeed := hash(HUD.SEED)
+	rockOrNah.seed = hashedSeed
+	rockOrNah.frequency = 0.07
+
+	spawnChunks()
 
 
 func _addEntities(spawnLoc : Vector2i):
@@ -40,66 +42,63 @@ func _addEntities(spawnLoc : Vector2i):
 	for i in range(startingDwarves):
 		addDwarf(creatureSpawn)
 	
-	$Camera.position = Vector2(spawnLoc)
-	
-func generateChunk() -> Array[Vector2i]:
-	# given matrix of a chunk, navigate it adding tiles where they need to be.
-	for i in range(actualWorldLength):
+## Generates a chunk starting from the given vector
+func generateChunk(northWestCorner: Vector2i):
+	var chunk : Node2D = Node2D.new()
+	chunk.name = "chunk X: %s Y: %s" % [northWestCorner.x, northWestCorner.y]
+	chunkParent.add_child(chunk)
+	loadedChunks[northWestCorner] = chunk
+	for i in range(CHUNK_SIZE.x):
 		var column : Node2D = Node2D.new()
-		for j in range(actualWorldLength):
+		chunk.call_deferred("add_child", column)
+		for j in range(CHUNK_SIZE.y):
+			var xCord: int = i + northWestCorner.x
+			var yCord: int = j + northWestCorner.y
+			var noiseValue = rockOrNah.get_noise_2d(xCord, yCord) 
 			var tile : Tile = tileScene.instantiate()
-			tile.position = Vector2i(\
-			(i) * gridSize, (j) * gridSize)
-			tile.coordinates = Vector2i(i, j)
+			tile.position = Vector2(xCord, yCord) * Vector2(TILE_SIZE)
+			tile.coordinates = Vector2i(xCord, yCord)
 			tile.boundIn.connect(_inbound)
 			tile.boundOut.connect(_outbound)
-			column.add_child(tile)
-		tileParent.add_child(column)
+			column.call_deferred("add_child", tile)
+			if noiseValue < 0.0:
+				tile.traversable = true
 
-
-	for location in path:
-		var possibleTile : Tile = tileParent.getTileAt(Vector2i(\
-		location.x, location.y))
-		if possibleTile:
-			possibleTile.setToGround()
-
-	
-	return path
-
-
-func cameraFollow(entity: Dwarf):
-	if $Camera.cameraTarget:
-		$Camera.removeCurrentTarget()
-	print("Following "+ entity.name)
-	$Camera.cameraTarget = entity
+## Spawn the starting chunks around the origin
+func spawnChunks() -> void:
+	var origin := Vector2i(0, 0)
+	generateChunk(origin - CHUNK_SIZE)
+	generateChunk(Vector2i(origin.x, origin.y - CHUNK_SIZE.y))
+	generateChunk(Vector2i(origin.x - CHUNK_SIZE.x, origin.y))
+	generateChunk(origin)
 
 func _inbound(tile : Tile) -> void:
-	if coordReigon.is_empty():
-		coordReigon.append(tile.coordinates)
+	if selectedCords.is_empty():
+		selectedCords.append(tile.coordinates)
 
 func _outbound(tile : Tile, msg : String = "normal") -> void:
 	# need exactly 2 coordinates in this array to determine reigon, break if error
-	if coordReigon.size() == 1:
-		coordReigon.append(tile.coordinates)
+	if selectedCords.size() == 1:
+		selectedCords.append(tile.coordinates)
 	else:
 		print("error with selection")
-		coordReigon.clear()
+		selectedCords.clear()
 		return
 	
 	var reigonStart := Vector2i(
-		coordReigon[0].x if coordReigon[0].x < coordReigon[1].x else coordReigon[1].x,
-		coordReigon[0].y if coordReigon[0].y < coordReigon[1].y else coordReigon[1].y
+		selectedCords[0].x if selectedCords[0].x < selectedCords[1].x else selectedCords[1].x,
+		selectedCords[0].y if selectedCords[0].y < selectedCords[1].y else selectedCords[1].y
 	)
 	
 	var reigonStop := Vector2i(
-		coordReigon[0].x if coordReigon[0].x > coordReigon[1].x else coordReigon[1].x,
-		coordReigon[0].y if coordReigon[0].y > coordReigon[1].y else coordReigon[1].y
+		selectedCords[0].x if selectedCords[0].x > selectedCords[1].x else selectedCords[1].x,
+		selectedCords[0].y if selectedCords[0].y > selectedCords[1].y else selectedCords[1].y
 	)
-	coordReigon[0] = reigonStart
-	coordReigon[1] = reigonStop
-	print("%s\n" % str(coordReigon))
+	selectedCords[0] = reigonStart
+	selectedCords[1] = reigonStop
+	print("%s\n" % str(selectedCords))
 	
-	var tilesInReigon : Array[Tile] = getTilesInRegion(coordReigon) 
+	var tilesInReigon : Array[Tile] = getTilesInRegion(selectedCords) 
 	
 	if HUD.moveModeActive:
 		# right now sending all dwarves to clicked location
@@ -123,9 +122,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 				elif msg != "force":
 					sitesToMine.addSite(potentialTile)
 
-	coordReigon.clear()
-
-
+	selectedCords.clear()
 
 # YES let's do that! get TilesInReigon for starting chunk at first after world gen
 # might return arrays for traversable and untraversable in this function
@@ -138,7 +135,8 @@ func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
 	for xIndex in range(xdist):
 		for yIndex in range(ydist):
 			availableTiles.append(
-				tileParent.getTileAt(Vector2i(region[0].x + xIndex, region[0].y + yIndex))
+				# FIX currently broken from chunks
+				chunkParent.getTileAt(Vector2i(region[0].x + xIndex, region[0].y + yIndex))
 			)
 
 	return availableTiles
@@ -154,4 +152,4 @@ func addDwarf(coords: Vector2i):
 	var dwarf : Dwarf = dwarfScene.instantiate()
 	$Entities.add_child(dwarf)
 	dwarf.coordinates = coords
-	dwarf.position = Vector2i(coords.x*gridSize, coords.y*gridSize)
+	dwarf.position = Vector2(coords * TILE_SIZE)
