@@ -1,17 +1,9 @@
 extends Node2D
 
 @export
-var borderLength : int = 30
-@export
 var startingDwarves : int = 1
 
-# borders for "RockSpawner" to make traversable tiles
-var borders: Rect2i = Rect2i(1,1, borderLength,borderLength)
-# padding around borders, by default a rock border size of 1 is around borders
-@export
-var borderPadding : int = 2
-
-var origin : Vector2i
+var creatureSpawn : Vector2i
 
 var coordReigon : Array[Vector2i] = []
 
@@ -34,25 +26,24 @@ var tileScene: PackedScene = load("res://Game/Tile/Tile.tscn")
 var dwarfScene: PackedScene = load("res://Game/Dwarf/Dwarf.tscn")
 
 func _ready():
-	var traversableCoordinates : Array[Vector2i] = generateLevel()
+	# I am not saving traversable coordinates, it will be auto generated
+	# right now no traversable coordinates
+	# var traversableCoordinates : Array[Vector2i] = generateChunk()
 	pathfinder = Pathfinder.new(tileParent)
 	sitesToMine = SitesToMine.new(pathfinder)
-	_addEntities(traversableCoordinates[0])
+	_addEntities(Vector2i(0, 0))
 
 
-func _addEntities(worldOrigin : Vector2i):
-	origin = worldOrigin
+func _addEntities(spawnLoc : Vector2i):
+	creatureSpawn = spawnLoc
 	# spawn in entities
 	for i in range(startingDwarves):
-		addDwarf(origin)
+		addDwarf(creatureSpawn)
 	
+	$Camera.position = Vector2(spawnLoc)
 	
-	$Camera.position = $Entities/Dwarf.position
-	
-# Returns the traversable coordinates, the origin is the first element
-func generateLevel() -> Array[Vector2i]:
-	# setup grid with rock Tiles, the +2 gives a default rock border
-	var actualWorldLength : int = (borderPadding*2)+borderLength+2
+func generateChunk() -> Array[Vector2i]:
+	# given matrix of a chunk, navigate it adding tiles where they need to be.
 	for i in range(actualWorldLength):
 		var column : Node2D = Node2D.new()
 		for j in range(actualWorldLength):
@@ -65,23 +56,13 @@ func generateLevel() -> Array[Vector2i]:
 			column.add_child(tile)
 		tileParent.add_child(column)
 
-	# this could be incorperated as tiles are being added, but whatever
-	@warning_ignore("narrowing_conversion", "integer_division")
-	var pathSpawn: RockSpawner = \
-			RockSpawner.new(Vector2i(borderLength/2, borderLength/2.5), borders, HUD.SEED)
-	var path: Array[Vector2i] = pathSpawn.walk(600)
-	pathSpawn.queue_free()
-	
-	# add border padding to path coordinates
-	if borderPadding > 0:
-		for i in range(path.size()):
-			path[i] += Vector2i(borderPadding, borderPadding)
 
 	for location in path:
 		var possibleTile : Tile = tileParent.getTileAt(Vector2i(\
 		location.x, location.y))
 		if possibleTile:
 			possibleTile.setToGround()
+
 	
 	return path
 
@@ -146,6 +127,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 
 
 
+# YES let's do that! get TilesInReigon for starting chunk at first after world gen
 # might return arrays for traversable and untraversable in this function
 func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
 	var availableTiles : Array[Tile] = []
@@ -165,7 +147,7 @@ func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
 func _process(_delta):
 	if HUD.readyForDwarfSpawn:
 		print("Dwarf Spawned")
-		addDwarf(origin)
+		addDwarf(creatureSpawn)
 		HUD.readyForDwarfSpawn = false
 
 func addDwarf(coords: Vector2i):

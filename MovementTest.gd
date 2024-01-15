@@ -55,8 +55,6 @@ func generate_chunk(pos: Vector2i) -> void:
 					cell.position = Vector2(cordInWord * TILE_SIZE) - Vector2(TILE_SIZE / 2)
 					cell.color = Color(moist, temp, alt)
 					cell.name = "TILE%s" % str(cordInWord)
-
-					var buttonReigon = Button.new()
 					
 					self.add_child(cell)
 		

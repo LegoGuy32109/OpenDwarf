@@ -72,6 +72,7 @@ func isDiagNeighbor(loc1: Vector2i, loc2: Vector2i) -> bool:
 func findOpenNeighbors(currentLoc: Vector2i) -> Array[Tile]:
 	var neighborTiles: Array[Tile] = []
 	for i in [-1, 0, 1]:
+		# edge cases for edge of map, should be reworked
 		if currentLoc.x+i < 0 or currentLoc.x+i > tiles.get_child_count()-1:
 			continue
 		var currentColumn : Node2D = tiles.get_child(currentLoc.x+i)
