@@ -3,26 +3,30 @@ extends Node2D
 # in pixels
 const TILE_SIZE := Vector2i(64, 64)
 # in tiles
-const CHUNK_SIZE := Vector2i(32, 32)
+const CHUNK_SIZE := Vector2i(16, 16)
+const CHUNK_PIXELS = Vector2(CHUNK_SIZE * TILE_SIZE)
 
 @export
-var startingDwarves : int = 1
+var startingDwarves: int = 1
 
-var creatureSpawn : Vector2i
+var creatureSpawn: Vector2i
 
-var selectedCords : Array[Vector2i] = []
+var selectedCords: Array[Vector2i] = []
 
-var sitesToMine : SitesToMine
+var sitesToMine: SitesToMine
 
-var pathfinder : Pathfinder
+var pathfinder: Pathfinder
 
 var rockOrNah = FastNoiseLite.new()
 
 @onready
-var chunkParent : Node = $Chunks
+var chunkParent: Node = $Chunks
 var loadedChunks: Dictionary = {}
 
-@onready 
+@onready
+var playerNode: Node2D = %Camera
+
+@onready
 var tileScene: PackedScene = load("res://Game/Tile/Tile.tscn")
 @onready
 var dwarfScene: PackedScene = load("res://Game/Dwarf/Dwarf.tscn")
@@ -35,8 +39,16 @@ func _ready():
 
 	spawnChunks()
 
+func _process(_delta: float) -> void:
+	if playerNode:
+		processChunks(playerNode.position)
 
-func _addEntities(spawnLoc : Vector2i):
+	if HUD.readyForDwarfSpawn:
+		print("Dwarf Spawned")
+		addDwarf(creatureSpawn)
+		HUD.readyForDwarfSpawn = false
+
+func _addEntities(spawnLoc: Vector2i):
 	creatureSpawn = spawnLoc
 	# spawn in entities
 	for i in range(startingDwarves):
@@ -44,18 +56,18 @@ func _addEntities(spawnLoc : Vector2i):
 	
 ## Generates a chunk starting from the given vector
 func generateChunk(northWestCorner: Vector2i):
-	var chunk : Node2D = Node2D.new()
-	chunk.name = "chunk X: %s Y: %s" % [northWestCorner.x, northWestCorner.y]
+	var chunk: Node2D = Node2D.new()
+	chunk.name = "chunk X:%sY:%s" % [northWestCorner.x, northWestCorner.y]
 	chunkParent.add_child(chunk)
 	loadedChunks[northWestCorner] = chunk
 	for i in range(CHUNK_SIZE.x):
-		var column : Node2D = Node2D.new()
+		var column: Node2D = Node2D.new()
 		chunk.call_deferred("add_child", column)
 		for j in range(CHUNK_SIZE.y):
 			var xCord: int = i + northWestCorner.x
 			var yCord: int = j + northWestCorner.y
-			var noiseValue = rockOrNah.get_noise_2d(xCord, yCord) 
-			var tile : Tile = tileScene.instantiate()
+			var noiseValue = rockOrNah.get_noise_2d(xCord, yCord)
+			var tile: Tile = tileScene.instantiate()
 			tile.position = Vector2(xCord, yCord) * Vector2(TILE_SIZE)
 			tile.coordinates = Vector2i(xCord, yCord)
 			tile.boundIn.connect(_inbound)
@@ -72,11 +84,26 @@ func spawnChunks() -> void:
 	generateChunk(Vector2i(origin.x - CHUNK_SIZE.x, origin.y))
 	generateChunk(origin)
 
-func _inbound(tile : Tile) -> void:
+## Load chunks around given positon, unload away from position
+func processChunks(pos: Vector2) -> void:
+	# take the literal world position and identify which chunk it's in, a chunk's coordinates are it's top left tile
+	var currentChunkCords: Vector2i = Vector2i(pos - (CHUNK_PIXELS / 2)).snapped(CHUNK_PIXELS) / TILE_SIZE
+	if !loadedChunks.has(currentChunkCords):
+		generateChunk(currentChunkCords)
+	else:
+		loadedChunks[currentChunkCords].show()
+	
+	for chunkCord in loadedChunks.keys():
+		var chunkDist: Vector2i = abs(currentChunkCords - chunkCord) / CHUNK_SIZE
+		if chunkDist.length() > 5:
+			loadedChunks[chunkCord].queue_free()
+			loadedChunks.erase(chunkCord)
+
+func _inbound(tile: Tile) -> void:
 	if selectedCords.is_empty():
 		selectedCords.append(tile.coordinates)
 
-func _outbound(tile : Tile, msg : String = "normal") -> void:
+func _outbound(tile: Tile, msg: String="normal") -> void:
 	# need exactly 2 coordinates in this array to determine reigon, break if error
 	if selectedCords.size() == 1:
 		selectedCords.append(tile.coordinates)
@@ -98,7 +125,7 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 	selectedCords[1] = reigonStop
 	print("%s\n" % str(selectedCords))
 	
-	var tilesInReigon : Array[Tile] = getTilesInRegion(selectedCords) 
+	var tilesInReigon: Array[Tile] = getTilesInRegion(selectedCords)
 	
 	if HUD.moveModeActive:
 		# right now sending all dwarves to clicked location
@@ -126,11 +153,11 @@ func _outbound(tile : Tile, msg : String = "normal") -> void:
 
 # YES let's do that! get TilesInReigon for starting chunk at first after world gen
 # might return arrays for traversable and untraversable in this function
-func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
-	var availableTiles : Array[Tile] = []
+func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
+	var availableTiles: Array[Tile] = []
 
-	var xdist : int = region[1].x - region[0].x + 1
-	var ydist : int = region[1].y - region[0].y + 1
+	var xdist: int = region[1].x - region[0].x + 1
+	var ydist: int = region[1].y - region[0].y + 1
 
 	for xIndex in range(xdist):
 		for yIndex in range(ydist):
@@ -141,15 +168,8 @@ func getTilesInRegion(region : Array[Vector2i]) -> Array[Tile]:
 
 	return availableTiles
 
-
-func _process(_delta):
-	if HUD.readyForDwarfSpawn:
-		print("Dwarf Spawned")
-		addDwarf(creatureSpawn)
-		HUD.readyForDwarfSpawn = false
-
 func addDwarf(coords: Vector2i):
-	var dwarf : Dwarf = dwarfScene.instantiate()
+	var dwarf: Dwarf = dwarfScene.instantiate()
 	$Entities.add_child(dwarf)
 	dwarf.coordinates = coords
 	dwarf.position = Vector2(coords * TILE_SIZE)
