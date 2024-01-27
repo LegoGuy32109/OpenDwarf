@@ -1,14 +1,9 @@
 extends Node2D
 class_name Tile
 
-signal boundIn
-signal boundOut
-
 @onready var sprite : Sprite2D = $Sprite
 var rockImg : Texture2D = load("res://Assets/Tiles/Rock.png")
 var groundImg : Texture2D = load("res://Assets/Tiles/Ground.png")
-
-var itemScene : PackedScene = load("res://Game/Item/Item.tscn") 
 
 var coordinates : Vector2i = Vector2i()
 var tooltipText : String = name
@@ -22,59 +17,11 @@ var traversable : bool = false
 var orderedToMine : bool = false
 var percentMined : float = 0.0
 
-var items : ItemInWorld = itemScene.instantiate()
-
-
 func _ready() -> void:
 	if traversable:
 		setToGround()
 	else:
 		setToRock()
-	self.add_child(items)
-	items.visible = false
-
-#NOTE I don't know how much 900 process funcs drain, but here we are.
-func _process(_delta) -> void:
-	if(HUD.tileTooltipsEnabled):
-		$Panel.tooltip_text = name
-	else:
-		$Panel.tooltip_text = ""
-	
-	# might make flashing i dunno
-	if(orderedToMine):
-		$OrderToMineLabel.visible = true
-	else:
-		$OrderToMineLabel.visible = false
-
-
-func _input(event : InputEvent) -> void:
-	if mouseInPanel:
-		if not beenEdited and Input.is_action_pressed("right-click"):
-			if traversable:
-				setToRock()
-			else:
-				setToGround()
-			beenEdited = true
-		
-		if Input.is_action_just_released("right-click"):
-			beenEdited = false
-		
-		if Input.is_action_just_pressed("click"):
-			print("inbound %s" % coordinates)
-			boundIn.emit(self)
-			
-		if Input.is_action_just_released("click") and event.is_action("click"):
-			# when holding shift, might trigger an outBound from shift press
-			# Confirm the action is a click
-			print("outbound %s" % coordinates)
-			# was hoping to find like a mods prop on event, but this works
-			if event.as_text().begins_with("Shift"):
-				boundOut.emit(self, "force")
-			else:
-				boundOut.emit(self)
-	else:
-		beenEdited = false
-
 
 func labelMineable() -> void:
 	if traversable:
@@ -94,7 +41,7 @@ func mine() -> void:
 	if percentMined >= 1.0 and not traversable:
 		removeMineable()
 		setToGround()
-		dropItemChance()
+		# dropItemChance()
 	
 func setToRock() -> void:
 	sprite.texture = rockImg
@@ -106,16 +53,9 @@ func setToGround() -> void:
 	sprite.texture = groundImg
 	tooltipText = "Ground"
 	
-func dropItemChance() -> void:
-	# make this dependant on seed in future
-	if randf() > 0.3:
-		items.addItem("rock")
-	if randf() > 0.5:
-		items.addItem("flint")
-
-
-func _on_panel_mouse_entered() -> void:
-	mouseInPanel = true
-
-func _on_panel_mouse_exited() -> void:
-	mouseInPanel = false
+# func dropItemChance() -> void:
+# 	# make this dependant on seed in future
+# 	if randf() > 0.3:
+# 		items.addItem("rock")
+# 	if randf() > 0.5:
+# 		items.addItem("flint")

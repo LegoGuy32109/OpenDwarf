@@ -37,8 +37,6 @@ func _ready():
 	rockOrNah.seed = hashedSeed
 	rockOrNah.frequency = 0.07
 
-	spawnChunks()
-
 func _process(_delta: float) -> void:
 	if playerNode:
 		processChunks(playerNode.position)
@@ -70,8 +68,6 @@ func generateChunk(northWestCorner: Vector2i):
 			var tile: Tile = tileScene.instantiate()
 			tile.position = Vector2(xCord, yCord) * Vector2(TILE_SIZE)
 			tile.coordinates = Vector2i(xCord, yCord)
-			tile.boundIn.connect(_inbound)
-			tile.boundOut.connect(_outbound)
 			column.call_deferred("add_child", tile)
 			if noiseValue < 0.0:
 				tile.traversable = true
@@ -84,21 +80,34 @@ func spawnChunks() -> void:
 	generateChunk(Vector2i(origin.x - CHUNK_SIZE.x, origin.y))
 	generateChunk(origin)
 
+func getChunksToLoad(centerChunk: Vector2i) -> Array[Vector2i]:
+	var squareRadius := 1
+	var chunksToLoad: Array[Vector2i] = []
+	for x in range(-1 * squareRadius, squareRadius + 1):
+		for y in range(-1 * squareRadius, squareRadius + 1):
+			chunksToLoad.append(centerChunk + Vector2i(CHUNK_SIZE.x * x, CHUNK_SIZE.y * y))
+	
+	return chunksToLoad
+	
 ## Load chunks around given positon, unload away from position
 func processChunks(pos: Vector2) -> void:
 	# take the literal world position and identify which chunk it's in, a chunk's coordinates are it's top left tile
 	var currentChunkCords: Vector2i = Vector2i(pos - (CHUNK_PIXELS / 2)).snapped(CHUNK_PIXELS) / TILE_SIZE
-	if !loadedChunks.has(currentChunkCords):
-		generateChunk(currentChunkCords)
-	else:
-		loadedChunks[currentChunkCords].show()
-	
+
+	# unload chunks far away first
 	for chunkCord in loadedChunks.keys():
 		var chunkDist: Vector2i = abs(currentChunkCords - chunkCord) / CHUNK_SIZE
-		if chunkDist.length() > 5:
+		if chunkDist.length() > 7:
 			loadedChunks[chunkCord].queue_free()
 			loadedChunks.erase(chunkCord)
-
+	
+	# determine which chunks should be loaded at the given position
+	var chunksToLoad: Array[Vector2i] = getChunksToLoad(currentChunkCords)
+	for chunkCord in chunksToLoad:
+		if !loadedChunks.has(chunkCord):
+			generateChunk(chunkCord)
+	
+# These two functions are unused now, but could be used when selected with keyboard instead of mouse.
 func _inbound(tile: Tile) -> void:
 	if selectedCords.is_empty():
 		selectedCords.append(tile.coordinates)
@@ -151,8 +160,7 @@ func _outbound(tile: Tile, msg: String="normal") -> void:
 
 	selectedCords.clear()
 
-# YES let's do that! get TilesInReigon for starting chunk at first after world gen
-# might return arrays for traversable and untraversable in this function
+# the function below is only used in _outbound above
 func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
 	var availableTiles: Array[Tile] = []
 

@@ -1,8 +1,7 @@
-[gd_scene load_steps=4 format=3 uid="uid://dmqmpso7kd4gj"]
+[gd_scene load_steps=3 format=3 uid="uid://dmqmpso7kd4gj"]
 
 [ext_resource type="Script" path="res://Game/Tile/Tile.gd" id="1_aqkcp"]
 [ext_resource type="Texture2D" uid="uid://r5u6ssrlvhmq" path="res://Assets/Tiles/Rock.png" id="2_uqbaf"]
-[ext_resource type="Texture2D" uid="uid://cpccd70iu17v1" path="res://Assets/Tiles/Mineable.png" id="3_06yte"]
 
 [node name="Tile" type="Node2D"]
 script = ExtResource("1_aqkcp")
@@ -10,27 +9,3 @@ script = ExtResource("1_aqkcp")
 [node name="Sprite" type="Sprite2D" parent="."]
 texture_filter = 1
 texture = ExtResource("2_uqbaf")
-
-[node name="Panel" type="Panel" parent="."]
-modulate = Color(1, 1, 1, 0)
-custom_minimum_size = Vector2(64, 64)
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -20.0
-offset_top = -20.0
-offset_right = 20.0
-offset_bottom = 20.0
-grow_horizontal = 2
-grow_vertical = 2
-tooltip_text = "Tile"
-
-[node name="OrderToMineLabel" type="Sprite2D" parent="."]
-visible = false
-scale = Vector2(2, 2)
-texture = ExtResource("3_06yte")
-
-[connection signal="mouse_entered" from="Panel" to="." method="_on_panel_mouse_entered"]
-[connection signal="mouse_exited" from="Panel" to="." method="_on_panel_mouse_exited"]
