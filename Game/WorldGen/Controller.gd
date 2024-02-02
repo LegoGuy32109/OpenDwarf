@@ -1,5 +1,7 @@
 extends Node
 
+# class_name Controller
+
 var zooms = [
 	Vector2(1.4, 1.4),
 	Vector2(1.2, 1.2),
@@ -12,7 +14,7 @@ var zooms = [
 	Vector2(0.3, 0.3),
 ]
 # default 2
-var currentZoomIndex = 8
+var currentZoomIndex = 2
 
 var processingMovement: bool = false
 var moving: bool = false
@@ -27,29 +29,50 @@ var moveStamCost := 1.0
 var restStamAmt := 0.1
 
 # how far to move player character to align on tile size
-@onready var playerMovementOnWorld = self.get_parent().TILE_SIZE
+@onready var TILE_SIZE = self.get_parent().TILE_SIZE
+#TODO this should be in a Class.TILE_SIZE like World.TILE_SIZE or something...
 
 const NO_DIRECTION = Vector2i(0, 0)
 # both can be 9 possible values (-1,-1) ... (1,1)
 var moveVector := NO_DIRECTION
 var reachDirection := NO_DIRECTION
 
-## Entity to control/follow/focus on 
+signal selectStatusChanged(held: bool)
+var selectHeld := false
+
+## Entity to control/follow/focus on
 var entity: Node2D
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
 func _ready() -> void:
 	%Camera.targetZoom = zooms[currentZoomIndex]
-	
+	selectStatusChanged.connect(selectChanged)
+
 func _physics_process(_delta):
-	# movement logic
+	if entity:
+		processEntityMovement()
+	else:
+		processManageMovement()
+
+func selectChanged(held: bool):
+	if entity:
+		pass
+		# TODO implement process action on reachIndicator for entity
+	else:
+		if held:
+			$Inspector.position = %Camera.position.snapped(Vector2(TILE_SIZE))
+
+func processManageMovement():
+	# camera move logic WASD (ESDF)
 	if moveVector != NO_DIRECTION:
-		if entity && !processingMovement:
-			processMovementRequest()
-		else:
-			cameraMove()
-	
+		cameraMove()
+
+func processEntityMovement():
+	# movement logic WASD (ESDF)
+	if moveVector != NO_DIRECTION && !processingMovement:
+		processMovementRequest()
+
 	# stamina logic
 	if exhaustionMeter:
 		if !moving && staminaExhaustion > 0.0:
@@ -63,12 +86,12 @@ func _physics_process(_delta):
 				tileMoveTime = 0.2
 			else:
 				tileMoveTime = 0.4
-		
+
 		exhaustionMeter.value = staminaExhaustion
 
 	# reaching logic IJKL
 	if reachIndicator:
-		reachIndicator.global_position = currentTileCords * playerMovementOnWorld + reachDirection
+		reachIndicator.global_position = currentTileCords * TILE_SIZE + reachDirection
 		if reachDirection != NO_DIRECTION:
 			reachIndicator.visible = true
 		else:
@@ -78,12 +101,12 @@ func _physics_process(_delta):
 func processMovementRequest() -> void:
 	processingMovement = true
 
-	staminaExhaustion += moveStamCost if sprinting else moveStamCost/2.5 
+	staminaExhaustion += moveStamCost if sprinting else moveStamCost/2.5
 
 	# input delay for diagonal movement
 	if !moving:
 		await get_tree().create_timer(0.06).timeout
-	
+
 	moving = true
 	var singleTween := create_tween()
 	singleTween.tween_property(
@@ -93,10 +116,10 @@ func processMovementRequest() -> void:
 		tileMoveTime
 	)
 	await singleTween.finished
-	
+
 	# could have been interupted since that movement
 
-	currentTileCords = Vector2i( entity.position / Vector2(playerMovementOnWorld) )
+	currentTileCords = Vector2i( entity.position / Vector2(TILE_SIZE) )
 
 	# no movement input detected
 	if moveVector == NO_DIRECTION:
@@ -122,10 +145,11 @@ var keyMap: Dictionary = {
 	"toggle_crouch": KEY_CTRL,
 	"camera_zoom_in": KEY_COMMA,
 	"camera_zoom_out": KEY_PERIOD,
+	"select": KEY_SPACE,
 }
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	# event key is held down
+	# event key is just pressed or held down
 	if event.is_pressed():
 		match event.keycode:
 			keyMap.camera_zoom_in:
@@ -137,39 +161,50 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
 	if event.is_pressed() && !event.is_echo():
 		match event.keycode:
+			# moveVector
 			keyMap.move_up:
-				moveVector.y += - playerMovementOnWorld.y
+				moveVector.y += - TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x += - playerMovementOnWorld.x
+				moveVector.x += - TILE_SIZE.x
 			keyMap.move_down:
-				moveVector.y += playerMovementOnWorld.y
+				moveVector.y += TILE_SIZE.y
 			keyMap.move_right:
-				moveVector.x += playerMovementOnWorld.x
+				moveVector.x += TILE_SIZE.x
+			# reachDirection
 			keyMap.reach_up:
-				reachDirection.y += - playerMovementOnWorld.y
+				reachDirection.y += - TILE_SIZE.y
 			keyMap.reach_left:
-				reachDirection.x += - playerMovementOnWorld.x
+				reachDirection.x += - TILE_SIZE.x
 			keyMap.reach_down:
-				reachDirection.y += playerMovementOnWorld.y
+				reachDirection.y += TILE_SIZE.y
 			keyMap.reach_right:
-				reachDirection.x += playerMovementOnWorld.x
+				reachDirection.x += TILE_SIZE.x
+			# select
+			keyMap.select:
+				selectStatusChanged.emit(true)
+			# sprinting
 			keyMap.toggle_sprint:
 				sprinting = !sprinting
 	elif event.is_released():
 		match event.keycode:
+			# moveVector
 			keyMap.move_up:
-				moveVector.y -= - playerMovementOnWorld.y
+				moveVector.y -= - TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x -= - playerMovementOnWorld.x
+				moveVector.x -= - TILE_SIZE.x
 			keyMap.move_down:
-				moveVector.y -= playerMovementOnWorld.y
+				moveVector.y -= TILE_SIZE.y
 			keyMap.move_right:
-				moveVector.x -= playerMovementOnWorld.x
+				moveVector.x -= TILE_SIZE.x
+			# reachDirection
 			keyMap.reach_up:
-				reachDirection.y -= - playerMovementOnWorld.y
+				reachDirection.y -= - TILE_SIZE.y
 			keyMap.reach_left:
-				reachDirection.x -= - playerMovementOnWorld.x
+				reachDirection.x -= - TILE_SIZE.x
 			keyMap.reach_down:
-				reachDirection.y -= playerMovementOnWorld.y
+				reachDirection.y -= TILE_SIZE.y
 			keyMap.reach_right:
-				reachDirection.x -= playerMovementOnWorld.x
+				reachDirection.x -= TILE_SIZE.x
+			# select
+			keyMap.select:
+				selectStatusChanged.emit(false)
