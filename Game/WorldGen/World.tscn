@@ -1,17 +1,43 @@
-[gd_scene load_steps=7 format=3 uid="uid://bu7yjcrv44p7i"]
+[gd_scene load_steps=13 format=3 uid="uid://bu7yjcrv44p7i"]
 
 [ext_resource type="Script" path="res://Game/WorldGen/WorldSpawn.gd" id="1_r4v4f"]
 [ext_resource type="Script" path="res://Game/Camera/FloatingCamera.gd" id="3_mwwud"]
-[ext_resource type="Texture2D" uid="uid://d1s0hd5mmiag6" path="res://icon.svg" id="4_44baa"]
 [ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="4_ie8ni"]
-
-[sub_resource type="CanvasTexture" id="CanvasTexture_5dgml"]
+[ext_resource type="Texture2D" uid="uid://p5cirv5uf2ii" path="res://Assets/UI/Diamond.png" id="4_yedii"]
+[ext_resource type="Texture2D" uid="uid://csda1cahwojjs" path="res://Assets/UI/Circle.png" id="5_vrur8"]
+[ext_resource type="Texture2D" uid="uid://dkmwvv88j4jm8" path="res://Assets/UI/SelectLarge.png" id="6_6nh8b"]
+[ext_resource type="Texture2D" uid="uid://ddmx1rienpemc" path="res://Assets/UI/SelectMed.png" id="7_oekqt"]
+[ext_resource type="Texture2D" uid="uid://bvbynjr8fykqd" path="res://Assets/UI/SelectSmall.png" id="8_k3erh"]
+[ext_resource type="Texture2D" uid="uid://v68goicemugq" path="res://Assets/UI/Square.png" id="9_s646n"]
+[ext_resource type="Texture2D" uid="uid://bj3tf0lker2n7" path="res://Assets/UI/TargetLarge.png" id="10_wjuql"]
+[ext_resource type="Texture2D" uid="uid://dprcbct5waaqj" path="res://Assets/UI/TargetSmall.png" id="11_30dq5"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_y2u6q"]
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": ExtResource("4_44baa")
+"texture": ExtResource("6_6nh8b")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_oekqt")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_k3erh")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_vrur8")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_yedii")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_s646n")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_wjuql")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_30dq5")
 }],
 "loop": false,
 "name": &"default",
@@ -39,19 +65,18 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -8.0
-offset_top = -8.0
-offset_right = 8.0
-offset_bottom = 8.0
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
 grow_horizontal = 2
 grow_vertical = 2
-rotation = 0.785398
-pivot_offset = Vector2(8, 8)
-texture = SubResource("CanvasTexture_5dgml")
+scale = Vector2(0.4, 0.4)
+pivot_offset = Vector2(32, 32)
+texture = ExtResource("4_yedii")
 
 [node name="Inspector" type="Node2D" parent="Player"]
 
 [node name="Select Crosshair" type="AnimatedSprite2D" parent="Player/Inspector"]
 modulate = Color(1, 1, 1, 0.580392)
-scale = Vector2(0.5, 0.5)
 sprite_frames = SubResource("SpriteFrames_y2u6q")

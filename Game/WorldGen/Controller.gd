@@ -20,7 +20,7 @@ var processingMovement: bool = false
 var moving: bool = false
 var sprinting: bool = false
 
-var currentTileCords := Vector2i(0,0)
+var currentTileCords := Vector2i(0, 0)
 var tileMoveTime: float = 0.5
 
 var staminaExhaustion: float = 0.0
@@ -35,9 +35,8 @@ var restStamAmt := 0.1
 const NO_DIRECTION = Vector2i(0, 0)
 # both can be 9 possible values (-1,-1) ... (1,1)
 var moveVector := NO_DIRECTION
-var reachDirection := NO_DIRECTION
+var reachVector := NO_DIRECTION
 
-signal selectStatusChanged(held: bool)
 var selectHeld := false
 
 ## Entity to control/follow/focus on
@@ -46,8 +45,8 @@ var entity: Node2D
 @onready var exhaustionMeter = $ExhaustionMeter
 
 func _ready() -> void:
+	$Inspector.hide()
 	%Camera.targetZoom = zooms[currentZoomIndex]
-	selectStatusChanged.connect(selectChanged)
 
 func _physics_process(_delta):
 	if entity:
@@ -58,24 +57,28 @@ func _physics_process(_delta):
 func selectChanged(held: bool):
 	if entity:
 		pass
-		# TODO implement process action on reachIndicator for entity
+		# TODO implement process space action for entity
 	else:
-		if held:
-			$Inspector.position = %Camera.position.snapped(Vector2(TILE_SIZE))
+		if held and $Inspector.visible:
+			print("I am selecting something @ Tile %s" % (Vector2i($Inspector.position) / TILE_SIZE))
 
 func processManageMovement():
 	# camera move logic WASD (ESDF)
 	if moveVector != NO_DIRECTION:
 		cameraMove()
 
+func manageReach():
+	if reachVector != NO_DIRECTION:
+		$Inspector.position += Vector2(reachVector)
+
 func processEntityMovement():
 	# movement logic WASD (ESDF)
-	if moveVector != NO_DIRECTION && !processingMovement:
+	if moveVector != NO_DIRECTION&&!processingMovement:
 		processMovementRequest()
 
 	# stamina logic
 	if exhaustionMeter:
-		if !moving && staminaExhaustion > 0.0:
+		if !moving&&staminaExhaustion > 0.0:
 			staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
 			exhaustionMeter.visible = staminaExhaustion > 0.0
 
@@ -91,8 +94,8 @@ func processEntityMovement():
 
 	# reaching logic IJKL
 	if reachIndicator:
-		reachIndicator.global_position = currentTileCords * TILE_SIZE + reachDirection
-		if reachDirection != NO_DIRECTION:
+		reachIndicator.global_position = currentTileCords * TILE_SIZE + reachVector
+		if reachVector != NO_DIRECTION:
 			reachIndicator.visible = true
 		else:
 			reachIndicator.visible = false
@@ -101,7 +104,7 @@ func processEntityMovement():
 func processMovementRequest() -> void:
 	processingMovement = true
 
-	staminaExhaustion += moveStamCost if sprinting else moveStamCost/2.5
+	staminaExhaustion += moveStamCost if sprinting else moveStamCost / 2.5
 
 	# input delay for diagonal movement
 	if !moving:
@@ -119,7 +122,7 @@ func processMovementRequest() -> void:
 
 	# could have been interupted since that movement
 
-	currentTileCords = Vector2i( entity.position / Vector2(TILE_SIZE) )
+	currentTileCords = Vector2i(entity.position / Vector2(TILE_SIZE))
 
 	# no movement input detected
 	if moveVector == NO_DIRECTION:
@@ -129,8 +132,19 @@ func processMovementRequest() -> void:
 
 ## called when no entity is being controlled
 func cameraMove() -> void:
-	var cameraSpeed: float = float(currentZoomIndex+1)/zooms.size()
+	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
 	%Camera.position += Vector2(moveVector) * cameraSpeed
+
+## bring Inspector to center of screen, show if hidden
+func focusInspectorCenter() -> void:
+	var positionToSnapTo: Vector2 = %Camera.position.snapped(Vector2(TILE_SIZE))
+	# hide if double-tapped basically
+	if $Inspector.visible&&$Inspector.position == positionToSnapTo:
+		$Inspector.hide()
+		return
+
+	$Inspector.position = positionToSnapTo
+	$Inspector.show()
 
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
@@ -146,20 +160,12 @@ var keyMap: Dictionary = {
 	"camera_zoom_in": KEY_COMMA,
 	"camera_zoom_out": KEY_PERIOD,
 	"select": KEY_SPACE,
+	"inspector": KEY_G,
 }
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	# event key is just pressed or held down
-	if event.is_pressed():
-		match event.keycode:
-			keyMap.camera_zoom_in:
-				currentZoomIndex = clamp(currentZoomIndex - 1, 0, zooms.size() - 1)
-				%Camera.targetZoom = zooms[currentZoomIndex]
-			keyMap.camera_zoom_out:
-				currentZoomIndex = clamp(currentZoomIndex + 1, 0, zooms.size() - 1)
-				%Camera.targetZoom = zooms[currentZoomIndex]
 	# event key was just pressed
-	if event.is_pressed() && !event.is_echo():
+	if event.is_pressed()&&!event.is_echo():
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
@@ -170,18 +176,21 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				moveVector.y += TILE_SIZE.y
 			keyMap.move_right:
 				moveVector.x += TILE_SIZE.x
-			# reachDirection
+			# reachVector
 			keyMap.reach_up:
-				reachDirection.y += - TILE_SIZE.y
+				reachVector.y += - TILE_SIZE.y
 			keyMap.reach_left:
-				reachDirection.x += - TILE_SIZE.x
+				reachVector.x += - TILE_SIZE.x
 			keyMap.reach_down:
-				reachDirection.y += TILE_SIZE.y
+				reachVector.y += TILE_SIZE.y
 			keyMap.reach_right:
-				reachDirection.x += TILE_SIZE.x
+				reachVector.x += TILE_SIZE.x
 			# select
 			keyMap.select:
-				selectStatusChanged.emit(true)
+				selectChanged(true)
+			# snap inspector to center screen
+			keyMap.inspector:
+				focusInspectorCenter()
 			# sprinting
 			keyMap.toggle_sprint:
 				sprinting = !sprinting
@@ -196,15 +205,29 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				moveVector.y -= TILE_SIZE.y
 			keyMap.move_right:
 				moveVector.x -= TILE_SIZE.x
-			# reachDirection
+			# reachVector
 			keyMap.reach_up:
-				reachDirection.y -= - TILE_SIZE.y
+				reachVector.y -= - TILE_SIZE.y
 			keyMap.reach_left:
-				reachDirection.x -= - TILE_SIZE.x
+				reachVector.x -= - TILE_SIZE.x
 			keyMap.reach_down:
-				reachDirection.y -= TILE_SIZE.y
+				reachVector.y -= TILE_SIZE.y
 			keyMap.reach_right:
-				reachDirection.x -= TILE_SIZE.x
+				reachVector.x -= TILE_SIZE.x
 			# select
 			keyMap.select:
-				selectStatusChanged.emit(false)
+				selectChanged(false)
+
+	# event key is just pressed OR held down
+	if event.is_pressed():
+		match event.keycode:
+			# camera zoom
+			keyMap.camera_zoom_in:
+				currentZoomIndex = clamp(currentZoomIndex - 1, 0, zooms.size() - 1)
+				%Camera.targetZoom = zooms[currentZoomIndex]
+			keyMap.camera_zoom_out:
+				currentZoomIndex = clamp(currentZoomIndex + 1, 0, zooms.size() - 1)
+				%Camera.targetZoom = zooms[currentZoomIndex]
+			# reaching notification
+			keyMap.reach_right, keyMap.reach_down, keyMap.reach_up, keyMap.reach_left:
+				manageReach()
