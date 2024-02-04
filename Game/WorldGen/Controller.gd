@@ -1,5 +1,4 @@
 extends Node
-
 # class_name Controller
 
 var zooms = [
@@ -30,10 +29,11 @@ var restStamAmt := 0.1
 
 # how far to move player character to align on tile size
 @onready var TILE_SIZE = self.get_parent().TILE_SIZE
+@onready var CHUNK_SIZE = self.get_parent().CHUNK_SIZE
 #TODO this should be in a Class.TILE_SIZE like World.TILE_SIZE or something...
 
 const NO_DIRECTION = Vector2i(0, 0)
-# both can be 9 possible values (-1,-1) ... (1,1)
+# both can be 9 possible values (-1,-1) ... (1,1) * TILE_SIZE
 var moveVector := NO_DIRECTION
 var reachVector := NO_DIRECTION
 
@@ -44,9 +44,11 @@ var entity: Node2D
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
+
 func _ready() -> void:
 	$Inspector.hide()
 	%Camera.targetZoom = zooms[currentZoomIndex]
+
 
 func _physics_process(_delta):
 	if entity:
@@ -54,31 +56,51 @@ func _physics_process(_delta):
 	else:
 		processManageMovement()
 
+
 func selectChanged(held: bool):
 	if entity:
 		pass
 		# TODO implement process space action for entity
 	else:
 		if held and $Inspector.visible:
-			print("I am selecting something @ Tile %s" % (Vector2i($Inspector.position) / TILE_SIZE))
+			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
+			var chunkCords = (tileCords - CHUNK_SIZE / 2).snapped(CHUNK_SIZE)
+			var tile: Tile = %Chunks.get_node_or_null(
+				"(%s, %s)/(%s, %s)" % [chunkCords.x, chunkCords.y, tileCords.x, tileCords.y]
+			)
+			if tile:
+				if tile.traversable:
+					tile.setToRock()
+				else:
+					tile.setToGround()
+			else:
+				print(
+					(
+						"Tile not found at (%s, %s)/(%s, %s)"
+						% [chunkCords.x, chunkCords.y, tileCords.x, tileCords.y]
+					)
+				)
+
 
 func processManageMovement():
 	# camera move logic WASD (ESDF)
 	if moveVector != NO_DIRECTION:
 		cameraMove()
 
+
 func manageReach():
 	if reachVector != NO_DIRECTION:
 		$Inspector.position += Vector2(reachVector)
 
+
 func processEntityMovement():
 	# movement logic WASD (ESDF)
-	if moveVector != NO_DIRECTION&&!processingMovement:
+	if moveVector != NO_DIRECTION && !processingMovement:
 		processMovementRequest()
 
 	# stamina logic
 	if exhaustionMeter:
-		if !moving&&staminaExhaustion > 0.0:
+		if !moving && staminaExhaustion > 0.0:
 			staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
 			exhaustionMeter.visible = staminaExhaustion > 0.0
 
@@ -100,6 +122,7 @@ func processEntityMovement():
 		else:
 			reachIndicator.visible = false
 
+
 ## called when moving an entity
 func processMovementRequest() -> void:
 	processingMovement = true
@@ -113,10 +136,7 @@ func processMovementRequest() -> void:
 	moving = true
 	var singleTween := create_tween()
 	singleTween.tween_property(
-		entity,
-		"position",
-		entity.position + Vector2(moveVector),
-		tileMoveTime
+		entity, "position", entity.position + Vector2(moveVector), tileMoveTime
 	)
 	await singleTween.finished
 
@@ -130,21 +150,24 @@ func processMovementRequest() -> void:
 
 	processingMovement = false
 
+
 ## called when no entity is being controlled
 func cameraMove() -> void:
 	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
 	%Camera.position += Vector2(moveVector) * cameraSpeed
 
+
 ## bring Inspector to center of screen, show if hidden
 func focusInspectorCenter() -> void:
 	var positionToSnapTo: Vector2 = %Camera.position.snapped(Vector2(TILE_SIZE))
 	# hide if double-tapped basically
-	if $Inspector.visible&&$Inspector.position == positionToSnapTo:
+	if $Inspector.visible && $Inspector.position == positionToSnapTo:
 		$Inspector.hide()
 		return
 
 	$Inspector.position = positionToSnapTo
 	$Inspector.show()
+
 
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
@@ -163,24 +186,25 @@ var keyMap: Dictionary = {
 	"inspector": KEY_G,
 }
 
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
-	if event.is_pressed()&&!event.is_echo():
+	if event.is_pressed() && !event.is_echo():
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				moveVector.y += - TILE_SIZE.y
+				moveVector.y += -TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x += - TILE_SIZE.x
+				moveVector.x += -TILE_SIZE.x
 			keyMap.move_down:
 				moveVector.y += TILE_SIZE.y
 			keyMap.move_right:
 				moveVector.x += TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				reachVector.y += - TILE_SIZE.y
+				reachVector.y += -TILE_SIZE.y
 			keyMap.reach_left:
-				reachVector.x += - TILE_SIZE.x
+				reachVector.x += -TILE_SIZE.x
 			keyMap.reach_down:
 				reachVector.y += TILE_SIZE.y
 			keyMap.reach_right:
@@ -198,18 +222,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				moveVector.y -= - TILE_SIZE.y
+				moveVector.y -= -TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x -= - TILE_SIZE.x
+				moveVector.x -= -TILE_SIZE.x
 			keyMap.move_down:
 				moveVector.y -= TILE_SIZE.y
 			keyMap.move_right:
 				moveVector.x -= TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				reachVector.y -= - TILE_SIZE.y
+				reachVector.y -= -TILE_SIZE.y
 			keyMap.reach_left:
-				reachVector.x -= - TILE_SIZE.x
+				reachVector.x -= -TILE_SIZE.x
 			keyMap.reach_down:
 				reachVector.y -= TILE_SIZE.y
 			keyMap.reach_right:

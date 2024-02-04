@@ -26,13 +26,11 @@ var loadedChunks: Dictionary = {}
 @onready var tileScene: PackedScene = load("res://Game/Tile/Tile.tscn")
 @onready var dwarfScene: PackedScene = load("res://Game/Dwarf/Dwarf.tscn")
 
-
 func _ready():
 	# define noise
 	var hashedSeed := hash(HUD.SEED)
 	rockOrNah.seed = hashedSeed
 	rockOrNah.frequency = 0.07
-
 
 func _process(_delta: float) -> void:
 	if playerNode:
@@ -43,18 +41,16 @@ func _process(_delta: float) -> void:
 		addDwarf(creatureSpawn)
 		HUD.readyForDwarfSpawn = false
 
-
 func _addEntities(spawnLoc: Vector2i):
 	creatureSpawn = spawnLoc
 	# spawn in entities
 	for i in range(startingDwarves):
 		addDwarf(creatureSpawn)
 
-
 ## Generates a chunk starting from the given vector
 func generateChunk(northWestCorner: Vector2i):
 	var chunk: Node2D = Node2D.new()
-	chunk.name = "chunk X:%sY:%s" % [northWestCorner.x, northWestCorner.y]
+	chunk.name = "(%s, %s)" % [northWestCorner.x, northWestCorner.y]
 	chunkParent.add_child(chunk)
 	loadedChunks[northWestCorner] = chunk
 	for i in range(CHUNK_SIZE.x):
@@ -63,13 +59,12 @@ func generateChunk(northWestCorner: Vector2i):
 			var yCord: int = j + northWestCorner.y
 			var noiseValue = rockOrNah.get_noise_2d(xCord, yCord)
 			var tile: Tile = tileScene.instantiate()
-			tile.name = "(%s,%s)" % [xCord, yCord]
+			tile.name = "(%s, %s)" % [xCord, yCord]
 			tile.position = Vector2(xCord, yCord) * Vector2(TILE_SIZE)
 			tile.coordinates = Vector2i(xCord, yCord)
 			chunk.call_deferred("add_child", tile)
 			if noiseValue < 0.0:
 				tile.traversable = true
-
 
 ## Spawn the starting chunks around the origin
 func spawnChunks() -> void:
@@ -78,7 +73,6 @@ func spawnChunks() -> void:
 	generateChunk(Vector2i(origin.x, origin.y - CHUNK_SIZE.y))
 	generateChunk(Vector2i(origin.x - CHUNK_SIZE.x, origin.y))
 	generateChunk(origin)
-
 
 ## Load chunks around given positon, unload away from position
 func processChunks(pos: Vector2) -> void:
@@ -100,7 +94,6 @@ func processChunks(pos: Vector2) -> void:
 		if !loadedChunks.has(chunkCord):
 			generateChunk(chunkCord)
 
-
 func getChunksToLoad(centerChunk: Vector2i) -> Array[Vector2i]:
 	var squareRadius := 2
 	var chunksToLoad: Array[Vector2i] = []
@@ -110,14 +103,12 @@ func getChunksToLoad(centerChunk: Vector2i) -> Array[Vector2i]:
 
 	return chunksToLoad
 
-
 # These two functions are unused now, but could be used when selected with keyboard instead of mouse.
 func _inbound(tile: Tile) -> void:
 	if selectedCords.is_empty():
 		selectedCords.append(tile.coordinates)
 
-
-func _outbound(tile: Tile, msg: String = "normal") -> void:
+func _outbound(tile: Tile, msg: String="normal") -> void:
 	# need exactly 2 coordinates in this array to determine reigon, break if error
 	if selectedCords.size() == 1:
 		selectedCords.append(tile.coordinates)
@@ -165,7 +156,6 @@ func _outbound(tile: Tile, msg: String = "normal") -> void:
 
 	selectedCords.clear()
 
-
 # the function below is only used in _outbound above
 func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
 	var availableTiles: Array[Tile] = []
@@ -177,14 +167,13 @@ func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
 		for yIndex in range(ydist):
 			(
 				availableTiles
-				. append(
+				.append(
 					# FIX currently broken from chunks
 					chunkParent.getTileAt(Vector2i(region[0].x + xIndex, region[0].y + yIndex))
 				)
 			)
 
 	return availableTiles
-
 
 func addDwarf(coords: Vector2i):
 	var dwarf: Dwarf = dwarfScene.instantiate()

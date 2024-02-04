@@ -48,6 +48,7 @@ animations = [{
 script = ExtResource("1_r4v4f")
 
 [node name="Chunks" type="Node" parent="."]
+unique_name_in_owner = true
 
 [node name="Entities" type="Node" parent="."]
 
