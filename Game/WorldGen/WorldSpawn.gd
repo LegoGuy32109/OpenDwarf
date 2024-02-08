@@ -32,6 +32,8 @@ func _ready():
 	rockOrNah.seed = hashedSeed
 	rockOrNah.frequency = 0.07
 
+	_addEntities(Vector2(-1,0))
+
 func _process(_delta: float) -> void:
 	if playerNode:
 		processChunks(playerNode.position)
@@ -42,6 +44,8 @@ func _process(_delta: float) -> void:
 		HUD.readyForDwarfSpawn = false
 
 func _addEntities(spawnLoc: Vector2i):
+	# set spawn point for entities
+	# TODO make this a walkable, large enough area
 	creatureSpawn = spawnLoc
 	# spawn in entities
 	for i in range(startingDwarves):

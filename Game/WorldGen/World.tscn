@@ -1,6 +1,7 @@
-[gd_scene load_steps=13 format=3 uid="uid://bu7yjcrv44p7i"]
+[gd_scene load_steps=14 format=3 uid="uid://bu7yjcrv44p7i"]
 
 [ext_resource type="Script" path="res://Game/WorldGen/WorldSpawn.gd" id="1_r4v4f"]
+[ext_resource type="Script" path="res://Game/WorldGen/TileManager.gd" id="2_bwug0"]
 [ext_resource type="Script" path="res://Game/Camera/FloatingCamera.gd" id="3_mwwud"]
 [ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="4_ie8ni"]
 [ext_resource type="Texture2D" uid="uid://p5cirv5uf2ii" path="res://Assets/UI/Diamond.png" id="4_yedii"]
@@ -49,8 +50,10 @@ script = ExtResource("1_r4v4f")
 
 [node name="Chunks" type="Node" parent="."]
 unique_name_in_owner = true
+script = ExtResource("2_bwug0")
 
 [node name="Entities" type="Node" parent="."]
+unique_name_in_owner = true
 
 [node name="Player" type="Node" parent="."]
 script = ExtResource("4_ie8ni")

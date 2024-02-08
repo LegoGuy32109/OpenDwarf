@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Df Clone"
+config/name="OpenDwarf"
 run/main_scene="res://Game/Menus/main_menu.tscn"
 config/features=PackedStringArray("4.2", "Mobile")
 boot_splash/image="res://Assets/Tiles/Rock.png"
