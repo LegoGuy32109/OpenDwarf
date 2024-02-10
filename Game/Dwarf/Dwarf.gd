@@ -11,13 +11,13 @@ var coordinates : Vector2i = Vector2i()
 
 # might have gridSize set by the game manager
 var gridSize : int = 64
-# 1.0 default, multipies time taken to move over tiles
+# 1.0 default, multipies time taken to move over tileManager
 var agentSpeed : float = 1.0
 
 # Communicate with world node
 @onready var world : Node2D = self.get_parent().get_parent()
 # needs to grab Tiles group for path finding
-@onready var tiles : TileParent = world.find_child("Tiles")
+@onready var tileManager : TileManager = self.get_parent().get_parent().get_node("Chunks")
 # animated sprite child
 @onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
 @onready
@@ -62,32 +62,7 @@ func _process(_delta):
 		match currentAction:
 			Actions.IDLE:
 				sprites.play("idle", agentSpeed)
-				if commandQueue.commandList.size() > 0:
-					await commandQueue.commandList[0].run(self)
-
-				# what should I do? think every 2 frames
-				elif Engine.get_process_frames() % 2 == 0:
-					# match job:
-					# 	# Jobs.NOTHING:
-					# 		# nothing happens
-
-					# 	Jobs.MINING:
-					# 		# find next tile if command queue empty
-					# 		print("I'm a miner")
-					# 		if not await sitesToMine.nextSite(self):
-					# 			print("I couldn't find any tile to mine")
-					# 			job = Jobs.NOTHING
-
-					# random movement on map
-					if HUD.idleMoveEnabled:
-						currentAction = Actions.MOVING
-						await _moveToNeighbor()
-
-					if randf() < 0.05:
-						_decideWhatToDo()
-
-				# reached end of current command
-				currentAction = Actions.IDLE
+				processIdleWalk()
 
 			Actions.MOVING:
 				sprites.play("walk", agentSpeed)
@@ -95,9 +70,15 @@ func _process(_delta):
 			Actions.MINING:
 				sprites.play("mine", 1.0)
 
-func _decideWhatToDo():
-	# logic to pick a random job
-	job = Jobs.MINING
+
+## ran to move randomly on map
+func processIdleWalk()->void:
+	if HUD.idleMoveEnabled && currentAction != Actions.MOVING:
+		currentAction = Actions.MOVING
+		await _moveToNeighbor()
+		# reached end of tile walk
+		currentAction = Actions.IDLE
+
 
 ## User selected something in the dwarf context menu
 func _on_state_menu_item_selected(index):
@@ -112,19 +93,21 @@ func _on_state_menu_item_selected(index):
 			self.brainDisabled = true
 
 
+## Logic to processing which tile to move to for idle walk
 func _moveToNeighbor():
-	var neighborTiles : Array[Tile] = pathfinder.findOpenNeighbors(coordinates)
+	var neighborTiles : Array[Tile] = tileManager.findOpenNeighborTiles(coordinates)
 	if (neighborTiles.size() > 0):
 		var chosenTile : Tile = \
 				neighborTiles[randi_range(0, neighborTiles.size()-1)]
 		await _visuallyMoveToCoordinates(chosenTile.coordinates)
 
+
 # called when entity moves to a new tile
 func _visuallyMoveToCoordinates(tileCoords : Vector2i):
-	var nextTile : Tile = tiles.getTileAt(tileCoords)
+	var nextTile : Tile = tileManager.getTile(tileCoords)
 	var singleTween = create_tween()
 	var curMoveCost : float = nextTile.movementCost * 1/agentSpeed
-	if pathfinder.isDiagNeighbor(coordinates, tileCoords):
+	if tileManager.isDiagNeighbor(coordinates, tileCoords):
 		curMoveCost *= 1.2
 
 	# change direction entity is facing
@@ -148,7 +131,7 @@ func _lookAround():
 	while xCoord <= coordinates.x+radius:
 		var tempY := yCoord
 		while tempY <= coordinates.y+radius:
-			var tile : Tile = tiles.getTileAt(Vector2i(xCoord,tempY))
+			var tile : Tile = tileManager.getTile(Vector2i(xCoord,tempY))
 			if tile.orderedToMine:
 				commandQueue.order(Command.Mine.new(tile))
 			tempY+=1

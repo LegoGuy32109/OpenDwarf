@@ -14,7 +14,6 @@ func _on_mouse_entered():
 	tween.tween_property(self, "modulate", Color("#FFFFFFFF"), fadeTime)
 
 
-
 func _on_mouse_exited():
 	var tween = create_tween()
 	tween.tween_property(self, "modulate", Color("#FFFFFF00"), fadeTime)

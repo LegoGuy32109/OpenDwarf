@@ -37,7 +37,7 @@ func _on_confirmation_dialog_canceled():
 
 func _on_tooltips_check_toggled(button_pressed):
 	tileTooltipsEnabled = button_pressed
-	
+
 func _on_idle_move_check_toggled(button_pressed):
 	idleMoveEnabled = button_pressed
 
@@ -49,7 +49,7 @@ func _unhandled_key_input(event):
 func _process(_delta):
 	if miningModeActive:
 		displayText += "Mining Mode Active\n"
-	
+
 	$ModeLabel.text = displayText
 	displayText = ""
 

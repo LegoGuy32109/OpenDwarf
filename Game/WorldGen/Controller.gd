@@ -44,6 +44,7 @@ var entity: Node2D
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
+@onready var tileManager: TileManager = %Chunks
 
 func _ready() -> void:
 	$Inspector.hide()
@@ -64,23 +65,13 @@ func selectChanged(isHeld: bool):
 	else:
 		if isHeld and $Inspector.visible:
 			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
-			var chunkCords = (tileCords - CHUNK_SIZE / 2).snapped(CHUNK_SIZE)
-			var tile: Tile = %Chunks.get_node_or_null(
-				"(%s, %s)/(%s, %s)" % [chunkCords.x, chunkCords.y, tileCords.x, tileCords.y]
-			)
-			var entites = %Entities.get_children()
+			var tile: Tile = tileManager.getTile(tileCords)
+			# var entites = %Entities.get_children()
 			if tile:
 				if tile.traversable:
 					tile.setToRock()
 				else:
 					tile.setToGround()
-			else:
-				print(
-					(
-						"Tile not found at (%s, %s)/(%s, %s)"
-						% [chunkCords.x, chunkCords.y, tileCords.x, tileCords.y]
-					)
-				)
 
 
 func processManageMovement():
