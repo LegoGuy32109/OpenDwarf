@@ -1,7 +1,7 @@
 extends Camera2D
 
 @export
-var snapToTarget: bool = false
+var snappedToTarget: bool = false
 
 @export
 var lerpWeight: float = 0.2
@@ -12,12 +12,10 @@ var targetZoom: Vector2 = Vector2(0.2, 0.2)
 @onready
 var cameraTarget: Node2D 
 
-func _ready() -> void:
-	cameraTarget = %Entity
 
 func _physics_process(_delta):
 	if cameraTarget:
-		if snapToTarget:
+		if snappedToTarget:
 			self.position = cameraTarget.position
 		elif (self.position.distance_squared_to(cameraTarget.position) > 1):
 			self.position = self.position.lerp(cameraTarget.position, lerpWeight)
@@ -33,3 +31,14 @@ func _changeZoom():
 		self.zoom = newZoom.snapped(Vector2(0.002, 0.002)) 
 	else:
 		self.zoom = targetZoom
+
+
+## snap camera to given entity
+func setTarget(node: Node2D):
+	cameraTarget = node
+	snappedToTarget = true
+
+
+## unsnap camera from entity, if it existed
+func removeTarget():
+	snappedToTarget = false

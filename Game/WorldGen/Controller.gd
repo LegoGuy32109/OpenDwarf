@@ -66,12 +66,13 @@ func selectChanged(isHeld: bool):
 		if isHeld and $Inspector.visible:
 			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
 			var tile: Tile = tileManager.getTile(tileCords)
-			# var entites = %Entities.get_children()
+			var entites = %Entities.get_children()
 			if tile:
-				if tile.traversable:
-					tile.setToRock()
-				else:
-					tile.setToGround()
+				for ent: Dwarf in entites:
+					if ent.coordinates == tile.coordinates:
+						entity = ent
+						%Camera.setTarget(ent)
+						return
 
 
 func processManageMovement():
