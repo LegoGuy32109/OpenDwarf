@@ -10,7 +10,7 @@ var lerpWeight: float = 0.2
 var targetZoom: Vector2 = Vector2(0.2, 0.2)
 
 @onready
-var cameraTarget: Node2D 
+var cameraTarget: Node2D
 
 
 func _physics_process(_delta):
@@ -28,7 +28,7 @@ func _changeZoom():
 	var diffVector = targetZoom - self.zoom
 	if diffVector.length_squared() > 0.00003:
 		var newZoom = self.zoom + diffVector * 0.1
-		self.zoom = newZoom.snapped(Vector2(0.002, 0.002)) 
+		self.zoom = newZoom.snapped(Vector2(0.002, 0.002))
 	else:
 		self.zoom = targetZoom
 

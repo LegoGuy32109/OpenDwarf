@@ -20,8 +20,7 @@ var agentSpeed : float = 1.0
 @onready var tileManager : TileManager = self.get_parent().get_parent().get_node("Chunks")
 # animated sprite child
 @onready var sprites : AnimatedSprite2D = $AnimatedSprite2D
-@onready
-var commandNode: PackedScene = load("res://_debug/CommandNode.tscn")
+@onready var commandNode: PackedScene = load("res://_debug/CommandNode.tscn")
 
 @onready var pathfinder : Pathfinder = world.pathfinder
 @onready var sitesToMine : SitesToMine = world.sitesToMine
@@ -103,6 +102,7 @@ func _moveToNeighbor():
 
 
 # called when entity moves to a new tile
+# TODO rework this to work with the existing controller logic
 func _visuallyMoveToCoordinates(tileCoords : Vector2i):
 	var nextTile : Tile = tileManager.getTile(tileCoords)
 	var singleTween = create_tween()
@@ -123,19 +123,6 @@ func _visuallyMoveToCoordinates(tileCoords : Vector2i):
 	await singleTween.finished
 	coordinates = tileCoords
 
-func _lookAround():
-	var radius := 1
-	var xCoord : int = coordinates.x-radius
-	var yCoord : int = coordinates.y-radius
-	# has a square field of knowledge, in the future this should be a raycast thing
-	while xCoord <= coordinates.x+radius:
-		var tempY := yCoord
-		while tempY <= coordinates.y+radius:
-			var tile : Tile = tileManager.getTile(Vector2i(xCoord,tempY))
-			if tile.orderedToMine:
-				commandQueue.order(Command.Mine.new(tile))
-			tempY+=1
-		xCoord+=1
 
 # handles movement to new location based on path from global Pathfinder
 func moveTo(moveCommand : Command) -> bool:
