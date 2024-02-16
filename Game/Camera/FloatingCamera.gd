@@ -10,7 +10,7 @@ var lerpWeight: float = 0.2
 var targetZoom: Vector2 = Vector2(0.2, 0.2)
 
 @onready
-var cameraTarget: Node2D
+var cameraTarget: Node2D = Node2D.new()
 
 
 func _physics_process(_delta):
@@ -36,7 +36,7 @@ func _changeZoom():
 ## snap camera to given entity
 func setTarget(node: Node2D):
 	cameraTarget = node
-	snappedToTarget = true
+	# snappedToTarget = true
 
 
 ## unsnap camera from entity, if it existed

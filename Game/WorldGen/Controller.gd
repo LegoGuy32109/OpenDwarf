@@ -20,7 +20,7 @@ var moving: bool = false
 var sprinting: bool = false
 
 var currentTileCords := Vector2i(0, 0)
-var tileMoveTime: float = 0.5
+var tileMoveTime: float = 0.4
 
 var staminaExhaustion: float = 0.0
 var staminaMax: float = 100.0
@@ -147,12 +147,12 @@ func processMovementRequest() -> void:
 ## called when no entity is being controlled
 func cameraMove() -> void:
 	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
-	%Camera.position += Vector2(moveVector) * cameraSpeed
+	%Camera.cameraTarget.position += Vector2(moveVector) * cameraSpeed
 
 
 ## bring Inspector to center of screen, show if hidden
 func focusInspectorCenter() -> void:
-	var positionToSnapTo: Vector2 = %Camera.position.snapped(Vector2(TILE_SIZE))
+	var positionToSnapTo: Vector2 = %Camera.cameraTarget.position.snapped(Vector2(TILE_SIZE))
 	# hide if double-tapped basically
 	if $Inspector.visible && $Inspector.position == positionToSnapTo:
 		$Inspector.hide()
