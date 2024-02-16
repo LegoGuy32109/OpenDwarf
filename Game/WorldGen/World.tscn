@@ -17,6 +17,14 @@
 animations = [{
 "frames": [{
 "duration": 1.0,
+"texture": ExtResource("5_vrur8")
+}],
+"loop": true,
+"name": &"circle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
 "texture": ExtResource("6_6nh8b")
 }, {
 "duration": 1.0,
@@ -43,6 +51,17 @@ animations = [{
 "loop": false,
 "name": &"default",
 "speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("10_wjuql")
+}, {
+"duration": 1.0,
+"texture": ExtResource("11_30dq5")
+}],
+"loop": true,
+"name": &"target",
+"speed": 3.0
 }]
 
 [node name="World" type="Node2D"]
@@ -81,6 +100,7 @@ texture = ExtResource("4_yedii")
 
 [node name="Inspector" type="Node2D" parent="Player"]
 
-[node name="Select Crosshair" type="AnimatedSprite2D" parent="Player/Inspector"]
+[node name="Indicator" type="AnimatedSprite2D" parent="Player/Inspector"]
 modulate = Color(1, 1, 1, 0.580392)
 sprite_frames = SubResource("SpriteFrames_y2u6q")
+animation = &"circle"
