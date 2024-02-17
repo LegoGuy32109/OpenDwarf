@@ -1,5 +1,5 @@
 extends Node
-# class_name Controller
+class_name Controller
 
 var zooms = [
 	Vector2(1.4, 1.4),
@@ -40,7 +40,7 @@ var reachVector := NO_DIRECTION
 var selectHeld := false
 
 ## Entity to control/follow/focus on
-var entity: Node2D
+var controlledEntity: Node2D
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
@@ -52,26 +52,27 @@ func _ready() -> void:
 
 
 func _physics_process(_delta):
-	if entity:
+	if controlledEntity:
 		processEntityMovement()
 	else:
 		processManageMovement()
 
 
 func selectChanged(isHeld: bool):
-	if entity:
+	if controlledEntity:
 		pass
-		# TODO implement process space action for entity
+		# TODO implement process space action for controlledEntity
 	else:
 		if isHeld and $Inspector.visible:
 			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
 			var tile: Tile = tileManager.getTile(tileCords)
 			var entites = %Entities.get_children()
 			if tile:
-				for ent: Dwarf in entites:
-					if ent.coordinates == tile.coordinates:
-						entity = ent
-						%Camera.setTarget(ent)
+				# This needs to be of type Entity at somepoint, whatever is under Entities node
+				for entity: Dwarf in entites:
+					if entity.coordinates == tile.coordinates:
+						controlledEntity = entity
+						%Camera.setTarget(entity)
 						return
 
 
@@ -83,6 +84,7 @@ func processManageMovement():
 
 func manageReach():
 	if reachVector != NO_DIRECTION:
+		# TODO add dampening logic like movement
 		$Inspector.position += Vector2(reachVector)
 
 
@@ -92,20 +94,20 @@ func processEntityMovement():
 		processMovementRequest()
 
 	# stamina logic
-	if exhaustionMeter:
-		if !moving && staminaExhaustion > 0.0:
-			staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
-			exhaustionMeter.visible = staminaExhaustion > 0.0
+	# if exhaustionMeter:
+	if !moving && staminaExhaustion > 0.0:
+		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
+		# exhaustionMeter.visible = staminaExhaustion > 0.0
 
-		if staminaExhaustion >= staminaMax:
-			tileMoveTime = 0.5
-		elif staminaExhaustion < staminaMax:
-			if sprinting:
-				tileMoveTime = 0.2
-			else:
-				tileMoveTime = 0.4
+	if staminaExhaustion >= staminaMax:
+		tileMoveTime = 0.5
+	elif staminaExhaustion < staminaMax:
+		if sprinting:
+			tileMoveTime = 0.2
+		else:
+			tileMoveTime = 0.4
 
-		exhaustionMeter.value = staminaExhaustion
+		# exhaustionMeter.value = staminaExhaustion
 
 	# reaching logic IJKL
 	if reachIndicator:
@@ -116,7 +118,7 @@ func processEntityMovement():
 			reachIndicator.visible = false
 
 
-## called when moving an entity
+## called when moving an controlledEntity
 func processMovementRequest() -> void:
 	processingMovement = true
 
@@ -129,13 +131,13 @@ func processMovementRequest() -> void:
 	moving = true
 	var singleTween := create_tween()
 	singleTween.tween_property(
-		entity, "position", entity.position + Vector2(moveVector), tileMoveTime
+		controlledEntity, "position", controlledEntity.position + Vector2(moveVector), tileMoveTime
 	)
 	await singleTween.finished
 
 	# could have been interupted since that movement
 
-	currentTileCords = Vector2i(entity.position / Vector2(TILE_SIZE))
+	currentTileCords = Vector2i(controlledEntity.position / Vector2(TILE_SIZE))
 
 	# no movement input detected
 	if moveVector == NO_DIRECTION:
@@ -144,7 +146,7 @@ func processMovementRequest() -> void:
 	processingMovement = false
 
 
-## called when no entity is being controlled
+## called when no controlledEntity is being controlled
 func cameraMove() -> void:
 	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
 	%Camera.cameraTarget.position += Vector2(moveVector) * cameraSpeed

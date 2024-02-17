@@ -54,6 +54,17 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
+"texture": ExtResource("6_6nh8b")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_oekqt")
+}],
+"loop": true,
+"name": &"select",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
 "texture": ExtResource("10_wjuql")
 }, {
 "duration": 1.0,
@@ -103,4 +114,4 @@ texture = ExtResource("4_yedii")
 [node name="Indicator" type="AnimatedSprite2D" parent="Player/Inspector"]
 modulate = Color(1, 1, 1, 0.580392)
 sprite_frames = SubResource("SpriteFrames_y2u6q")
-animation = &"circle"
+animation = &"select"
