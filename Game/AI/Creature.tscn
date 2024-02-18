@@ -1,0 +1,97 @@
+[gd_scene load_steps=20 format=3 uid="uid://bptgecj60huth"]
+
+[ext_resource type="Script" path="res://Game/AI/Creature.gd" id="1_wv204"]
+[ext_resource type="Texture2D" uid="uid://eguvjxisu4a4" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle1.png" id="2_4uqyt"]
+[ext_resource type="Texture2D" uid="uid://dkpygkrrxp4ty" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle2.png" id="3_bku7g"]
+[ext_resource type="Texture2D" uid="uid://cnonqm6cg3vbq" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle3.png" id="4_mik3w"]
+[ext_resource type="Texture2D" uid="uid://dd5gfijr0yvjq" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle4.png" id="5_0ijet"]
+[ext_resource type="Texture2D" uid="uid://f7682fblddqg" path="res://Assets/CreatureSprites/Dwarf/IdleFrames/DwarfIdle5.png" id="6_kjtqk"]
+[ext_resource type="Texture2D" uid="uid://cogv7f8wkibt0" path="res://Assets/CreatureSprites/Dwarf/MineFrames/DwarfMine1.png" id="7_eixng"]
+[ext_resource type="Texture2D" uid="uid://bawtgulbk2hb4" path="res://Assets/CreatureSprites/Dwarf/MineFrames/DwarfMine2.png" id="8_dvr11"]
+[ext_resource type="Texture2D" uid="uid://dh7yak2u8qxd1" path="res://Assets/CreatureSprites/Dwarf/MineFrames/DwarfMine3.png" id="9_v7roq"]
+[ext_resource type="Texture2D" uid="uid://dl4nqcs1koywg" path="res://Assets/CreatureSprites/Dwarf/MineFrames/DwarfMine4.png" id="10_un13v"]
+[ext_resource type="Texture2D" uid="uid://c1fyla4tm2rmr" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk1.png" id="11_mgvr2"]
+[ext_resource type="Texture2D" uid="uid://cgctj528o05ab" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk2.png" id="12_culsl"]
+[ext_resource type="Texture2D" uid="uid://dxrx1prhhkalg" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk3.png" id="13_71syo"]
+[ext_resource type="Texture2D" uid="uid://ctergpfjyoyd4" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk4.png" id="14_7cecc"]
+[ext_resource type="Texture2D" uid="uid://bowjbfv8j16qv" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk5.png" id="15_4iafi"]
+[ext_resource type="Texture2D" uid="uid://b36vny2qj5sgl" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk6.png" id="16_ppti1"]
+[ext_resource type="Texture2D" uid="uid://ck402w1vbu6jo" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk7.png" id="17_u8a35"]
+[ext_resource type="Texture2D" uid="uid://cesl7653v0ejg" path="res://Assets/CreatureSprites/Dwarf/WalkFrames/DwarfWalk8.png" id="18_2ippk"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_xomqo"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_4uqyt")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_bku7g")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_mik3w")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_0ijet")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_kjtqk")
+}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 3.0,
+"texture": ExtResource("7_eixng")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_dvr11")
+}, {
+"duration": 3.0,
+"texture": ExtResource("9_v7roq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("10_un13v")
+}],
+"loop": true,
+"name": &"mine",
+"speed": 10.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("11_mgvr2")
+}, {
+"duration": 1.0,
+"texture": ExtResource("12_culsl")
+}, {
+"duration": 1.0,
+"texture": ExtResource("13_71syo")
+}, {
+"duration": 1.0,
+"texture": ExtResource("14_7cecc")
+}, {
+"duration": 1.0,
+"texture": ExtResource("15_4iafi")
+}, {
+"duration": 1.0,
+"texture": ExtResource("16_ppti1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("17_u8a35")
+}, {
+"duration": 1.0,
+"texture": ExtResource("18_2ippk")
+}],
+"loop": true,
+"name": &"walk",
+"speed": 10.0
+}]
+
+[node name="Creature" type="Node2D"]
+script = ExtResource("1_wv204")
+
+[node name="Frames" type="AnimatedSprite2D" parent="."]
+scale = Vector2(1.9978, 2.01897)
+sprite_frames = SubResource("SpriteFrames_xomqo")
+animation = &"idle"

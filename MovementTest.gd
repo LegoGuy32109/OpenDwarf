@@ -11,13 +11,13 @@ var moisture = FastNoiseLite.new()
 var temperature = FastNoiseLite.new()
 var altitude = FastNoiseLite.new()
 
-@onready var player = %Entity
+@onready var player = %Creature
 
 func _ready() -> void:
 	var hashedSeed := hash(HUD.SEED)
 	moisture.seed = hashedSeed
-	temperature.seed = hashedSeed+10
-	altitude.seed = hashedSeed-100
+	temperature.seed = hashedSeed + 10
+	altitude.seed = hashedSeed - 100
 	altitude.frequency = 0.01
 
 func _process(_delta: float) -> void:
@@ -28,7 +28,7 @@ func _process(_delta: float) -> void:
 	
 func getDistance(p1: Vector2, p2: Vector2):
 	var difference = p1 - p2
-	return sqrt(difference.x ** 2 + difference.y ** 2)
+	return sqrt(difference.x * * 2 + difference.y * * 2)
 
 func generate_chunk(pos: Vector2i) -> void:
 	var noiseRange := 5

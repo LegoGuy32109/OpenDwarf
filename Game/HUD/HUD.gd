@@ -1,22 +1,22 @@
 extends CanvasLayer
 
-var tileTooltipsEnabled : bool = false
-var idleMoveEnabled : bool = false
+var tileTooltipsEnabled: bool = false
+var idleMoveEnabled: bool = false
 
 enum Mode {GOD, ENTITY}
-var currentMode : Mode = Mode.GOD
-var inMenu : bool = false
+var currentMode: Mode = Mode.GOD
+var inMenu: bool = false
 
 # I'll turn this into an enum eventually
-var miningModeActive : bool = false
-var moveModeActive : bool = true
+var miningModeActive: bool = false
+var moveModeActive: bool = true
 
-var readyForDwarfSpawn : bool = false
+var readyForDwarfSpawn: bool = false
 
 # edited when creating a world
-var SEED : String = "godot"
+var SEED: String = "godot"
 
-var displayText : String = ""
+var displayText: String = ""
 
 @onready var confirmationDialog = $CenterContainer/ConfirmationDialog
 
@@ -53,10 +53,8 @@ func _process(_delta):
 	$ModeLabel.text = displayText
 	displayText = ""
 
-
 func _on_add_dwarf_but_pressed():
 	readyForDwarfSpawn = true
 
-
-func _on_entity_controlled(entity: Dwarf):
+func _on_entity_controlled(entity: Creature):
 	pass

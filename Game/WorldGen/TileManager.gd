@@ -1,7 +1,7 @@
 extends Node
 class_name TileManager
 
-# TODO get this from somewhere else
+const TILE_SIZE := Vector2i(64, 64)
 const CHUNK_SIZE := Vector2i(16, 16)
 
 func getTile(tileCoordinates: Vector2i) -> Tile:

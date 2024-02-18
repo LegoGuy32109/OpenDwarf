@@ -39,8 +39,8 @@ var reachVector := NO_DIRECTION
 
 var selectHeld := false
 
-## Entity to control/follow/focus on
-var controlledEntity: Node2D
+## Creature to control/follow/focus on
+var controlledCreature: Creature
 @onready var reachIndicator = $ReachIndicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
@@ -50,119 +50,57 @@ func _ready() -> void:
 	$Inspector.hide()
 	%Camera.targetZoom = zooms[currentZoomIndex]
 
-
 func _physics_process(_delta):
-	if controlledEntity:
-		processEntityMovement()
+	if controlledCreature:
+		controlledCreature.processMovement()
 	else:
 		processManageMovement()
 
-
 func selectChanged(isHeld: bool):
-	if controlledEntity:
-		pass
-		# TODO implement process space action for controlledEntity
+	if controlledCreature:
+		if isHeld:
+			controlledCreature.release()
+			controlledCreature = null
 	else:
 		if isHeld and $Inspector.visible:
 			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
 			var tile: Tile = tileManager.getTile(tileCords)
-			var entites = %Entities.get_children()
+			var creatures = %Creatures.get_children()
 			if tile:
-				# This needs to be of type Entity at somepoint, whatever is under Entities node
-				for entity: Dwarf in entites:
-					if entity.coordinates == tile.coordinates:
-						controlledEntity = entity
-						%Camera.setTarget(entity)
+				# This needs to be of type Creature at somepoint, whatever is under Entities node
+				for creature: Creature in creatures:
+					if creature.tileCoordinates == tile.coordinates:
+						controlledCreature = creature
+						%Camera.setTarget(creature)
+						var indicator: AnimatedSprite2D = $Inspector.get_node("Indicator")
+						indicator.animation = "circle"
 						return
-
 
 func processManageMovement():
 	# camera move logic WASD (ESDF)
 	if moveVector != NO_DIRECTION:
 		cameraMove()
 
-
 func manageReach():
 	if reachVector != NO_DIRECTION:
 		# TODO add dampening logic like movement
 		$Inspector.position += Vector2(reachVector)
 
-
-func processEntityMovement():
-	# movement logic WASD (ESDF)
-	if moveVector != NO_DIRECTION && !processingMovement:
-		processMovementRequest()
-
-	# stamina logic
-	# if exhaustionMeter:
-	if !moving && staminaExhaustion > 0.0:
-		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
-		# exhaustionMeter.visible = staminaExhaustion > 0.0
-
-	if staminaExhaustion >= staminaMax:
-		tileMoveTime = 0.5
-	elif staminaExhaustion < staminaMax:
-		if sprinting:
-			tileMoveTime = 0.2
-		else:
-			tileMoveTime = 0.4
-
-		# exhaustionMeter.value = staminaExhaustion
-
-	# reaching logic IJKL
-	if reachIndicator:
-		reachIndicator.global_position = currentTileCords * TILE_SIZE + reachVector
-		if reachVector != NO_DIRECTION:
-			reachIndicator.visible = true
-		else:
-			reachIndicator.visible = false
-
-
-## called when moving an controlledEntity
-func processMovementRequest() -> void:
-	processingMovement = true
-
-	staminaExhaustion += moveStamCost if sprinting else moveStamCost / 2.5
-
-	# input delay for diagonal movement
-	if !moving:
-		await get_tree().create_timer(0.06).timeout
-
-	moving = true
-	var singleTween := create_tween()
-	singleTween.tween_property(
-		controlledEntity, "position", controlledEntity.position + Vector2(moveVector), tileMoveTime
-	)
-	await singleTween.finished
-
-	# could have been interupted since that movement
-
-	currentTileCords = Vector2i(controlledEntity.position / Vector2(TILE_SIZE))
-
-	# no movement input detected
-	if moveVector == NO_DIRECTION:
-		moving = false
-
-	processingMovement = false
-
-
-## called when no controlledEntity is being controlled
+## called when no controlledCreature is being controlled
 func cameraMove() -> void:
 	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
 	%Camera.cameraTarget.position += Vector2(moveVector) * cameraSpeed
-
 
 ## bring Inspector to center of screen, show if hidden
 func focusInspectorCenter() -> void:
 	var positionToSnapTo: Vector2 = %Camera.cameraTarget.position.snapped(Vector2(TILE_SIZE))
 	# hide if double-tapped basically
-	if $Inspector.visible && $Inspector.position == positionToSnapTo:
+	if $Inspector.visible&&$Inspector.position == positionToSnapTo:
 		$Inspector.hide()
 		return
 
 	$Inspector.position = positionToSnapTo
 	$Inspector.show()
-
 
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
@@ -181,25 +119,24 @@ var keyMap: Dictionary = {
 	"inspector": KEY_G,
 }
 
-
 func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
-	if event.is_pressed() && !event.is_echo():
+	if event.is_pressed()&&!event.is_echo():
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				moveVector.y += -TILE_SIZE.y
+				moveVector.y += - TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x += -TILE_SIZE.x
+				moveVector.x += - TILE_SIZE.x
 			keyMap.move_down:
 				moveVector.y += TILE_SIZE.y
 			keyMap.move_right:
 				moveVector.x += TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				reachVector.y += -TILE_SIZE.y
+				reachVector.y += - TILE_SIZE.y
 			keyMap.reach_left:
-				reachVector.x += -TILE_SIZE.x
+				reachVector.x += - TILE_SIZE.x
 			keyMap.reach_down:
 				reachVector.y += TILE_SIZE.y
 			keyMap.reach_right:
@@ -217,18 +154,18 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				moveVector.y -= -TILE_SIZE.y
+				moveVector.y -= - TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x -= -TILE_SIZE.x
+				moveVector.x -= - TILE_SIZE.x
 			keyMap.move_down:
 				moveVector.y -= TILE_SIZE.y
 			keyMap.move_right:
 				moveVector.x -= TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				reachVector.y -= -TILE_SIZE.y
+				reachVector.y -= - TILE_SIZE.y
 			keyMap.reach_left:
-				reachVector.x -= -TILE_SIZE.x
+				reachVector.x -= - TILE_SIZE.x
 			keyMap.reach_down:
 				reachVector.y -= TILE_SIZE.y
 			keyMap.reach_right:

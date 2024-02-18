@@ -82,7 +82,7 @@ script = ExtResource("1_r4v4f")
 unique_name_in_owner = true
 script = ExtResource("2_bwug0")
 
-[node name="Entities" type="Node" parent="."]
+[node name="Creatures" type="Node" parent="."]
 unique_name_in_owner = true
 
 [node name="Player" type="Node" parent="."]

@@ -6,25 +6,23 @@ const TILE_SIZE := Vector2i(64, 64)
 const CHUNK_SIZE := Vector2i(16, 16)
 const CHUNK_PIXELS = Vector2(CHUNK_SIZE * TILE_SIZE)
 
-@export var startingDwarves: int = 1
+@export var startingEntities: int = 1
 
 var creatureSpawn: Vector2i
 
 var selectedCords: Array[Vector2i] = []
 
-var sitesToMine: SitesToMine
-
 var pathfinder: Pathfinder
 
 var rockOrNah = FastNoiseLite.new()
 
-@onready var chunkParent: Node = $Chunks
+@onready var chunkParent: Node = %Chunks
 var loadedChunks: Dictionary = {}
 
 @onready var playerNode: Node2D = %Camera
 
 @onready var tileScene: PackedScene = load("res://Game/Tile/Tile.tscn")
-@onready var dwarfScene: PackedScene = load("res://Game/Dwarf/Dwarf.tscn")
+@onready var creatureScene: PackedScene = load("res://Game/AI/Creature.tscn")
 
 func _ready():
 	# define noise
@@ -32,15 +30,15 @@ func _ready():
 	rockOrNah.seed = hashedSeed
 	rockOrNah.frequency = 0.07
 
-	_addEntities(Vector2(-1,0))
+	_addEntities(Vector2( - 1, 0))
 
 func _process(_delta: float) -> void:
 	if playerNode:
 		processChunks(playerNode.position)
 
 	if HUD.readyForDwarfSpawn:
-		print("Dwarf Spawned")
-		addDwarf(creatureSpawn)
+		print("Creature Spawned")
+		addCreature(creatureSpawn)
 		HUD.readyForDwarfSpawn = false
 
 func _addEntities(spawnLoc: Vector2i):
@@ -48,8 +46,8 @@ func _addEntities(spawnLoc: Vector2i):
 	# TODO make this a walkable, large enough area
 	creatureSpawn = spawnLoc
 	# spawn in entities
-	for i in range(startingDwarves):
-		addDwarf(creatureSpawn)
+	for i in range(startingEntities):
+		addCreature(creatureSpawn)
 
 ## Generates a chunk starting from the given vector
 func generateChunk(northWestCorner: Vector2i):
@@ -101,8 +99,8 @@ func processChunks(pos: Vector2) -> void:
 func getChunksToLoad(centerChunk: Vector2i) -> Array[Vector2i]:
 	var squareRadius := 2
 	var chunksToLoad: Array[Vector2i] = []
-	for x in range(-1 * squareRadius, squareRadius + 1):
-		for y in range(-1 * squareRadius, squareRadius + 1):
+	for x in range( - 1 * squareRadius, squareRadius + 1):
+		for y in range( - 1 * squareRadius, squareRadius + 1):
 			chunksToLoad.append(centerChunk + Vector2i(CHUNK_SIZE.x * x, CHUNK_SIZE.y * y))
 
 	return chunksToLoad
@@ -112,7 +110,7 @@ func _inbound(tile: Tile) -> void:
 	if selectedCords.is_empty():
 		selectedCords.append(tile.coordinates)
 
-func _outbound(tile: Tile, msg: String="normal") -> void:
+func _outbound(tile: Tile, _msg: String="normal") -> void:
 	# need exactly 2 coordinates in this array to determine reigon, break if error
 	if selectedCords.size() == 1:
 		selectedCords.append(tile.coordinates)
@@ -135,28 +133,7 @@ func _outbound(tile: Tile, msg: String="normal") -> void:
 	print("%s\n" % str(selectedCords))
 
 	var tilesInReigon: Array[Tile] = getTilesInRegion(selectedCords)
-
-	if HUD.moveModeActive:
-		# right now sending all dwarves to clicked location
-		for entity in $Entities.get_children():
-			assert(entity is Node2D, "Entity in world is not Node2D")
-			# interrupt entity mid command then add new command
-			if msg == "force":
-				entity.commandQueue.clear()
-
-			if tile.traversable:
-				entity.commandQueue.order(Command.Move.new(tile.coordinates))
-			else:
-				print("Can't move there")
-
-	elif HUD.miningModeActive:
-		# logic handled in SitesToMine class
-		for potentialTile in tilesInReigon:
-			if not potentialTile.traversable:
-				if msg == "force":
-					sitesToMine.removeSite(potentialTile)
-				elif msg != "force":
-					sitesToMine.addSite(potentialTile)
+	print(tilesInReigon)
 
 	selectedCords.clear()
 
@@ -179,8 +156,9 @@ func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
 
 	return availableTiles
 
-func addDwarf(coords: Vector2i):
-	var dwarf: Dwarf = dwarfScene.instantiate()
-	$Entities.add_child(dwarf)
-	dwarf.coordinates = coords
-	dwarf.position = Vector2(coords * TILE_SIZE)
+## Spawn a creature at given tile coordinate
+func addCreature(coords: Vector2i):
+	var creature: Creature = creatureScene.instantiate()
+	%Creatures.add_child(creature)
+	creature.tileCoordinates = coords
+	creature.position = Vector2(coords * TILE_SIZE)
