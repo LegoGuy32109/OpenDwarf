@@ -5,7 +5,7 @@ class_name Creature
 # animator.sprite_frames.get_animation_names()
 
 # needs to grab Tiles group for path finding
-@onready var tileManager : TileManager = %Chunks
+# @onready var tileManager : TileManager = %Chunks
 
 var brainDisabled : bool = false
 var externalController: Controller

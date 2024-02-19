@@ -27,10 +27,10 @@ var staminaMax: float = 100.0
 var moveStamCost := 1.0
 var restStamAmt := 0.1
 
+@onready var tileManager: TileManager = %Chunks
 # how far to move player character to align on tile size
-@onready var TILE_SIZE = self.get_parent().TILE_SIZE
-@onready var CHUNK_SIZE = self.get_parent().CHUNK_SIZE
-#TODO this should be in a Class.TILE_SIZE like World.TILE_SIZE or something...
+@onready var TILE_SIZE = %Chunks.TILE_SIZE
+@onready var CHUNK_SIZE = %Chunks.CHUNK_SIZE
 
 const NO_DIRECTION = Vector2i(0, 0)
 # both can be 9 possible values (-1,-1) ... (1,1) * TILE_SIZE
@@ -41,10 +41,6 @@ var selectHeld := false
 
 ## Creature to control/follow/focus on
 var controlledCreature: Creature
-@onready var reachIndicator = $ReachIndicator
-@onready var exhaustionMeter = $ExhaustionMeter
-
-@onready var tileManager: TileManager = %Chunks
 
 func _ready() -> void:
 	$Inspector.hide()
