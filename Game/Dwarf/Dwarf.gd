@@ -1,5 +1,5 @@
 extends Node2D
-class_name Creature
+# class_name Creature
 
 enum Actions {IDLE, MINING, MOVING}
 enum Jobs {NOTHING, MINING}
@@ -23,9 +23,9 @@ var agentSpeed: float = 1.0
 @onready var commandNode: PackedScene = load("res://_debug/CommandNode.tscn")
 
 @onready var pathfinder: Pathfinder = world.pathfinder
-@onready var sitesToMine: SitesToMine = world.sitesToMine
+# @onready var sitesToMine: SitesToMine = world.sitesToMine
 
-var commandQueue: CommandQueue = CommandQueue.new(self)
+# var commandQueue: CommandQueue = CommandQueue.new(self)
 
 var tooltipText: String = ""
 
@@ -43,13 +43,13 @@ func _process(_delta):
 		$StateMenu.tooltip_text = ""
 
 	# if HUD.commandNodesShown:
-	for child in $CommandContainer.get_children():
-		child.queue_free()
-	for c in commandQueue.commandList:
-		var node: ColorRect = commandNode.instantiate()
-		if c.getType() != "move":
-			node.color = "#FFFFFF"
-		$CommandContainer.add_child(node)
+	# for child in $CommandContainer.get_children():
+	# 	child.queue_free()
+	# for c in commandQueue.commandList:
+	# 	var node: ColorRect = commandNode.instantiate()
+	# 	if c.getType() != "move":
+	# 		node.color = "#FFFFFF"
+	# 	$CommandContainer.add_child(node)
 
 	# entity logic
 	# check if being possesed
@@ -120,27 +120,27 @@ func _visuallyMoveToCoordinates(tileCoords: Vector2i):
 	coordinates = tileCoords
 
 # handles movement to new location based on path from global Pathfinder
-func moveTo(moveCommand: Command) -> bool:
-	while moveCommand and not moveCommand.targetCoordinates == coordinates:
-		var targetCoordinates: Vector2i = moveCommand.targetCoordinates
+# func moveTo(moveCommand: Command) -> bool:
+# 	while moveCommand and not moveCommand.targetCoordinates == coordinates:
+# 		var targetCoordinates: Vector2i = moveCommand.targetCoordinates
 
-		var path: Array[Vector2i] = \
-				pathfinder.findPathTo(targetCoordinates, coordinates)
+# 		var path: Array[Vector2i] = \
+# 				pathfinder.findPathTo(targetCoordinates, coordinates)
 
-		# return false if tile not reachable
-		if path.is_empty():
-			print(name + " now can't find path to location")
-			return false
+# 		# return false if tile not reachable
+# 		if path.is_empty():
+# 			print(name + " now can't find path to location")
+# 			return false
 
-		var tileCoords: Vector2i = path[1]
-		await _visuallyMoveToCoordinates(tileCoords)
+# 		var tileCoords: Vector2i = path[1]
+# 		await _visuallyMoveToCoordinates(tileCoords)
 
-		# if the command was deleted, for some reason setting it to idle works
-		if not moveCommand:
-			currentAction = Actions.IDLE
-			return true
+# 		# if the command was deleted, for some reason setting it to idle works
+# 		if not moveCommand:
+# 			currentAction = Actions.IDLE
+# 			return true
 
-	return true
+# 	return true
 
 # TODO this should be a in a util class autoload
 ## Turn grid coordinates -> world/Game coordinates * gridSize
@@ -165,33 +165,33 @@ func startMining(tile: Tile) -> bool:
 		return false
 	return true
 
-class CommandQueue:
-	var commandList: Array[Command] = []
-	var entity: Creature
+# class CommandQueue:
+# 	var commandList: Array[Command] = []
+# 	var entity: Creature
 
-	func _init(_entity: Creature):
-		entity = _entity
+# 	func _init(_entity: Creature):
+# 		entity = _entity
 
-	func _isCommandTypeInQueue(command: Command) -> bool:
-		for c in commandList:
-			if c.getType() == command.getType():
-				return true
-		return false
+# 	func _isCommandTypeInQueue(command: Command) -> bool:
+# 		for c in commandList:
+# 			if c.getType() == command.getType():
+# 				return true
+# 		return false
 
-	func order(command: Command) -> void:
-		# current implementation, move commands can stack
-#		if _isCommandTypeInQueue(command):
-#			print(entity.name + " is already " + command.getType())
-#		else:
+# 	func order(command: Command) -> void:
+# 		# current implementation, move commands can stack
+# #		if _isCommandTypeInQueue(command):
+# #			print(entity.name + " is already " + command.getType())
+# #		else:
 
-		# is this a valid command for the entity? Usually true
-		if command.valid(entity):
-			commandList.append(command)
+# 		# is this a valid command for the entity? Usually true
+# 		if command.valid(entity):
+# 			commandList.append(command)
 
-	func nextCommand() -> Command:
-		return commandList.pop_front()
+# 	func nextCommand() -> Command:
+# 		return commandList.pop_front()
 
-	func clear() -> void:
-		for c in commandList:
-			c.queue_free()
-		commandList.clear()
+# 	func clear() -> void:
+# 		for c in commandList:
+# 			c.queue_free()
+# 		commandList.clear()

@@ -15,17 +15,17 @@ var zooms = [
 # default 2
 var currentZoomIndex = 2
 
-var processingMovement: bool = false
-var moving: bool = false
-var sprinting: bool = false
+# var processingMovement: bool = false
+# var moving: bool = false
+# var sprinting: bool = false
 
 var currentTileCords := Vector2i(0, 0)
-var tileMoveTime: float = 0.4
+# var tileMoveTime: float = 0.4
 
-var staminaExhaustion: float = 0.0
-var staminaMax: float = 100.0
-var moveStamCost := 1.0
-var restStamAmt := 0.1
+# var staminaExhaustion: float = 0.0
+# var staminaMax: float = 100.0
+# var moveStamCost := 1.0
+# var restStamAmt := 0.1
 
 @onready var tileManager: TileManager = %Chunks
 # how far to move player character to align on tile size
@@ -34,70 +34,15 @@ var restStamAmt := 0.1
 
 const NO_DIRECTION = Vector2i(0, 0)
 # both can be 9 possible values (-1,-1) ... (1,1) * TILE_SIZE
-var moveVector := NO_DIRECTION
-var reachVector := NO_DIRECTION
+# var moveVector := NO_DIRECTION
+# var reachVector := NO_DIRECTION
 
-var selectHeld := false
+# var selectHeld := false
 
 ## Creature to control/follow/focus on
 var controlledCreature: Creature
 
-func _ready() -> void:
-	$Inspector.hide()
-	%Camera.targetZoom = zooms[currentZoomIndex]
-
-func _physics_process(_delta):
-	if controlledCreature:
-		controlledCreature.processMovement()
-	else:
-		processManageMovement()
-
-func selectChanged(isHeld: bool):
-	if controlledCreature:
-		if isHeld:
-			controlledCreature.release()
-			controlledCreature = null
-	else:
-		if isHeld and $Inspector.visible:
-			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
-			var tile: Tile = tileManager.getTile(tileCords)
-			var creatures = %Creatures.get_children()
-			if tile:
-				# This needs to be of type Creature at somepoint, whatever is under Entities node
-				for creature: Creature in creatures:
-					if creature.tileCoordinates == tile.coordinates:
-						controlledCreature = creature
-						%Camera.setTarget(creature)
-						var indicator: AnimatedSprite2D = $Inspector.get_node("Indicator")
-						indicator.animation = "circle"
-						return
-
-func processManageMovement():
-	# camera move logic WASD (ESDF)
-	if moveVector != NO_DIRECTION:
-		cameraMove()
-
-func manageReach():
-	if reachVector != NO_DIRECTION:
-		# TODO add dampening logic like movement
-		$Inspector.position += Vector2(reachVector)
-
-## called when no controlledCreature is being controlled
-func cameraMove() -> void:
-	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
-	%Camera.cameraTarget.position += Vector2(moveVector) * cameraSpeed
-
-## bring Inspector to center of screen, show if hidden
-func focusInspectorCenter() -> void:
-	var positionToSnapTo: Vector2 = %Camera.cameraTarget.position.snapped(Vector2(TILE_SIZE))
-	# hide if double-tapped basically
-	if $Inspector.visible&&$Inspector.position == positionToSnapTo:
-		$Inspector.hide()
-		return
-
-	$Inspector.position = positionToSnapTo
-	$Inspector.show()
-
+## Changeable map to controls
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
 	"move_left": KEY_S,
@@ -115,28 +60,99 @@ var keyMap: Dictionary = {
 	"inspector": KEY_G,
 }
 
+## Fed to controlled creatures
+# TODO make this a class for type hints
+var controllerState: Dictionary = {
+	"move_vector": Vector2i(0, 0),
+	"reach_vector": Vector2i(0, 0),
+	"sprint_held": false,
+	"crouch_held": false,
+	"select_held": false
+}
+
+
+func _ready() -> void:
+	$Inspector.hide()
+	%Camera.targetZoom = zooms[currentZoomIndex]
+
+func _physics_process(_delta):
+	if controlledCreature:
+		controlledCreature.processExternalInput(controllerState)
+	else:
+		processWorldPanning()
+
+func selectChanged(isHeld: bool):
+	if controlledCreature:
+		if isHeld:
+			controlledCreature.release()
+			%Camera.removeTarget()
+			controlledCreature = null
+			var indicator: AnimatedSprite2D = $Inspector.get_node("Indicator")
+			indicator.animation = "select"
+	else:
+		if isHeld and $Inspector.visible:
+			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
+			var tile: Tile = tileManager.getTile(tileCords)
+			var creatures = %Creatures.get_children()
+			if tile:
+				# This needs to be of type Creature at somepoint, whatever is under Entities node
+				for creature: Creature in creatures:
+					if creature.tileCoordinates == tile.coordinates:
+						controlledCreature = creature
+						%Camera.setTarget(creature)
+						var indicator: AnimatedSprite2D = $Inspector.get_node("Indicator")
+						indicator.animation = "circle"
+						return
+
+func processWorldPanning():
+	# camera move logic WASD (ESDF)
+	if controllerState.move_vector != NO_DIRECTION:
+		cameraMove()
+
+func manageReach():
+	if controllerState.reach_vector != NO_DIRECTION:
+		# TODO add dampening logic like movement
+		$Inspector.position += Vector2(controllerState.reach_vector)
+
+## called when no controlledCreature is being controlled
+func cameraMove() -> void:
+	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
+	%Camera.cameraTarget.position += Vector2(controllerState.move_vector) * cameraSpeed
+
+## bring Inspector to center of screen, show if hidden
+func focusInspectorCenter() -> void:
+	var positionToSnapTo: Vector2 = %Camera.position.snapped(Vector2(TILE_SIZE))
+	# hide if double-tapped basically
+	if $Inspector.visible&&$Inspector.position == positionToSnapTo:
+		$Inspector.hide()
+		return
+
+	$Inspector.position = positionToSnapTo
+	$Inspector.show()
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
 	if event.is_pressed()&&!event.is_echo():
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				moveVector.y += - TILE_SIZE.y
+				controllerState.move_vector.y += - TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x += - TILE_SIZE.x
+				controllerState.move_vector.x += - TILE_SIZE.x
 			keyMap.move_down:
-				moveVector.y += TILE_SIZE.y
+				controllerState.move_vector.y += TILE_SIZE.y
 			keyMap.move_right:
-				moveVector.x += TILE_SIZE.x
+				controllerState.move_vector.x += TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				reachVector.y += - TILE_SIZE.y
+				controllerState.reach_vector.y += - TILE_SIZE.y
 			keyMap.reach_left:
-				reachVector.x += - TILE_SIZE.x
+				controllerState.reach_vector.x += - TILE_SIZE.x
 			keyMap.reach_down:
-				reachVector.y += TILE_SIZE.y
+				controllerState.reach_vector.y += TILE_SIZE.y
 			keyMap.reach_right:
-				reachVector.x += TILE_SIZE.x
+				controllerState.reach_vector.x += TILE_SIZE.x
 			# select
 			keyMap.select:
 				selectChanged(true)
@@ -145,27 +161,27 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				focusInspectorCenter()
 			# sprinting
 			keyMap.toggle_sprint:
-				sprinting = !sprinting
+				controllerState.sprint_held = !controllerState.sprint_held
 	elif event.is_released():
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				moveVector.y -= - TILE_SIZE.y
+				controllerState.move_vector.y -= - TILE_SIZE.y
 			keyMap.move_left:
-				moveVector.x -= - TILE_SIZE.x
+				controllerState.move_vector.x -= - TILE_SIZE.x
 			keyMap.move_down:
-				moveVector.y -= TILE_SIZE.y
+				controllerState.move_vector.y -= TILE_SIZE.y
 			keyMap.move_right:
-				moveVector.x -= TILE_SIZE.x
+				controllerState.move_vector.x -= TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				reachVector.y -= - TILE_SIZE.y
+				controllerState.reach_vector.y -= - TILE_SIZE.y
 			keyMap.reach_left:
-				reachVector.x -= - TILE_SIZE.x
+				controllerState.reach_vector.x -= - TILE_SIZE.x
 			keyMap.reach_down:
-				reachVector.y -= TILE_SIZE.y
+				controllerState.reach_vector.y -= TILE_SIZE.y
 			keyMap.reach_right:
-				reachVector.x -= TILE_SIZE.x
+				controllerState.reach_vector.x -= TILE_SIZE.x
 			# select
 			keyMap.select:
 				selectChanged(false)

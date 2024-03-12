@@ -42,3 +42,6 @@ func setTarget(node: Node2D):
 ## unsnap camera from entity, if it existed
 func removeTarget():
 	snappedToTarget = false
+	var newTarget = Node2D.new()
+	newTarget.position = self.position
+	cameraTarget = newTarget

@@ -12,14 +12,13 @@ var externalController: Controller
 
 var processingMovement: bool = false
 var moving: bool = false
-var sprinting: bool = false
+# var sprinting: bool = false
 
 const TILE_SIZE = Vector2i(64, 64)
 
 const NO_DIRECTION = Vector2i(0, 0)
-# both can be 9 possible values (-1,-1) ... (1,1) * TILE_SIZE
-var moveVector := NO_DIRECTION
-var reachVector := NO_DIRECTION
+
+var controllerState: Dictionary = {}
 
 var tileCoordinates := Vector2i(0, 0)
 var tileMoveTime: float = 0.4
@@ -30,9 +29,12 @@ var moveStamCost := 1.0
 var restStamAmt := 0.1
 
 
-func processMovement():
+## When controlled, react based on controller state
+func processExternalInput(externalControllerState: Dictionary):
+	controllerState = externalControllerState
+
 	# movement logic WASD (ESDF)
-	if moveVector != NO_DIRECTION && !processingMovement:
+	if controllerState.move_vector != NO_DIRECTION && !processingMovement:
 		processMovementRequest()
 
 	# stamina logic
@@ -43,13 +45,14 @@ func processMovement():
 	if staminaExhaustion >= staminaMax:
 		tileMoveTime = 0.5
 	elif staminaExhaustion < staminaMax:
-		if sprinting:
+		if controllerState.sprint_held:
 			tileMoveTime = 0.2
 		else:
 			tileMoveTime = 0.4
 
 		# exhaustionMeter.value = staminaExhaustion
 
+	# TODO handle indicators on controller level, not entity. Feed entity locations
 	# reaching logic IJKL
 	# if reachIndicator:
 	# 	reachIndicator.global_position = tileCoordinates * TILE_SIZE + reachVector
@@ -62,7 +65,7 @@ func processMovement():
 func processMovementRequest() -> void:
 	processingMovement = true
 
-	staminaExhaustion += moveStamCost if sprinting else moveStamCost / 2.5
+	staminaExhaustion += moveStamCost if controllerState.sprint_held else moveStamCost / 2.5
 
 	# input delay for diagonal movement
 	if !moving:
@@ -71,7 +74,7 @@ func processMovementRequest() -> void:
 	moving = true
 	var singleTween := create_tween()
 	singleTween.tween_property(
-		self, "position", self.position + Vector2(moveVector), tileMoveTime
+		self, "position", self.position + Vector2(controllerState.move_vector), tileMoveTime
 	)
 	await singleTween.finished
 
@@ -80,7 +83,7 @@ func processMovementRequest() -> void:
 	tileCoordinates = Vector2i(self.position / Vector2(TILE_SIZE))
 
 	# no movement input detected
-	if moveVector == NO_DIRECTION:
+	if controllerState.move_vector == NO_DIRECTION:
 		moving = false
 
 	processingMovement = false
