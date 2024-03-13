@@ -33,11 +33,6 @@ var currentTileCords := Vector2i(0, 0)
 @onready var CHUNK_SIZE = %Chunks.CHUNK_SIZE
 
 const NO_DIRECTION = Vector2i(0, 0)
-# both can be 9 possible values (-1,-1) ... (1,1) * TILE_SIZE
-# var moveVector := NO_DIRECTION
-# var reachVector := NO_DIRECTION
-
-# var selectHeld := false
 
 ## Creature to control/follow/focus on
 var controlledCreature: Creature
@@ -70,13 +65,13 @@ var controllerState: Dictionary = {
 	"select_held": false
 }
 
-
 func _ready() -> void:
 	$Inspector.hide()
 	%Camera.targetZoom = zooms[currentZoomIndex]
 
 func _physics_process(_delta):
 	if controlledCreature:
+		$Inspector.position = Vector2(controlledCreature.tileCoordinates)
 		controlledCreature.processExternalInput(controllerState)
 	else:
 		processWorldPanning()
@@ -87,21 +82,22 @@ func selectChanged(isHeld: bool):
 			controlledCreature.release()
 			%Camera.removeTarget()
 			controlledCreature = null
-			var indicator: AnimatedSprite2D = $Inspector.get_node("Indicator")
-			indicator.animation = "select"
+			$Inspector.get_node("Indicator").animation = "select"
+			$Inspector.get_node("Indicator").position = $Inspector.position
+			$Inspector.get_node("Indicator").visible = true
 	else:
 		if isHeld and $Inspector.visible:
-			var tileCords = Vector2i($Inspector.position) / TILE_SIZE
-			var tile: Tile = tileManager.getTile(tileCords)
+			var inspectorTileCoords = Vector2i($Inspector.position) / TILE_SIZE
+			var tile: Tile = tileManager.getTile(inspectorTileCoords)
 			var creatures = %Creatures.get_children()
 			if tile:
-				# This needs to be of type Creature at somepoint, whatever is under Entities node
 				for creature: Creature in creatures:
 					if creature.tileCoordinates == tile.coordinates:
 						controlledCreature = creature
 						%Camera.setTarget(creature)
-						var indicator: AnimatedSprite2D = $Inspector.get_node("Indicator")
-						indicator.animation = "circle"
+						$Inspector.position = Vector2(creature.tileCoordinates)
+						$Inspector.get_node("Indicator").visible = false
+						$Inspector.get_node("Indicator").animation = "circle"
 						return
 
 func processWorldPanning():
@@ -110,9 +106,16 @@ func processWorldPanning():
 		cameraMove()
 
 func manageReach():
-	if controllerState.reach_vector != NO_DIRECTION:
-		# TODO add dampening logic like movement
-		$Inspector.position += Vector2(controllerState.reach_vector)
+	if controlledCreature:
+		$Inspector.get_node("Indicator").position = $Inspector.position + Vector2(controllerState.reach_vector)
+		if controllerState.reach_vector != NO_DIRECTION:
+			$Inspector.get_node("Indicator").visible = true
+		else:
+			$Inspector.get_node("Indicator").visible = false
+	else:
+		if controllerState.reach_vector != NO_DIRECTION:
+			# TODO add dampening logic like movement
+			$Inspector.position += Vector2(controllerState.reach_vector)
 
 ## called when no controlledCreature is being controlled
 func cameraMove() -> void:
@@ -129,7 +132,6 @@ func focusInspectorCenter() -> void:
 
 	$Inspector.position = positionToSnapTo
 	$Inspector.show()
-
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
