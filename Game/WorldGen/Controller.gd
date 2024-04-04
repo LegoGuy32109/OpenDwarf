@@ -71,7 +71,7 @@ func _ready() -> void:
 
 func _physics_process(_delta):
 	if controlledCreature:
-		$Inspector.position = Vector2(controlledCreature.tileCoordinates)
+		# $Inspector.position = Vector2(controlledCreature.tileCoordinates)
 		controlledCreature.processExternalInput(controllerState)
 	else:
 		processWorldPanning()
