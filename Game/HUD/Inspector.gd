@@ -3,11 +3,16 @@ extends Node2D
 const TILE_SIZE = Vector2i(64, 64)
 const NO_DIRECTION = Vector2i(0, 0)
 
-@onready var indicator = $Indicator
-@onready var exhaustionMeter = $ExhaustionMeter
-@onready var progressContainer = %ProgressContainer
-@onready var debugLabel = %Label
+@onready var indicator: AnimatedSprite2D = $Indicator
+@onready var exhaustionMeter: ProgressBar = $ExhaustionMeter
+@onready var progressBar: PackedScene = preload("res://Game/HUD/progressBar.tscn")
+@onready var progressContainer: VBoxContainer = %ProgressContainer
+@onready var debugLabel: RichTextLabel = %Label
 
+var waitUntilMove = 0.5
+var currentLoc = Vector2(0, 0)
+
+var timers: Dictionary = {}
 
 class ControllerState:
 	var moveVector: Vector2i
@@ -31,7 +36,6 @@ class ControllerState:
 		output += "crouchHeld: %s\n" % crouchHeld
 		output += "selectHeld: %s\n" % selectHeld
 		return output
-	
 
 var controllerState: ControllerState = ControllerState.new()
 
@@ -56,6 +60,12 @@ func _process(_delta: float) -> void:
 	debugLabel.text = controllerState.to_string()
 	processMovement()
 	manageReach()
+	updateTimers()
+
+func updateTimers():
+	for timerName in timers:
+		var dataObject = timers[timerName]
+		dataObject.bar.value = 100 * (dataObject.timer.get_time_left() / dataObject.timer.get_wait_time())
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
@@ -124,4 +134,22 @@ func manageReach():
 
 func processMovement():
 	if controllerState.moveVector != NO_DIRECTION:
-		self.position += Vector2(controllerState.moveVector)
+		if !timers.has("step"):
+			startTimer()
+			self.position += Vector2(controllerState.moveVector)
+
+func startTimer():
+	var newTimer: Timer = Timer.new()
+	var newBar: TextureProgressBar = progressBar.instantiate()
+	newBar.modulate = "#FFFFFF"
+	self.add_child(newTimer)
+	progressContainer.add_child(newBar)
+	newTimer.connect("timeout", func(): 
+		newBar.queue_free()
+		newTimer.queue_free()
+		timers.erase("step")
+	)
+	timers["step"] = {}
+	timers["step"].timer = newTimer
+	timers["step"].bar = newBar
+	timers["step"].timer.start(waitUntilMove)
