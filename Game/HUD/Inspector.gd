@@ -20,6 +20,16 @@ class ControllerState:
 		crouchHeld = false
 		selectHeld = false
 
+	func _to_string() -> String:
+		var output = ""
+		output += "moveVector: %s\n" % moveVector
+		output += "reachVector: %s\n" % reachVector
+		output += "sprintHeld: %s\n" % sprintHeld
+		output += "crouchHeld: %s\n" % crouchHeld
+		output += "selectHeld: %s\n" % selectHeld
+		return output
+	
+
 var controllerState: ControllerState = ControllerState.new()
 
 var keyMap: Dictionary = {
@@ -40,7 +50,7 @@ var keyMap: Dictionary = {
 }
 
 func _process(_delta: float) -> void:
-	# %Label.text = JSON.stringify(controllerState)
+	%Label.text = controllerState.to_string()
 	processMovement()
 	manageReach()
 
@@ -76,7 +86,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				pass
 			# sprinting
 			keyMap.toggle_sprint:
-				controllerState.sprint_held = !controllerState.sprint_held
+				controllerState.sprintHeld = !controllerState.sprintHeld
 	elif event.is_released():
 		match event.keycode:
 			# moveVector
@@ -103,7 +113,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				pass
 
 func manageReach():
-	indicator.position = self.position + Vector2(controllerState.reachVector)
+	if controllerState.reachVector != NO_DIRECTION:
+		indicator.visible = true;
+		indicator.position = self.position + Vector2(controllerState.reachVector)
+	else:
+		indicator.visible = false;
 
 func processMovement():
 	if controllerState.moveVector != NO_DIRECTION:
