@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3 uid="uid://c8utg6qhf1okr"]
+[gd_scene load_steps=12 format=3 uid="uid://c8utg6qhf1okr"]
 
 [ext_resource type="Script" path="res://Game/HUD/Inspector.gd" id="1_dqpf6"]
 [ext_resource type="Texture2D" uid="uid://csda1cahwojjs" path="res://Assets/UI/Circle.png" id="2_swvue"]
@@ -9,6 +9,7 @@
 [ext_resource type="Texture2D" uid="uid://v68goicemugq" path="res://Assets/UI/Square.png" id="7_k08bk"]
 [ext_resource type="Texture2D" uid="uid://bj3tf0lker2n7" path="res://Assets/UI/TargetLarge.png" id="8_u3h4w"]
 [ext_resource type="Texture2D" uid="uid://dprcbct5waaqj" path="res://Assets/UI/TargetSmall.png" id="9_plx7q"]
+[ext_resource type="PackedScene" uid="uid://ohnepd3xopt0" path="res://Game/HUD/progressBar.tscn" id="10_sv6ks"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_7ta2p"]
 animations = [{
@@ -72,22 +73,6 @@ animations = [{
 "speed": 3.0
 }]
 
-[sub_resource type="Gradient" id="Gradient_tggfr"]
-offsets = PackedFloat32Array(0)
-colors = PackedColorArray(0, 0, 0, 1)
-
-[sub_resource type="GradientTexture1D" id="GradientTexture1D_0jmhj"]
-gradient = SubResource("Gradient_tggfr")
-width = 64
-
-[sub_resource type="Gradient" id="Gradient_iiaan"]
-offsets = PackedFloat32Array(1)
-colors = PackedColorArray(1, 1, 1, 1)
-
-[sub_resource type="GradientTexture1D" id="GradientTexture1D_u34nv"]
-gradient = SubResource("Gradient_iiaan")
-width = 64
-
 [node name="Inspector Test" type="Node2D"]
 
 [node name="Inspector" type="Node2D" parent="."]
@@ -122,29 +107,15 @@ theme_override_constants/margin_left = 4
 theme_override_constants/margin_right = 4
 theme_override_constants/margin_bottom = 2
 
-[node name="VBoxContainer" type="VBoxContainer" parent="Inspector/MarginContainer"]
+[node name="ProgressContainer" type="VBoxContainer" parent="Inspector/MarginContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 4
 alignment = 1
 
-[node name="TextureProgressBar2" type="TextureProgressBar" parent="Inspector/MarginContainer/VBoxContainer"]
-modulate = Color(0.937255, 0, 0.286275, 1)
-custom_minimum_size = Vector2(0, 8)
+[node name="ProgressBar" parent="Inspector/MarginContainer/ProgressContainer" instance=ExtResource("10_sv6ks")]
 layout_mode = 2
-step = 0.1
-value = 90.2
-nine_patch_stretch = true
-texture_under = SubResource("GradientTexture1D_0jmhj")
-texture_progress = SubResource("GradientTexture1D_u34nv")
-
-[node name="TextureProgressBar3" type="TextureProgressBar" parent="Inspector/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(0, 8)
-layout_mode = 2
-step = 0.1
-value = 63.0
-nine_patch_stretch = true
-texture_under = SubResource("GradientTexture1D_0jmhj")
-texture_progress = SubResource("GradientTexture1D_u34nv")
+value = 74.3
 
 [node name="Label" type="RichTextLabel" parent="."]
 unique_name_in_owner = true

@@ -5,6 +5,9 @@ const NO_DIRECTION = Vector2i(0, 0)
 
 @onready var indicator = $Indicator
 @onready var exhaustionMeter = $ExhaustionMeter
+@onready var progressContainer = %ProgressContainer
+@onready var debugLabel = %Label
+
 
 class ControllerState:
 	var moveVector: Vector2i
@@ -50,7 +53,7 @@ var keyMap: Dictionary = {
 }
 
 func _process(_delta: float) -> void:
-	%Label.text = controllerState.to_string()
+	debugLabel.text = controllerState.to_string()
 	processMovement()
 	manageReach()
 
