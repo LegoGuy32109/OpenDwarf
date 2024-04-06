@@ -6,13 +6,21 @@ const NO_DIRECTION = Vector2i(0, 0)
 @onready var indicator = $Indicator
 @onready var exhaustionMeter = $ExhaustionMeter
 
-var controllerState: Dictionary = {
-	"move_vector": Vector2i(0, 0),
-	"reach_vector": Vector2i(0, 0),
-	"sprint_held": false,
-	"crouch_held": false,
-	"select_held": false
-}
+class ControllerState:
+	var moveVector: Vector2i
+	var reachVector: Vector2i
+	var sprintHeld: bool
+	var crouchHeld: bool
+	var selectHeld: bool
+
+	func _init():
+		moveVector = Vector2i(0, 0)
+		reachVector = Vector2i(0, 0)
+		sprintHeld = false
+		crouchHeld = false
+		selectHeld = false
+
+var controllerState: ControllerState = ControllerState.new()
 
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
@@ -32,31 +40,32 @@ var keyMap: Dictionary = {
 }
 
 func _process(_delta: float) -> void:
-	%Label.text = JSON.stringify(controllerState)
+	# %Label.text = JSON.stringify(controllerState)
+	processMovement()
+	manageReach()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
-	print(event)
 	if event.is_pressed()&&!event.is_echo():
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				controllerState.move_vector.y += - TILE_SIZE.y
+				controllerState.moveVector.y += - TILE_SIZE.y
 			keyMap.move_left:
-				controllerState.move_vector.x += - TILE_SIZE.x
+				controllerState.moveVector.x += - TILE_SIZE.x
 			keyMap.move_down:
-				controllerState.move_vector.y += TILE_SIZE.y
+				controllerState.moveVector.y += TILE_SIZE.y
 			keyMap.move_right:
-				controllerState.move_vector.x += TILE_SIZE.x
+				controllerState.moveVector.x += TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				controllerState.reach_vector.y += - TILE_SIZE.y
+				controllerState.reachVector.y += - TILE_SIZE.y
 			keyMap.reach_left:
-				controllerState.reach_vector.x += - TILE_SIZE.x
+				controllerState.reachVector.x += - TILE_SIZE.x
 			keyMap.reach_down:
-				controllerState.reach_vector.y += TILE_SIZE.y
+				controllerState.reachVector.y += TILE_SIZE.y
 			keyMap.reach_right:
-				controllerState.reach_vector.x += TILE_SIZE.x
+				controllerState.reachVector.x += TILE_SIZE.x
 			# select
 			keyMap.select:
 				# selectChanged(true)
@@ -72,40 +81,30 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				controllerState.move_vector.y -= - TILE_SIZE.y
+				controllerState.moveVector.y -= - TILE_SIZE.y
 			keyMap.move_left:
-				controllerState.move_vector.x -= - TILE_SIZE.x
+				controllerState.moveVector.x -= - TILE_SIZE.x
 			keyMap.move_down:
-				controllerState.move_vector.y -= TILE_SIZE.y
+				controllerState.moveVector.y -= TILE_SIZE.y
 			keyMap.move_right:
-				controllerState.move_vector.x -= TILE_SIZE.x
+				controllerState.moveVector.x -= TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				controllerState.reach_vector.y -= - TILE_SIZE.y
+				controllerState.reachVector.y -= - TILE_SIZE.y
 			keyMap.reach_left:
-				controllerState.reach_vector.x -= - TILE_SIZE.x
+				controllerState.reachVector.x -= - TILE_SIZE.x
 			keyMap.reach_down:
-				controllerState.reach_vector.y -= TILE_SIZE.y
+				controllerState.reachVector.y -= TILE_SIZE.y
 			keyMap.reach_right:
-				controllerState.reach_vector.x -= TILE_SIZE.x
+				controllerState.reachVector.x -= TILE_SIZE.x
 			# select
 			keyMap.select:
 				# selectChanged(false)
 				pass
 
-	# event key is just pressed OR held down
-	# if event.is_pressed():
-	# 	match event.keycode:
-			# camera zoom
-			# keyMap.camera_zoom_in:
-			# 	currentZoomIndex = clamp(currentZoomIndex - 1, 0, zooms.size() - 1)
-			# 	%Camera.targetZoom = zooms[currentZoomIndex]
-			# keyMap.camera_zoom_out:
-			# 	currentZoomIndex = clamp(currentZoomIndex + 1, 0, zooms.size() - 1)
-			# 	%Camera.targetZoom = zooms[currentZoomIndex]
-			# reaching notification
-# 			keyMap.reach_right, keyMap.reach_down, keyMap.reach_up, keyMap.reach_left:
-# 				manageReach()
+func manageReach():
+	indicator.position = self.position + Vector2(controllerState.reachVector)
 
-# func manageReach():
-# 		self.position = self.position + Vector2(controllerState.reach_vector)
+func processMovement():
+	if controllerState.moveVector != NO_DIRECTION:
+		self.position += Vector2(controllerState.moveVector)
