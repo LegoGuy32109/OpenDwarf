@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://c8utg6qhf1okr"]
+[gd_scene load_steps=16 format=3 uid="uid://c8utg6qhf1okr"]
 
 [ext_resource type="Script" path="res://Game/HUD/Inspector.gd" id="1_dqpf6"]
 [ext_resource type="Texture2D" uid="uid://csda1cahwojjs" path="res://Assets/UI/Circle.png" id="2_swvue"]
@@ -10,8 +10,73 @@
 [ext_resource type="Texture2D" uid="uid://bj3tf0lker2n7" path="res://Assets/UI/TargetLarge.png" id="8_u3h4w"]
 [ext_resource type="Texture2D" uid="uid://dprcbct5waaqj" path="res://Assets/UI/TargetSmall.png" id="9_plx7q"]
 [ext_resource type="PackedScene" uid="uid://ohnepd3xopt0" path="res://Game/HUD/progressBar.tscn" id="10_sv6ks"]
+[ext_resource type="Script" path="res://Game/WorldGen/Controller.gd" id="11_pfp46"]
+[ext_resource type="Script" path="res://Game/Camera/FloatingCamera.gd" id="12_6jf1y"]
+[ext_resource type="Script" path="res://Game/WorldGen/TileManager.gd" id="13_wxiew"]
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_7ta2p"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_swvue")
+}],
+"loop": true,
+"name": &"circle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3_8bxyo")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_nyla0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_4xkfl")
+}, {
+"duration": 1.0,
+"texture": ExtResource("2_swvue")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_q3524")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_k08bk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_u3h4w")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_plx7q")
+}],
+"loop": false,
+"name": &"default",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("3_8bxyo")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_nyla0")
+}],
+"loop": true,
+"name": &"select",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("8_u3h4w")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_plx7q")
+}],
+"loop": true,
+"name": &"target",
+"speed": 3.0
+}]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_p6xv7"]
 animations = [{
 "frames": [{
 "duration": 1.0,
@@ -126,3 +191,53 @@ offset_bottom = -192.0
 text = "<controller state>"
 
 [node name="Camera2D" type="Camera2D" parent="."]
+
+[node name="Player" type="Node" parent="."]
+script = ExtResource("11_pfp46")
+
+[node name="Camera" type="Camera2D" parent="Player"]
+unique_name_in_owner = true
+script = ExtResource("12_6jf1y")
+
+[node name="TextureRect" type="TextureRect" parent="Player/Camera"]
+modulate = Color(0.419608, 0.419608, 0.419608, 0.588235)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.4, 0.4)
+pivot_offset = Vector2(32, 32)
+texture = ExtResource("6_q3524")
+
+[node name="Inspector" type="Node2D" parent="Player"]
+
+[node name="Indicator" type="AnimatedSprite2D" parent="Player/Inspector"]
+modulate = Color(1, 1, 1, 0.580392)
+sprite_frames = SubResource("SpriteFrames_p6xv7")
+animation = &"select"
+
+[node name="ExhaustionMeter" type="ProgressBar" parent="Player/Inspector"]
+custom_minimum_size = Vector2(64, 64)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(32, 32)
+fill_mode = 3
+show_percentage = false
+
+[node name="Chunks" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("13_wxiew")

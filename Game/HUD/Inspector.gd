@@ -14,28 +14,7 @@ var currentLoc = Vector2(0, 0)
 
 var timers: Dictionary = {}
 
-class ControllerState:
-	var moveVector: Vector2i
-	var reachVector: Vector2i
-	var sprintHeld: bool
-	var crouchHeld: bool
-	var selectHeld: bool
 
-	func _init():
-		moveVector = Vector2i(0, 0)
-		reachVector = Vector2i(0, 0)
-		sprintHeld = false
-		crouchHeld = false
-		selectHeld = false
-
-	func _to_string() -> String:
-		var output = ""
-		output += "moveVector: %s\n" % moveVector
-		output += "reachVector: %s\n" % reachVector
-		output += "sprintHeld: %s\n" % sprintHeld
-		output += "crouchHeld: %s\n" % crouchHeld
-		output += "selectHeld: %s\n" % selectHeld
-		return output
 
 var controllerState: ControllerState = ControllerState.new()
 
@@ -128,7 +107,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func manageReach():
 	if controllerState.reachVector != NO_DIRECTION:
 		indicator.visible = true;
-		indicator.position = self.position + Vector2(controllerState.reachVector)
+		indicator.position = Vector2(controllerState.reachVector)
 	else:
 		indicator.visible = false;
 

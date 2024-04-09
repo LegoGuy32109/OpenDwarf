@@ -30,11 +30,12 @@ func _ready():
 	rockOrNah.seed = hashedSeed
 	rockOrNah.frequency = 0.07
 
-	_addEntities(Vector2( - 1, 0))
+	spawnChunks()
+	_addEntities(Vector2(-1, 0))
 
 func _process(_delta: float) -> void:
-	if playerNode:
-		processChunks(playerNode.position)
+	# if playerNode:
+	# 	processChunks(playerNode.position)
 
 	if HUD.readyForDwarfSpawn:
 		print("Creature Spawned")

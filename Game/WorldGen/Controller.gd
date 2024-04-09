@@ -15,17 +15,7 @@ var zooms = [
 # default 2
 var currentZoomIndex = 2
 
-# var processingMovement: bool = false
-# var moving: bool = false
-# var sprinting: bool = false
-
 var currentTileCords := Vector2i(0, 0)
-# var tileMoveTime: float = 0.4
-
-# var staminaExhaustion: float = 0.0
-# var staminaMax: float = 100.0
-# var moveStamCost := 1.0
-# var restStamAmt := 0.1
 
 @onready var tileManager: TileManager = %Chunks
 # how far to move player character to align on tile size
@@ -37,6 +27,12 @@ const NO_DIRECTION = Vector2i(0, 0)
 ## Creature to control/follow/focus on
 var controlledCreature: Creature
 
+## root interaction ui node
+@onready var inspector: Node2D = $Inspector
+
+## sprites to indicate interaction
+@onready var indicator: AnimatedSprite2D = $Inspector.get_node("Indicator")
+
 ## Changeable map to controls
 var keyMap: Dictionary = {
 	"move_up": KEY_E,
@@ -44,8 +40,8 @@ var keyMap: Dictionary = {
 	"move_down": KEY_D,
 	"move_right": KEY_F,
 	"reach_up": KEY_I,
-	"reach_left": KEY_J,
 	"reach_down": KEY_K,
+	"reach_left": KEY_J,
 	"reach_right": KEY_L,
 	"toggle_sprint": KEY_SHIFT,
 	"toggle_crouch": KEY_CTRL,
@@ -53,41 +49,45 @@ var keyMap: Dictionary = {
 	"camera_zoom_out": KEY_PERIOD,
 	"select": KEY_SPACE,
 	"inspector": KEY_G,
+	"escape": KEY_ESCAPE,
 }
 
-## Fed to controlled creatures
-# TODO make this a class for type hints
-var controllerState: Dictionary = {
-	"move_vector": Vector2i(0, 0),
-	"reach_vector": Vector2i(0, 0),
-	"sprint_held": false,
-	"crouch_held": false,
-	"select_held": false
-}
+var controllerState = ControllerState.new()
 
 func _ready() -> void:
-	$Inspector.hide()
+	inspector.hide()
 	%Camera.targetZoom = zooms[currentZoomIndex]
 
-func _physics_process(_delta):
+func _process(_delta):
 	if controlledCreature:
-		# $Inspector.position = Vector2(controlledCreature.tileCoordinates)
+		inspector.position = Vector2(controlledCreature.tileCoordinates * TILE_SIZE)
 		controlledCreature.processExternalInput(controllerState)
 	else:
 		processWorldPanning()
+	
+	manageReach()
+
+## Releasing creature
+func releaseControl():
+	if controlledCreature:
+		controlledCreature.release()
+		%Camera.removeTarget()
+		controlledCreature = null
+		inspector.get_node("Indicator").animation = "select"
+		inspector.get_node("Indicator").position = Vector2(0, 0)
+		inspector.get_node("Indicator").visible = true
 
 func selectChanged(isHeld: bool):
 	if controlledCreature:
 		if isHeld:
-			controlledCreature.release()
-			%Camera.removeTarget()
-			controlledCreature = null
-			$Inspector.get_node("Indicator").animation = "select"
-			$Inspector.get_node("Indicator").position = $Inspector.position
-			$Inspector.get_node("Indicator").visible = true
+			inspector.show()
+			indicator.play("target")
+		else:
+			indicator.stop()
+			indicator.animation = "circle"
 	else:
-		if isHeld and $Inspector.visible:
-			var inspectorTileCoords = Vector2i($Inspector.position) / TILE_SIZE
+		if isHeld and inspector.visible:
+			var inspectorTileCoords = Vector2i(inspector.position) / TILE_SIZE
 			var tile: Tile = tileManager.getTile(inspectorTileCoords)
 			var creatures = %Creatures.get_children()
 			if tile:
@@ -95,43 +95,51 @@ func selectChanged(isHeld: bool):
 					if creature.tileCoordinates == tile.coordinates:
 						controlledCreature = creature
 						%Camera.setTarget(creature)
-						$Inspector.position = Vector2(creature.tileCoordinates)
-						$Inspector.get_node("Indicator").visible = false
-						$Inspector.get_node("Indicator").animation = "circle"
+						inspector.position = Vector2(creature.tileCoordinates)
+						indicator.visible = false
+						indicator.animation = "circle"
 						return
 
 func processWorldPanning():
-	# camera move logic WASD (ESDF)
-	if controllerState.move_vector != NO_DIRECTION:
+	if controllerState.moveVector != NO_DIRECTION:
 		cameraMove()
 
 func manageReach():
 	if controlledCreature:
-		$Inspector.get_node("Indicator").position = $Inspector.position + Vector2(controllerState.reach_vector)
-		if controllerState.reach_vector != NO_DIRECTION:
-			$Inspector.get_node("Indicator").visible = true
-		else:
-			$Inspector.get_node("Indicator").visible = false
+		if !indicator.is_playing():
+			indicator.position = Vector2(controllerState.reachVector)
+			if controllerState.reachVector != NO_DIRECTION:
+				indicator.visible = true
+			else:
+				indicator.visible = false
 	else:
-		if controllerState.reach_vector != NO_DIRECTION:
-			# TODO add dampening logic like movement
-			$Inspector.position += Vector2(controllerState.reach_vector)
+		if controllerState.reachVector != NO_DIRECTION:
+			globalMoveInspector()
+		
+var processingGlobalInspectorMove = false
+
+func globalMoveInspector():
+	if !processingGlobalInspectorMove:
+		inspector.position += Vector2(controllerState.reachVector)
+		processingGlobalInspectorMove = true
+		await get_tree().create_timer(0.1).timeout
+		processingGlobalInspectorMove = false
 
 ## called when no controlledCreature is being controlled
 func cameraMove() -> void:
-	var cameraSpeed: float = float(currentZoomIndex + 1) / zooms.size()
-	%Camera.cameraTarget.position += Vector2(controllerState.move_vector) * cameraSpeed
+	var cameraSpeed: float = float(currentZoomIndex + 1) / (100 * zooms.size())
+	%Camera.cameraTarget.position += Vector2(controllerState.moveVector) * cameraSpeed
 
 ## bring Inspector to center of screen, show if hidden
 func focusInspectorCenter() -> void:
 	var positionToSnapTo: Vector2 = %Camera.position.snapped(Vector2(TILE_SIZE))
 	# hide if double-tapped basically
-	if $Inspector.visible&&$Inspector.position == positionToSnapTo:
-		$Inspector.hide()
+	if inspector.visible&&inspector.position == positionToSnapTo:
+		inspector.hide()
 		return
 
-	$Inspector.position = positionToSnapTo
-	$Inspector.show()
+	inspector.position = positionToSnapTo
+	inspector.show()
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	# event key was just pressed
@@ -139,22 +147,22 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				controllerState.move_vector.y += - TILE_SIZE.y
+				controllerState.moveVector.y += - TILE_SIZE.y
 			keyMap.move_left:
-				controllerState.move_vector.x += - TILE_SIZE.x
+				controllerState.moveVector.x += - TILE_SIZE.x
 			keyMap.move_down:
-				controllerState.move_vector.y += TILE_SIZE.y
+				controllerState.moveVector.y += TILE_SIZE.y
 			keyMap.move_right:
-				controllerState.move_vector.x += TILE_SIZE.x
+				controllerState.moveVector.x += TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				controllerState.reach_vector.y += - TILE_SIZE.y
+				controllerState.reachVector.y += - TILE_SIZE.y
 			keyMap.reach_left:
-				controllerState.reach_vector.x += - TILE_SIZE.x
+				controllerState.reachVector.x += - TILE_SIZE.x
 			keyMap.reach_down:
-				controllerState.reach_vector.y += TILE_SIZE.y
+				controllerState.reachVector.y += TILE_SIZE.y
 			keyMap.reach_right:
-				controllerState.reach_vector.x += TILE_SIZE.x
+				controllerState.reachVector.x += TILE_SIZE.x
 			# select
 			keyMap.select:
 				selectChanged(true)
@@ -163,27 +171,30 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				focusInspectorCenter()
 			# sprinting
 			keyMap.toggle_sprint:
-				controllerState.sprint_held = !controllerState.sprint_held
+				controllerState.sprintHeld = !controllerState.sprintHeld
+			# escape
+			keyMap.escape:
+				releaseControl()
 	elif event.is_released():
 		match event.keycode:
 			# moveVector
 			keyMap.move_up:
-				controllerState.move_vector.y -= - TILE_SIZE.y
+				controllerState.moveVector.y -= - TILE_SIZE.y
 			keyMap.move_left:
-				controllerState.move_vector.x -= - TILE_SIZE.x
+				controllerState.moveVector.x -= - TILE_SIZE.x
 			keyMap.move_down:
-				controllerState.move_vector.y -= TILE_SIZE.y
+				controllerState.moveVector.y -= TILE_SIZE.y
 			keyMap.move_right:
-				controllerState.move_vector.x -= TILE_SIZE.x
+				controllerState.moveVector.x -= TILE_SIZE.x
 			# reachVector
 			keyMap.reach_up:
-				controllerState.reach_vector.y -= - TILE_SIZE.y
+				controllerState.reachVector.y -= - TILE_SIZE.y
 			keyMap.reach_left:
-				controllerState.reach_vector.x -= - TILE_SIZE.x
+				controllerState.reachVector.x -= - TILE_SIZE.x
 			keyMap.reach_down:
-				controllerState.reach_vector.y -= TILE_SIZE.y
+				controllerState.reachVector.y -= TILE_SIZE.y
 			keyMap.reach_right:
-				controllerState.reach_vector.x -= TILE_SIZE.x
+				controllerState.reachVector.x -= TILE_SIZE.x
 			# select
 			keyMap.select:
 				selectChanged(false)
@@ -198,6 +209,3 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			keyMap.camera_zoom_out:
 				currentZoomIndex = clamp(currentZoomIndex + 1, 0, zooms.size() - 1)
 				%Camera.targetZoom = zooms[currentZoomIndex]
-			# reaching notification
-			keyMap.reach_right, keyMap.reach_down, keyMap.reach_up, keyMap.reach_left:
-				manageReach()
