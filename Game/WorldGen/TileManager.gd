@@ -4,6 +4,7 @@ class_name TileManager
 const TILE_SIZE := Vector2i(64, 64)
 const CHUNK_SIZE := Vector2i(16, 16)
 
+## Function to return tile in scene tree, print if tile not found or chunk not loaded
 func getTile(tileCoordinates: Vector2i) -> Tile:
 	var chunkCords = (tileCoordinates - CHUNK_SIZE / 2).snapped(CHUNK_SIZE)
 	var foundTile = get_node_or_null("(%s, %s)/(%s, %s)" % [chunkCords.x, chunkCords.y, tileCoordinates.x, tileCoordinates.y])
@@ -33,3 +34,8 @@ func isDiagNeighbor(loc1: Vector2i, loc2: Vector2i) -> bool:
 	if abs(dx) == abs(dy):
 		return true
 	return false
+
+# TODO keep track of animated events on tiles, for example MINING
+# Spawn a AnimatedSprite2D when an event is taking place on a tile
+func spawnEffect(tileCoordinates: Vector2i) -> void:
+	var tile = getTile(tileCoordinates)
