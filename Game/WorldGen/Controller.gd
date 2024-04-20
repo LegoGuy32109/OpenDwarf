@@ -80,11 +80,12 @@ func releaseControl():
 func selectChanged(isHeld: bool):
 	if controlledCreature:
 		if isHeld:
-			inspector.show()
-			indicator.play("target")
-		else:
-			indicator.stop()
-			indicator.animation = "circle"
+			# inspector.show()
+			# indicator.play("target")
+			controlledCreature.preformAction(inspector.position + indicator.position)
+		# else:
+		# 	indicator.stop()
+			# indicator.animation = "circle"
 	else:
 		if isHeld and inspector.visible:
 			var inspectorTileCoords = Vector2i(inspector.position) / TILE_SIZE
@@ -106,12 +107,12 @@ func processWorldPanning():
 
 func manageReach():
 	if controlledCreature:
-		if !indicator.is_playing():
-			indicator.position = Vector2(controllerState.reachVector)
-			if controllerState.reachVector != NO_DIRECTION:
-				indicator.visible = true
-			else:
-				indicator.visible = false
+		# if !indicator.is_playing():
+		indicator.position = Vector2(controllerState.reachVector)
+		if controllerState.reachVector != NO_DIRECTION:
+			indicator.visible = true
+		else:
+			indicator.visible = false
 	else:
 		if controllerState.reachVector != NO_DIRECTION:
 			globalMoveInspector()

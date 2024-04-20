@@ -1,3 +1,79 @@
-[gd_scene format=3 uid="uid://g6wutjuryegr"]
+[gd_scene load_steps=11 format=3 uid="uid://dahd2xia3rudv"]
 
-[node name="TileEffect" type="Node2D"]
+[ext_resource type="Texture2D" uid="uid://csda1cahwojjs" path="res://Assets/UI/Circle.png" id="1_esau1"]
+[ext_resource type="Texture2D" uid="uid://dkmwvv88j4jm8" path="res://Assets/UI/SelectLarge.png" id="2_t7he1"]
+[ext_resource type="Texture2D" uid="uid://ddmx1rienpemc" path="res://Assets/UI/SelectMed.png" id="3_nxvcu"]
+[ext_resource type="Texture2D" uid="uid://bvbynjr8fykqd" path="res://Assets/UI/SelectSmall.png" id="4_ic801"]
+[ext_resource type="Texture2D" uid="uid://p5cirv5uf2ii" path="res://Assets/UI/Diamond.png" id="5_vu308"]
+[ext_resource type="Texture2D" uid="uid://v68goicemugq" path="res://Assets/UI/Square.png" id="6_0cqsv"]
+[ext_resource type="Texture2D" uid="uid://bj3tf0lker2n7" path="res://Assets/UI/TargetLarge.png" id="7_bgssq"]
+[ext_resource type="Texture2D" uid="uid://dprcbct5waaqj" path="res://Assets/UI/TargetSmall.png" id="8_qp7d1"]
+[ext_resource type="Script" path="res://Game/Tile/TileEffect.gd" id="9_hbhkq"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_amidq"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_esau1")
+}],
+"loop": true,
+"name": &"circle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_t7he1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_nxvcu")
+}, {
+"duration": 1.0,
+"texture": ExtResource("4_ic801")
+}, {
+"duration": 1.0,
+"texture": ExtResource("1_esau1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_vu308")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_0cqsv")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_bgssq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_qp7d1")
+}],
+"loop": false,
+"name": &"default",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("2_t7he1")
+}, {
+"duration": 1.0,
+"texture": ExtResource("3_nxvcu")
+}],
+"loop": true,
+"name": &"select",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("7_bgssq")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_qp7d1")
+}],
+"loop": true,
+"name": &"target",
+"speed": 3.0
+}]
+
+[node name="TileEffect" type="AnimatedSprite2D"]
+modulate = Color(1, 1, 1, 0.580392)
+sprite_frames = SubResource("SpriteFrames_amidq")
+animation = &"target"
+script = ExtResource("9_hbhkq")

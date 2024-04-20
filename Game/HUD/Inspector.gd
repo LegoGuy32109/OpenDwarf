@@ -14,8 +14,6 @@ var currentLoc = Vector2(0, 0)
 
 var timers: Dictionary = {}
 
-
-
 var controllerState: ControllerState = ControllerState.new()
 
 var keyMap: Dictionary = {

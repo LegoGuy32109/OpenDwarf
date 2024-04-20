@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Pinned File",
+      "type": "godot",
+      "request": "launch",
+      "scene": "pinned",
+      "project": "${workspaceFolder}",
+      "additional_options": "--screen 0 -f"
+    },
+    {
+      "name": "Default Scene",
+      "type": "godot",
+      "request": "launch",
+      "project": "${workspaceFolder}",
+      "debug_collisions": false,
+      "debug_paths": false,
+      "debug_navigation": false,
+      "additional_options": "--screen 0 -f"
+    },
+  ]
+}

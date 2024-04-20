@@ -5,9 +5,10 @@ class_name Creature
 # animator.sprite_frames.get_animation_names()
 
 # needs to grab Tiles group for path finding
-@onready var tileManager : TileManager = %Chunks
+@onready var tileManager: TileManager = self.get_parent().get_parent().get_node("Chunks")
+# BUG %Chunks doesn't work!?!?!
 
-var brainDisabled : bool = false
+var brainDisabled: bool = false
 var externalController: Controller
 
 var processingMovement: bool = false
@@ -27,17 +28,16 @@ var staminaMax: float = 100.0
 var moveStamCost := 1.0
 var restStamAmt := 0.1
 
-
 ## When controlled, react based on controller state
 func processExternalInput(externalControllerState: ControllerState):
 	controllerState = externalControllerState
 
 	# movement logic WASD (ESDF)
-	if controllerState.moveVector != NO_DIRECTION && !processingMovement:
+	if controllerState.moveVector != NO_DIRECTION&&!processingMovement:
 		processMovementRequest()
 
 	# stamina logic
-	if !moving && staminaExhaustion > 0.0:
+	if !moving&&staminaExhaustion > 0.0:
 		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
 		# exhaustionMeter.visible = staminaExhaustion > 0.0
 
@@ -51,6 +51,7 @@ func processExternalInput(externalControllerState: ControllerState):
 
 		# exhaustionMeter.value = staminaExhaustion
 
+## Creature is attempting to move based on moveVector
 func processMovementRequest() -> void:
 	processingMovement = true
 
@@ -76,6 +77,16 @@ func processMovementRequest() -> void:
 		moving = false
 
 	processingMovement = false
+
+## Creature is attempting to preform an action based on a location
+func preformAction(globalPosition: Vector2):
+	# based on held tool, determine action
+
+	# based on target tile, determine type of action
+
+	var tile: Tile = tileManager.getTile(globalPosition)
+	if !tile.traversable:
+		tileManager.tileAction(tile, 'mine')
 
 func control():
 	print("I am being controlled")
