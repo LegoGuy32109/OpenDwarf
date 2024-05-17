@@ -24,7 +24,7 @@ func _init(params: Dictionary) -> void:
 		rootOrgan = _constructBodyFromObj(params)
 
 ## Recursively traverse a body tree converting Dictionary/Object -> Organs 
-func _constructBodyFromObj(obj: Dictionary)->Organ:
+func _constructBodyFromObj(obj: Dictionary) -> Organ:
 	var organInfo = obj.duplicate()
 	organInfo.erase(XMLData.NODE_FIELD)
 	organInfo.erase(XMLData.CHILDREN_FIELD)
@@ -40,9 +40,9 @@ func _constructBodyFromObj(obj: Dictionary)->Organ:
 				connectionInfo.erase(XMLData.CHILDREN_FIELD)
 				# create a vessel object containing necessary info to make a connection
 				child[XMLData.CHILDREN_FIELD].reduce(
-					func(vessels, connecChild): 
+					func(vessels, connecChild):
 						if connecChild[XMLData.NODE_FIELD] == "vessel":
-							vessels[connecChild.name] = float(connecChild.value)
+							vessels[connecChild.name]=float(connecChild.value)
 						return vessels
 				, {})
 				
@@ -64,7 +64,7 @@ func _constructBodyFromObj(obj: Dictionary)->Organ:
 	return organ
 
 ## return all information about the body in an organ tree, including organ presets
-func getBodyInfo()->Dictionary:
+func getBodyInfo() -> Dictionary:
 	var organTree := _saveBodyToObj()
 	var presetsAsObj := _savePresetsToObj()
 	return {
@@ -76,7 +76,7 @@ func getBodyInfo()->Dictionary:
 	}
 
 ## recursive helper function to get the organ tree for [getBodyInfo]
-func _saveBodyToObj(organ: Organ = rootOrgan)->Dictionary:
+func _saveBodyToObj(organ: Organ=rootOrgan) -> Dictionary:
 	var outputObj: Dictionary = organ.getInfo()
 	outputObj[XMLData.NODE_FIELD] = "organ"
 	
@@ -103,7 +103,7 @@ func _saveBodyToObj(organ: Organ = rootOrgan)->Dictionary:
 	return outputObj
 
 ## helper function to get the presets in [XMLData] readable form
-func _savePresetsToObj()->Dictionary:
+func _savePresetsToObj() -> Dictionary:
 	if presets.is_empty():
 		return {}
 	var output := {
@@ -130,8 +130,8 @@ func _savePresetsToObj()->Dictionary:
 		var presetObj := {
 			XMLData.NODE_FIELD: "connection",
 			"preset": presetName,
-			"type": Connection.TYPE.keys()[presets[presetName].type].to_lower(),
-			XMLData.CHILDREN_FIELD: [], 
+			"type": Connection.Type.keys()[presets[presetName].type].to_lower(),
+			XMLData.CHILDREN_FIELD: [],
 		}
 
 		# get all vessel names, they're every attribute that isn't type
@@ -144,13 +144,13 @@ func _savePresetsToObj()->Dictionary:
 				"name": keyName,
 				"value": presets[presetName][keyName]
 			}
-			presetObj[XMLData.CHILDREN_FIELD].push_back(vesselObj)	
+			presetObj[XMLData.CHILDREN_FIELD].push_back(vesselObj)
 
 		output[XMLData.CHILDREN_FIELD].push_back(presetObj)
 	return output
 
 ## Find all hearts in the body
-func getAllHearts()->Array[Organ]:
+func getAllHearts() -> Array[Organ]:
 	var hearts: Array[Organ] = []
 	for organ in organs:
 		if organ.isHeart:
@@ -167,12 +167,12 @@ func getOrgansByVolume():
 
 ## Must be ran in initialization from rootOrgan if chain of limbs
 func _traverseBody(organ: Organ):
-	organ.findIfInternal() ## TODO might need to remove this, uneccesary. 
+	organ.findIfInternal() # # TODO might need to remove this, uneccesary.
 	organs.push_back(organ)
 	for connection in organ.connections:
 		_traverseBody(connection.linkTo)
 
-func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0) -> String:
+func getGraph(withVolume: bool=false, organ: Organ=rootOrgan, levelsDeep=0) -> String:
 	var buildLog: String = ""
 	if (levelsDeep == 0):
 		buildLog += "Legend\nBRAIN 🧠\nORGAN 🫁\nHEART 🫀\nNEEDS BLOOD 🩸\n"
@@ -182,7 +182,7 @@ func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0
 		depth += "-"
 	
 	var isBrain = ""
-	if(levelsDeep == 0):
+	if (levelsDeep == 0):
 		isBrain = "🧠"
 	
 	var isOrgan = ""
@@ -190,7 +190,7 @@ func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0
 		isOrgan = "🫁"
 	
 	var isHeart = ""
-	if(organ.isHeart):
+	if (organ.isHeart):
 		isHeart = "🫀"
 	
 	var bloodMessage = ""
@@ -201,9 +201,9 @@ func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0
 		ConnectionToHeart.NONE:
 			bloodMessage = ""
 		ConnectionToHeart.DISCONNECTED:
-			bloodMessage="❌🩸"
+			bloodMessage = "❌🩸"
 		var newCase:
-			bloodMessage=" UNCHECKED ConnectionToHeart case: %s" % newCase
+			bloodMessage = " UNCHECKED ConnectionToHeart case: %s" % newCase
 			printerr("%s: %s" % [organ.name, bloodMessage])
 	
 	buildLog += "\n%s%s %s%s%s%s" % \
@@ -211,15 +211,15 @@ func getGraph(withVolume: bool = false, organ: Organ = rootOrgan, levelsDeep = 0
 	
 	if withVolume:
 		buildLog += "\n%s%s m^3" % [depth, organ.volume]
-		buildLog += "\n%s%s cm^3\n" % [depth, organ.volume*1_000_000]
+		buildLog += "\n%s%s cm^3\n" % [depth, organ.volume * 1_000_000]
 	
 	for connection in organ.getAllConnections():
-		buildLog += getGraph(withVolume, connection.linkTo, levelsDeep+1)
+		buildLog += getGraph(withVolume, connection.linkTo, levelsDeep + 1)
 	
 	return buildLog
 
 ## TODO traverse artery networks
-func getBloodStatus(organ: Organ)-> ConnectionToHeart:
+func getBloodStatus(organ: Organ) -> ConnectionToHeart:
 	## hard coded right now, will fix later
 	if (not organ.primaryConnection):
 		return ConnectionToHeart.CONNECTED

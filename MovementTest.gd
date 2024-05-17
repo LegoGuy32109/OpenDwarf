@@ -21,14 +21,13 @@ func _ready() -> void:
 	altitude.frequency = 0.01
 
 func _process(_delta: float) -> void:
-	# if Engine.get_process_frames() % 3 == 0:
 	var playerPosInWorld = Vector2i(player.position / Vector2(TILE_SIZE))
 	generate_chunk(playerPosInWorld)
 	unload_distant_chunks(playerPosInWorld)
 	
 func getDistance(p1: Vector2, p2: Vector2):
 	var difference = p1 - p2
-	return sqrt(difference.x * * 2 + difference.y * * 2)
+	return sqrt(pow(difference.x, 2) + pow(difference.y, 2))
 
 func generate_chunk(pos: Vector2i) -> void:
 	var noiseRange := 5
@@ -38,7 +37,7 @@ func generate_chunk(pos: Vector2i) -> void:
 			for y in range(CHUNK_SIZE.y):
 				var cordInWord := pos + Vector2i(x, y) - CHUNK_SIZE / 2
 				var cellAlreadyExists = self.get_node_or_null("TILE%s"% str(cordInWord))
-				if !cellAlreadyExists:
+				if not cellAlreadyExists:
 					var moist = moisture.get_noise_2d(
 						pos.x - (TILE_SIZE.x / 2) + x, pos.y - (TILE_SIZE.y / 2) + y
 					) * noiseRange

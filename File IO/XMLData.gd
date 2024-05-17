@@ -1,6 +1,5 @@
-extends Node
-
 class_name XMLData
+extends Node
 
 #@export_file("*.json") var filePath: String = "res://_extra/human_male.json"
 
@@ -276,7 +275,7 @@ func readFile(filepath: String)-> Dictionary: # return custom error probably
 				return {}
 			
 			var poppedTag: Dictionary = nodeStack.pop_back()
-			if !poppedTag:
+			if not poppedTag:
 				printerr("ending tag found before opening tag.\nLine %s: (%s)" % [
 					parser.get_current_line()+1,
 					fileLines[parser.get_current_line()]

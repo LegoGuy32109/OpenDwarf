@@ -16,7 +16,7 @@ var pathfinder: Pathfinder
 
 var rockOrNah = FastNoiseLite.new()
 
-@onready var chunkParent: Node = %Chunks
+@onready var chunkParent: Node = %TileManager
 var loadedChunks: Dictionary = {}
 
 @onready var playerNode: Node2D = %Camera
@@ -31,7 +31,7 @@ func _ready():
 	rockOrNah.frequency = 0.07
 
 	spawnChunks()
-	_addEntities(Vector2(-1, 0))
+	_addEntities(Vector2( - 1, 0))
 
 func _process(_delta: float) -> void:
 	# if playerNode:
@@ -65,6 +65,7 @@ func generateChunk(northWestCorner: Vector2i):
 			tile.name = "(%s, %s)" % [xCord, yCord]
 			tile.position = Vector2(xCord, yCord) * Vector2(TILE_SIZE)
 			tile.coordinates = Vector2i(xCord, yCord)
+			tile.tileManager = %TileManager
 			chunk.call_deferred("add_child", tile)
 			if noiseValue < 0.0:
 				tile.traversable = true
@@ -121,13 +122,13 @@ func _outbound(tile: Tile, _msg: String="normal") -> void:
 		return
 
 	var reigonStart := Vector2i(
-		selectedCords[0].x if selectedCords[0].x < selectedCords[1].x else selectedCords[1].x,
-		selectedCords[0].y if selectedCords[0].y < selectedCords[1].y else selectedCords[1].y
+			selectedCords[0].x if selectedCords[0].x < selectedCords[1].x else selectedCords[1].x,
+			selectedCords[0].y if selectedCords[0].y < selectedCords[1].y else selectedCords[1].y
 	)
 
 	var reigonStop := Vector2i(
-		selectedCords[0].x if selectedCords[0].x > selectedCords[1].x else selectedCords[1].x,
-		selectedCords[0].y if selectedCords[0].y > selectedCords[1].y else selectedCords[1].y
+			selectedCords[0].x if selectedCords[0].x > selectedCords[1].x else selectedCords[1].x,
+			selectedCords[0].y if selectedCords[0].y > selectedCords[1].y else selectedCords[1].y
 	)
 	selectedCords[0] = reigonStart
 	selectedCords[1] = reigonStop
@@ -139,6 +140,7 @@ func _outbound(tile: Tile, _msg: String="normal") -> void:
 	selectedCords.clear()
 
 # the function below is only used in _outbound above
+# FIX currently broken from chunks
 func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
 	var availableTiles: Array[Tile] = []
 
@@ -147,12 +149,8 @@ func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
 
 	for xIndex in range(xdist):
 		for yIndex in range(ydist):
-			(
-				availableTiles
-				.append(
-					# FIX currently broken from chunks
+			availableTiles.append(
 					chunkParent.getTileAt(Vector2i(region[0].x + xIndex, region[0].y + yIndex))
-				)
 			)
 
 	return availableTiles
@@ -160,6 +158,7 @@ func getTilesInRegion(region: Array[Vector2i]) -> Array[Tile]:
 ## Spawn a creature at given tile coordinate
 func addCreature(coords: Vector2i):
 	var creature: Creature = creatureScene.instantiate()
-	%Creatures.add_child(creature)
+	creature.tileManager = %TileManager
 	creature.tileCoordinates = coords
 	creature.position = Vector2(coords * TILE_SIZE)
+	%Creatures.add_child(creature)

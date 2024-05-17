@@ -23,7 +23,7 @@ func constructHuman() -> Organ:
 	var stomach = Organ.new({"id": "Stomach", "volume": 0.00044758911827, "weight": 1.75})
 	var liver = Organ.new({"id": "Liver", "volume": 0.00147630751599, "weight": 1.5})
 	var spleen = Organ.new({"id": "Spleen", "volume": 0.00014384483802, "weight": 0.175})
-	var pancreas = Organ.new({"id": "Pancreas", "volume":  0.00009726657299, "weight": 0.085})
+	var pancreas = Organ.new({"id": "Pancreas", "volume": 0.00009726657299, "weight": 0.085})
 	
 	var armRU = Organ.new({"limbName": "Right Arm", "id": "ArmRU", "name": "Right Upper Arm", "volume": 0.00300435884856, "weight": 3})
 	var armRL = Organ.new({"limbName": "Right Arm", "id": "ArmRL", "name": "Right Lower Arm", "volume": 0.003882199293, "weight": 1.9})
@@ -75,7 +75,7 @@ func constructHuman() -> Organ:
 		"nerve": 1.0,
 		"artery": 1.0,
 		# indicates this is an internal organ being the parent of an external organ
-		"type": Connection.TYPE.INSIDE_OF, 
+		"type": Connection.Type.INSIDE_OF,
 	}
 	
 	# Head, Neck, [Torso], [Arm], [Hand], [Leg], [Foot]
@@ -84,33 +84,33 @@ func constructHuman() -> Organ:
 		"muscle": 1.0,
 		"nerve": 1.0,
 		"artery": 1.0,
-		"type": Connection.TYPE.EXTERNAL,
+		"type": Connection.Type.EXTERNAL,
 	}
 	# Eye, Mouth, Finger, Thumb, Toe
 	var humanExtremity = {
 		"tissue": 1.0,
 		"muscle": 1.0,
 		"nerve": 1.0,
-		"type": Connection.TYPE.EXTERNAL,
+		"type": Connection.Type.EXTERNAL,
 	}
 	# Ear, Nose
 	var humanMayWiggle = {
 		"tissue": 1.0,
 		"muscle": 0.2, # influence by genetics or random chance
 		"nerve": 1.0,
-		"type": Connection.TYPE.EXTERNAL,
+		"type": Connection.Type.EXTERNAL,
 	}
 	# Stomach, Liver, Spleen, Pancreas
 	var humanOrgan = {
 		"tissue": 1.0,
-		"type": Connection.TYPE.INTERNAL,
+		"type": Connection.Type.INTERNAL,
 	}
 	# Heart, Lung, Guts
-	var humanMuscleOrgan = { 
+	var humanMuscleOrgan = {
 		"tissue": 1.0,
 		"muscle": 1.0,
 		"artery": 1.0,
-		"type": Connection.TYPE.INTERNAL,
+		"type": Connection.Type.INTERNAL,
 	}
 	#endregion
 	
@@ -200,31 +200,31 @@ func _ready() -> void:
 			"muscle": 1.0,
 			"nerve": 1.0,
 			"artery": 1.0,
-			"type": Connection.TYPE.EXTERNAL,
+			"type": Connection.Type.EXTERNAL,
 		},
 		"humanExtremity": {
 			"tissue": 1.0,
 			"muscle": 1.0,
 			"nerve": 1.0,
-			"type": Connection.TYPE.EXTERNAL,
+			"type": Connection.Type.EXTERNAL,
 		},
 		"humanMayWiggle": {
 			"tissue": 1.0,
 			"muscle": 0.2,
 			"nerve": 1.0,
-			"type": Connection.TYPE.EXTERNAL,
+			"type": Connection.Type.EXTERNAL,
 		},
 		"humanOrgan": {
 			"tissue": 1.0,
-			"type": Connection.TYPE.INTERNAL,
+			"type": Connection.Type.INTERNAL,
 		},
-		"humanMuscleOrgan": { 
+		"humanMuscleOrgan": {
 			"tissue": 1.0,
 			"muscle": 1.0,
 			"artery": 1.0,
-			"type": Connection.TYPE.INTERNAL,
+			"type": Connection.Type.INTERNAL,
 		}
-	}	
+	}
 
 	var xmlParser = XMLData.new()
 	var fileParams = body.getBodyInfo()

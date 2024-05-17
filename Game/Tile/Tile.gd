@@ -1,67 +1,61 @@
-extends Node2D
 class_name Tile
+extends Node2D
+## Static location of space, unit of the World
+##
+## [Tile]s are generated in chunks and can be modified by Creatures.
+## Creatures navigate through traversable tiles. 
 
 @onready var sprite: Sprite2D = $Sprite
-var rockImg: Texture2D = load("res://Assets/Tiles/Rock.png")
-var groundImg: Texture2D = load("res://Assets/Tiles/Ground.png")
 
-var coordinates: Vector2i = Vector2i()
-var tooltipText: String = name
-
-var mouseInPanel: bool = false
-var beenEdited: bool = false
+# parameters set when instantiated
+var coordinates: Vector2i
+var tooltipText: String
+var tileManager: TileManager
 
 var movementCost: float = 0.5
 var traversable: bool = false
 
-var orderedToMine: bool = false
 var percentMined: float = 0.0
 
+## dictonary of [TileEffect]s with actions as keys
+var effects := {}
 
 func _ready() -> void:
+	# TODO more complicated world tile generation instead of a bitmap
 	if traversable:
 		setToGround()
 	else:
 		setToRock()
 
-
-func labelMineable() -> void:
-	if traversable:
-		print("I can't be mined!!")
-		return
-
-	orderedToMine = true
-
-
-func removeMineable() -> void:
-	if orderedToMine:
-		orderedToMine = false
-
-
 func mine() -> void:
-	print("%s was mined a bit" % name)
-	# take in entity info, for like mining proficency
-	percentMined += 0.2  # randomize in some way?
+	# IDEA randomize in some way?
+	# IDEA take in entity info, for like mining proficency
+	percentMined += 0.2
 	if percentMined >= 1.0 and not traversable:
-		removeMineable()
 		setToGround()
-		# dropItemChance()
-
 
 func setToRock() -> void:
-	sprite.texture = rockImg
-	tooltipText = "Rock"
 	traversable = false
-
+	sprite.texture = tileManager.tileSprites.rock
+	tooltipText = "Rock"
 
 func setToGround() -> void:
 	traversable = true
-	sprite.texture = groundImg
+	sprite.texture = tileManager.tileSprites.ground
 	tooltipText = "Ground"
 
-# func dropItemChance() -> void:
-# 	# make this dependant on seed in future
-# 	if randf() > 0.3:
-# 		items.addItem("rock")
-# 	if randf() > 0.5:
-# 		items.addItem("flint")
+func addEffect(action: String, creature: Creature):
+	## IDEA logic for actions should be handled here?
+
+	if effects.has(action):
+		var effect: TileEffect = effects[action]
+		effect.creaturesContriburing.append(creature)
+	else:
+		var effect: TileEffect = tileManager.tileEffectScene.instantiate()
+		effect.effectName = action
+		self.add_child(effect)
+		effect.playAnim()
+		effect.creaturesContriburing.append(creature)
+		effects[action] = effect
+
+

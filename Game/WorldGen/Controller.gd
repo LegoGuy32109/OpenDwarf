@@ -17,10 +17,10 @@ var currentZoomIndex = 2
 
 var currentTileCords := Vector2i(0, 0)
 
-@onready var tileManager: TileManager = %Chunks
+@onready var tileManager: TileManager = %TileManager
 # how far to move player character to align on tile size
-@onready var TILE_SIZE = %Chunks.TILE_SIZE
-@onready var CHUNK_SIZE = %Chunks.CHUNK_SIZE
+@onready var TILE_SIZE = %TileManager.TILE_SIZE
+@onready var CHUNK_SIZE = %TileManager.CHUNK_SIZE
 
 const NO_DIRECTION = Vector2i(0, 0)
 

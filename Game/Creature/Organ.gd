@@ -32,7 +32,7 @@ func _init(params: Dictionary):
 	name = params.id # will be overwritten if exists in pramas
 	
 	var propList = self.get_property_list().map(
-		func (prop: Dictionary): return prop.name
+		func(prop: Dictionary): return prop.name
 	)
 	for prop in propList:
 		if params.has(prop):
@@ -41,7 +41,7 @@ func _init(params: Dictionary):
 	primaryConnection = null
 
 ## Return attributes of organ, not it's connection, as a Dictionary
-func getInfo(all: bool = false) -> Dictionary:
+func getInfo(all: bool=false) -> Dictionary:
 	var allInfo: Dictionary = {
 		"name": name,
 		"id": id,
@@ -70,7 +70,7 @@ func findIfInternal() -> bool:
 		return isInternal
 	else:
 		for connection in primaryConnection.linkFrom.connections:
-			if (connection.type == Connection.TYPE.INTERNAL and connection.linkTo == self):
+			if (connection.type == Connection.Type.INTERNAL and connection.linkTo == self):
 				_isInternal = true
 	isInternal = _isInternal
 	return isInternal
@@ -78,17 +78,17 @@ func findIfInternal() -> bool:
 ## Identify all internal Organs one level down the tree
 func getAllInternalOrgans() -> Array[Organ]:
 	var internalOrgans = connections.reduce(
-		func (intOrgans: Array[Organ], connec: Connection): 
-			if connec.type == Connection.TYPE.INTERNAL:
+		func(intOrgans: Array[Organ], connec: Connection):
+			if connec.type == Connection.Type.INTERNAL:
 				intOrgans.append(connec.linkTo)
 	, [])
 
 	# check if parent organ is inside this organ
-	if primaryConnection.type == Connection.TYPE.INSIDE_OF:
+	if primaryConnection.type == Connection.Type.INSIDE_OF:
 		internalOrgans.append(primaryConnection.linkFrom)
 	return internalOrgans
 
 ## Attach a Organ
-func connectOrgan(_organ: Organ, _vesselInfo: Dictionary = {}) -> void:
+func connectOrgan(_organ: Organ, _vesselInfo: Dictionary={}) -> void:
 	var connection = Connection.new(self, _organ, _vesselInfo)
 	connections.append(connection)

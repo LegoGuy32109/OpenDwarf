@@ -8,12 +8,12 @@ class_name Connection
 @export var linkFrom: Organ # dominant organ
 @export var linkTo: Organ # submissive organ
 
-enum TYPE {EXTERNAL, INTERNAL, INSIDE_OF, MAGIC}
-@export var type: TYPE = TYPE.EXTERNAL
+enum Type {EXTERNAL, INTERNAL, INSIDE_OF, MAGIC}
+@export var type: Type = Type.EXTERNAL
 
 # Connections must be made to link two organs together, they cannot be created without two organs. ~Losing a organ will make that connection cease to exist~
 # Actually the connection will still exist, the organ will return null to indicate blood should be shooting everywhere
-func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary = {}):
+func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary={}):
 	linkFrom = _linkFrom
 	
 	_linkTo.primaryConnection = self
@@ -24,13 +24,13 @@ func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary = {}):
 		vessels.tissue = 1.0
 	else:
 		var newVesselInfo: Array = connectionData.keys()
-		for vesselName in newVesselInfo: 
+		for vesselName in newVesselInfo:
 			if connectionData[vesselName] is float:
 				vessels[vesselName] = connectionData[vesselName]
 		
 		if connectionData.has("type"):
 			assert(
-				connectionData.type is int or connectionData.type is String, 
+				connectionData.type is int or connectionData.type is String,
 				"incorrect type for 'type', looking for int or string."
 			)
 			# check if passing enum or string
@@ -39,15 +39,15 @@ func _init(_linkFrom: Organ, _linkTo: Organ, connectionData: Dictionary = {}):
 			elif connectionData.type is String:
 				# determine enum value by converting type label to uppercase
 				var enumName = connectionData.type.to_upper()
-				type = TYPE[enumName]
+				type = Type[enumName]
 		
-		if vessels.has("artery") && vessels.artery > 0.0:
+		if vessels.has("artery")&&vessels.artery > 0.0:
 			linkFrom.needsBlood = true
 			linkTo.needsBlood = true
 
 ## Return info about the connection itself as a Dictionary
-func getInfo()->Dictionary:
+func getInfo() -> Dictionary:
 	var infoObj := {}
 	infoObj.vessels = vessels
-	infoObj["type"] = TYPE.keys()[type].to_lower()
+	infoObj["type"] = Type.keys()[type].to_lower()
 	return infoObj

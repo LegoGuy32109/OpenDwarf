@@ -1,12 +1,15 @@
-extends Node2D
 class_name Creature
+extends Node2D
+## Basic 'Entity' in the game
+##
+## Can be controlled by players or operates independantly.
 
 @onready var animator: AnimatedSprite2D = $Frames
 # animator.sprite_frames.get_animation_names()
 
-# needs to grab Tiles group for path finding
-@onready var tileManager: TileManager = self.get_parent().get_parent().get_node("Chunks")
-# BUG %Chunks doesn't work!?!?!
+# assigned when instantiated
+## reference to tiles for navigation and interaction
+var tileManager: TileManager
 
 var brainDisabled: bool = false
 var externalController: Controller
@@ -33,11 +36,11 @@ func processExternalInput(externalControllerState: ControllerState):
 	controllerState = externalControllerState
 
 	# movement logic WASD (ESDF)
-	if controllerState.moveVector != NO_DIRECTION&&!processingMovement:
+	if controllerState.moveVector != NO_DIRECTION and processingMovement:
 		processMovementRequest()
 
 	# stamina logic
-	if !moving&&staminaExhaustion > 0.0:
+	if not moving and staminaExhaustion > 0.0:
 		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
 		# exhaustionMeter.visible = staminaExhaustion > 0.0
 
@@ -58,7 +61,7 @@ func processMovementRequest() -> void:
 	staminaExhaustion += moveStamCost if controllerState.sprintHeld else moveStamCost / 2.5
 
 	# input delay for diagonal movement
-	if !moving:
+	if not moving:
 		await get_tree().create_timer(0.06).timeout
 
 	moving = true
@@ -80,13 +83,14 @@ func processMovementRequest() -> void:
 
 ## Creature is attempting to preform an action based on a location
 func preformAction(globalPosition: Vector2):
+	var tile: Tile = tileManager.getTile(globalPosition)
+	var actionToPreform: Callable = tileManager.tileAction.bind(self, tile)
+
 	# based on held tool, determine action
 
 	# based on target tile, determine type of action
-
-	var tile: Tile = tileManager.getTile(globalPosition)
-	if !tile.traversable:
-		tileManager.tileAction(tile, 'mine')
+	if not tile.traversable:
+		actionToPreform.call('mine')
 
 func control():
 	print("I am being controlled")
