@@ -15,7 +15,6 @@ var brainDisabled: bool = false
 var externalController: Controller
 
 var processingMovement: bool = false
-var moving: bool = false
 
 const TILE_SIZE = Vector2i(64, 64)
 
@@ -31,18 +30,21 @@ var staminaMax: float = 100.0
 var moveStamCost := 1.0
 var restStamAmt := 0.1
 
+## keep track of current actions being taken
+var actions := {}
+
 ## When controlled, react based on controller state
 func processExternalInput(externalControllerState: ControllerState):
 	controllerState = externalControllerState
 
 	# movement logic WASD (ESDF)
 	if controllerState.moveVector != NO_DIRECTION and not processingMovement:
+
 		processMovementRequest()
 
 	# stamina logic
-	if not moving and staminaExhaustion > 0.0:
+	if not actions.has("move") and staminaExhaustion > 0.0:
 		staminaExhaustion = max(staminaExhaustion - restStamAmt, 0.0)
-		# exhaustionMeter.visible = staminaExhaustion > 0.0
 
 	if staminaExhaustion >= staminaMax:
 		tileMoveTime = 0.5
@@ -52,24 +54,32 @@ func processExternalInput(externalControllerState: ControllerState):
 		else:
 			tileMoveTime = 0.4
 
-		# exhaustionMeter.value = staminaExhaustion
-
 ## Creature is attempting to move based on moveVector
 func processMovementRequest() -> void:
 	processingMovement = true
 
 	staminaExhaustion += moveStamCost * 2.5 if controllerState.sprintHeld else moveStamCost
 
-	# input delay for diagonal movement
-	if not moving:
+	# input delay for multi-input movement (diagonal)
+	if not actions.has("move"):
 		await get_tree().create_timer(0.06).timeout
 
-	moving = true
-	var singleTween := create_tween()
-	singleTween.tween_property(
-		self, "position", self.position + Vector2(controllerState.moveVector), tileMoveTime
+	var moveTween := create_tween()
+	var destinationWorldCoordinates = self.position + Vector2(controllerState.moveVector)
+	actions["move"] = {
+		"startTile": tileManager.getTile(self.position),
+		"endTile": tileManager.getTile(destinationWorldCoordinates),
+		"moveVector": controllerState.moveVector,
+		"tween": moveTween,
+		"movementTime": tileMoveTime, # perform calculations if necessary
+	}
+	moveTween.tween_property(
+			self,
+			"position",
+			destinationWorldCoordinates,
+			actions.move.movementTime
 	)
-	await singleTween.finished
+	await moveTween.finished
 
 	# could have been interupted since that movement
 
@@ -77,7 +87,7 @@ func processMovementRequest() -> void:
 
 	# no movement input detected
 	if controllerState.moveVector == NO_DIRECTION:
-		moving = false
+		actions.erase("move")
 
 	processingMovement = false
 
