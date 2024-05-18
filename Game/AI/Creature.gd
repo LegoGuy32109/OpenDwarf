@@ -36,7 +36,7 @@ func processExternalInput(externalControllerState: ControllerState):
 	controllerState = externalControllerState
 
 	# movement logic WASD (ESDF)
-	if controllerState.moveVector != NO_DIRECTION and processingMovement:
+	if controllerState.moveVector != NO_DIRECTION and not processingMovement:
 		processMovementRequest()
 
 	# stamina logic
@@ -58,7 +58,7 @@ func processExternalInput(externalControllerState: ControllerState):
 func processMovementRequest() -> void:
 	processingMovement = true
 
-	staminaExhaustion += moveStamCost if controllerState.sprintHeld else moveStamCost / 2.5
+	staminaExhaustion += moveStamCost * 2.5 if controllerState.sprintHeld else moveStamCost
 
 	# input delay for diagonal movement
 	if not moving:
