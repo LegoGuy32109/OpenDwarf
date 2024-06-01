@@ -1,5 +1,9 @@
 class_name TileManager
 extends Node
+## Global coordinater of tiles in world
+##
+## Is interacted with to coordinate actions on tiles
+## Stores tile constants like [TILE_SIZE]
 
 const TILE_SIZE := Vector2i(64, 64)
 const CHUNK_SIZE := Vector2i(16, 16)
