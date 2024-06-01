@@ -61,8 +61,10 @@ func isDiagNeighbor(loc1: Vector2i, loc2: Vector2i) -> bool:
 # TODO allow actions on tilePositions
 # TODO make action type a class to contain allowable tiles action may be preformed on
 ## attempt to preform an action on a tile
-func tileAction(action: String, creature: Creature, tile: Tile):
+func tileAction(action: String, creature: Creature, tile: Tile)->bool:
 	if tile:
 		tile.addEffect(action, creature)
-	else:
-		printerr("Could not find tile for '%s' action" % action)
+		return true
+	
+	printerr("Could not find tile for '%s' action" % action)
+	return false

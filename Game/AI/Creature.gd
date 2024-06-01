@@ -31,7 +31,31 @@ var moveStamCost := 1.0
 var restStamAmt := 0.1
 
 ## keep track of current actions being taken
-var actions := {}
+var actions: Dictionary = {}
+
+func _process(_delta):
+	if actions.is_empty():
+		animator.play("idle")
+	elif actions.has("mine"):
+		animator.play("mine")
+	elif actions.has("move"):
+		animator.play("walk")
+	
+	if controllerState:
+		if controllerState.reachVector:
+			if controllerState.reachVector.x < 0&& not animator.flip_h:
+				animator.flip_h = true
+			elif controllerState.reachVector.x > 0&&animator.flip_h:
+				animator.flip_h = false
+			return
+		if (controllerState.moveVector
+			and actions.has("move")
+			and (actions["move"].endTile.global_position - animator.global_position).length_squared() < 1):
+			if controllerState.moveVector.x < 0&& not animator.flip_h:
+				animator.flip_h = true
+			elif controllerState.moveVector.x > 0&&animator.flip_h:
+				animator.flip_h = false
+			return
 
 ## When controlled, react based on controller state
 func processExternalInput(externalControllerState: ControllerState):
@@ -64,11 +88,18 @@ func processMovementRequest() -> void:
 	if not actions.has("move"):
 		await get_tree().create_timer(0.06).timeout
 
-	var moveTween := create_tween()
 	var destinationWorldCoordinates = self.position + Vector2(controllerState.moveVector)
+	var destinationTile = tileManager.getTile(destinationWorldCoordinates);
+	if not destinationTile or not destinationTile.traversable:
+		processingMovement = false
+		if actions.has("move"):
+			actions.erase("move")
+		return
+
+	var moveTween := create_tween()
 	actions["move"] = {
 		"startTile": tileManager.getTile(self.position),
-		"endTile": tileManager.getTile(destinationWorldCoordinates),
+		"endTile": destinationTile,
 		"moveVector": controllerState.moveVector,
 		"tween": moveTween,
 		"movementTime": tileMoveTime, # perform calculations if necessary
@@ -99,8 +130,19 @@ func preformAction(globalPosition: Vector2):
 	# based on held tool, determine action
 
 	# based on target tile, determine type of action
+	var action: String
 	if not tile.traversable:
-		actionToPreform.call('mine')
+		action = "mine"
+	
+	var actionSuccessful = actionToPreform.call(action)
+
+	if actionSuccessful:
+		actions["mine"] = {
+			"targetTile": tile,
+		}
+	else:
+		# feint 
+		pass
 
 func control():
 	print("I am being controlled")

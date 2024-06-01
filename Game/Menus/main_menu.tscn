@@ -31,7 +31,7 @@ theme_override_constants/separation = 97
 [node name="Label" type="Label" parent="MarginContainer/VBoxContainer"]
 custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
-text = "Welcome to DFclone! 
+text = "Welcome to OpenDwarf! 
 
 SLAM THE GROUND!!"
 label_settings = SubResource("LabelSettings_mntr4")
