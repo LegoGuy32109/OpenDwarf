@@ -1,16 +1,16 @@
+# start the project in development mode
 
 ```
-deno task start
+deno task dev
 ```
 
-This will watch the project directory and restart as necessary.
-
-# To compile wasm
+# Steps to move release build of bevy project into website
 
 ```
- ❯ wasm-bindgen --out-dir ./lib/ --target web ./bevy_wasm/target/wasm32-unknown-unknown/debug/bevy_wasm.wasm
+❯ z bevy_wasm (bevy proj dir)
+❯ cargo build --release --target wasm32-unknown-unknown
+❯ z fresh-test (this dir)
+❯ wasm-bindgen --target web --out-dir static/game ../bevy_wasm/target/wasm32-unknown-unknown/release/bevy_wasm.wasm
+❯ wasm-opt -Oz --strip-debug static/game/bevy_wasm_bg.wasm -o static/game/opt_bevy_wasm.wasm
+❯ brotli -q 11 static/game/opt_bevy_wasm.wasm -f -o static/game/opt_bevy_wasm.wasm.br
 ```
-
-It's not complete, I have that folder and /assets moved to static so I can test it in `game.html`
-Try the webassembly stream apis, and don't forget converting output to br at some point.
-<https://docs.deno.com/runtime/reference/wasm/#using-the-streaming-webassembly-apis>

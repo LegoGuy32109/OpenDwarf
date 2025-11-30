@@ -1,16 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["bevy_wasm", "rs_lib"]
-
-# copied from bevy_wasm
-[profile.dev]
-opt-level = 1
-
-[profile.dev.package."*"]
-opt-level = 3
+members = [
+  "rs_lib",
+]
 
 [profile.release]
-opt-level = "z"
-lto = true
-incremental = true
 codegen-units = 1
+incremental = true
+lto = true
+opt-level = "z"
