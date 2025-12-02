@@ -3,42 +3,61 @@ name = "open_dwarf_lib"
 version = "0.1.0"
 edition = "2024"
 
-# yeah this is a lib now so I can embed it in a browser
 [lib]
 crate-type = ["cdylib"]
 path = "src/lib.rs"
 
-# [[bin]]
-# name = "native"
-# path = "src/main.rs"
+[[bin]]
+name = "open_dwarf_native"
+path = "src/main.rs"
 
 [dependencies]
-bevy = { version = "0.17.3", default-features = false, features = [
-  "default_font",
-  "asset_processor",
-  "async_executor",
-  "bevy_core_pipeline",
-  "bevy_image",
-  "multi_threaded",
-  "bevy_log",
-  "bevy_render",
-  "bevy_sprite",
-  "bevy_sprite_render",
-  "bevy_text",
-  "bevy_ui",
-  "bevy_ui_render",
-  "bevy_winit",
-  "png",
-  "web",
-  "webgl2"
-] }
+bevy = { version = "0.17.3", default-features = false }
 rand = "0.9.2"
 rand_chacha = "0.9.0"
 wasm-bindgen = "0.2.106"
 
 [dev-dependencies]
 bacon = "3.20.1"
-wasm-server-runner = "1.0.0"
+
+[features]
+default = ["native"]
+native = [
+  "bevy/asset_processor",
+  "bevy/async_executor",
+  "bevy/bevy_core_pipeline",
+  "bevy/bevy_image",
+  "bevy/bevy_log",
+  "bevy/bevy_render",
+  "bevy/bevy_sprite",
+  "bevy/bevy_sprite_render",
+  "bevy/bevy_text",
+  "bevy/bevy_ui",
+  "bevy/bevy_ui_render",
+  "bevy/default_font",
+  "bevy/multi_threaded",
+  "bevy/png",
+  "bevy/wayland",
+]
+web = [
+  "bevy/asset_processor",
+  "bevy/async_executor",
+  "bevy/bevy_core_pipeline",
+  "bevy/bevy_image",
+  "bevy/bevy_log",
+  "bevy/bevy_render",
+  "bevy/bevy_sprite",
+  "bevy/bevy_sprite_render",
+  "bevy/bevy_text",
+  "bevy/bevy_ui",
+  "bevy/bevy_ui_render",
+  "bevy/bevy_winit",
+  "bevy/default_font",
+  "bevy/multi_threaded",
+  "bevy/png",
+  "bevy/web",
+  "bevy/webgl2",
+]
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
@@ -50,8 +69,8 @@ opt-level = 3
 
 [profile.release]
 opt-level = "z"
+strip = "symbols"
 lto = true
+panic = "abort"
 incremental = true
 codegen-units = 1
-# panic = "abort"
-# strip = "symbols"

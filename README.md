@@ -8,9 +8,16 @@ deno task dev
 
 ```
 ❯ z game_library (bevy proj dir)
-❯ cargo build --release --target wasm32-unknown-unknown
+❯ cargo build --release --target wasm32-unknown-unknown --features web
 ❯ z fresh-test (this dir)
 ❯ wasm-bindgen --target web --out-dir static/game ../game_library/target/wasm32-unknown-unknown/release/open_dwarf_lib.wasm
 ❯ wasm-opt -Oz --strip-debug static/game/open_dwarf_lib_bg.wasm -o static/game/opt_open_dwarf_lib.wasm
 ❯ brotli -q 11 static/game/opt_open_dwarf_lib.wasm -f -o static/game/opt_open_dwarf_lib.wasm.br
+```
+
+For native iteration on Linux/Wayland:
+
+```
+❯ cd game_library
+❯ cargo run
 ```
