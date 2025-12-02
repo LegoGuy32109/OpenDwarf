@@ -1,0 +1,29 @@
+# bacon.toml
+default_job = "web"
+
+[jobs.web]
+command = ["cargo", "run", "--target", "wasm32-unknown-unknown"]
+need_stdout = true
+# optional: disable watching only default file sets
+default_watch = false
+# set watch dirs/file patterns
+watch = ["src", "assets", "Cargo.toml"]
+# optional: ignore target directory if you want
+ignore = ["target", "wasm32-unknown-unknown"]
+on_change_strategy = "kill_then_restart"
+kill = ["kill", "-s", "INT"]
+
+[jobs.local]
+command = ["cargo", "run"]
+need_stdout = true
+# optional: disable watching only default file sets
+default_watch = false
+# set watch dirs/file patterns
+watch = ["src", "assets", "Cargo.toml"]
+# optional: ignore target directory if you want
+ignore = ["target", "wasm32-unknown-unknown"]
+on_change_strategy = "kill_then_restart"
+kill = ["kill", "-s", "INT"]
+
+[jobs.clippy]
+command = ["cargo", "clippy", "--", "-W", "clippy::pedantic"]

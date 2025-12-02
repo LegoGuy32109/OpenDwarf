@@ -5,8 +5,7 @@
     "dev": "vite",
     "build": "vite build",
     "start": "deno serve -A _fresh/server.js",
-    "update": "deno run -A -r jsr:@fresh/update .",
-    "wasmbuild": "deno run -A jsr:@deno/wasmbuild@0.20"
+    "update": "deno run -A -r jsr:@fresh/update ."
   },
   "lint": {
     "rules": {

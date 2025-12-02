@@ -1,0 +1,6 @@
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"
+rustflags = [
+  "-C",
+  "target-feature=+simd128",
+]
