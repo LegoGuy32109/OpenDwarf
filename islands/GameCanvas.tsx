@@ -7,8 +7,8 @@ export default function Counter() {
         // deno-lint-ignore react-no-danger
         dangerouslySetInnerHTML={{
           __html: `
-import init, { main } from "./game/bevy_wasm.js";
-init("./game/opt_bevy_wasm.wasm.br").then( () => {
+import init, { main } from "./game/open_dwarf_lib.js";
+init("./game/opt_open_dwarf_lib.wasm.br").then( () => {
     main();
 });
 `,
