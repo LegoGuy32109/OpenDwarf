@@ -11,8 +11,11 @@ use bevy::sprite_render::{
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+// Flag toggled from JS to flip the player sprite
+pub static FLIP_PLAYER_SPRITE: AtomicBool = AtomicBool::new(false);
 use crate::components::map_coordinates::MapCoordinates;
 
 const TILE_SIZE_IN_PX: u16 = 64;
@@ -29,6 +32,7 @@ impl Plugin for OpenDwarfPlugins {
       .add_plugins(define_defaults())
       .add_systems(Startup, setup)
       .add_systems(Update, (update_tileset_image, consume_action))
+      .add_systems(Update, process_player_flip)
       .add_systems(FixedUpdate, keyboard_movement)
       // debug systems
       .add_systems(Update, debug_menu)
@@ -130,6 +134,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     Sprite {
       image: dwarf_texture,
       custom_size: Some(Vec2::splat(TILE_SIZE_IN_PX.into())),
+      // start unflipped; JS can flip via wasm_bindgen
+      flip_y: false,
       ..default()
     },
     dwarf_transform,
@@ -397,6 +403,16 @@ fn keyboard_movement(
       first_key: Some(key),
       ..default()
     });
+  }
+}
+
+fn process_player_flip(mut sprites: Query<&mut Sprite, With<Player>>) {
+  // only flip when requested from JS
+  if !FLIP_PLAYER_SPRITE.swap(false, Ordering::SeqCst) {
+    return;
+  }
+  for mut sprite in &mut sprites {
+    sprite.flip_x = !sprite.flip_x;
   }
 }
 

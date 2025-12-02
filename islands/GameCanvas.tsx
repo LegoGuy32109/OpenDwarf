@@ -18,10 +18,22 @@ export default function GameCanvas(
         // deno-lint-ignore react-no-danger
         dangerouslySetInnerHTML={{
           __html: `
-import init, { main } from "${gameJs}";
-init("${gameWasm}").then( () => {
-    main();
-});
+import init, { flip_player_sprite_y, log_debug_message, main } from "${gameJs}";
+
+async function startGame() {
+  await init("${gameWasm}");
+  main();
+  // expose functions so debug controls can call into Bevy
+  globalThis.bevyWasmLog = log_debug_message;
+  globalThis.flipPlayerSpriteY = flip_player_sprite_y;
+  if (typeof globalThis.dispatchEvent === "function") {
+    globalThis.dispatchEvent(new Event("bevy-wasm-ready"));
+  }
+}
+
+startGame().catch((error) =>
+  console.error("Failed to start Bevy game", error)
+);
 `,
         }}
       >
