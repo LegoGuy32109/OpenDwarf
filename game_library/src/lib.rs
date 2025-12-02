@@ -7,5 +7,5 @@ use crate::domain::OpenDwarfPlugins;
 
 #[wasm_bindgen]
 pub fn main() {
-    App::new().add_plugins(OpenDwarfPlugins).run();
+  App::new().add_plugins(OpenDwarfPlugins).run();
 }

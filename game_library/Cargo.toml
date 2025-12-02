@@ -22,7 +22,7 @@ bacon = "3.20.1"
 
 [features]
 default = ["native"]
-native = [
+core = [
   "bevy/asset_processor",
   "bevy/async_executor",
   "bevy/bevy_core_pipeline",
@@ -37,33 +37,15 @@ native = [
   "bevy/default_font",
   "bevy/multi_threaded",
   "bevy/png",
-  "bevy/wayland",
 ]
-web = [
-  "bevy/asset_processor",
-  "bevy/async_executor",
-  "bevy/bevy_core_pipeline",
-  "bevy/bevy_image",
-  "bevy/bevy_log",
-  "bevy/bevy_render",
-  "bevy/bevy_sprite",
-  "bevy/bevy_sprite_render",
-  "bevy/bevy_text",
-  "bevy/bevy_ui",
-  "bevy/bevy_ui_render",
-  "bevy/bevy_winit",
-  "bevy/default_font",
-  "bevy/multi_threaded",
-  "bevy/png",
-  "bevy/web",
-  "bevy/webgl2",
-]
+native = ["bevy/wayland", "core"]
+web = ["bevy/bevy_winit", "bevy/web", "bevy/webgl2", "core"]
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1
+incremental = true
 
-# Enable a large amount of optimization in the dev profile for dependencies.
 [profile.dev.package."*"]
 opt-level = 3
 
