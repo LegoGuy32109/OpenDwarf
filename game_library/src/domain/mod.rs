@@ -44,7 +44,7 @@ impl Plugin for OpenDwarfPlugins {
 }
 
 fn define_defaults() -> impl PluginGroup {
-  let plugins = DefaultPlugins
+  DefaultPlugins
     .set(ImagePlugin::default_nearest())
     .set(WindowPlugin {
       primary_window: Some(Window {
@@ -62,8 +62,7 @@ fn define_defaults() -> impl PluginGroup {
       // if needed in future try AssetMetaCheck::Paths(...)
       meta_check: AssetMetaCheck::Never,
       ..default()
-    });
-  plugins
+    })
 }
 
 fn update_tileset_image(
@@ -390,6 +389,7 @@ fn keyboard_movement(
       // don't duplicate distance
       // if direction cancels out, just do the latest direction
       if chord_direction == key_direction || combined_direction == IVec3::ZERO {
+        spawn_movement_action(key_direction);
       }
       spawn_movement_action(combined_direction);
       return;
