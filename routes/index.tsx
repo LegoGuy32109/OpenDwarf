@@ -8,7 +8,7 @@ export default define.page(function Home() {
       <Head>
         <title>Open Dwarf</title>
       </Head>
-      <div class="max-w-screen-md mx-auto flex flex-col items-center justify-center">
+      <div class="max-w-3xl mx-auto flex flex-col items-center justify-center">
         <p class="my-4 flex items-center">
           Served using Deno Fresh
           <img
