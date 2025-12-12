@@ -14,6 +14,11 @@ interface Peer {
   candidates: Array<RTCIceCandidate>;
 }
 
+interface RemotePeer {
+  description: RTCSessionDescription;
+  candidates: Array<RTCIceCandidate>;
+}
+
 export class WebrtcManager {
   constructor() {
     // adding map log for debugging
@@ -26,6 +31,11 @@ export class WebrtcManager {
     console.log(this.peerMap);
   }
 
+  private answeringPeerMap: Map<string, Peer> = new Map();
+  public displayAnswerMap(): void {
+    console.log(this.answeringPeerMap);
+  }
+
   public async makeHostOffers(numPeers: number): AsyncResult {
     // close all existing connections if they exist
     this.peerMap.forEach((connection) => connection.peerConnection.close());
@@ -33,12 +43,33 @@ export class WebrtcManager {
 
     try {
       // create a new WebRTC peer connection for each peer joining
-      const initialConnections = await Promise.all(
+      const peers = await Promise.all(
         Array.from({ length: numPeers }, () => makeEmptyPeer()),
       );
 
-      for (const connection of initialConnections) {
-        this.peerMap.set(crypto.randomUUID(), connection);
+      for (const peer of peers) {
+        this.peerMap.set(crypto.randomUUID(), peer);
+      }
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, errors: [String(e)] };
+    }
+  }
+
+  public async makeGuestAnswers(remotePeers: Array<RemotePeer>): AsyncResult {
+    // close all existing connections if they exist
+    this.peerMap.forEach((connection) => connection.peerConnection.close());
+    this.peerMap.clear();
+
+    try {
+      // create a new WebRTC peer connection for each remote peer
+      const possibleAnswerPeers = await Promise.all(
+        remotePeers.map(makeAnsweringPeer),
+      );
+
+      for (const answer of possibleAnswerPeers) {
+        this.answeringPeerMap.set(crypto.randomUUID(), answer);
       }
 
       return { success: true };
@@ -56,7 +87,7 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
   const peerConnection = new globalThis.RTCPeerConnection(
     PEER_CONNECTION_CONFIG,
   );
-  const connection: Peer = {
+  const peer: Peer = {
     peerConnection,
     channels: [],
     candidates: [],
@@ -65,7 +96,7 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
   return new Promise<Peer>((resolve, reject) => {
     peerConnection.onicecandidate = (iceEvent) => {
       if (iceEvent.candidate) {
-        connection.candidates?.push(iceEvent.candidate);
+        peer.candidates?.push(iceEvent.candidate);
         return;
       }
       // no further candidates
@@ -85,7 +116,7 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
           //   id,
           // };
           // the connection has finished gathering ice candidates
-          resolve(connection as Peer);
+          resolve(peer as Peer);
       }
     };
 
@@ -106,7 +137,7 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
       // onMessageRecieved(msgEvent.data, id);
       console.log("recieved message from Guest", msgEvent);
     };
-    connection.channels.push(initialChannel);
+    peer.channels.push(initialChannel);
 
     // create offer to start generating ice candidates
     peerConnection.createOffer()
@@ -121,5 +152,78 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
             timeout * 1000,
           ),
       );
+  });
+}
+
+function makeAnsweringPeer(remotePeer: RemotePeer, timeout = 5): Promise<Peer> {
+  const peerConnection = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
+  const peer: Peer = {
+    peerConnection,
+    channels: [],
+    candidates: [],
+  };
+
+  return new Promise<Peer>((resolve, reject) => {
+    peerConnection.onicecandidate = (iceEvent) => {
+      if (iceEvent.candidate) {
+        peer.candidates?.push(iceEvent.candidate);
+        return;
+      }
+      // no further candidates
+    };
+
+    peerConnection.onicegatheringstatechange = (connectionEvent) => {
+      const thisConnection = connectionEvent.target as RTCPeerConnection;
+      switch (thisConnection.iceGatheringState) {
+        case "gathering":
+          // started collecting candidates
+          break;
+        case "complete":
+          resolve(peer as Peer);
+      }
+    };
+
+    peerConnection.setRemoteDescription(remotePeer.description);
+
+    // create a channel to transmit data in connection
+    const initialChannel = peerConnection.createDataChannel("chat", {
+      // initial channel for a peer connection is negotiated out of band
+      negotiated: true,
+      // id is agreed to be 0 for both clients
+      id: 0,
+    });
+    initialChannel.onopen = (channelEvent) => {
+      console.log("Channel to Guest was opened");
+      const dataChannel = channelEvent.target as RTCDataChannel;
+      console.log("new channel", dataChannel);
+      // onChannelOpen(dataChannel, id)
+    };
+    initialChannel.onmessage = (msgEvent: MessageEvent<unknown>) => {
+      // onMessageRecieved(msgEvent.data, id);
+      console.log("recieved message from Guest", msgEvent);
+    };
+    peer.channels.push(initialChannel);
+
+    // create answer to offer to start generating ice candidates
+    peerConnection.createAnswer()
+      .then((answer) => peerConnection.setLocalDescription(answer))
+      .then(
+        () =>
+          setTimeout(
+            () =>
+              reject(
+                `Failed adding candidates for answer after ${timeout} seconds`,
+              ),
+            timeout * 1000,
+          ),
+      )
+      .then(async () => {
+        // add all the candidates in any order
+        await Promise.all(
+          remotePeer.candidates.map(peerConnection.addIceCandidate),
+        );
+        // To indicate the offer had no more candidates, pass in undefined
+        await peerConnection.addIceCandidate(undefined);
+      });
   });
 }

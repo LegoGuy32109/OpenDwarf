@@ -13,4 +13,4 @@ vendor/
 /**/target
 
 # game builds
-*open_dwarf_*
+static/{game,game_debug}/*open_dwarf_*
