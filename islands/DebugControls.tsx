@@ -1,5 +1,8 @@
 import { useEffect, useState } from "preact/hooks";
 import { Button } from "../components/Button.tsx";
+import { WebrtcManager } from "../domain/webrtc.ts";
+
+const webrtc = new WebrtcManager();
 
 declare global {
   // Exposed in islands/GameCanvas.tsx after the wasm module initializes
@@ -35,10 +38,20 @@ export default function DebugControls() {
     globalThis.flipPlayerSpriteY?.();
   };
 
+  const handleHost = async () => {
+    const result = await webrtc.makeHostOffers(10);
+    if (result.success) {
+      console.log("offers made");
+      return;
+    }
+    console.error(result.errors);
+  };
+
   return (
     <div class="flex flex-col items-center gap-2 my-4">
       <Button onClick={handleClick} disabled={!logReady}>Log from Bevy</Button>
       <Button onClick={handleFlip} disabled={!logReady}>Flip Player Y</Button>
+      <Button onClick={handleHost}>Generate Connections</Button>
       {!logReady && <p class="text-sm text-gray-600">Loading wasm module...</p>}
     </div>
   );

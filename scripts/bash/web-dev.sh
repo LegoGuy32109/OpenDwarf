@@ -1,0 +1,10 @@
+set -euo pipefail;
+echo Importing game_library/assets/;
+rm -rf static/assets static/game_debug;
+mkdir -p static/assets static/game_debug;
+cp -R game_library/assets/. static/assets/;
+echo Building DEBUG rust project;
+cargo build --manifest-path game_library/Cargo.toml --target wasm32-unknown-unknown --no-default-features --features web;
+echo Compiling DEBUG wasm library;
+wasm-bindgen --target web --out-dir static/game_debug game_library/target/wasm32-unknown-unknown/debug/open_dwarf_lib.wasm;
+echo Done 😎;

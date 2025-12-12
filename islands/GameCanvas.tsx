@@ -4,8 +4,7 @@ type GameCanvasProps = {
 };
 
 export default function GameCanvas(
-  { gameDir = "/game/", wasmFile = "opt_open_dwarf_lib.wasm.br" }:
-    GameCanvasProps,
+  { gameDir = "/game/", wasmFile = "" }: GameCanvasProps,
 ) {
   const gameJs = `${gameDir}open_dwarf_lib.js`;
   const gameWasm = `${gameDir}${wasmFile}`;

@@ -1,4 +1,6 @@
-const peerConnectionConfig: RTCConfiguration = {
+import { AsyncResult } from "../types/Result.ts";
+
+const PEER_CONNECTION_CONFIG: RTCConfiguration = {
   iceServers: [
     {
       urls: ["stun:stun1.l.google.com:19302", "stun:stun3.l.google.com:19302"],
@@ -6,87 +8,118 @@ const peerConnectionConfig: RTCConfiguration = {
   ],
 };
 
-// object containing room connections, set when HOST
-let roomConnections: any = {};
-
-// object containing info about host, set when GUEST
-let hostConnection = {};
-
-type Integer = number & { __int__: void };
-
-async function generateRoomConnections(numConnections: Integer) {
-  // close all existing connections if they exist
-  for (const connection in roomConnections) {
-    if (connection.peerConnection) {
-      connection.peerConnection.close();
-    }
-  }
-
-  // create a new WebRTC peer connection for each peer joining
-  const connections = await Promise.all(
-    Array.from({ length: numConnections }, () => generateRoomConnection()),
-  );
-}
-
-interface Output {
+interface Peer {
   peerConnection: RTCPeerConnection;
-  channel?: RTCDataChannel;
+  channels: Array<RTCDataChannel>;
   candidates: Array<RTCIceCandidate>;
-  package: unknown;
 }
 
-// create a connection in generateRoomConnections, will be called MAX_ROOM_SIZE times
-async function generateRoomConnection() {
-  const peerConnection = new globalThis.RTCPeerConnection(peerConnectionConfig);
-  const output: Output = {
+export class WebrtcManager {
+  constructor() {
+    // adding map log for debugging
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).pmap = () => this.displayPeerMap();
+  }
+
+  private peerMap: Map<string, Peer> = new Map();
+  public displayPeerMap(): void {
+    console.log(this.peerMap);
+  }
+
+  public async makeHostOffers(numPeers: number): AsyncResult {
+    // close all existing connections if they exist
+    this.peerMap.forEach((connection) => connection.peerConnection.close());
+    this.peerMap.clear();
+
+    try {
+      // create a new WebRTC peer connection for each peer joining
+      const initialConnections = await Promise.all(
+        Array.from({ length: numPeers }, () => makeEmptyPeer()),
+      );
+
+      for (const connection of initialConnections) {
+        this.peerMap.set(crypto.randomUUID(), connection);
+      }
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, errors: [String(e)] };
+    }
+  }
+}
+
+/**
+ * Create a negotiated RTCPeerConnection with a chat channel id of 0
+ * Fails if timeout in seconds elapses without finishing
+ */
+function makeEmptyPeer(timeout = 5): Promise<Peer> {
+  const peerConnection = new globalThis.RTCPeerConnection(
+    PEER_CONNECTION_CONFIG,
+  );
+  const connection: Peer = {
     peerConnection,
-    channel: undefined,
+    channels: [],
     candidates: [],
-    package: undefined,
-  };
-  // assign an id, so we can match answers to offers later
-  const id = globalThis.crypto.randomUUID();
-
-  peerConnection.onicecandidate = (iceEvent) => {
-    if (iceEvent.candidate) {
-      output.candidates.push(iceEvent.candidate);
-      return;
-    }
-    console.log("no further candidates", iceEvent);
   };
 
-  peerConnection.onicegatheringstatechange = (event) => {
-    const thisConnection = event.target as RTCPeerConnection;
-    switch (thisConnection.iceGatheringState) {
-      case "gathering":
-        // started collecting candidates
-        break;
-      case "complete":
-        output.package = {
-          description: thisConnection.localDescription,
-          candidates: output.candidates,
-          id,
-        };
-        // setIceGatheringComplete("Completed")
-    }
-  };
+  return new Promise<Peer>((resolve, reject) => {
+    peerConnection.onicecandidate = (iceEvent) => {
+      if (iceEvent.candidate) {
+        connection.candidates?.push(iceEvent.candidate);
+        return;
+      }
+      // no further candidates
+    };
 
-  // create a channel to transmit data in connection
-  output.channel = peerConnection.createDataChannel("chat", {
-    negotiated: true,
-    id: 0,
+    peerConnection.onicegatheringstatechange = (connectionEvent) => {
+      const thisConnection = connectionEvent.target as RTCPeerConnection;
+      switch (thisConnection.iceGatheringState) {
+        case "gathering":
+          // started collecting candidates
+          break;
+        case "complete":
+          // TODO: create package / stringified elsewhere in class
+          // output.package = {
+          //   description: thisConnection.localDescription,
+          //   candidates: output.candidates,
+          //   id,
+          // };
+          // the connection has finished gathering ice candidates
+          resolve(connection as Peer);
+      }
+    };
+
+    // create a channel to transmit data in connection
+    const initialChannel = peerConnection.createDataChannel("chat", {
+      // initial channel for a peer connection is negotiated out of band
+      negotiated: true,
+      // id is agreed to be 0 for both clients
+      id: 0,
+    });
+    initialChannel.onopen = (channelEvent) => {
+      console.log("Channel to Guest was opened");
+      const dataChannel = channelEvent.target as RTCDataChannel;
+      console.log("new channel", dataChannel);
+      // onChannelOpen(dataChannel, id)
+    };
+    initialChannel.onmessage = (msgEvent: MessageEvent<unknown>) => {
+      // onMessageRecieved(msgEvent.data, id);
+      console.log("recieved message from Guest", msgEvent);
+    };
+    connection.channels.push(initialChannel);
+
+    // create offer to start generating ice candidates
+    peerConnection.createOffer()
+      .then((offer) => peerConnection.setLocalDescription(offer))
+      .then(
+        () =>
+          setTimeout(
+            () =>
+              reject(
+                `Failed gathering candidates for offer after ${timeout} seconds`,
+              ),
+            timeout * 1000,
+          ),
+      );
   });
-  output.channel.onopen = (event) => {
-    console.log("Channel to Guest was opened")
-    const dataChannel = event.target as RTCDataChannel
-    // onChannelOpen(dataChannel, id)
-  }
-  output.channel.onmessage = (msgEvent: MessageEvent<{data: unknown}>) => {
-    // onMessageRecieved(msgEvent.data, id);
-    console.log("recieved message from Guest", msgEvent)
-  }
-
-  // create offer to start generating ice candidates
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
 }

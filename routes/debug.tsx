@@ -1,9 +1,8 @@
-import { Head } from "fresh/runtime";
-import { define } from "../utils.ts";
+import { Head } from "$fresh/runtime.ts";
 import DebugControls from "../islands/DebugControls.tsx";
 import GameCanvas from "../islands/GameCanvas.tsx";
 
-export default define.page(function Debug() {
+export default function Debug() {
   return (
     <div class="px-4 mx-auto fresh-gradient min-h-screen">
       <Head>
@@ -18,4 +17,4 @@ export default define.page(function Debug() {
       <DebugControls />
     </div>
   );
-});
+}

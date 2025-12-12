@@ -1,23 +1,16 @@
-# start the project in development mode
+# Fresh project
+
+Your new Fresh project is ready to go. You can follow the Fresh "Getting
+Started" guide here: https://fresh.deno.dev/docs/getting-started
+
+### Usage
+
+Make sure to install Deno: https://deno.land/manual/getting_started/installation
+
+Then start the project:
 
 ```
-deno task dev
+deno task start
 ```
 
-# Steps to move release build of bevy project into website
-
-```
-❯ z game_library (bevy proj dir)
-❯ cargo build --release --target wasm32-unknown-unknown --features web
-❯ z fresh-test (this dir)
-❯ wasm-bindgen --target web --out-dir static/game ../game_library/target/wasm32-unknown-unknown/release/open_dwarf_lib.wasm
-❯ wasm-opt -Oz --strip-debug static/game/open_dwarf_lib_bg.wasm -o static/game/opt_open_dwarf_lib.wasm
-❯ brotli -q 11 static/game/opt_open_dwarf_lib.wasm -f -o static/game/opt_open_dwarf_lib.wasm.br
-```
-
-For native iteration on Linux/Wayland:
-
-```
-❯ cd game_library
-❯ cargo run
-```
+This will watch the project directory and restart as necessary.

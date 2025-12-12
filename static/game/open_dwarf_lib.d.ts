@@ -1,6 +1,10 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export function flip_player_sprite_y(): void;
+
+export function log_debug_message(): void;
+
 export function main(): void;
 
 export type InitInput =
@@ -12,21 +16,23 @@ export type InitInput =
 
 export interface InitOutput {
   readonly memory: WebAssembly.Memory;
+  readonly flip_player_sprite_y: () => void;
+  readonly log_debug_message: () => void;
   readonly main: () => void;
-  readonly __wasm_bindgen_func_elem_67664: (
+  readonly __wasm_bindgen_func_elem_67679: (
     a: number,
     b: number,
     c: number,
   ) => void;
-  readonly __wasm_bindgen_func_elem_70890: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_61986: (
+  readonly __wasm_bindgen_func_elem_67678: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_70905: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_62001: (
     a: number,
     b: number,
     c: number,
     d: number,
   ) => void;
-  readonly __wasm_bindgen_func_elem_70891: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_67663: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_70906: (a: number, b: number) => void;
   readonly __wbindgen_export: (a: number, b: number) => number;
   readonly __wbindgen_export2: (
     a: number,
