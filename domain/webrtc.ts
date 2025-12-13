@@ -13,6 +13,17 @@ export interface RemotePeer {
   sdp: string;
 }
 
+const DEFAULT_RTC_CONFIG = {
+  iceServers: [
+    {
+      urls: [
+        "stun:stun1.l.google.com:19302",
+        "stun:stun3.l.google.com:19302",
+      ],
+    },
+  ],
+};
+
 const encoder = new TextEncoder();
 const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 const fromBase64 = (b64: string) =>
@@ -39,17 +50,6 @@ export function decompressRemotePeers(text: string): Array<RemotePeer> {
     return JSON.parse(text);
   }
 }
-
-const DEFAULT_RTC_CONFIG = {
-  iceServers: [
-    {
-      urls: [
-        "stun:stun1.l.google.com:19302",
-        "stun:stun3.l.google.com:19302",
-      ],
-    },
-  ],
-};
 
 export class WebrtcManager {
   constructor() {

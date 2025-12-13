@@ -33,7 +33,9 @@ export default function MultiplayerSidebar() {
       return;
     }
     try {
-      const compressed = compressRemotePeers(offerResult.payload as RemotePeer[]);
+      const compressed = compressRemotePeers(
+        offerResult.payload as RemotePeer[],
+      );
       await navigator.clipboard.writeText(compressed);
       console.log("Offer payload copied to clipboard");
     } catch (e) {
@@ -76,7 +78,9 @@ export default function MultiplayerSidebar() {
       return;
     }
     try {
-      const compressed = compressRemotePeers(answerResult.payload as RemotePeer[]);
+      const compressed = compressRemotePeers(
+        answerResult.payload as RemotePeer[],
+      );
       await navigator.clipboard.writeText(compressed);
       console.log("Answer payload copied to clipboard");
     } catch (e) {
@@ -129,26 +133,6 @@ export default function MultiplayerSidebar() {
     <>
       <div class="flex items-center gap-2">
         <Button onClick={() => setOpen(true)}>Multiplayer</Button>
-        <button
-          type="button"
-          aria-label="Configure WebRTC"
-          onClick={() => setConfigOpen(true)}
-          class="p-2 rounded border border-gray-600 bg-white hover:bg-gray-200 transition-colors"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="w-5 h-5"
-          >
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.27.63.88 1.09 1.51 1.09H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </button>
       </div>
 
       <div
@@ -161,26 +145,48 @@ export default function MultiplayerSidebar() {
         >
           <div class="flex items-center justify-between p-4 border-b border-gray-700">
             <h2 class="text-lg font-semibold">Multiplayer</h2>
-            <button
-              type="button"
-              aria-label="Close multiplayer sidebar"
-              onClick={() => setOpen(false)}
-              class="p-2 rounded hover:bg-gray-700 transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="w-5 h-5"
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label="Configure WebRTC"
+                onClick={() => setConfigOpen(true)}
+                class="p-2 rounded hover:bg-gray-700 transition-colors"
               >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="w-5 h-5"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.27.63.88 1.09 1.51 1.09H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-label="Close multiplayer sidebar"
+                onClick={() => setOpen(false)}
+                class="p-2 rounded hover:bg-gray-700 transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="w-5 h-5"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="p-4 flex flex-col gap-3 text-sm text-gray-800">
             <p class="text-gray-300">Create a Room</p>
@@ -253,9 +259,14 @@ export default function MultiplayerSidebar() {
             {configError && (
               <p class="text-sm text-red-600 mt-1">{configError}</p>
             )}
-            <div class="flex justify-end gap-2 mt-3">
-              <Button onClick={() => setConfigOpen(false)}>Cancel</Button>
-              <Button onClick={handleSaveConfig}>Save</Button>
+            <div class="flex justify-between items-end">
+              <a class="text-gray-600 underline" src="https://xirsys.com/">
+                Can get TURN credentials here
+              </a>
+              <div class="flex justify-end gap-2 mt-3">
+                <Button onClick={() => setConfigOpen(false)}>Cancel</Button>
+                <Button onClick={handleSaveConfig}>Save</Button>
+              </div>
             </div>
           </div>
         </div>
