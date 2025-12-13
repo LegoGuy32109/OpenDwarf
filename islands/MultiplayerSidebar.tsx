@@ -3,6 +3,7 @@ import { Button } from "../components/Button.tsx";
 import { WebrtcManager } from "../domain/webrtc.ts";
 
 const webrtc = new WebrtcManager();
+type RemotePayload = { key: string; sdp: string };
 
 export default function MultiplayerSidebar() {
   const [open, setOpen] = useState(false);
@@ -16,13 +17,43 @@ export default function MultiplayerSidebar() {
     console.error(result.errors);
   };
 
-  const handleGuest = async () => {
+  const copyOfferPayload = async () => {
     const offerResult = webrtc.getOfferPayload();
     if (!offerResult.ok) {
       console.error(offerResult.errors);
       return;
     }
-    const result = await webrtc.makeGuestAnswers(offerResult.payload);
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(offerResult.payload),
+      );
+      console.log("Offer payload copied to clipboard");
+    } catch (e) {
+      console.error("Failed to copy offer payload", e);
+    }
+  };
+
+  const readClipboardPayload = async (): Promise<
+    Array<RemotePayload> | null
+  > => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        console.error("Clipboard payload must be an array");
+        return null;
+      }
+      return parsed;
+    } catch (e) {
+      console.error("Failed to read clipboard payload", e);
+      return null;
+    }
+  };
+
+  const handleGuest = async () => {
+    const payload = await readClipboardPayload();
+    if (!payload) return;
+    const result = await webrtc.makeGuestAnswers(payload);
     if (result.ok) {
       console.log("answers made");
       return;
@@ -30,13 +61,26 @@ export default function MultiplayerSidebar() {
     console.error(result.errors);
   };
 
-  const handleAnswerPayload = () => {
+  const copyAnswerPayload = async () => {
     const answerResult = webrtc.getAnswerPayload();
     if (!answerResult.ok) {
       console.error(answerResult.errors);
       return;
     }
-    const result = webrtc.recieveAnswerPayload(answerResult.payload);
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(answerResult.payload),
+      );
+      console.log("Answer payload copied to clipboard");
+    } catch (e) {
+      console.error("Failed to copy answer payload", e);
+    }
+  };
+
+  const handleAnswerPayload = async () => {
+    const payload = await readClipboardPayload();
+    if (!payload) return;
+    const result = webrtc.recieveAnswerPayload(payload);
     if (!result.ok) {
       console.error(result.errors);
       return;
@@ -60,10 +104,7 @@ export default function MultiplayerSidebar() {
           class={`w-80 bg-[#1F1F22] text-white shadow-2xl border-l border-gray-700 `}
         >
           <div class="flex items-center justify-between p-4 border-b border-gray-700">
-            <div>
-              <p class="text-xs uppercase tracking-wide text-gray-400">Debug</p>
-              <h2 class="text-lg font-semibold">Multiplayer</h2>
-            </div>
+            <h2 class="text-lg font-semibold">Multiplayer</h2>
             <button
               type="button"
               aria-label="Close multiplayer sidebar"
@@ -86,15 +127,23 @@ export default function MultiplayerSidebar() {
             </button>
           </div>
           <div class="p-4 flex flex-col gap-3 text-sm text-gray-800">
-            <p class="text-gray-300">Create a Room To</p>
+            <p class="text-gray-300">Create a Room</p>
             <Button style="width: 100%;" onClick={handleHost}>
               Generate Connections
             </Button>
-            <Button style="width: 100%;" onClick={handleGuest}>
-              Generate Answer Connections
+            <Button style="width: 100%;" onClick={copyOfferPayload}>
+              Copy Offer Payload
             </Button>
             <Button style="width: 100%;" onClick={handleAnswerPayload}>
-              Accept Answer Payload
+              Accept Answer Payload (from clipboard)
+            </Button>
+            <div class="width: 100% h-0.5 bg-gray-500 rounded-full" />
+            <p class="text-gray-300">Join a Room</p>
+            <Button style="width: 100%;" onClick={handleGuest}>
+              Generate Answer Connections (from clipboard)
+            </Button>
+            <Button style="width: 100%;" onClick={copyAnswerPayload}>
+              Copy Answer Payload
             </Button>
           </div>
         </aside>
