@@ -1,5 +1,6 @@
 import { AsyncResult, Result } from "../types/Result.ts";
 import { makeError } from "./Result.ts";
+import { gunzipSync, gzipSync, strFromU8 } from "npm:fflate@0.8.2";
 
 interface Peer {
   key: string; // uuid
@@ -7,9 +8,36 @@ interface Peer {
   channels: Array<RTCDataChannel>;
 }
 
-interface RemotePeer {
+export interface RemotePeer {
   key: string; // uuid
   sdp: string;
+}
+
+const encoder = new TextEncoder();
+const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+const fromBase64 = (b64: string) =>
+  new Uint8Array(atob(b64).split("").map((c) => c.charCodeAt(0)));
+
+export function compressRemotePeers(peers: Array<RemotePeer>): string {
+  try {
+    const json = JSON.stringify(peers);
+    const compressed = gzipSync(encoder.encode(json), { level: 9 });
+    return toBase64(compressed);
+  } catch (_e) {
+    // fall back to plain JSON if compression fails
+    return JSON.stringify(peers);
+  }
+}
+
+export function decompressRemotePeers(text: string): Array<RemotePeer> {
+  try {
+    const bytes = fromBase64(text);
+    const decompressed = gunzipSync(bytes);
+    return JSON.parse(strFromU8(decompressed));
+  } catch (_e) {
+    // fall back to parsing raw JSON
+    return JSON.parse(text);
+  }
 }
 
 const DEFAULT_RTC_CONFIG = {
