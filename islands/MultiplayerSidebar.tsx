@@ -95,8 +95,25 @@ export default function MultiplayerSidebar() {
   };
 
   const handleSaveConfig = () => {
+    const normalizeAndParse = (input: string) => {
+      let text = input.trim();
+      // Strip common zero-width / non-breaking spaces that can break JSON.parse
+      text = text.replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, "");
+      if (!text.startsWith("{")) {
+        text = `{${text}}`;
+      }
+      // Quote any bare keys so "iceServers: [...]" becomes valid JSON
+      text = text.replace(
+        /([{,\s])(\w+)\s*:/g,
+        (_m, prefix, key) => `${prefix}"${key}":`,
+      );
+      text = text.replaceAll("\n", "");
+      return JSON.parse(text);
+    };
+
     try {
-      const parsed = JSON.parse(configText);
+      const parsed = normalizeAndParse(configText);
+      console.log(parsed);
       webrtc.peerConnectionConfig = parsed;
       setConfigError(null);
       setConfigOpen(false);
