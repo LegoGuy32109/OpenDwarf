@@ -1,8 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
 import { Button } from "../components/Button.tsx";
-import { WebrtcManager } from "../domain/webrtc.ts";
-
-const webrtc = new WebrtcManager();
 
 declare global {
   // Exposed in islands/GameCanvas.tsx after the wasm module initializes
@@ -38,56 +35,11 @@ export default function DebugControls() {
     globalThis.flipPlayerSpriteY?.();
   };
 
-  const handleHost = async () => {
-    const result = await webrtc.makeOfferingPeers(2);
-    if (result.ok) {
-      console.log("offers made");
-      return;
-    }
-    console.error(result.errors);
-  };
-
-  const handleGuest = async () => {
-    const offerResult = webrtc.getOfferPayload();
-    if (!offerResult.ok) {
-      console.error(offerResult.errors);
-      return;
-    }
-    const result = await webrtc.makeGuestAnswers(offerResult.payload);
-    if (result.ok) {
-      console.log("answers made");
-      return;
-    }
-    console.error(result.errors);
-  };
-
-  const handleAnswerPayload = async () => {
-    const answerResult = webrtc.getAnswerPayload();
-    if (!answerResult.ok) {
-      console.error(answerResult.errors);
-      return;
-    }
-    const result = await webrtc.recieveAnswerPayload(answerResult.payload);
-    if (!result.ok) {
-      console.error(result.errors);
-      return;
-    }
-
-    console.log("answers recieved");
-  };
-
   return (
     <div class="flex flex-col items-center gap-2 my-4">
       {!logReady && <p class="text-sm text-gray-600">Loading wasm module...</p>}
       <Button onClick={handleClick} disabled={!logReady}>Log from Bevy</Button>
       <Button onClick={handleFlip} disabled={!logReady}>Flip Player Y</Button>
-      <div class="flex">
-        <Button onClick={handleHost}>Generate Connections</Button>
-        <Button onClick={handleGuest}>Generate Answer Connections</Button>
-      </div>
-      <div class="flex">
-        <Button onClick={handleAnswerPayload}>Accept Answer Payload</Button>
-      </div>
     </div>
   );
 }
