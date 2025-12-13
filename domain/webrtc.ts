@@ -13,13 +13,11 @@ interface Peer {
   key: string; // uuid
   peerConnection: RTCPeerConnection;
   channels: Array<RTCDataChannel>;
-  candidates: Array<RTCIceCandidate>;
 }
 
 interface RemotePeer {
   key: string; // uuid
-  description: RTCSessionDescription;
-  candidates: Array<RTCIceCandidate>;
+  sdp: string;
 }
 
 export class WebrtcManager {
@@ -65,11 +63,11 @@ export class WebrtcManager {
   public getOfferPayload(): Result<{ payload: Array<RemotePeer> }> {
     const payload: Array<RemotePeer> = [];
     this.peerMap.forEach((peer) => {
-      if (peer.peerConnection.localDescription) {
+      const description = peer.peerConnection.localDescription;
+      if (description?.sdp) {
         payload.push({
           key: peer.key,
-          description: peer.peerConnection.localDescription,
-          candidates: peer.candidates,
+          sdp: description.sdp,
         });
       }
     });
@@ -110,11 +108,11 @@ export class WebrtcManager {
   public getAnswerPayload(): Result<{ payload: Array<RemotePeer> }> {
     const payload: Array<RemotePeer> = [];
     this.answeringPeerMap.forEach((peer) => {
-      if (peer.peerConnection.localDescription) {
+      const description = peer.peerConnection.localDescription;
+      if (description?.sdp) {
         payload.push({
           key: peer.key,
-          description: peer.peerConnection.localDescription,
-          candidates: peer.candidates,
+          sdp: description.sdp,
         });
       }
     });
@@ -149,7 +147,10 @@ export class WebrtcManager {
     if (!remotePeer) {
       return makeError("Remote Peer filtering invalid, BUG");
     }
-    openPeer.peerConnection.setRemoteDescription(remotePeer.description);
+    openPeer.peerConnection.setRemoteDescription({
+      type: "answer",
+      sdp: remotePeer.sdp,
+    });
 
     return { ok: true };
   }
@@ -167,18 +168,9 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
     key: crypto.randomUUID(),
     peerConnection,
     channels: [],
-    candidates: [],
   };
 
   return new Promise<Peer>((resolve, reject) => {
-    peerConnection.onicecandidate = (iceEvent) => {
-      if (iceEvent.candidate) {
-        peer.candidates?.push(iceEvent.candidate);
-        return;
-      }
-      // no further candidates
-    };
-
     peerConnection.onicegatheringstatechange = (connectionEvent) => {
       const thisConnection = connectionEvent.target as RTCPeerConnection;
       switch (thisConnection.iceGatheringState) {
@@ -186,12 +178,6 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
           // started collecting candidates
           break;
         case "complete":
-          // TODO: create package / stringified elsewhere in class
-          // output.package = {
-          //   description: thisConnection.localDescription,
-          //   candidates: output.candidates,
-          //   id,
-          // };
           // the connection has finished gathering ice candidates
           resolve(peer as Peer);
       }
@@ -238,18 +224,9 @@ function makeAnsweringPeer(remotePeer: RemotePeer): Promise<Peer> {
     key: remotePeer.key,
     peerConnection,
     channels: [],
-    candidates: [],
   };
 
   return new Promise<Peer>((resolve, reject) => {
-    peerConnection.onicecandidate = (iceEvent) => {
-      if (iceEvent.candidate) {
-        peer.candidates?.push(iceEvent.candidate);
-        return;
-      }
-      // no further candidates
-    };
-
     peerConnection.onicegatheringstatechange = (connectionEvent) => {
       const thisConnection = connectionEvent.target as RTCPeerConnection;
       switch (thisConnection.iceGatheringState) {
@@ -261,7 +238,10 @@ function makeAnsweringPeer(remotePeer: RemotePeer): Promise<Peer> {
       }
     };
 
-    peerConnection.setRemoteDescription(remotePeer.description);
+    peerConnection.setRemoteDescription({
+      type: "offer",
+      sdp: remotePeer.sdp,
+    });
 
     // create a channel to transmit data in connection
     const initialChannel = peerConnection.createDataChannel("chat", {
@@ -295,16 +275,6 @@ function makeAnsweringPeer(remotePeer: RemotePeer): Promise<Peer> {
               ),
             timeout * 1000,
           ),
-      )
-      .then(async () => {
-        // add all the candidates in any order
-        await Promise.all(
-          remotePeer.candidates.map((candidate) =>
-            peerConnection.addIceCandidate(candidate)
-          ),
-        );
-        // To indicate the offer had no more candidates, pass in undefined
-        await peerConnection.addIceCandidate(undefined);
-      });
+      );
   });
 }
