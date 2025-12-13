@@ -221,17 +221,17 @@ export default function MultiplayerSidebar() {
       {configOpen && (
         <div class="fixed inset-0 z-50 flex items-center justify-center">
           <div
-            class="absolute inset-0 bg-black/50"
+            class="absolute inset-0 bg-black/60"
             onClick={() => setConfigOpen(false)}
           />
-          <div class="relative bg-white text-gray-900 w-[28rem] max-w-full rounded shadow-lg p-4 z-10">
+          <div class="relative w-[28rem] max-w-full rounded shadow-2xl border border-gray-700 bg-[#1F1F22] text-white p-4 z-10">
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-lg font-semibold">WebRTC Configuration</h3>
               <button
                 type="button"
                 aria-label="Close configuration"
                 onClick={() => setConfigOpen(false)}
-                class="p-2 rounded hover:bg-gray-200 transition-colors"
+                class="p-2 rounded hover:bg-gray-700 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -248,19 +248,25 @@ export default function MultiplayerSidebar() {
                 </svg>
               </button>
             </div>
-            <p class="text-sm text-gray-600 mb-2">
+            <p class="text-sm text-gray-300 mb-2">
               Paste a JSON RTCConfiguration object to use for new connections.
+              (Static TURN Credentials)
             </p>
             <textarea
-              class="w-full h-48 border border-gray-300 rounded p-2 font-mono text-sm"
+              class="w-full h-[240px] border border-gray-700 bg-[#2B2C2F] text-white rounded p-2 font-mono text-sm"
               value={configText}
               onInput={(e) => setConfigText(e.currentTarget.value)}
             />
             {configError && (
-              <p class="text-sm text-red-600 mt-1">{configError}</p>
+              <p class="text-sm text-red-400 mt-1">{configError}</p>
             )}
-            <div class="flex justify-between items-end">
-              <a class="text-gray-600 underline" src="https://xirsys.com/">
+            <div class="flex justify-between items-end text-gray-700">
+              <a
+                class="text-gray-300 underline"
+                href="https://xirsys.com/"
+                target="_blank"
+                rel="noreferrer"
+              >
                 Can get TURN credentials here
               </a>
               <div class="flex justify-end gap-2 mt-3">
