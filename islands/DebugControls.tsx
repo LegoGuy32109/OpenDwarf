@@ -39,9 +39,23 @@ export default function DebugControls() {
   };
 
   const handleHost = async () => {
-    const result = await webrtc.makeHostOffers(10);
-    if (result.success) {
+    const result = await webrtc.makeOfferingPeers(10);
+    if (result.ok) {
       console.log("offers made");
+      return;
+    }
+    console.error(result.errors);
+  };
+
+  const handleGuest = async () => {
+    const offerResult = webrtc.getOfferPayload();
+    if (!offerResult.ok) {
+      console.error(offerResult.errors);
+      return;
+    }
+    const result = await webrtc.makeGuestAnswers(offerResult.payload);
+    if (result.ok) {
+      console.log("answers made");
       return;
     }
     console.error(result.errors);
@@ -49,10 +63,13 @@ export default function DebugControls() {
 
   return (
     <div class="flex flex-col items-center gap-2 my-4">
+      {!logReady && <p class="text-sm text-gray-600">Loading wasm module...</p>}
       <Button onClick={handleClick} disabled={!logReady}>Log from Bevy</Button>
       <Button onClick={handleFlip} disabled={!logReady}>Flip Player Y</Button>
-      <Button onClick={handleHost}>Generate Connections</Button>
-      {!logReady && <p class="text-sm text-gray-600">Loading wasm module...</p>}
+      <div class="flex">
+        <Button onClick={handleHost}>Generate Connections</Button>
+        <Button onClick={handleGuest}>Generate Answer Connections</Button>
+      </div>
     </div>
   );
 }

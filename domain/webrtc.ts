@@ -1,4 +1,5 @@
-import { AsyncResult } from "../types/Result.ts";
+import { AsyncResult, Result } from "../types/Result.ts";
+import { makeError } from "./Result.ts";
 
 const PEER_CONNECTION_CONFIG: RTCConfiguration = {
   iceServers: [
@@ -21,9 +22,11 @@ interface RemotePeer {
 
 export class WebrtcManager {
   constructor() {
-    // adding map log for debugging
+    // adding map logs for debugging
     // deno-lint-ignore no-explicit-any
     (globalThis as any).pmap = () => this.displayPeerMap();
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).amap = () => this.displayAnswerMap();
   }
 
   private peerMap: Map<string, Peer> = new Map();
@@ -36,9 +39,9 @@ export class WebrtcManager {
     console.log(this.answeringPeerMap);
   }
 
-  public async makeHostOffers(numPeers: number): AsyncResult {
+  public async makeOfferingPeers(numPeers: number): AsyncResult {
     // close all existing connections if they exist
-    this.peerMap.forEach((connection) => connection.peerConnection.close());
+    this.peerMap.forEach((peer) => peer.peerConnection.close());
     this.peerMap.clear();
 
     try {
@@ -51,16 +54,37 @@ export class WebrtcManager {
         this.peerMap.set(crypto.randomUUID(), peer);
       }
 
-      return { success: true };
+      return { ok: true };
     } catch (e) {
-      return { success: false, errors: [String(e)] };
+      return { ok: false, errors: [String(e)] };
     }
+  }
+
+  public getOfferPayload(): Result<{ payload: Array<RemotePeer> }> {
+    const payload: Array<RemotePeer> = [];
+    this.peerMap.forEach((peer) => {
+      if (peer.peerConnection.localDescription) {
+        payload.push({
+          description: peer.peerConnection.localDescription,
+          candidates: peer.candidates,
+        });
+      }
+    });
+
+    if (payload.length === 0) {
+      return { ok: false, errors: ["No Local Offers exist"] };
+    }
+    return { ok: true, payload };
   }
 
   public async makeGuestAnswers(remotePeers: Array<RemotePeer>): AsyncResult {
     // close all existing connections if they exist
     this.peerMap.forEach((connection) => connection.peerConnection.close());
     this.peerMap.clear();
+
+    if (remotePeers.length === 0) {
+      return { ok: false, errors: ["No remote peers given"] };
+    }
 
     try {
       // create a new WebRTC peer connection for each remote peer
@@ -72,10 +96,50 @@ export class WebrtcManager {
         this.answeringPeerMap.set(crypto.randomUUID(), answer);
       }
 
-      return { success: true };
+      return { ok: true };
     } catch (e) {
-      return { success: false, errors: [String(e)] };
+      return { ok: false, errors: [String(e)] };
     }
+  }
+
+  public getAnswerPayload(): Result<{ payload: Array<RemotePeer> }> {
+    const payload: Array<RemotePeer> = [];
+    this.answeringPeerMap.forEach((peer) => {
+      if (peer.peerConnection.localDescription) {
+        payload.push({
+          description: peer.peerConnection.localDescription,
+          candidates: peer.candidates,
+        });
+      }
+    });
+
+    if (payload.length === 0) {
+      return makeError("No Local Answers exist");
+    }
+    return { ok: true, payload };
+  }
+
+  public async recieveAnswerPayload(
+    remotePeers: Array<RemotePeer>,
+  ): AsyncResult {
+    if (remotePeers.length === 0) {
+      return makeError("No remote peers given");
+    }
+
+    const peers = Array.from(this.peerMap.entries());
+    if (peers.length === 0) {
+      return makeError("No Local Offers exist");
+    }
+    const openPeers = peers.filter(([_, peer]) =>
+      !peer.peerConnection.remoteDescription
+    );
+    if (openPeers.length === 0) {
+      return makeError("No Open Offers exist, make more");
+    }
+
+    const [peerId, peer] = openPeers[0];
+
+    return { ok: true };
   }
 }
 
@@ -155,7 +219,7 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
   });
 }
 
-function makeAnsweringPeer(remotePeer: RemotePeer, timeout = 5): Promise<Peer> {
+function makeAnsweringPeer(remotePeer: RemotePeer): Promise<Peer> {
   const peerConnection = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
   const peer: Peer = {
     peerConnection,
@@ -205,6 +269,7 @@ function makeAnsweringPeer(remotePeer: RemotePeer, timeout = 5): Promise<Peer> {
     peer.channels.push(initialChannel);
 
     // create answer to offer to start generating ice candidates
+    const timeout = 5;
     peerConnection.createAnswer()
       .then((answer) => peerConnection.setLocalDescription(answer))
       .then(
@@ -220,7 +285,9 @@ function makeAnsweringPeer(remotePeer: RemotePeer, timeout = 5): Promise<Peer> {
       .then(async () => {
         // add all the candidates in any order
         await Promise.all(
-          remotePeer.candidates.map(peerConnection.addIceCandidate),
+          remotePeer.candidates.map((candidate) =>
+            peerConnection.addIceCandidate(candidate)
+          ),
         );
         // To indicate the offer had no more candidates, pass in undefined
         await peerConnection.addIceCandidate(undefined);

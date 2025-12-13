@@ -1,28 +1,37 @@
 import { Head } from "$fresh/runtime.ts";
+import { PageProps } from "$fresh/server.ts";
+import DebugControls from "../islands/DebugControls.tsx";
 import GameCanvas from "../islands/GameCanvas.tsx";
 
-export default function Home() {
+export default function Home({ url }: PageProps) {
+  const params = new URLSearchParams(url.searchParams);
+  const isDebug = params.has("debug");
+
   return (
-    <div class="px-4 mx-auto fresh-gradient min-h-screen">
+    <div class="px-4 mx-auto fresh-gradient bg-[#2B2C2F] min-h-screen">
       <Head>
-        <title>Open Dwarf</title>
+        <title>Open Dwarf {isDebug ? "Debug" : ""}</title>
       </Head>
       <div class="max-w-3xl mx-auto flex flex-col items-center justify-center">
-        <p class="my-4 flex items-center">
+        <p class="my-1 flex items-center text-yellow-400">
           Served using Deno Fresh
           <img
-            class="mx-2"
             src="/logo.svg"
-            width="28"
-            height="28"
+            width="20"
+            height="20"
             alt="the Fresh logo: a sliced lemon dripping with juice"
           />
         </p>
-        <h1 class="text-4xl font-bold">
-          Loading Open Dwarf...
+        <h1 class="text-4xl font-bold my-4 text-[#7C584F]">
+          Open Dwarf{" "}
+          {isDebug ? <span class="text-[#DA7027]">(Debug)</span> : ""}
         </h1>
       </div>
-      <GameCanvas />
+      <GameCanvas
+        gameDir={isDebug ? "/game_debug/" : undefined}
+        wasmFile={isDebug ? "open_dwarf_lib_bg.wasm" : undefined}
+      />
+      <DebugControls />
     </div>
   );
 }
