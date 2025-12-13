@@ -16,6 +16,9 @@ export default function MultiplayerSidebar() {
     JSON.stringify(webrtc.peerConnectionConfig, null, 2)
   );
   const [configError, setConfigError] = useState<string | null>(null);
+  const [relayOnly, setRelayOnly] = useState(
+    () => webrtc.peerConnectionConfig.iceTransportPolicy === "relay",
+  );
 
   const handleHost = async () => {
     const result = await webrtc.makeOfferingPeers(2);
@@ -118,7 +121,12 @@ export default function MultiplayerSidebar() {
     };
 
     try {
-      const parsed = normalizeAndParse(configText);
+      const parsed = normalizeAndParse(configText) as RTCConfiguration;
+      if (relayOnly) {
+        parsed.iceTransportPolicy = "relay";
+      } else if (parsed.iceTransportPolicy) {
+        delete parsed.iceTransportPolicy;
+      }
       console.log(parsed);
       webrtc.peerConnectionConfig = parsed;
       setConfigError(null);
@@ -252,6 +260,15 @@ export default function MultiplayerSidebar() {
               Paste a JSON RTCConfiguration object to use for new connections.
               (Static TURN Credentials)
             </p>
+            <label class="flex items-center gap-2 text-sm text-gray-200 mb-2">
+              <input
+                type="checkbox"
+                checked={relayOnly}
+                onChange={(e) => setRelayOnly(e.currentTarget.checked)}
+                class="w-4 h-4 accent-[#DA7027]"
+              />
+              Hide IP (requires a TURN server, not just stun)
+            </label>
             <textarea
               class="w-full h-[240px] border border-gray-700 bg-[#2B2C2F] text-white rounded p-2 font-mono text-sm"
               value={configText}
@@ -274,6 +291,8 @@ export default function MultiplayerSidebar() {
                 <Button onClick={handleSaveConfig}>Save</Button>
               </div>
             </div>
+            Failing to connect? Players might be behind a symmetric NAT, use
+            TURN servers.
           </div>
         </div>
       )}
