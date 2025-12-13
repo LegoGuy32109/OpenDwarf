@@ -1,9 +1,36 @@
 import { useState } from "preact/hooks";
 import { Button } from "../components/Button.tsx";
 import { WebrtcManager } from "../domain/webrtc.ts";
+import { gunzipSync, gzipSync, strFromU8 } from "npm:fflate@0.8.2";
 
 const webrtc = new WebrtcManager();
 type RemotePayload = { key: string; sdp: string };
+
+const encoder = new TextEncoder();
+const toBase64 = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes));
+const fromBase64 = (b64: string) =>
+  new Uint8Array(atob(b64).split("").map((c) => c.charCodeAt(0)));
+
+const compressPayload = (payload: unknown): string => {
+  try {
+    const json = JSON.stringify(payload);
+    const compressed = gzipSync(encoder.encode(json), { level: 9 });
+    return toBase64(compressed);
+  } catch (_e) {
+    return JSON.stringify(payload);
+  }
+};
+
+const decompressPayload = (text: string): string => {
+  try {
+    const bytes = fromBase64(text);
+    const decompressed = gunzipSync(bytes);
+    return strFromU8(decompressed);
+  } catch (_e) {
+    return text;
+  }
+};
 
 export default function MultiplayerSidebar() {
   const [open, setOpen] = useState(false);
@@ -29,9 +56,8 @@ export default function MultiplayerSidebar() {
       return;
     }
     try {
-      await navigator.clipboard.writeText(
-        JSON.stringify(offerResult.payload),
-      );
+      const compressed = compressPayload(offerResult.payload);
+      await navigator.clipboard.writeText(compressed);
       console.log("Offer payload copied to clipboard");
     } catch (e) {
       console.error("Failed to copy offer payload", e);
@@ -43,7 +69,8 @@ export default function MultiplayerSidebar() {
   > => {
     try {
       const text = await navigator.clipboard.readText();
-      const parsed = JSON.parse(text);
+      const json = decompressPayload(text);
+      const parsed = JSON.parse(json);
       if (!Array.isArray(parsed)) {
         console.error("Clipboard payload must be an array");
         return null;
@@ -73,9 +100,8 @@ export default function MultiplayerSidebar() {
       return;
     }
     try {
-      await navigator.clipboard.writeText(
-        JSON.stringify(answerResult.payload),
-      );
+      const compressed = compressPayload(answerResult.payload);
+      await navigator.clipboard.writeText(compressed);
       console.log("Answer payload copied to clipboard");
     } catch (e) {
       console.error("Failed to copy answer payload", e);

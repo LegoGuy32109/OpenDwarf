@@ -12,6 +12,17 @@ interface RemotePeer {
   sdp: string;
 }
 
+const DEFAULT_RTC_CONFIG = {
+  iceServers: [
+    {
+      urls: [
+        "stun:stun1.l.google.com:19302",
+        "stun:stun3.l.google.com:19302",
+      ],
+    },
+  ],
+};
+
 export class WebrtcManager {
   constructor() {
     // adding map logs for debugging
@@ -21,16 +32,7 @@ export class WebrtcManager {
     (globalThis as any).amap = () => this.displayAnswerMap();
   }
 
-  public peerConnectionConfig: RTCConfiguration = {
-    iceServers: [
-      {
-        urls: [
-          "stun:stun1.l.google.com:19302",
-          "stun:stun3.l.google.com:19302",
-        ],
-      },
-    ],
-  };
+  public peerConnectionConfig: RTCConfiguration = DEFAULT_RTC_CONFIG;
 
   private peerMap: Map<string, Peer> = new Map();
   public displayPeerMap(): void {
