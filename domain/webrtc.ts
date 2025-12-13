@@ -10,12 +10,14 @@ const PEER_CONNECTION_CONFIG: RTCConfiguration = {
 };
 
 interface Peer {
+  key: string; // uuid
   peerConnection: RTCPeerConnection;
   channels: Array<RTCDataChannel>;
   candidates: Array<RTCIceCandidate>;
 }
 
 interface RemotePeer {
+  key: string; // uuid
   description: RTCSessionDescription;
   candidates: Array<RTCIceCandidate>;
 }
@@ -51,7 +53,7 @@ export class WebrtcManager {
       );
 
       for (const peer of peers) {
-        this.peerMap.set(crypto.randomUUID(), peer);
+        this.peerMap.set(peer.key, peer);
       }
 
       return { ok: true };
@@ -65,6 +67,7 @@ export class WebrtcManager {
     this.peerMap.forEach((peer) => {
       if (peer.peerConnection.localDescription) {
         payload.push({
+          key: peer.key,
           description: peer.peerConnection.localDescription,
           candidates: peer.candidates,
         });
@@ -79,8 +82,10 @@ export class WebrtcManager {
 
   public async makeGuestAnswers(remotePeers: Array<RemotePeer>): AsyncResult {
     // close all existing connections if they exist
-    this.peerMap.forEach((connection) => connection.peerConnection.close());
-    this.peerMap.clear();
+    this.answeringPeerMap.forEach((connection) =>
+      connection.peerConnection.close()
+    );
+    this.answeringPeerMap.clear();
 
     if (remotePeers.length === 0) {
       return { ok: false, errors: ["No remote peers given"] };
@@ -107,6 +112,7 @@ export class WebrtcManager {
     this.answeringPeerMap.forEach((peer) => {
       if (peer.peerConnection.localDescription) {
         payload.push({
+          key: peer.key,
           description: peer.peerConnection.localDescription,
           candidates: peer.candidates,
         });
@@ -119,9 +125,9 @@ export class WebrtcManager {
     return { ok: true, payload };
   }
 
-  public async recieveAnswerPayload(
+  public recieveAnswerPayload(
     remotePeers: Array<RemotePeer>,
-  ): AsyncResult {
+  ): Result {
     if (remotePeers.length === 0) {
       return makeError("No remote peers given");
     }
@@ -130,14 +136,20 @@ export class WebrtcManager {
     if (peers.length === 0) {
       return makeError("No Local Offers exist");
     }
-    const openPeers = peers.filter(([_, peer]) =>
-      !peer.peerConnection.remoteDescription
+    const remotePeerKeys = remotePeers.map((peer) => peer.key);
+    const openPeers = peers.filter(([key, peer]) =>
+      !peer.peerConnection.remoteDescription && remotePeerKeys.includes(key)
     );
     if (openPeers.length === 0) {
-      return makeError("No Open Offers exist, make more");
+      return makeError("No Open Offers exist");
     }
 
-    const [peerId, peer] = openPeers[0];
+    const [key, openPeer] = openPeers[0];
+    const remotePeer = remotePeers.find((peer) => peer.key === key);
+    if (!remotePeer) {
+      return makeError("Remote Peer filtering invalid, BUG");
+    }
+    openPeer.peerConnection.setRemoteDescription(remotePeer.description);
 
     return { ok: true };
   }
@@ -152,6 +164,7 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
     PEER_CONNECTION_CONFIG,
   );
   const peer: Peer = {
+    key: crypto.randomUUID(),
     peerConnection,
     channels: [],
     candidates: [],
@@ -222,6 +235,7 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
 function makeAnsweringPeer(remotePeer: RemotePeer): Promise<Peer> {
   const peerConnection = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
   const peer: Peer = {
+    key: remotePeer.key,
     peerConnection,
     channels: [],
     candidates: [],

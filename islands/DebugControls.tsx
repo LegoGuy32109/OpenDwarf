@@ -39,7 +39,7 @@ export default function DebugControls() {
   };
 
   const handleHost = async () => {
-    const result = await webrtc.makeOfferingPeers(10);
+    const result = await webrtc.makeOfferingPeers(2);
     if (result.ok) {
       console.log("offers made");
       return;
@@ -61,6 +61,21 @@ export default function DebugControls() {
     console.error(result.errors);
   };
 
+  const handleAnswerPayload = async () => {
+    const answerResult = webrtc.getAnswerPayload();
+    if (!answerResult.ok) {
+      console.error(answerResult.errors);
+      return;
+    }
+    const result = await webrtc.recieveAnswerPayload(answerResult.payload);
+    if (!result.ok) {
+      console.error(result.errors);
+      return;
+    }
+
+    console.log("answers recieved");
+  };
+
   return (
     <div class="flex flex-col items-center gap-2 my-4">
       {!logReady && <p class="text-sm text-gray-600">Loading wasm module...</p>}
@@ -69,6 +84,9 @@ export default function DebugControls() {
       <div class="flex">
         <Button onClick={handleHost}>Generate Connections</Button>
         <Button onClick={handleGuest}>Generate Answer Connections</Button>
+      </div>
+      <div class="flex">
+        <Button onClick={handleAnswerPayload}>Accept Answer Payload</Button>
       </div>
     </div>
   );
