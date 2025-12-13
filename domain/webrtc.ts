@@ -1,14 +1,6 @@
 import { AsyncResult, Result } from "../types/Result.ts";
 import { makeError } from "./Result.ts";
 
-const PEER_CONNECTION_CONFIG: RTCConfiguration = {
-  iceServers: [
-    {
-      urls: ["stun:stun1.l.google.com:19302", "stun:stun3.l.google.com:19302"],
-    },
-  ],
-};
-
 interface Peer {
   key: string; // uuid
   peerConnection: RTCPeerConnection;
@@ -29,6 +21,17 @@ export class WebrtcManager {
     (globalThis as any).amap = () => this.displayAnswerMap();
   }
 
+  public peerConnectionConfig: RTCConfiguration = {
+    iceServers: [
+      {
+        urls: [
+          "stun:stun1.l.google.com:19302",
+          "stun:stun3.l.google.com:19302",
+        ],
+      },
+    ],
+  };
+
   private peerMap: Map<string, Peer> = new Map();
   public displayPeerMap(): void {
     console.log(this.peerMap);
@@ -47,7 +50,10 @@ export class WebrtcManager {
     try {
       // create a new WebRTC peer connection for each peer joining
       const peers = await Promise.all(
-        Array.from({ length: numPeers }, () => makeEmptyPeer()),
+        Array.from(
+          { length: numPeers },
+          () => makeEmptyPeer(this.peerConnectionConfig),
+        ),
       );
 
       for (const peer of peers) {
@@ -92,7 +98,9 @@ export class WebrtcManager {
     try {
       // create a new WebRTC peer connection for each remote peer
       const possibleAnswerPeers = await Promise.all(
-        remotePeers.map(makeAnsweringPeer),
+        remotePeers.map((peer) =>
+          makeAnsweringPeer(this.peerConnectionConfig, peer)
+        ),
       );
 
       for (const answer of possibleAnswerPeers) {
@@ -160,10 +168,8 @@ export class WebrtcManager {
  * Create a negotiated RTCPeerConnection with a chat channel id of 0
  * Fails if timeout in seconds elapses without finishing
  */
-function makeEmptyPeer(timeout = 5): Promise<Peer> {
-  const peerConnection = new globalThis.RTCPeerConnection(
-    PEER_CONNECTION_CONFIG,
-  );
+function makeEmptyPeer(config: RTCConfiguration, timeout = 5): Promise<Peer> {
+  const peerConnection = new globalThis.RTCPeerConnection(config);
   const peer: Peer = {
     key: crypto.randomUUID(),
     peerConnection,
@@ -218,8 +224,11 @@ function makeEmptyPeer(timeout = 5): Promise<Peer> {
   });
 }
 
-function makeAnsweringPeer(remotePeer: RemotePeer): Promise<Peer> {
-  const peerConnection = new RTCPeerConnection(PEER_CONNECTION_CONFIG);
+function makeAnsweringPeer(
+  config: RTCConfiguration,
+  remotePeer: RemotePeer,
+): Promise<Peer> {
+  const peerConnection = new RTCPeerConnection(config);
   const peer: Peer = {
     key: remotePeer.key,
     peerConnection,
