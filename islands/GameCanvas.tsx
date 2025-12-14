@@ -27,6 +27,12 @@ export default function GameCanvas(
             max-width: none;
             border-radius: 0;
           }
+          #game-canvas.full-window {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            border-radius: 0;
+          }
         `}
       </style>
       <script
