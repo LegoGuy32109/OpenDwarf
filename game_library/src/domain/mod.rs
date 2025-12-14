@@ -33,6 +33,24 @@ pub enum GameMessage {
   FlipPlayerSprite,
 }
 
+pub const OP_FLIP_PLAYER_SPRITE: u8 = 1;
+
+pub fn enqueue_messages_from_bytes(bytes: &[u8]) -> Result<(), &'static str> {
+  let mut queue = MESSAGE_QUEUE.lock().map_err(|_| "queue poisoned")?;
+  let mut cursor = 0;
+  while cursor < bytes.len() {
+    match bytes[cursor] {
+      OP_FLIP_PLAYER_SPRITE => {
+        queue.push_back(GameMessage::FlipPlayerSprite);
+        cursor += 1;
+      }
+      // unknown opcodes are ignored to allow forward-compatible extensions
+      _ => cursor += 1,
+    }
+  }
+  Ok(())
+}
+
 impl Plugin for OpenDwarfPlugins {
   fn build(&self, app: &mut App) {
     app
