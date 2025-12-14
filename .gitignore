@@ -11,6 +11,3 @@ _fresh/
 node_modules/
 vendor/
 /**/target
-
-# game builds
-static/{game,game_debug}/*

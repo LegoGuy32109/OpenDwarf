@@ -6,5 +6,5 @@ pub mod domain;
 use crate::domain::OpenDwarfPlugins;
 
 fn main() {
-  App::new().add_plugins(OpenDwarfPlugins).run();
+    App::new().add_plugins(OpenDwarfPlugins).run();
 }

@@ -3,7 +3,7 @@ import { Button } from "../components/Button.tsx";
 
 declare global {
   // Exposed in islands/GameCanvas.tsx after the wasm module initializes
-  var bevyWasmLog: (() => void) | undefined;
+  var bevyWasmLog: ((msg: string) => void) | undefined;
   var flipPlayerSpriteY: (() => void) | undefined;
 }
 
@@ -28,7 +28,7 @@ export default function DebugControls() {
   }, []);
 
   const handleClick = () => {
-    globalThis.bevyWasmLog?.();
+    globalThis.bevyWasmLog?.("Hello down there");
   };
 
   const handleFlip = () => {

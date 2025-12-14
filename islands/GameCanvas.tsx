@@ -17,14 +17,33 @@ export default function GameCanvas(
         // deno-lint-ignore react-no-danger
         dangerouslySetInnerHTML={{
           __html: `
-import init, { flip_player_sprite_y, log_debug_message, main } from "${gameJs}";
+import init, { main, send_game_bytes } from "${gameJs}";
+
+const OP_FLIP_PLAYER_SPRITE = 1;
+const OP_LOG_DEBUG = 2;
+
+function sendLogMessage(text) {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(text);
+  const buffer = new Uint8Array(1 + 2 + bytes.length);
+  buffer[0] = OP_LOG_DEBUG;
+  buffer[1] = bytes.length & 0xff;
+  buffer[2] = (bytes.length >> 8) & 0xff;
+  buffer.set(bytes, 3);
+  send_game_bytes(buffer);
+}
+
+function sendFlipMessage() {
+  const buffer = new Uint8Array([OP_FLIP_PLAYER_SPRITE]);
+  send_game_bytes(buffer);
+}
 
 async function startGame() {
   await init("${gameWasm}");
   main();
   // expose functions so debug controls can call into Bevy
-  globalThis.bevyWasmLog = log_debug_message;
-  globalThis.flipPlayerSpriteY = flip_player_sprite_y;
+  globalThis.bevyWasmLog = sendLogMessage;
+  globalThis.flipPlayerSpriteY = () => sendFlipMessage();
   if (typeof globalThis.dispatchEvent === "function") {
     globalThis.dispatchEvent(new Event("bevy-wasm-ready"));
   }
