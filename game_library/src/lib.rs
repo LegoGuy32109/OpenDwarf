@@ -3,8 +3,7 @@ use wasm_bindgen::prelude::*;
 
 mod components;
 mod domain;
-use crate::domain::{FLIP_PLAYER_SPRITE, OpenDwarfPlugins};
-use std::sync::atomic::Ordering;
+use crate::domain::{GameMessage, MESSAGE_QUEUE, OpenDwarfPlugins};
 
 #[wasm_bindgen]
 pub fn main() {
@@ -18,6 +17,8 @@ pub fn log_debug_message() {
 
 #[wasm_bindgen]
 pub fn flip_player_sprite_y() {
-  // mark request for the next frame so Bevy can safely mutate the world
-  FLIP_PLAYER_SPRITE.store(true, Ordering::SeqCst);
+  // enqueue request for the next frame so Bevy can safely mutate the world
+  if let Ok(mut queue) = MESSAGE_QUEUE.lock() {
+    queue.push_back(GameMessage::FlipPlayerSprite);
+  }
 }

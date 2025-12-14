@@ -10,12 +10,14 @@ use bevy::sprite_render::{
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use std::collections::VecDeque;
 use std::fmt::Write;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
-// Flag toggled from JS to flip the player sprite
-pub static FLIP_PLAYER_SPRITE: AtomicBool = AtomicBool::new(false);
+// Simple message queue pushed from JS and consumed in the game loop
+pub static MESSAGE_QUEUE: Mutex<VecDeque<GameMessage>> =
+  Mutex::new(VecDeque::new());
 use crate::components::map_coordinates::MapCoordinates;
 
 const TILE_SIZE_IN_PX: u16 = 64;
@@ -25,6 +27,11 @@ const TILE_MAP_PATH: &str = "sprites/StackedTextures.png";
 const NUM_TILES_IN_MAP: u16 = 31;
 
 pub struct OpenDwarfPlugins;
+
+#[derive(Debug)]
+pub enum GameMessage {
+  FlipPlayerSprite,
+}
 
 impl Plugin for OpenDwarfPlugins {
   fn build(&self, app: &mut App) {
@@ -407,12 +414,15 @@ fn keyboard_movement(
 }
 
 fn process_player_flip(mut sprites: Query<&mut Sprite, With<Player>>) {
-  // only flip when requested from JS
-  if !FLIP_PLAYER_SPRITE.swap(false, Ordering::SeqCst) {
-    return;
-  }
-  for mut sprite in &mut sprites {
-    sprite.flip_x = !sprite.flip_x;
+  let mut queue = MESSAGE_QUEUE.lock().expect("message queue poisoned");
+  while let Some(message) = queue.pop_front() {
+    match message {
+      GameMessage::FlipPlayerSprite => {
+        for mut sprite in &mut sprites {
+          sprite.flip_x = !sprite.flip_x;
+        }
+      }
+    }
   }
 }
 
