@@ -11,6 +11,24 @@ export default function GameCanvas(
 
   return (
     <>
+      <style>
+        {`
+          #game-canvas {
+            width: 100%;
+            max-width: 960px;
+            aspect-ratio: 16 / 9;
+            background: #0f0f10;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+          }
+          #game-canvas:fullscreen {
+            width: 100vw;
+            height: 100vh;
+            max-width: none;
+            border-radius: 0;
+          }
+        `}
+      </style>
       <script
         type="module"
         // I need a script module to initiate the bevy game
@@ -56,7 +74,9 @@ startGame().catch((error) =>
         }}
       >
       </script>
-      <canvas id="game-canvas" />
+      <div class="flex justify-center">
+        <canvas id="game-canvas" />
+      </div>
     </>
   );
 }

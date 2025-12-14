@@ -10,6 +10,7 @@ import * as $greet_name_ from "./routes/greet/[name].tsx";
 import * as $index from "./routes/index.tsx";
 import * as $Counter from "./islands/Counter.tsx";
 import * as $DebugControls from "./islands/DebugControls.tsx";
+import * as $FullscreenButton from "./islands/FullscreenButton.tsx";
 import * as $GameCanvas from "./islands/GameCanvas.tsx";
 import * as $MultiplayerSidebar from "./islands/MultiplayerSidebar.tsx";
 import type { Manifest } from "$fresh/server.ts";
@@ -26,6 +27,7 @@ const manifest = {
   islands: {
     "./islands/Counter.tsx": $Counter,
     "./islands/DebugControls.tsx": $DebugControls,
+    "./islands/FullscreenButton.tsx": $FullscreenButton,
     "./islands/GameCanvas.tsx": $GameCanvas,
     "./islands/MultiplayerSidebar.tsx": $MultiplayerSidebar,
   },

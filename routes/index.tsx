@@ -2,6 +2,7 @@ import { Head } from "$fresh/runtime.ts";
 import { PageProps } from "$fresh/server.ts";
 import DebugControls from "../islands/DebugControls.tsx";
 import GameCanvas from "../islands/GameCanvas.tsx";
+import FullscreenButton from "../islands/FullscreenButton.tsx";
 import MultiplayerSidebar from "../islands/MultiplayerSidebar.tsx";
 
 export default function Home({ url }: PageProps) {
@@ -30,6 +31,9 @@ export default function Home({ url }: PageProps) {
         </h1>
         <div class="absolute top-2 right-4">
           <MultiplayerSidebar />
+        </div>
+        <div class="absolute top-2 left-4">
+          <FullscreenButton />
         </div>
       </div>
       <GameCanvas
