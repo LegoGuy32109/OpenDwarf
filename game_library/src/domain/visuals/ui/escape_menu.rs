@@ -8,13 +8,20 @@ pub fn handle_escape_menu(
     mut commands: Commands,
     key_map: Res<KeyMap>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    maybe_menu: Query<Entity, With<EscapeMenu>>,
+    maybe_menu: Query<(Entity, &UiFocusMap), With<EscapeMenu>>,
 ) {
     let keys = KeyMap::get_keys(&keyboard_input);
-    if keys.just_pressed(&key_map.escape_menu) {
-        if let Ok(menu) = maybe_menu.single_inner() {
+    let toggle_menu_pressed = keys.just_pressed(&key_map.escape_menu);
+
+    if let Ok((menu, ui_focus_map)) = maybe_menu.single_inner() {
+        if toggle_menu_pressed {
             commands.entity(menu).despawn();
-        } else {
+            return;
+        }
+
+        // update data in the escape menu
+    } else {
+        if toggle_menu_pressed {
             commands.spawn(escape_menu());
         }
     }
@@ -28,7 +35,7 @@ fn escape_menu() -> impl Bundle {
 
     return (
         EscapeMenu,
-        UiFocusMap {},
+        UiFocusMap::default(),
         Node {
             width: percent(100.),
             height: percent(100.),
