@@ -1,3 +1,4 @@
+use bevy::math::CompassOctant;
 use bevy::prelude::*;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
@@ -8,21 +9,41 @@ pub fn handle_escape_menu(
     mut commands: Commands,
     key_map: Res<KeyMap>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    maybe_menu: Query<(Entity, &UiFocusMap), With<EscapeMenu>>,
+    mut maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
 ) {
     let keys = KeyMap::get_keys(&keyboard_input);
     let toggle_menu_pressed = keys.just_pressed(&key_map.escape_menu);
 
-    if let Ok((menu, ui_focus_map)) = maybe_menu.single_inner() {
+    if let Ok((menu, mut ui_focus_map)) = maybe_menu.single_inner() {
         if toggle_menu_pressed {
             commands.entity(menu).despawn();
             return;
         }
 
         // update data in the escape menu
+        let direction = if keys.just_pressed(&key_map.reach_up) {
+            Some(CompassOctant::North)
+        } else if keys.just_pressed(&key_map.reach_down) {
+            Some(CompassOctant::South)
+        } else if keys.just_pressed(&key_map.reach_left) {
+            Some(CompassOctant::West)
+        } else if keys.just_pressed(&key_map.reach_right) {
+            Some(CompassOctant::East)
+        } else {
+            None
+        };
+
+        if let (Some(direction), Some(current_focus)) =
+            (direction, ui_focus_map.current_focus)
+        {
+            if let Some(next_focus) = ui_focus_map.get_next_entity(current_focus, direction) {
+                ui_focus_map.current_focus = Some(next_focus);
+                ui_focus_map.focus_visible = true;
+            }
+        }
     } else {
         if toggle_menu_pressed {
-            commands.spawn(escape_menu());
+            spawn_escape_menu(&mut commands);
         }
     }
 }
@@ -35,7 +56,6 @@ fn escape_menu() -> impl Bundle {
 
     return (
         EscapeMenu,
-        UiFocusMap::default(),
         Node {
             width: percent(100.),
             height: percent(100.),
@@ -46,11 +66,6 @@ fn escape_menu() -> impl Bundle {
             ..default()
         },
         BackgroundColor(menu_background_color),
-        children![
-            escape_menu_button("Back to game"),
-            escape_menu_button("Options..."),
-            escape_menu_button("Save and quit to title")
-        ],
     );
 }
 
@@ -78,4 +93,31 @@ fn escape_menu_button(text: &str) -> impl Bundle {
             TextColor(Color::WHITE),
         )],
     );
+}
+
+fn spawn_escape_menu(commands: &mut Commands) -> Entity {
+    let menu = commands.spawn(escape_menu()).id();
+    let button_back = commands.spawn(escape_menu_button("Back to game")).id();
+    let button_options = commands.spawn(escape_menu_button("Options...")).id();
+    let button_save_quit = commands
+        .spawn(escape_menu_button("Save and quit to title"))
+        .id();
+
+    commands
+        .entity(menu)
+        .add_children(&[button_back, button_options, button_save_quit]);
+
+    let mut focus_map = UiFocusMap::default();
+    let back_index = focus_map.add_node(button_back);
+    let options_index = focus_map.add_node(button_options);
+    let save_quit_index = focus_map.add_node(button_save_quit);
+
+    focus_map.set_focus(back_index);
+    focus_map.link(back_index, CompassOctant::South, options_index);
+    focus_map.link(options_index, CompassOctant::North, back_index);
+    focus_map.link(options_index, CompassOctant::South, save_quit_index);
+    focus_map.link(save_quit_index, CompassOctant::North, options_index);
+
+    commands.entity(menu).insert(focus_map);
+    menu
 }
