@@ -63,10 +63,3 @@ impl KeyMapChecker<'_> {
             .any(|k| codes.contains(&k))
     }
 }
-
-pub fn menu_handler(keyboard_input: Res<ButtonInput<KeyCode>>, key_map: Res<KeyMap>) {
-    let keys = KeyMap::get_keys(&keyboard_input);
-    if keys.just_pressed(&key_map.escape_menu) {
-        info!("Toggling game menu");
-    }
-}

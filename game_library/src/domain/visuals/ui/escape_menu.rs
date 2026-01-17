@@ -7,14 +7,17 @@ pub fn handle_escape_menu(
     mut commands: Commands,
     key_map: Res<KeyMap>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    existing_menu: Option<Single<&mut EscapeMenu>>,
+    maybe_menu: Query<Entity, With<EscapeMenu>>,
 ) {
     let keys = KeyMap::get_keys(&keyboard_input);
     if keys.just_pressed(&key_map.escape_menu) {
-        if let Some(menu) = existing_menu {
-            menu.remove::<EscapeMenu>()
-        };
-        commands.spawn(escape_menu());
+        if let Ok(menu) = maybe_menu.single_inner() {
+            info!("yeah its there, {menu}");
+            commands.entity(menu).remove::<EscapeMenu>();
+        } else {
+            info!("lemme add one");
+            commands.spawn(escape_menu());
+        }
     }
 }
 
@@ -33,6 +36,8 @@ fn escape_menu() -> impl Bundle {
             height: percent(100.),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
             ..default()
         },
         BackgroundColor(menu_background_color),
