@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use super::key_map::KeyMap;
+use super::ui_focus_map::UiFocusMap;
 
 pub fn handle_escape_menu(
     mut commands: Commands,
@@ -27,6 +28,7 @@ fn escape_menu() -> impl Bundle {
 
     return (
         EscapeMenu,
+        UiFocusMap {},
         Node {
             width: percent(100.),
             height: percent(100.),
