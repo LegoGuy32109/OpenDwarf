@@ -11,6 +11,12 @@ pub fn handle_escape_menu(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
     button_query: Query<&EscapeMenuButton>,
+    mut button_style_query: Query<(
+        Entity,
+        &EscapeMenuButton,
+        &mut BackgroundColor,
+        &mut BorderColor,
+    )>,
 ) {
     let keys = KeyMap::get_keys(&keyboard_input);
     let toggle_menu_pressed = keys.just_pressed(&key_map.escape_menu);
@@ -22,6 +28,7 @@ pub fn handle_escape_menu(
         }
 
         // update data in the escape menu
+
         let direction = if keys.just_pressed(&key_map.reach_up) {
             Some(CompassOctant::North)
         } else if keys.just_pressed(&key_map.reach_down) {
@@ -48,6 +55,17 @@ pub fn handle_escape_menu(
                 }
             }
         }
+
+        let focused_entity = ui_focus_map.current_focus;
+        for (entity, button, mut background, mut border) in button_style_query.iter_mut() {
+            let (bg, bd) = if Some(entity) == focused_entity {
+                (button.focus_background, button.focus_border)
+            } else {
+                (button.normal_background, button.normal_border)
+            };
+            *background = BackgroundColor(bg);
+            *border = BorderColor::all(bd);
+        }
     } else {
         if toggle_menu_pressed {
             spawn_escape_menu(&mut commands);
@@ -61,6 +79,10 @@ pub struct EscapeMenu;
 #[derive(Component)]
 pub struct EscapeMenuButton {
     label: &'static str,
+    normal_background: Color,
+    normal_border: Color,
+    focus_background: Color,
+    focus_border: Color,
 }
 
 fn escape_menu() -> impl Bundle {
@@ -84,6 +106,8 @@ fn escape_menu() -> impl Bundle {
 fn escape_menu_button(text: &'static str) -> impl Bundle {
     let button_color: Color = color_from_hex("#22213F");
     let button_border_color: Color = color_from_hex("#AFAFAB");
+    let focus_button_color: Color = color_from_hex("#2B3D61");
+    let focus_button_border_color: Color = color_from_hex("#E2D9D6");
 
     return (
         Node {
@@ -96,7 +120,13 @@ fn escape_menu_button(text: &'static str) -> impl Bundle {
         },
         BackgroundColor(button_color),
         BorderColor::all(button_border_color),
-        EscapeMenuButton { label: text },
+        EscapeMenuButton {
+            label: text,
+            normal_background: button_color,
+            normal_border: button_border_color,
+            focus_background: focus_button_color,
+            focus_border: focus_button_border_color,
+        },
         children![(
             Text::new(text),
             TextFont {
@@ -126,10 +156,12 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
     let save_quit_index = focus_map.add_node(button_save_quit);
 
     focus_map.set_focus(back_index);
+    focus_map.link(back_index, CompassOctant::North, save_quit_index);
     focus_map.link(back_index, CompassOctant::South, options_index);
     focus_map.link(options_index, CompassOctant::North, back_index);
     focus_map.link(options_index, CompassOctant::South, save_quit_index);
     focus_map.link(save_quit_index, CompassOctant::North, options_index);
+    focus_map.link(save_quit_index, CompassOctant::South, back_index);
 
     commands.entity(menu).insert(focus_map);
     menu
