@@ -10,6 +10,7 @@ pub mod visuals;
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
+use visuals::ui::menu_handler::{KeyMap, menu_handler};
 use visuals::{setup, update_tileset_image};
 
 pub struct OpenDwarfPlugins;
@@ -19,8 +20,11 @@ impl Plugin for OpenDwarfPlugins {
         app.add_plugins(define_defaults())
             .add_systems(Startup, setup)
             .add_systems(Update, (update_tileset_image, consume_action))
-            .add_systems(Update, process_game_messages)
-            .add_systems(FixedUpdate, keyboard_movement)
+            .add_systems(
+                Update,
+                (process_game_messages, keyboard_movement, menu_handler),
+            )
+            .insert_resource(KeyMap::default())
             // debug systems
             .add_systems(Update, debug_menu)
             .sub_app_mut(RenderApp)

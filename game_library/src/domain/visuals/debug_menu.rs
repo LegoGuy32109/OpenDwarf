@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use std::fmt::Write;
 
 use crate::domain::movement::MovementChord;
+use crate::domain::visuals::ui::menu_handler::KeyMap;
 
 #[derive(Component)]
 pub struct DebugText;
@@ -10,12 +11,15 @@ pub struct DebugText;
 pub fn debug_menu(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    key_maps: Res<KeyMap>,
     debug_text_query: Query<(Entity, &mut Text), With<DebugText>>,
     movement_chord_option: Option<ResMut<MovementChord>>,
 ) {
-    // toggle debug text
+    // toggle debug text component
     let maybe_debug_text = debug_text_query.single_inner();
-    if keyboard_input.just_pressed(KeyCode::F1) {
+
+    let keys = KeyMap::get_keys(&keyboard_input);
+    if keys.just_pressed(&key_maps.debug_menu) {
         // text is already being displayed, remove it
         if let Ok((entity, mut text)) = maybe_debug_text {
             text.0 = String::new();

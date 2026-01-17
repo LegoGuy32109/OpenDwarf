@@ -6,6 +6,7 @@ use std::time::Duration;
 use crate::components::map_coordinates::MapCoordinates;
 
 use super::visuals::Player;
+use super::visuals::ui::menu_handler::KeyMap;
 
 #[derive(Component, Debug)]
 pub struct Action {
@@ -93,6 +94,7 @@ pub fn consume_action(
 pub fn keyboard_movement(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    key_map: Res<KeyMap>,
     time: Res<Time>,
     player_query: Query<Entity, With<Player>>,
     movement_chord_option: Option<ResMut<MovementChord>>,
@@ -116,12 +118,7 @@ pub fn keyboard_movement(
 
     let pressed_movement_keys: HashSet<KeyCode> = keyboard_input
         .get_just_pressed()
-        .filter(|k| {
-            matches!(
-                k,
-                KeyCode::KeyE | KeyCode::KeyS | KeyCode::KeyD | KeyCode::KeyF
-            )
-        })
+        .filter(|k| key_map.get_movement_keys().contains(k))
         .copied()
         .collect();
     let mut movement_keys_sorted: Vec<KeyCode> = pressed_movement_keys.into_iter().collect();

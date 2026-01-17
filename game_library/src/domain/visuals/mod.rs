@@ -6,6 +6,8 @@ use rand_chacha::ChaCha8Rng;
 use crate::components::map_coordinates::MapCoordinates;
 
 pub mod debug_menu;
+pub mod ui;
+pub mod visual_utils;
 
 const TILE_SIZE_IN_PX: u16 = 64;
 

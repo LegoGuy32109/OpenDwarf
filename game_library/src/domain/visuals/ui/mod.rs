@@ -1,6 +1,8 @@
 use super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use bevy::prelude::*;
 
+pub mod menu_handler;
+
 pub fn something(mut commands: Commands) {
     let ui_bundle = (
         Node {
