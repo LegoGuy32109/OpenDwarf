@@ -9,7 +9,8 @@ pub fn handle_escape_menu(
     mut commands: Commands,
     key_map: Res<KeyMap>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
+    maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
+    button_query: Query<&EscapeMenuButton>,
 ) {
     let keys = KeyMap::get_keys(&keyboard_input);
     let toggle_menu_pressed = keys.just_pressed(&key_map.escape_menu);
@@ -33,12 +34,18 @@ pub fn handle_escape_menu(
             None
         };
 
-        if let (Some(direction), Some(current_focus)) =
-            (direction, ui_focus_map.current_focus)
-        {
+        if let (Some(direction), Some(current_focus)) = (direction, ui_focus_map.current_focus) {
             if let Some(next_focus) = ui_focus_map.get_next_entity(current_focus, direction) {
                 ui_focus_map.current_focus = Some(next_focus);
                 ui_focus_map.focus_visible = true;
+            }
+        }
+
+        if keys.just_pressed(&key_map.get_ui_confirm_keys()) {
+            if let Some(focused) = ui_focus_map.current_focus {
+                if let Ok(button) = button_query.get(focused) {
+                    info!("Focused option: {}", button.label);
+                }
             }
         }
     } else {
@@ -50,6 +57,11 @@ pub fn handle_escape_menu(
 
 #[derive(Component)]
 pub struct EscapeMenu;
+
+#[derive(Component)]
+pub struct EscapeMenuButton {
+    label: &'static str,
+}
 
 fn escape_menu() -> impl Bundle {
     let menu_background_color: Color = color_from_hex_alpha("#222222", 0.4);
@@ -69,7 +81,7 @@ fn escape_menu() -> impl Bundle {
     );
 }
 
-fn escape_menu_button(text: &str) -> impl Bundle {
+fn escape_menu_button(text: &'static str) -> impl Bundle {
     let button_color: Color = color_from_hex("#22213F");
     let button_border_color: Color = color_from_hex("#AFAFAB");
 
@@ -84,6 +96,7 @@ fn escape_menu_button(text: &str) -> impl Bundle {
         },
         BackgroundColor(button_color),
         BorderColor::all(button_border_color),
+        EscapeMenuButton { label: text },
         children![(
             Text::new(text),
             TextFont {
