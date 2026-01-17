@@ -11,7 +11,7 @@ use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
 use visuals::ui::escape_menu::handle_escape_menu;
-use visuals::ui::menu_handler::KeyMap;
+use visuals::ui::key_map::KeyMap;
 use visuals::{setup, update_tileset_image};
 
 pub struct OpenDwarfPlugins;

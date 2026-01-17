@@ -1,19 +1,21 @@
 use bevy::prelude::*;
 
+type Keys = Vec<KeyCode>;
+
 #[derive(Resource, Debug)]
 pub struct KeyMap {
-    pub move_up: Vec<KeyCode>,
-    pub move_down: Vec<KeyCode>,
-    pub move_left: Vec<KeyCode>,
-    pub move_right: Vec<KeyCode>,
-    // pub reach_up: Vec<KeyCode>,
-    // pub reach_down: Vec<KeyCode>,
-    // pub reach_left: Vec<KeyCode>,
-    // pub reach_right: Vec<KeyCode>,
-    pub escape_menu: Vec<KeyCode>,
-    // pub return_key: Vec<KeyCode>,
-    pub debug_menu: Vec<KeyCode>,
-    // pub preform_action: Vec<KeyCode>,
+    pub move_up: Keys,
+    pub move_down: Keys,
+    pub move_left: Keys,
+    pub move_right: Keys,
+    // pub reach_up: Keys,
+    // pub reach_down: Keys,
+    // pub reach_left: Keys,
+    // pub reach_right: Keys,
+    pub escape_menu: Keys,
+    pub return_key: Keys,
+    pub debug_menu: Keys,
+    pub preform_action: Keys,
 }
 
 impl KeyMap {
@@ -21,7 +23,7 @@ impl KeyMap {
         KeyMapChecker { keyboard_input }
     }
 
-    pub fn get_movement_keys(&self) -> Vec<KeyCode> {
+    pub fn get_movement_keys(&self) -> Keys {
         vec![
             self.move_up.clone(),
             self.move_down.clone(),
@@ -29,6 +31,10 @@ impl KeyMap {
             self.move_right.clone(),
         ]
         .concat()
+    }
+
+    pub fn get_ui_confirm_keys(&self) -> Keys {
+        vec![self.return_key.clone(), self.preform_action.clone()].concat()
     }
 }
 
@@ -44,9 +50,9 @@ impl Default for KeyMap {
             // reach_left: vec![KeyCode::KeyL],
             // reach_right: vec![KeyCode::KeyJ],
             escape_menu: vec![KeyCode::KeyQ, KeyCode::Escape],
-            // return_key: vec![KeyCode::Enter],
+            return_key: vec![KeyCode::Enter],
             debug_menu: vec![KeyCode::F1],
-            // preform_action: vec![KeyCode::Space],
+            preform_action: vec![KeyCode::Space],
         }
     }
 }
@@ -56,7 +62,7 @@ pub struct KeyMapChecker<'a> {
 }
 
 impl KeyMapChecker<'_> {
-    pub fn just_pressed(&self, codes: &Vec<KeyCode>) -> bool {
+    pub fn just_pressed(&self, codes: &Keys) -> bool {
         self.keyboard_input
             .get_just_pressed()
             .into_iter()

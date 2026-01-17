@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::components::map_coordinates::MapCoordinates;
 
 use super::visuals::Player;
-use super::visuals::ui::menu_handler::KeyMap;
+use super::visuals::ui::key_map::KeyMap;
 
 #[derive(Component, Debug)]
 pub struct Action {

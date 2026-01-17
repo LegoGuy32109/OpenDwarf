@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use std::fmt::Write;
 
 use crate::domain::movement::MovementChord;
-use crate::domain::visuals::ui::menu_handler::KeyMap;
+use crate::domain::visuals::ui::key_map::KeyMap;
 
 #[derive(Component)]
 pub struct DebugText;
@@ -23,7 +23,7 @@ pub fn debug_menu(
         // text is already being displayed, remove it
         if let Ok((entity, mut text)) = maybe_debug_text {
             text.0 = String::new();
-            commands.entity(entity).remove::<DebugText>();
+            commands.entity(entity).despawn();
         // text is not being displayed, add it
         } else {
             commands.spawn((

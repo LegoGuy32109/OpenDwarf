@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
-use super::menu_handler::KeyMap;
+use super::key_map::KeyMap;
 
 pub fn handle_escape_menu(
     mut commands: Commands,
@@ -12,10 +12,8 @@ pub fn handle_escape_menu(
     let keys = KeyMap::get_keys(&keyboard_input);
     if keys.just_pressed(&key_map.escape_menu) {
         if let Ok(menu) = maybe_menu.single_inner() {
-            info!("yeah its there, {menu}");
-            commands.entity(menu).remove::<EscapeMenu>();
+            commands.entity(menu).despawn();
         } else {
-            info!("lemme add one");
             commands.spawn(escape_menu());
         }
     }
@@ -25,8 +23,6 @@ pub fn handle_escape_menu(
 pub struct EscapeMenu;
 
 fn escape_menu() -> impl Bundle {
-    let button_color: Color = color_from_hex("#112F11");
-    let button_border_color: Color = color_from_hex("#CFBFBB");
     let menu_background_color: Color = color_from_hex_alpha("#222222", 0.4);
 
     return (
@@ -37,35 +33,40 @@ fn escape_menu() -> impl Bundle {
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
             flex_direction: FlexDirection::Column,
-            row_gap: px(8),
+            row_gap: px(16),
             ..default()
         },
         BackgroundColor(menu_background_color),
         children![
-            (
-                Node {
-                    width: px(500),
-                    height: px(100),
-                    border: UiRect::all(px(2)),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(button_color),
-                BorderColor::all(button_border_color),
-            ),
-            (
-                Node {
-                    width: px(500),
-                    height: px(100),
-                    border: UiRect::all(px(2)),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(button_color),
-                BorderColor::all(button_border_color),
-            )
+            escape_menu_button("Back to game"),
+            escape_menu_button("Options..."),
+            escape_menu_button("Save and quit to title")
         ],
+    );
+}
+
+fn escape_menu_button(text: &str) -> impl Bundle {
+    let button_color: Color = color_from_hex("#22213F");
+    let button_border_color: Color = color_from_hex("#AFAFAB");
+
+    return (
+        Node {
+            width: percent(70.),
+            height: px(70),
+            border: UiRect::all(px(2)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(button_color),
+        BorderColor::all(button_border_color),
+        children![(
+            Text::new(text),
+            TextFont {
+                font_size: 24.0,
+                ..default()
+            },
+            TextColor(Color::WHITE),
+        )],
     );
 }
