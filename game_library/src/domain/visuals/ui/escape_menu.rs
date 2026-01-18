@@ -27,9 +27,7 @@ pub fn handle_escape_menu(
             return;
         }
 
-        // update data in the escape menu
-
-        let direction = if keys.just_pressed(&key_map.reach_up) {
+        let ui_direction = if keys.just_pressed(&key_map.reach_up) {
             Some(CompassOctant::North)
         } else if keys.just_pressed(&key_map.reach_down) {
             Some(CompassOctant::South)
@@ -41,7 +39,7 @@ pub fn handle_escape_menu(
             None
         };
 
-        if let (Some(direction), Some(current_focus)) = (direction, ui_focus_map.current_focus) {
+        if let (Some(direction), Some(current_focus)) = (ui_direction, ui_focus_map.current_focus) {
             if let Some(next_focus) = ui_focus_map.get_next_entity(current_focus, direction) {
                 ui_focus_map.current_focus = Some(next_focus);
                 ui_focus_map.focus_visible = true;
@@ -57,14 +55,16 @@ pub fn handle_escape_menu(
         }
 
         let focused_entity = ui_focus_map.current_focus;
-        for (entity, button, mut background, mut border) in button_style_query.iter_mut() {
-            let (bg, bd) = if Some(entity) == focused_entity {
+        for (entity, button, mut background_color, mut border_color) in
+            button_style_query.iter_mut()
+        {
+            let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
                 (button.focus_background, button.focus_border)
             } else {
                 (button.normal_background, button.normal_border)
             };
-            *background = BackgroundColor(bg);
-            *border = BorderColor::all(bd);
+            *background_color = BackgroundColor(bg);
+            *border_color = BorderColor::all(bd);
         }
     } else {
         if toggle_menu_pressed {
