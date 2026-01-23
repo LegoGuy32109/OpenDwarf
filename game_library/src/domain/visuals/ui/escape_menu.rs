@@ -3,6 +3,7 @@ use bevy::prelude::*;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use super::key_map::KeyMap;
+use super::key_map::KeyMapChecker;
 use super::ui_focus_map::UiFocusMap;
 
 pub fn handle_escape_menu(
@@ -11,7 +12,7 @@ pub fn handle_escape_menu(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
     button_query: Query<&EscapeMenuButton>,
-    mut button_style_query: Query<(
+    button_style_query: Query<(
         Entity,
         &EscapeMenuButton,
         &mut BackgroundColor,
@@ -27,49 +28,77 @@ pub fn handle_escape_menu(
             return;
         }
 
-        let ui_direction = if keys.just_pressed(&key_map.reach_up) {
-            Some(CompassOctant::North)
-        } else if keys.just_pressed(&key_map.reach_down) {
-            Some(CompassOctant::South)
-        } else if keys.just_pressed(&key_map.reach_left) {
-            Some(CompassOctant::West)
-        } else if keys.just_pressed(&key_map.reach_right) {
-            Some(CompassOctant::East)
-        } else {
-            None
-        };
-
-        if let (Some(direction), Some(current_focus)) = (ui_direction, ui_focus_map.current_focus) {
-            if let Some(next_focus) = ui_focus_map.get_next_entity(current_focus, direction) {
-                ui_focus_map.current_focus = Some(next_focus);
-                ui_focus_map.focus_visible = true;
-            }
-        }
-
-        if keys.just_pressed(&key_map.get_ui_confirm_keys()) {
-            if let Some(focused) = ui_focus_map.current_focus {
-                if let Ok(button) = button_query.get(focused) {
-                    info!("Focused option: {}", button.label);
-                }
-            }
-        }
-
-        let focused_entity = ui_focus_map.current_focus;
-        for (entity, button, mut background_color, mut border_color) in
-            button_style_query.iter_mut()
-        {
-            let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
-                (button.focus_background, button.focus_border)
-            } else {
-                (button.normal_background, button.normal_border)
-            };
-            *background_color = BackgroundColor(bg);
-            *border_color = BorderColor::all(bd);
-        }
+        process_escape_menu(
+            keys,
+            key_map,
+            ui_focus_map.reborrow(),
+            button_query,
+            button_style_query,
+        );
     } else {
         if toggle_menu_pressed {
             spawn_escape_menu(&mut commands);
         }
+    }
+}
+
+fn process_escape_menu(
+    keys: KeyMapChecker,
+    key_map: Res<KeyMap>,
+    mut ui_focus_map: Mut<UiFocusMap>,
+    button_query: Query<&EscapeMenuButton>,
+    mut button_style_query: Query<(
+        Entity,
+        &EscapeMenuButton,
+        &mut BackgroundColor,
+        &mut BorderColor,
+    )>,
+) {
+    // determine which direction the user is selecting
+    let ui_direction = if keys.just_pressed(&key_map.reach_up) {
+        Some(CompassOctant::North)
+    } else if keys.just_pressed(&key_map.reach_down) {
+        Some(CompassOctant::South)
+    } else if keys.just_pressed(&key_map.reach_left) {
+        Some(CompassOctant::West)
+    } else if keys.just_pressed(&key_map.reach_right) {
+        Some(CompassOctant::East)
+    } else {
+        None
+    };
+
+    // set next element to be focused
+    if let (Some(selected_direction), Some(focused_entity)) =
+        (ui_direction, ui_focus_map.current_focus)
+    {
+        if let Some(next_entity_to_focus) =
+            ui_focus_map.get_next_entity(focused_entity, selected_direction)
+        {
+            ui_focus_map.current_focus = Some(next_entity_to_focus);
+            // after the first movement make the focused button visible
+            ui_focus_map.focus_visible = true;
+        }
+    }
+
+    // trigger action from selected element
+    if keys.just_pressed(&key_map.get_ui_confirm_keys()) {
+        if let Some(focused) = ui_focus_map.current_focus {
+            if let Ok(button) = button_query.get(focused) {
+                info!("Focused option: {}", button.label);
+            }
+        }
+    }
+
+    // change style of buttons if they are focused
+    let focused_entity = ui_focus_map.current_focus;
+    for (entity, button, mut background_color, mut border_color) in button_style_query.iter_mut() {
+        let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
+            (button.focus_background, button.focus_border)
+        } else {
+            (button.normal_background, button.normal_border)
+        };
+        *background_color = BackgroundColor(bg);
+        *border_color = BorderColor::all(bd);
     }
 }
 
@@ -85,7 +114,7 @@ pub struct EscapeMenuButton {
     focus_border: Color,
 }
 
-fn escape_menu() -> impl Bundle {
+fn make_escape_menu() -> impl Bundle {
     let menu_background_color: Color = color_from_hex_alpha("#222222", 0.4);
 
     return (
@@ -103,7 +132,7 @@ fn escape_menu() -> impl Bundle {
     );
 }
 
-fn escape_menu_button(text: &'static str) -> impl Bundle {
+fn make_button(text: &'static str) -> impl Bundle {
     let button_color: Color = color_from_hex("#22213F");
     let button_border_color: Color = color_from_hex("#AFAFAB");
     let focus_button_color: Color = color_from_hex("#2B3D61");
@@ -139,12 +168,10 @@ fn escape_menu_button(text: &'static str) -> impl Bundle {
 }
 
 fn spawn_escape_menu(commands: &mut Commands) -> Entity {
-    let menu = commands.spawn(escape_menu()).id();
-    let button_back = commands.spawn(escape_menu_button("Back to game")).id();
-    let button_options = commands.spawn(escape_menu_button("Options...")).id();
-    let button_save_quit = commands
-        .spawn(escape_menu_button("Save and quit to title"))
-        .id();
+    let menu = commands.spawn(make_escape_menu()).id();
+    let button_back = commands.spawn(make_button("Back to game")).id();
+    let button_options = commands.spawn(make_button("Options...")).id();
+    let button_save_quit = commands.spawn(make_button("Save and quit to title")).id();
 
     commands
         .entity(menu)
@@ -156,6 +183,7 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
     let save_quit_index = focus_map.add_node(button_save_quit);
 
     focus_map.set_focus(back_index);
+    // set ui directions in focus_map
     focus_map.link(back_index, CompassOctant::North, save_quit_index);
     focus_map.link(back_index, CompassOctant::South, options_index);
     focus_map.link(options_index, CompassOctant::North, back_index);
