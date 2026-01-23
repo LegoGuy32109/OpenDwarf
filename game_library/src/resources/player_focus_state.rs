@@ -1,8 +1,7 @@
 use bevy::ecs::entity::Entity;
 use bevy::ecs::resource::Resource;
-use bevy::ecs::system::Commands;
 
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Default)]
 pub struct PlayerFocusState {
     pub within_system_menu: bool,
     pub typing: bool,
@@ -29,7 +28,7 @@ impl PlayerFocusState {
         self.menu_stack.push(new_menu);
     }
 
-    pub fn pop_current_menu(&mut self, commands: &mut Commands) -> Option<Entity> {
+    pub fn pop_current_menu(&mut self) -> Option<Entity> {
         self.menu_stack.pop()
         // if let Some(closed_menu) = self.menu_queue.pop() {
         //     commands.entity(closed_menu).despawn()
@@ -40,7 +39,7 @@ impl PlayerFocusState {
         // }
     }
 
-    pub fn clear_menu_queue(&mut self, commands: &mut Commands) {
+    pub fn clear_menu_queue(&mut self) {
         // for menu in &self.menu_stack {
         //     commands.entity(*menu).despawn()
         //     // menu.despawn()

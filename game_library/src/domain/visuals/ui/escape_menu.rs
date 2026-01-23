@@ -168,29 +168,32 @@ fn make_button(text: &'static str) -> impl Bundle {
 }
 
 fn spawn_escape_menu(commands: &mut Commands) -> Entity {
+    // generate components
     let menu = commands.spawn(make_escape_menu()).id();
     let button_back = commands.spawn(make_button("Back to game")).id();
     let button_options = commands.spawn(make_button("Options...")).id();
     let button_save_quit = commands.spawn(make_button("Save and quit to title")).id();
-
+    // nest child elements in root escape menu
     commands
         .entity(menu)
         .add_children(&[button_back, button_options, button_save_quit]);
 
+    // create the ui flow representations
     let mut focus_map = UiFocusMap::default();
-    let back_index = focus_map.add_node(button_back);
-    let options_index = focus_map.add_node(button_options);
-    let save_quit_index = focus_map.add_node(button_save_quit);
+    let index_back = focus_map.add_node(button_back);
+    let index_options = focus_map.add_node(button_options);
+    let index_save_quit = focus_map.add_node(button_save_quit);
 
-    focus_map.set_focus(back_index);
+    // the first button focused is back to game
+    focus_map.set_focus(index_back);
     // set ui directions in focus_map
-    focus_map.link(back_index, CompassOctant::North, save_quit_index);
-    focus_map.link(back_index, CompassOctant::South, options_index);
-    focus_map.link(options_index, CompassOctant::North, back_index);
-    focus_map.link(options_index, CompassOctant::South, save_quit_index);
-    focus_map.link(save_quit_index, CompassOctant::North, options_index);
-    focus_map.link(save_quit_index, CompassOctant::South, back_index);
-
+    focus_map.link(index_back, CompassOctant::North, index_save_quit);
+    focus_map.link(index_back, CompassOctant::South, index_options);
+    focus_map.link(index_options, CompassOctant::North, index_back);
+    focus_map.link(index_options, CompassOctant::South, index_save_quit);
+    focus_map.link(index_save_quit, CompassOctant::North, index_options);
+    focus_map.link(index_save_quit, CompassOctant::South, index_back);
+    // attach focus map to escape menu to be accessed in handler
     commands.entity(menu).insert(focus_map);
     menu
 }

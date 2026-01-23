@@ -25,7 +25,8 @@ impl Plugin for OpenDwarfPlugins {
                 Update,
                 (process_game_messages, keyboard_movement, handle_escape_menu),
             )
-            .insert_resource(KeyMap::default())
+            .init_resource::<KeyMap>()
+            // FIX: .init_resource::<PlayerFocusState>()
             // debug systems
             .add_systems(Update, debug_menu)
             .sub_app_mut(RenderApp)
