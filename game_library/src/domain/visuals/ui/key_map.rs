@@ -15,7 +15,7 @@ pub struct KeyMap {
     pub exit_menu: Keys,
     pub return_key: Keys,
     pub debug_menu: Keys,
-    pub preform_action: Keys,
+    pub perform_action: Keys,
 }
 
 impl KeyMap {
@@ -34,7 +34,7 @@ impl KeyMap {
     }
 
     pub fn get_ui_confirm_keys(&self) -> Keys {
-        [self.return_key.clone(), self.preform_action.clone()].concat()
+        [self.return_key.clone(), self.perform_action.clone()].concat()
     }
 }
 
@@ -52,7 +52,7 @@ impl Default for KeyMap {
             exit_menu: vec![KeyCode::KeyQ, KeyCode::Escape],
             return_key: vec![KeyCode::Enter],
             debug_menu: vec![KeyCode::F1],
-            preform_action: vec![KeyCode::Space],
+            perform_action: vec![KeyCode::Space],
         }
     }
 }
