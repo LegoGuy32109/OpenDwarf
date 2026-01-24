@@ -1,6 +1,8 @@
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
 
+use crate::resources::player_focus_state::PlayerFocusState;
+
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use super::key_map::KeyMap;
 use super::key_map::KeyMapChecker;
@@ -10,6 +12,7 @@ pub fn handle_escape_menu(
     mut commands: Commands,
     key_map: Res<KeyMap>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut player_focus_state: Res<PlayerFocusState>,
     maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
     button_query: Query<&EscapeMenuButton>,
     button_style_query: Query<(
@@ -20,7 +23,7 @@ pub fn handle_escape_menu(
     )>,
 ) {
     let keys = KeyMap::get_keys(&keyboard_input);
-    let toggle_menu_pressed = keys.just_pressed(&key_map.escape_menu);
+    let toggle_menu_pressed = keys.just_pressed(&key_map.exit_menu);
 
     if let Ok((menu, mut ui_focus_map)) = maybe_menu.single_inner() {
         if toggle_menu_pressed {

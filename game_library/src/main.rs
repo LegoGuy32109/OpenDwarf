@@ -1,9 +1,10 @@
 use bevy::prelude::*;
 
-pub mod components;
-pub mod domain;
+mod components;
+mod domain;
+mod resources;
 
-use crate::domain::OpenDwarfPlugins;
+use domain::OpenDwarfPlugins;
 
 fn main() {
     App::new().add_plugins(OpenDwarfPlugins).run();

@@ -14,6 +14,8 @@ use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::key_map::KeyMap;
 use visuals::{setup, update_tileset_image};
 
+use crate::resources::player_focus_state::PlayerFocusState;
+
 pub struct OpenDwarfPlugins;
 
 impl Plugin for OpenDwarfPlugins {
@@ -26,7 +28,7 @@ impl Plugin for OpenDwarfPlugins {
                 (process_game_messages, keyboard_movement, handle_escape_menu),
             )
             .init_resource::<KeyMap>()
-            // FIX: .init_resource::<PlayerFocusState>()
+            .init_resource::<PlayerFocusState>()
             // debug systems
             .add_systems(Update, debug_menu)
             .sub_app_mut(RenderApp)

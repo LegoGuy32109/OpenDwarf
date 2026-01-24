@@ -3,9 +3,10 @@ use wasm_bindgen::prelude::*;
 
 mod components;
 mod domain;
-pub mod resources;
-use crate::domain::OpenDwarfPlugins;
-use crate::domain::messaging::protocol::enqueue_messages_from_bytes;
+mod resources;
+
+use domain::OpenDwarfPlugins;
+use domain::messaging::protocol::enqueue_messages_from_bytes;
 
 #[wasm_bindgen]
 pub fn main() {
