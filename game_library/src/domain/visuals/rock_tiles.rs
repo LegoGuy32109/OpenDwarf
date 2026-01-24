@@ -11,11 +11,11 @@ pub fn generate_rock_tileset<P: AsRef<Path>>(directory: P) -> Result<PathBuf, St
     let directory = directory.as_ref();
 
     let mut numbered_files: Vec<(u32, PathBuf)> = fs::read_dir(directory)
-        .map_err(|err| format!("Failed to read directory {directory:?}: {err}"))?
+        .map_err(|err| format!("Failed to read directory {}: {err}", directory.display()))?
         .filter_map(|entry| {
             let entry = entry.ok()?;
             let path = entry.path();
-            if path.extension()?.to_ascii_lowercase() != "png" {
+            if !path.extension()?.eq_ignore_ascii_case("png") {
                 return None;
             }
             let stem = path.file_stem()?.to_string_lossy();

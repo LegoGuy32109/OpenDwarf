@@ -176,12 +176,12 @@ pub fn keyboard_movement(
 }
 
 pub fn make_movement_action(direction: IVec3, entity: Entity, time_started: Duration) -> Action {
-    let duration_time = direction.length_squared() as f32 * 0.3;
+    let duration_time = f64::from(direction.length_squared()) * 0.3;
     Action {
         target_entity: entity,
         direction,
         time_started,
-        timer: Timer::new(Duration::from_secs_f32(duration_time), TimerMode::Once),
+        timer: Timer::new(Duration::from_secs_f64(duration_time), TimerMode::Once),
     }
 }
 

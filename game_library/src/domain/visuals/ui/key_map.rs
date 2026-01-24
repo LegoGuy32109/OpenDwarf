@@ -24,7 +24,7 @@ impl KeyMap {
     }
 
     pub fn get_movement_keys(&self) -> Keys {
-        vec![
+        [
             self.move_up.clone(),
             self.move_down.clone(),
             self.move_left.clone(),
@@ -34,7 +34,7 @@ impl KeyMap {
     }
 
     pub fn get_ui_confirm_keys(&self) -> Keys {
-        vec![self.return_key.clone(), self.preform_action.clone()].concat()
+        [self.return_key.clone(), self.preform_action.clone()].concat()
     }
 }
 
@@ -66,6 +66,6 @@ impl KeyMapChecker<'_> {
         self.keyboard_input
             .get_just_pressed()
             .into_iter()
-            .any(|k| codes.contains(&k))
+            .any(|k| codes.contains(k))
     }
 }

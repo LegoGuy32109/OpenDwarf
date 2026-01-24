@@ -63,12 +63,10 @@ pub fn handle_escape_menu(
             button_query,
             button_style_query,
         );
-    } else {
-        if toggle_menu_pressed {
-            let escape_menu = spawn_escape_menu(&mut commands);
-            player_focus_state.push_new_menu(escape_menu);
-            player_focus_state.within_system_menu = true;
-        }
+    } else if toggle_menu_pressed {
+        let escape_menu = spawn_escape_menu(&mut commands);
+        player_focus_state.push_new_menu(escape_menu);
+        player_focus_state.within_system_menu = true;
     }
 }
 
@@ -100,23 +98,20 @@ fn process_escape_menu(
     // set next element to be focused
     if let (Some(selected_direction), Some(focused_entity)) =
         (ui_direction, ui_focus_map.current_focus)
-    {
-        if let Some(next_entity_to_focus) =
+        && let Some(next_entity_to_focus) =
             ui_focus_map.get_next_entity(focused_entity, selected_direction)
-        {
-            ui_focus_map.current_focus = Some(next_entity_to_focus);
-            // after the first movement make the focused button visible
-            ui_focus_map.focus_visible = true;
-        }
+    {
+        ui_focus_map.current_focus = Some(next_entity_to_focus);
+        // after the first movement make the focused button visible
+        ui_focus_map.focus_visible = true;
     }
 
     // trigger action from selected element
-    if keys.just_pressed(&key_map.get_ui_confirm_keys()) {
-        if let Some(focused) = ui_focus_map.current_focus {
-            if let Ok(button) = button_query.get(focused) {
-                info!("Focused option: {}", button.label);
-            }
-        }
+    if keys.just_pressed(&key_map.get_ui_confirm_keys())
+        && let Some(focused) = ui_focus_map.current_focus
+        && let Ok(button) = button_query.get(focused)
+    {
+        info!("Focused option: {}", button.label);
     }
 
     // change style of buttons if they are focused
@@ -146,8 +141,7 @@ pub struct EscapeMenuButton {
 
 fn make_escape_menu() -> impl Bundle {
     let menu_background_color: Color = color_from_hex_alpha("#222222", 0.4);
-
-    return (
+    (
         EscapeMenu,
         Node {
             width: percent(100.),
@@ -159,7 +153,7 @@ fn make_escape_menu() -> impl Bundle {
             ..default()
         },
         BackgroundColor(menu_background_color),
-    );
+    )
 }
 
 fn make_button(text: &'static str) -> impl Bundle {
@@ -167,8 +161,7 @@ fn make_button(text: &'static str) -> impl Bundle {
     let button_border_color: Color = color_from_hex("#AFAFAB");
     let focus_button_color: Color = color_from_hex("#2B3D61");
     let focus_button_border_color: Color = color_from_hex("#E2D9D6");
-
-    return (
+    (
         Node {
             width: percent(70.),
             height: px(70),
@@ -194,7 +187,7 @@ fn make_button(text: &'static str) -> impl Bundle {
             },
             TextColor(Color::WHITE),
         )],
-    );
+    )
 }
 
 fn spawn_escape_menu(commands: &mut Commands) -> Entity {

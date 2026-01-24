@@ -2,21 +2,11 @@ use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::math::CompassOctant;
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Default)]
 pub struct UiFocusMap {
     pub current_focus: Option<Entity>,
     pub focus_visible: bool,
     pub nodes: Vec<UiNode>,
-}
-
-impl Default for UiFocusMap {
-    fn default() -> Self {
-        Self {
-            current_focus: None,
-            focus_visible: false,
-            nodes: vec![],
-        }
-    }
 }
 
 impl UiFocusMap {
