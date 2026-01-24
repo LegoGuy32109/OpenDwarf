@@ -121,13 +121,6 @@ pub fn keyboard_movement(
         }
     };
 
-    // let pressed_movement_keys = input_state.just_pressed(&input_state.movement_keys);
-    // let mut movement_keys_sorted: Vec<KeyCode> = pressed_movement_keys.into_iter().collect();
-    // movement_keys_sorted.sort();
-    // let mut movement_keys_sorted = movement_keys_sorted.into_iter();
-    // let first_movement_key = movement_keys_sorted.next();
-    // let second_movement_key = movement_keys_sorted.next();
-
     let (first_movement_key, second_movement_key) =
         input_state.get_first_two_just_pressed(&input_state.groups.movement);
 

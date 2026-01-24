@@ -7,11 +7,11 @@ pub mod messaging;
 pub mod movement;
 pub mod visuals;
 
+use crate::resources::input_state::{InputState, update_input_state};
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
 use visuals::ui::escape_menu::handle_escape_menu;
-use crate::resources::input_state::{update_input_state, InputState};
 use visuals::{setup, update_tileset_image};
 
 use crate::resources::player_focus_state::PlayerFocusState;

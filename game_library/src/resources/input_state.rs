@@ -58,7 +58,15 @@ impl InputState {
     }
 
     pub fn get_first_two_just_pressed(&self, codes: &Keys) -> (Option<KeyCode>, Option<KeyCode>) {
-        (None, None)
+        let mut keys_just_pressed: Vec<KeyCode> = self
+            .just_pressed_keys
+            .iter()
+            .filter(|key| codes.contains(*key))
+            .copied()
+            .collect();
+        keys_just_pressed.sort();
+        let mut maybe_keys = keys_just_pressed.into_iter();
+        (maybe_keys.next(), maybe_keys.next())
     }
 }
 
