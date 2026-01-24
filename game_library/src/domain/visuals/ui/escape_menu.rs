@@ -4,8 +4,8 @@ use bevy::prelude::*;
 use crate::resources::player_focus_state::PlayerFocusState;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
-use crate::resources::input_state::InputState;
 use super::ui_focus_map::UiFocusMap;
+use crate::resources::input_state::InputState;
 
 pub fn handle_escape_menu(
     mut commands: Commands,
@@ -102,7 +102,7 @@ fn process_escape_menu(
     }
 
     // trigger action from selected element
-    if input_state.just_pressed(&input_state.ui_confirm_keys)
+    if input_state.just_pressed(&input_state.groups.ui_confirm)
         && let Some(focused) = ui_focus_map.current_focus
         && let Ok(button) = button_query.get(focused)
     {

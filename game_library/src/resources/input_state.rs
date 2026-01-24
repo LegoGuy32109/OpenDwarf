@@ -17,31 +17,39 @@ pub struct InputState {
     pub return_key: Keys,
     pub debug_menu: Keys,
     pub preform_action: Keys,
-    pub movement_keys: Keys,
-    pub reach_keys: Keys,
-    pub ui_confirm_keys: Keys,
+    pub groups: InputStateGroups,
     just_pressed_keys: HashSet<KeyCode>,
+}
+
+#[derive(Debug, Default)]
+pub struct InputStateGroups {
+    pub movement: Keys,
+    pub reach: Keys,
+    pub ui_confirm: Keys,
 }
 
 impl InputState {
     /// Recomputes derived groups of [`InputState`].
     /// Call after bindings change
     pub fn refresh_groups(&mut self) {
-        self.movement_keys.clear();
-        self.movement_keys.extend(self.move_up.iter().copied());
-        self.movement_keys.extend(self.move_down.iter().copied());
-        self.movement_keys.extend(self.move_left.iter().copied());
-        self.movement_keys.extend(self.move_right.iter().copied());
+        self.groups.movement.clear();
+        self.groups.movement.extend(self.move_up.iter().copied());
+        self.groups.movement.extend(self.move_down.iter().copied());
+        self.groups.movement.extend(self.move_left.iter().copied());
+        self.groups.movement.extend(self.move_right.iter().copied());
 
-        self.reach_keys.clear();
-        self.reach_keys.extend(self.reach_up.iter().copied());
-        self.reach_keys.extend(self.reach_down.iter().copied());
-        self.reach_keys.extend(self.reach_left.iter().copied());
-        self.reach_keys.extend(self.reach_right.iter().copied());
+        self.groups.reach.clear();
+        self.groups.reach.extend(self.reach_up.iter().copied());
+        self.groups.reach.extend(self.reach_down.iter().copied());
+        self.groups.reach.extend(self.reach_left.iter().copied());
+        self.groups.reach.extend(self.reach_right.iter().copied());
 
-        self.ui_confirm_keys.clear();
-        self.ui_confirm_keys.extend(self.return_key.iter().copied());
-        self.ui_confirm_keys
+        self.groups.ui_confirm.clear();
+        self.groups
+            .ui_confirm
+            .extend(self.return_key.iter().copied());
+        self.groups
+            .ui_confirm
             .extend(self.preform_action.iter().copied());
     }
 
@@ -49,8 +57,8 @@ impl InputState {
         !self.just_pressed_keys.is_disjoint(codes)
     }
 
-    pub fn just_pressed_keys(&self) -> &HashSet<KeyCode> {
-        &self.just_pressed_keys
+    pub fn get_first_two_just_pressed(&self, codes: &Keys) -> (Option<KeyCode>, Option<KeyCode>) {
+        (None, None)
     }
 }
 
@@ -69,9 +77,7 @@ impl Default for InputState {
             return_key: HashSet::from([KeyCode::Enter]),
             debug_menu: HashSet::from([KeyCode::F1]),
             preform_action: HashSet::from([KeyCode::Space]),
-            movement_keys: HashSet::new(),
-            reach_keys: HashSet::new(),
-            ui_confirm_keys: HashSet::new(),
+            groups: InputStateGroups::default(),
             just_pressed_keys: HashSet::new(),
         };
         state.refresh_groups();
