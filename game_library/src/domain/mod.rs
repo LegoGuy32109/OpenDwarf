@@ -11,7 +11,7 @@ use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
 use visuals::ui::escape_menu::handle_escape_menu;
-use visuals::ui::key_map::KeyMap;
+use crate::resources::input_state::{update_input_state, InputState};
 use visuals::{setup, update_tileset_image};
 
 use crate::resources::player_focus_state::PlayerFocusState;
@@ -22,12 +22,13 @@ impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(define_defaults())
             .add_systems(Startup, setup)
+            .add_systems(PreUpdate, update_input_state)
             .add_systems(Update, (update_tileset_image, consume_action))
             .add_systems(
                 Update,
                 (process_game_messages, keyboard_movement, handle_escape_menu),
             )
-            .init_resource::<KeyMap>()
+            .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()
             // debug systems
             .add_systems(Update, debug_menu)

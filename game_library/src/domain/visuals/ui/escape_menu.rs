@@ -4,14 +4,12 @@ use bevy::prelude::*;
 use crate::resources::player_focus_state::PlayerFocusState;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
-use super::key_map::KeyMap;
-use super::key_map::KeyMapChecker;
+use crate::resources::input_state::InputState;
 use super::ui_focus_map::UiFocusMap;
 
 pub fn handle_escape_menu(
     mut commands: Commands,
-    key_map: Res<KeyMap>,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
+    input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
     maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
     button_query: Query<&EscapeMenuButton>,
@@ -22,8 +20,7 @@ pub fn handle_escape_menu(
         &mut BorderColor,
     )>,
 ) {
-    let keys = KeyMap::get_keys(&keyboard_input);
-    let toggle_menu_pressed = keys.just_pressed(&key_map.exit_menu);
+    let toggle_menu_pressed = input_state.just_pressed(&input_state.exit_menu);
 
     // if somehow multiple escape menus exist, delete all of them
     let menu_entities: Vec<Entity> = maybe_menu.iter().map(|(entity, _)| entity).collect();
@@ -57,8 +54,7 @@ pub fn handle_escape_menu(
         }
 
         process_escape_menu(
-            keys,
-            key_map,
+            input_state.as_ref(),
             ui_focus_map.reborrow(),
             button_query,
             button_style_query,
@@ -71,8 +67,7 @@ pub fn handle_escape_menu(
 }
 
 fn process_escape_menu(
-    keys: KeyMapChecker,
-    key_map: Res<KeyMap>,
+    input_state: &InputState,
     mut ui_focus_map: Mut<UiFocusMap>,
     button_query: Query<&EscapeMenuButton>,
     mut button_style_query: Query<(
@@ -83,13 +78,13 @@ fn process_escape_menu(
     )>,
 ) {
     // determine which direction the user is selecting
-    let ui_direction = if keys.just_pressed(&key_map.reach_up) {
+    let ui_direction = if input_state.just_pressed(&input_state.reach_up) {
         Some(CompassOctant::North)
-    } else if keys.just_pressed(&key_map.reach_down) {
+    } else if input_state.just_pressed(&input_state.reach_down) {
         Some(CompassOctant::South)
-    } else if keys.just_pressed(&key_map.reach_left) {
+    } else if input_state.just_pressed(&input_state.reach_left) {
         Some(CompassOctant::West)
-    } else if keys.just_pressed(&key_map.reach_right) {
+    } else if input_state.just_pressed(&input_state.reach_right) {
         Some(CompassOctant::East)
     } else {
         None
@@ -107,7 +102,7 @@ fn process_escape_menu(
     }
 
     // trigger action from selected element
-    if keys.just_pressed(&key_map.get_ui_confirm_keys())
+    if input_state.just_pressed(&input_state.ui_confirm_keys)
         && let Some(focused) = ui_focus_map.current_focus
         && let Ok(button) = button_query.get(focused)
     {
