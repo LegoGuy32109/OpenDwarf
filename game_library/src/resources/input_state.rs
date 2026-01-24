@@ -18,17 +18,26 @@ pub struct InputState {
     pub debug_menu: Keys,
     pub preform_action: Keys,
     pub movement_keys: Keys,
+    pub reach_keys: Keys,
     pub ui_confirm_keys: Keys,
     just_pressed_keys: HashSet<KeyCode>,
 }
 
 impl InputState {
+    /// Recomputes derived groups of [`InputState`].
+    /// Call after bindings change
     pub fn refresh_groups(&mut self) {
         self.movement_keys.clear();
         self.movement_keys.extend(self.move_up.iter().copied());
         self.movement_keys.extend(self.move_down.iter().copied());
         self.movement_keys.extend(self.move_left.iter().copied());
         self.movement_keys.extend(self.move_right.iter().copied());
+
+        self.reach_keys.clear();
+        self.reach_keys.extend(self.reach_up.iter().copied());
+        self.reach_keys.extend(self.reach_down.iter().copied());
+        self.reach_keys.extend(self.reach_left.iter().copied());
+        self.reach_keys.extend(self.reach_right.iter().copied());
 
         self.ui_confirm_keys.clear();
         self.ui_confirm_keys.extend(self.return_key.iter().copied());
@@ -61,6 +70,7 @@ impl Default for InputState {
             debug_menu: HashSet::from([KeyCode::F1]),
             preform_action: HashSet::from([KeyCode::Space]),
             movement_keys: HashSet::new(),
+            reach_keys: HashSet::new(),
             ui_confirm_keys: HashSet::new(),
             just_pressed_keys: HashSet::new(),
         };
@@ -74,5 +84,4 @@ pub fn update_input_state(
     mut input_state: ResMut<InputState>,
 ) {
     input_state.just_pressed_keys = keyboard_input.get_just_pressed().copied().collect();
-    input_state.refresh_groups();
 }
