@@ -47,6 +47,7 @@ pub fn color_from_hex_alpha(hex: &str, percent: f32) -> Color {
     let blue_bytes = (hex_bytes & 0xFF) as u8;
 
     // Clamp percent into 0.0..=1.0 and convert to u8
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let alpha_bytes = (percent.clamp(0.0, 1.0) * 255.0).round() as u8;
 
     // Build Color with alpha

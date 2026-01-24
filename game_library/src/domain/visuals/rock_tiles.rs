@@ -38,7 +38,10 @@ pub fn generate_rock_tileset<P: AsRef<Path>>(directory: P) -> Result<PathBuf, St
     let mut output = RgbaImage::new(
         frame_width,
         frame_height
-            .checked_mul(numbered_files.len() as u32)
+            .checked_mul(
+                u32::try_from(numbered_files.len())
+                    .expect("Failed to convert number of files to u32"),
+            )
             .ok_or("Output image height overflowed")?,
     );
 
@@ -46,27 +49,32 @@ pub fn generate_rock_tileset<P: AsRef<Path>>(directory: P) -> Result<PathBuf, St
         let image = load_rgba(path)?;
         if image.dimensions() != (frame_width, frame_height) {
             return Err(format!(
-                "Mismatched frame size in {:?}; expected {}x{}",
-                path, frame_width, frame_height
+                "Mismatched frame size in {}; expected {}x{}",
+                path.display(),
+                frame_width,
+                frame_height
             ));
         }
-        let y_offset = (index as u32)
-            .checked_mul(frame_height)
-            .ok_or_else(|| "Output positioning overflowed".to_string())?
-            as i64;
+        let y_offset = i64::from(
+            u32::try_from(index)
+                .expect("failed to convert index to u32")
+                .checked_mul(frame_height)
+                .ok_or_else(|| "Output positioning overflowed".to_string())?,
+        );
         replace(&mut output, &image, 0, y_offset);
     }
 
     let output_path = directory.join("RockTiles.png");
     output
         .save(&output_path)
-        .map_err(|err| format!("Failed to save {:?}: {err}", output_path))?;
+        .map_err(|err| format!("Failed to save {}: {err}", output_path.display()))?;
 
     Ok(output_path)
 }
 
 fn load_rgba(path: &Path) -> Result<RgbaImage, String> {
-    let image = image::open(path).map_err(|err| format!("Failed to open {:?}: {err}", path))?;
+    let image =
+        image::open(path).map_err(|err| format!("Failed to open {}: {err}", path.display()))?;
     Ok(match image {
         DynamicImage::ImageRgba8(img) => img,
         other => other.to_rgba8(),

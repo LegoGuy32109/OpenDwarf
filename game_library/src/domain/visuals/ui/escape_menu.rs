@@ -116,7 +116,7 @@ fn process_escape_menu(
 
     // change style of buttons if they are focused
     let focused_entity = ui_focus_map.current_focus;
-    for (entity, button, mut background_color, mut border_color) in button_style_query.iter_mut() {
+    for (entity, button, mut background_color, mut border_color) in &mut button_style_query {
         let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
             (button.focus_background, button.focus_border)
         } else {
