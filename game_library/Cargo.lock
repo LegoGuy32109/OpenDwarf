@@ -4324,6 +4324,7 @@ version = "0.1.0"
 dependencies = [
  "bacon",
  "bevy",
+ "image",
  "rand",
  "rand_chacha",
  "wasm-bindgen",

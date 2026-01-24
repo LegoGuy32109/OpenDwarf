@@ -318,12 +318,12 @@ function __wasm_bindgen_func_elem_67683(arg0, arg1, arg2) {
     wasm.__wasm_bindgen_func_elem_67683(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_62006(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_62006(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
-}
-
 function __wasm_bindgen_func_elem_70910(arg0, arg1) {
     wasm.__wasm_bindgen_func_elem_70910(arg0, arg1);
+}
+
+function __wasm_bindgen_func_elem_62005(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_62005(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const __wbindgen_enum_ResizeObserverBoxOptions = ["border-box", "content-box", "device-pixel-content-box"];
@@ -1996,7 +1996,7 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_cast_c5fc6cbf6159c5f2 = function(arg0, arg1) {
         // Cast intrinsic for `Closure(Closure { dtor_idx: 2555, function: Function { arguments: [NamedExternref("Array<any>"), NamedExternref("ResizeObserver")], shim_idx: 7410, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_70909, __wasm_bindgen_func_elem_62006);
+        const ret = makeMutClosure(arg0, arg1, wasm.__wasm_bindgen_func_elem_70909, __wasm_bindgen_func_elem_62005);
         return addHeapObject(ret);
     };
     imports.wbg.__wbindgen_cast_cb9088102bce6b30 = function(arg0, arg1) {

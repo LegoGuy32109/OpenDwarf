@@ -13,9 +13,9 @@ export interface InitOutput {
   readonly send_game_bytes: (a: number, b: number) => void;
   readonly __wasm_bindgen_func_elem_67683: (a: number, b: number, c: number) => void;
   readonly __wasm_bindgen_func_elem_70909: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_67682: (a: number, b: number) => void;
-  readonly __wasm_bindgen_func_elem_62006: (a: number, b: number, c: number, d: number) => void;
   readonly __wasm_bindgen_func_elem_70910: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_67682: (a: number, b: number) => void;
+  readonly __wasm_bindgen_func_elem_62005: (a: number, b: number, c: number, d: number) => void;
   readonly __wbindgen_export: (a: number, b: number) => number;
   readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_export3: (a: number) => void;
