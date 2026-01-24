@@ -26,5 +26,13 @@ on_change_strategy = "kill_then_restart"
 kill = ["kill", "-s", "INT"]
 
 [jobs.clippy]
-# needless_pass_by_value is in so many bevy system functions
-command = ["cargo", "clippy", "--", "-W", "clippy::pedantic", "-A", "clippy::needless_pass_by_value"]
+command = [
+  "cargo",
+  "clippy",
+  "--",
+  "-W",
+  "clippy::pedantic",
+  # needless_pass_by_value is in bevy system functions
+  "-A",
+  "clippy::needless_pass_by_value"
+]
