@@ -78,13 +78,13 @@ fn process_escape_menu(
     )>,
 ) {
     // determine which direction the user is selecting
-    let ui_direction = if input_state.just_pressed(&input_state.reach_up) {
+    let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
         Some(CompassOctant::North)
-    } else if input_state.just_pressed(&input_state.reach_down) {
+    } else if input_state.just_pressed(&input_state.groups.system_down) {
         Some(CompassOctant::South)
-    } else if input_state.just_pressed(&input_state.reach_left) {
+    } else if input_state.just_pressed(&input_state.groups.system_left) {
         Some(CompassOctant::West)
-    } else if input_state.just_pressed(&input_state.reach_right) {
+    } else if input_state.just_pressed(&input_state.groups.system_right) {
         Some(CompassOctant::East)
     } else {
         None

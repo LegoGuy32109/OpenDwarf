@@ -26,6 +26,10 @@ pub struct InputStateGroups {
     pub movement: Keys,
     pub reach: Keys,
     pub ui_confirm: Keys,
+    pub system_up: Keys,
+    pub system_down: Keys,
+    pub system_left: Keys,
+    pub system_right: Keys,
 }
 
 impl InputState {
@@ -51,6 +55,38 @@ impl InputState {
         self.groups
             .ui_confirm
             .extend(self.preform_action.iter().copied());
+
+        self.groups.system_up.clear();
+        self.groups
+            .system_up
+            .extend(self.move_up.iter().copied());
+        self.groups
+            .system_up
+            .extend(self.reach_up.iter().copied());
+
+        self.groups.system_down.clear();
+        self.groups
+            .system_down
+            .extend(self.move_down.iter().copied());
+        self.groups
+            .system_down
+            .extend(self.reach_down.iter().copied());
+
+        self.groups.system_left.clear();
+        self.groups
+            .system_left
+            .extend(self.move_left.iter().copied());
+        self.groups
+            .system_left
+            .extend(self.reach_left.iter().copied());
+
+        self.groups.system_right.clear();
+        self.groups
+            .system_right
+            .extend(self.move_right.iter().copied());
+        self.groups
+            .system_right
+            .extend(self.reach_right.iter().copied());
     }
 
     pub fn just_pressed(&self, codes: &Keys) -> bool {
@@ -67,6 +103,22 @@ impl InputState {
         keys_just_pressed.sort();
         let mut maybe_keys = keys_just_pressed.into_iter();
         (maybe_keys.next(), maybe_keys.next())
+    }
+
+    pub fn movement_direction(&self, key: KeyCode) -> IVec3 {
+        if self.move_up.contains(&key) {
+            return ivec3(0, 1, 0);
+        }
+        if self.move_down.contains(&key) {
+            return ivec3(0, -1, 0);
+        }
+        if self.move_left.contains(&key) {
+            return ivec3(-1, 0, 0);
+        }
+        if self.move_right.contains(&key) {
+            return ivec3(1, 0, 0);
+        }
+        IVec3::ZERO
     }
 }
 

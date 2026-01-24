@@ -129,7 +129,8 @@ pub fn keyboard_movement(
         && let Some(second_key) = second_movement_key
     {
         spawn_movement_action(
-            get_movement_direction(first_key) + get_movement_direction(second_key),
+            input_state.movement_direction(first_key)
+                + input_state.movement_direction(second_key),
         );
         return;
     }
@@ -143,8 +144,8 @@ pub fn keyboard_movement(
 
         // if move key is pressed, combine with key in chord
         if let Some(first_key) = first_movement_key {
-            let chord_direction = get_movement_direction(key_in_chord);
-            let key_direction = get_movement_direction(first_key);
+            let chord_direction = input_state.movement_direction(key_in_chord);
+            let key_direction = input_state.movement_direction(first_key);
             let combined_direction = chord_direction + key_direction;
             // don't duplicate distance
             // if direction cancels out, just do the latest direction
@@ -156,7 +157,7 @@ pub fn keyboard_movement(
         }
         // if movement_chord exists, tick timer down
         if movement_chord.timer.tick(time.delta()).is_finished() {
-            spawn_movement_action(get_movement_direction(key_in_chord));
+            spawn_movement_action(input_state.movement_direction(key_in_chord));
         }
     } else if let Some(key) = first_movement_key {
         commands.insert_resource(MovementChord {
@@ -173,15 +174,5 @@ pub fn make_movement_action(direction: IVec3, entity: Entity, time_started: Dura
         direction,
         time_started,
         timer: Timer::new(Duration::from_secs_f64(duration_time), TimerMode::Once),
-    }
-}
-
-pub fn get_movement_direction(key: KeyCode) -> IVec3 {
-    match key {
-        KeyCode::KeyE => ivec3(0, 1, 0),
-        KeyCode::KeyD => ivec3(0, -1, 0),
-        KeyCode::KeyS => ivec3(-1, 0, 0),
-        KeyCode::KeyF => ivec3(1, 0, 0),
-        _ => IVec3::ZERO,
     }
 }
