@@ -1,3 +1,6 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::needless_pass_by_value)]
+
 use bevy::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

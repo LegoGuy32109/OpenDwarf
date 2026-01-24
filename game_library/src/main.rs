@@ -1,3 +1,6 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::needless_pass_by_value)]
+
 use bevy::prelude::*;
 
 mod components;
