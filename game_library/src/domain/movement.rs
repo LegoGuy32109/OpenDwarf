@@ -4,6 +4,7 @@ use bevy::sprite_render::TilemapChunk;
 use std::time::Duration;
 
 use crate::components::map_coordinates::MapCoordinates;
+use crate::resources::player_focus_state::PlayerFocusState;
 
 use super::visuals::Player;
 use super::visuals::ui::key_map::KeyMap;
@@ -98,11 +99,16 @@ pub fn keyboard_movement(
     time: Res<Time>,
     player_query: Query<Entity, With<Player>>,
     movement_chord_option: Option<ResMut<MovementChord>>,
+    player_focus_state: Res<PlayerFocusState>,
 ) {
     let Ok(player) = player_query.single_inner() else {
         error_once!("Failed to find Player in world");
         return;
     };
+
+    if !player_focus_state.can_move_in_world() {
+        return;
+    }
 
     // given some direction vector, create an action to be processed
     // if direction isn't 0

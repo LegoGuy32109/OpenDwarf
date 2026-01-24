@@ -12,7 +12,7 @@ pub fn handle_escape_menu(
     mut commands: Commands,
     key_map: Res<KeyMap>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut player_focus_state: Res<PlayerFocusState>,
+    mut player_focus_state: ResMut<PlayerFocusState>,
     maybe_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
     button_query: Query<&EscapeMenuButton>,
     button_style_query: Query<(
@@ -25,9 +25,34 @@ pub fn handle_escape_menu(
     let keys = KeyMap::get_keys(&keyboard_input);
     let toggle_menu_pressed = keys.just_pressed(&key_map.exit_menu);
 
+    // if somehow multiple escape menus exist, delete all of them
+    let menu_entities: Vec<Entity> = maybe_menu.iter().map(|(entity, _)| entity).collect();
+    let num_escape_menus = menu_entities.len();
+    if num_escape_menus > 1 {
+        warn!("{num_escape_menus} escape menus found, deleting all");
+        for entity in menu_entities {
+            commands.entity(entity).despawn();
+        }
+        return;
+    }
+
     if let Ok((menu, mut ui_focus_map)) = maybe_menu.single_inner() {
+        let menu_index = player_focus_state.get_menu_index(menu);
+
+        if let Some(index) = menu_index {
+            if index > 0 {
+                // TODO: hide, another menu is in front
+            }
+        } else {
+            // not in menu stack, remove from world
+            commands.entity(menu).despawn();
+            return;
+        }
+
         if toggle_menu_pressed {
             commands.entity(menu).despawn();
+            player_focus_state.pop_current_menu();
+            player_focus_state.within_system_menu = false;
             return;
         }
 
@@ -40,7 +65,9 @@ pub fn handle_escape_menu(
         );
     } else {
         if toggle_menu_pressed {
-            spawn_escape_menu(&mut commands);
+            let escape_menu = spawn_escape_menu(&mut commands);
+            player_focus_state.push_new_menu(escape_menu);
+            player_focus_state.within_system_menu = true;
         }
     }
 }

@@ -17,33 +17,20 @@ impl PlayerFocusState {
         self.menu_stack.iter().position(|&menu| menu == target_menu)
     }
 
-    pub fn get_current_menu(&self) -> Option<Entity> {
-        self.menu_stack.last().map(|e| e.clone())
-    }
+    // pub fn get_current_menu(&self) -> Option<Entity> {
+    //     self.menu_stack.last().map(|e| e.clone())
+    // }
 
     pub fn push_new_menu(&mut self, new_menu: Entity) {
-        // if let Some(current_menu) = self.get_current_menu() {
-        //     // current_menu.shadow()
-        // }
         self.menu_stack.push(new_menu);
     }
 
     pub fn pop_current_menu(&mut self) -> Option<Entity> {
         self.menu_stack.pop()
-        // if let Some(closed_menu) = self.menu_queue.pop() {
-        //     commands.entity(closed_menu).despawn()
-        //     // closed_menu.despawn()
-        // }
-        // if let Some(prev_menu) = self.get_current_menu() {
-        //     // prev_menu.focus()
-        // }
     }
 
-    pub fn clear_menu_queue(&mut self) {
-        // for menu in &self.menu_stack {
-        //     commands.entity(*menu).despawn()
-        //     // menu.despawn()
-        // }
-        self.menu_stack = vec![];
-    }
+    // TODO: map this to Shift + Q or something
+    // pub fn clear_menu_queue(&mut self) {
+    //     self.menu_stack = vec![];
+    // }
 }
