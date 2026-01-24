@@ -1,7 +1,7 @@
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
-pub type Keys = Vec<KeyCode>;
+pub type Keys = HashSet<KeyCode>;
 
 #[derive(Resource, Debug)]
 pub struct InputState {
@@ -24,18 +24,20 @@ pub struct InputState {
 
 impl InputState {
     pub fn refresh_groups(&mut self) {
-        self.movement_keys = [
-            self.move_up.clone(),
-            self.move_down.clone(),
-            self.move_left.clone(),
-            self.move_right.clone(),
-        ]
-        .concat();
-        self.ui_confirm_keys = [self.return_key.clone(), self.preform_action.clone()].concat();
+        self.movement_keys.clear();
+        self.movement_keys.extend(self.move_up.iter().copied());
+        self.movement_keys.extend(self.move_down.iter().copied());
+        self.movement_keys.extend(self.move_left.iter().copied());
+        self.movement_keys.extend(self.move_right.iter().copied());
+
+        self.ui_confirm_keys.clear();
+        self.ui_confirm_keys.extend(self.return_key.iter().copied());
+        self.ui_confirm_keys
+            .extend(self.preform_action.iter().copied());
     }
 
     pub fn just_pressed(&self, codes: &Keys) -> bool {
-        self.just_pressed_keys.iter().any(|k| codes.contains(k))
+        !self.just_pressed_keys.is_disjoint(codes)
     }
 
     pub fn just_pressed_keys(&self) -> &HashSet<KeyCode> {
@@ -46,20 +48,20 @@ impl InputState {
 impl Default for InputState {
     fn default() -> Self {
         let mut state = Self {
-            move_up: vec![KeyCode::KeyE],
-            move_down: vec![KeyCode::KeyD],
-            move_left: vec![KeyCode::KeyS],
-            move_right: vec![KeyCode::KeyF],
-            reach_up: vec![KeyCode::KeyI],
-            reach_down: vec![KeyCode::KeyK],
-            reach_left: vec![KeyCode::KeyJ],
-            reach_right: vec![KeyCode::KeyL],
-            exit_menu: vec![KeyCode::KeyQ, KeyCode::Escape],
-            return_key: vec![KeyCode::Enter],
-            debug_menu: vec![KeyCode::F1],
-            preform_action: vec![KeyCode::Space],
-            movement_keys: Vec::new(),
-            ui_confirm_keys: Vec::new(),
+            move_up: HashSet::from([KeyCode::KeyE]),
+            move_down: HashSet::from([KeyCode::KeyD]),
+            move_left: HashSet::from([KeyCode::KeyS]),
+            move_right: HashSet::from([KeyCode::KeyF]),
+            reach_up: HashSet::from([KeyCode::KeyI]),
+            reach_down: HashSet::from([KeyCode::KeyK]),
+            reach_left: HashSet::from([KeyCode::KeyJ]),
+            reach_right: HashSet::from([KeyCode::KeyL]),
+            exit_menu: HashSet::from([KeyCode::KeyQ, KeyCode::Escape]),
+            return_key: HashSet::from([KeyCode::Enter]),
+            debug_menu: HashSet::from([KeyCode::F1]),
+            preform_action: HashSet::from([KeyCode::Space]),
+            movement_keys: HashSet::new(),
+            ui_confirm_keys: HashSet::new(),
             just_pressed_keys: HashSet::new(),
         };
         state.refresh_groups();
