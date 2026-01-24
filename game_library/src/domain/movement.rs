@@ -129,8 +129,7 @@ pub fn keyboard_movement(
         && let Some(second_key) = second_movement_key
     {
         spawn_movement_action(
-            input_state.movement_direction(first_key)
-                + input_state.movement_direction(second_key),
+            input_state.movement_direction(first_key) + input_state.movement_direction(second_key),
         );
         return;
     }

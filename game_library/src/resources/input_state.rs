@@ -32,61 +32,69 @@ pub struct InputStateGroups {
     pub system_right: Keys,
 }
 
+#[derive(Copy, Clone)]
+enum Dir {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl Dir {
+    const ALL: [Dir; 4] = [Dir::Up, Dir::Down, Dir::Left, Dir::Right];
+}
+
 impl InputState {
+    fn rebuild_group(target: &mut Keys, sources: &[&Keys]) {
+        target.clear();
+        for source in sources {
+            target.extend(source.iter().copied());
+        }
+    }
+
     /// Recomputes derived groups of [`InputState`].
     /// Call after bindings change
     pub fn refresh_groups(&mut self) {
-        self.groups.movement.clear();
-        self.groups.movement.extend(self.move_up.iter().copied());
-        self.groups.movement.extend(self.move_down.iter().copied());
-        self.groups.movement.extend(self.move_left.iter().copied());
-        self.groups.movement.extend(self.move_right.iter().copied());
+        Self::rebuild_group(
+            &mut self.groups.movement,
+            &[
+                &self.move_up,
+                &self.move_down,
+                &self.move_left,
+                &self.move_right,
+            ],
+        );
 
-        self.groups.reach.clear();
-        self.groups.reach.extend(self.reach_up.iter().copied());
-        self.groups.reach.extend(self.reach_down.iter().copied());
-        self.groups.reach.extend(self.reach_left.iter().copied());
-        self.groups.reach.extend(self.reach_right.iter().copied());
+        Self::rebuild_group(
+            &mut self.groups.reach,
+            &[
+                &self.reach_up,
+                &self.reach_down,
+                &self.reach_left,
+                &self.reach_right,
+            ],
+        );
 
-        self.groups.ui_confirm.clear();
-        self.groups
-            .ui_confirm
-            .extend(self.return_key.iter().copied());
-        self.groups
-            .ui_confirm
-            .extend(self.preform_action.iter().copied());
+        Self::rebuild_group(
+            &mut self.groups.ui_confirm,
+            &[&self.return_key, &self.preform_action],
+        );
 
-        self.groups.system_up.clear();
-        self.groups
-            .system_up
-            .extend(self.move_up.iter().copied());
-        self.groups
-            .system_up
-            .extend(self.reach_up.iter().copied());
-
-        self.groups.system_down.clear();
-        self.groups
-            .system_down
-            .extend(self.move_down.iter().copied());
-        self.groups
-            .system_down
-            .extend(self.reach_down.iter().copied());
-
-        self.groups.system_left.clear();
-        self.groups
-            .system_left
-            .extend(self.move_left.iter().copied());
-        self.groups
-            .system_left
-            .extend(self.reach_left.iter().copied());
-
-        self.groups.system_right.clear();
-        self.groups
-            .system_right
-            .extend(self.move_right.iter().copied());
-        self.groups
-            .system_right
-            .extend(self.reach_right.iter().copied());
+        for dir in Dir::ALL {
+            let (movement, reach) = match dir {
+                Dir::Up => (&self.move_up, &self.reach_up),
+                Dir::Down => (&self.move_down, &self.reach_down),
+                Dir::Left => (&self.move_left, &self.reach_left),
+                Dir::Right => (&self.move_right, &self.reach_right),
+            };
+            let target = match dir {
+                Dir::Up => &mut self.groups.system_up,
+                Dir::Down => &mut self.groups.system_down,
+                Dir::Left => &mut self.groups.system_left,
+                Dir::Right => &mut self.groups.system_right,
+            };
+            Self::rebuild_group(target, &[movement, reach]);
+        }
     }
 
     pub fn just_pressed(&self, codes: &Keys) -> bool {
