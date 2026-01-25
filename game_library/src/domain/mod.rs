@@ -11,7 +11,8 @@ use crate::resources::input_state::{InputState, update_input_state};
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
-use visuals::ui::escape_menu::handle_escape_menu;
+use visuals::ui::escape_menu::{escape_menu_stack_behavior, handle_escape_menu};
+use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
 use visuals::{setup, update_tileset_image};
 
 use crate::resources::player_focus_state::PlayerFocusState;
@@ -26,8 +27,15 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(Update, (update_tileset_image, consume_action))
             .add_systems(
                 Update,
-                (process_game_messages, keyboard_movement, handle_escape_menu),
+                (
+                    process_game_messages,
+                    keyboard_movement,
+                    menu_event_manager,
+                    escape_menu_stack_behavior,
+                    handle_escape_menu,
+                ),
             )
+            .add_message::<MenuEvent>()
             .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()
             // debug systems

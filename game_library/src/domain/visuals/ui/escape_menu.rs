@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use crate::resources::player_focus_state::PlayerFocusState;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
+use super::menu_events::MenuEvent;
 use super::ui_focus_map::UiFocusMap;
 use crate::resources::input_state::InputState;
 
@@ -19,6 +20,7 @@ pub fn handle_escape_menu(
         &mut BackgroundColor,
         &mut BorderColor,
     )>,
+    mut menu_events: MessageWriter<MenuEvent>,
 ) {
     let toggle_menu_pressed = input_state.just_pressed(&input_state.exit_menu);
 
@@ -37,19 +39,20 @@ pub fn handle_escape_menu(
         let menu_index = player_focus_state.get_menu_index(menu);
 
         if let Some(index) = menu_index {
-            if index > 0 {
-                // TODO: hide, another menu is in front
+            // if menu isn't currently focused, don't bother
+            if index == 0 {
+                return;
             }
+            // let top_index = player_focus_state.menu_stack.len().saturating_sub(1);
+            // if index != top_index {
+            //     return;
+            // }
         } else {
-            // not in menu stack, remove from world
-            commands.entity(menu).despawn();
             return;
         }
 
         if toggle_menu_pressed {
-            commands.entity(menu).despawn();
-            player_focus_state.pop_current_menu();
-            player_focus_state.within_system_menu = false;
+            menu_events.write(MenuEvent::CloseCurrentMenu);
             return;
         }
 
@@ -58,6 +61,7 @@ pub fn handle_escape_menu(
             ui_focus_map.reborrow(),
             button_query,
             button_style_query,
+            menu_events,
         );
     } else if toggle_menu_pressed {
         let escape_menu = spawn_escape_menu(&mut commands);
@@ -76,6 +80,7 @@ fn process_escape_menu(
         &mut BackgroundColor,
         &mut BorderColor,
     )>,
+    mut menu_events: MessageWriter<MenuEvent>,
 ) {
     // determine which direction the user is selecting
     let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
@@ -106,7 +111,9 @@ fn process_escape_menu(
         && let Some(focused) = ui_focus_map.current_focus
         && let Ok(button) = button_query.get(focused)
     {
-        info!("Focused option: {}", button.label);
+        if let EscapeMenuAction::CloseMenu = button.action {
+            menu_events.write(MenuEvent::CloseCurrentMenu);
+        }
     }
 
     // change style of buttons if they are focused
@@ -127,11 +134,18 @@ pub struct EscapeMenu;
 
 #[derive(Component)]
 pub struct EscapeMenuButton {
-    label: &'static str,
+    action: EscapeMenuAction,
     normal_background: Color,
     normal_border: Color,
     focus_background: Color,
     focus_border: Color,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum EscapeMenuAction {
+    CloseMenu,
+    OpenOptions,
+    SaveQuit,
 }
 
 fn make_escape_menu() -> impl Bundle {
@@ -151,7 +165,7 @@ fn make_escape_menu() -> impl Bundle {
     )
 }
 
-fn make_button(text: &'static str) -> impl Bundle {
+fn make_button(text: &'static str, action: EscapeMenuAction) -> impl Bundle {
     let button_color: Color = color_from_hex("#22213F");
     let button_border_color: Color = color_from_hex("#AFAFAB");
     let focus_button_color: Color = color_from_hex("#2B3D61");
@@ -168,7 +182,7 @@ fn make_button(text: &'static str) -> impl Bundle {
         BackgroundColor(button_color),
         BorderColor::all(button_border_color),
         EscapeMenuButton {
-            label: text,
+            action,
             normal_background: button_color,
             normal_border: button_border_color,
             focus_background: focus_button_color,
@@ -188,9 +202,18 @@ fn make_button(text: &'static str) -> impl Bundle {
 fn spawn_escape_menu(commands: &mut Commands) -> Entity {
     // generate components
     let menu = commands.spawn(make_escape_menu()).id();
-    let button_back = commands.spawn(make_button("Back to game")).id();
-    let button_options = commands.spawn(make_button("Options...")).id();
-    let button_save_quit = commands.spawn(make_button("Save and quit to title")).id();
+    let button_back = commands
+        .spawn(make_button("Back to game", EscapeMenuAction::CloseMenu))
+        .id();
+    let button_options = commands
+        .spawn(make_button("Options...", EscapeMenuAction::OpenOptions))
+        .id();
+    let button_save_quit = commands
+        .spawn(make_button(
+            "Save and quit to title",
+            EscapeMenuAction::SaveQuit,
+        ))
+        .id();
     // nest child elements in root escape menu
     commands
         .entity(menu)
@@ -214,4 +237,30 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
     // attach focus map to escape menu to be accessed in handler
     commands.entity(menu).insert(focus_map);
     menu
+}
+
+pub fn escape_menu_stack_behavior(
+    mut menu_query: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<EscapeMenu>>,
+    focus_state: Res<PlayerFocusState>,
+) {
+    let Ok((menu, mut focus_map, mut visibility)) = menu_query.single_mut() else {
+        return;
+    };
+
+    let Some(index) = focus_state.get_menu_index(menu) else {
+        *visibility = Visibility::Hidden;
+        focus_map.focus_visible = false;
+        return;
+    };
+
+    let top_index = focus_state.menu_stack.len().saturating_sub(1);
+    if index == top_index {
+        *visibility = Visibility::Visible;
+        if focus_map.current_focus.is_some() {
+            focus_map.focus_visible = true;
+        }
+    } else {
+        *visibility = Visibility::Hidden;
+        focus_map.focus_visible = false;
+    }
 }
