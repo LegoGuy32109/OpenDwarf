@@ -11,7 +11,7 @@ use crate::resources::input_state::{InputState, update_input_state};
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
-use visuals::ui::escape_menu::{escape_menu_stack_behavior, handle_escape_menu};
+use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
 use visuals::{setup, update_tileset_image};
 
@@ -31,7 +31,6 @@ impl Plugin for OpenDwarfPlugins {
                     process_game_messages,
                     keyboard_movement,
                     menu_event_manager,
-                    escape_menu_stack_behavior,
                     handle_escape_menu,
                 ),
             )

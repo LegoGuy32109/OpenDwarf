@@ -2,6 +2,11 @@ use bevy::prelude::*;
 
 use crate::resources::player_focus_state::PlayerFocusState;
 
+#[derive(Component, Debug, Clone, Copy)]
+pub enum MenuAction {
+    CloseCurrentMenu,
+}
+
 #[derive(Message, Debug, Clone, Copy)]
 pub enum MenuEvent {
     CloseCurrentMenu,
