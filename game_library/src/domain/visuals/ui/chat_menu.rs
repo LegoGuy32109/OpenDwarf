@@ -113,6 +113,9 @@ pub struct ChatMenuText;
 pub struct ChatPlaceholderText;
 
 #[derive(Component)]
+pub struct ChatTextContainer;
+
+#[derive(Component)]
 pub struct ChatBuffer(pub String);
 
 #[derive(Component)]
@@ -128,12 +131,11 @@ fn make_chat_menu() -> impl Bundle {
     (
         ChatMenu,
         Node {
-            height: px(54.0),
+            height: px(48.0),
             position_type: PositionType::Absolute,
             left: px(20.0),
             right: px(20.0),
             bottom: px(18.0),
-            padding: UiRect::horizontal(px(12.0)),
             justify_content: JustifyContent::FlexStart,
             align_items: AlignItems::Center,
             ..default()
@@ -142,19 +144,16 @@ fn make_chat_menu() -> impl Bundle {
     )
 }
 
-fn get_text_node() -> Node {
-    Node {
-        position_type: PositionType::Absolute,
-        left: percent(0.5),
-        top: percent(0.5),
-        ..default()
-    }
-}
-
 fn make_chat_text() -> impl Bundle {
     (
         ChatMenuText,
-        get_text_node(),
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(0.0),
+            top: px(0.0),
+            bottom: px(0.0),
+            ..default()
+        },
         ChatBuffer(String::new()),
         CursorBlink {
             timer: Timer::from_seconds(0.5, TimerMode::Repeating),
@@ -172,7 +171,13 @@ fn make_chat_text() -> impl Bundle {
 fn make_chat_placeholder() -> impl Bundle {
     (
         ChatPlaceholderText,
-        get_text_node(),
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(0.0),
+            top: px(0.0),
+            bottom: px(0.0),
+            ..default()
+        },
         Text::new(CHAT_PLACEHOLDER),
         TextFont {
             font_size: 22.0,
@@ -182,10 +187,27 @@ fn make_chat_placeholder() -> impl Bundle {
     )
 }
 
+fn make_chat_text_container() -> impl Bundle {
+    (
+        ChatTextContainer,
+        Node {
+            width: percent(100.0),
+            height: percent(50.0),
+            position_type: PositionType::Relative,
+            margin: UiRect::horizontal(px(10.0)),
+            ..default()
+        },
+    )
+}
+
 fn spawn_chat_menu(commands: &mut Commands) -> Entity {
     let menu = commands.spawn(make_chat_menu()).id();
+    let container = commands.spawn(make_chat_text_container()).id();
     let text = commands.spawn(make_chat_text()).id();
     let placeholder = commands.spawn(make_chat_placeholder()).id();
-    commands.entity(menu).add_children(&[text, placeholder]);
+    commands
+        .entity(container)
+        .add_children(&[text, placeholder]);
+    commands.entity(menu).add_children(&[container]);
     menu
 }
