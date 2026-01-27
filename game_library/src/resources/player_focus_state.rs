@@ -32,9 +32,4 @@ impl PlayerFocusState {
     pub fn pop_current_menu(&mut self) -> Option<Entity> {
         self.menu_stack.pop()
     }
-
-    // TODO: map this to Shift + Q or something
-    // pub fn clear_menu_queue(&mut self) {
-    //     self.menu_stack = vec![];
-    // }
 }

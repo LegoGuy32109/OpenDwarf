@@ -63,10 +63,19 @@ pub fn handle_chat_menu(
         if let (Ok((mut text, mut buffer, mut cursor)), Ok(mut placeholder_visibility)) =
             (text_query.single_mut(), placeholder_query.single_mut())
         {
+            let ctrl_pressed = keyboard_input.pressed(KeyCode::ControlLeft)
+                || keyboard_input.pressed(KeyCode::ControlRight);
+            let shift_pressed = keyboard_input.pressed(KeyCode::ShiftLeft)
+                || keyboard_input.pressed(KeyCode::ShiftRight);
             for event in key_events.read() {
                 // skip released events
                 if event.state == ButtonState::Released {
                     continue;
+                }
+                if ctrl_pressed && input_state.just_pressed(&input_state.clear_menu) {
+                    buffer.0.clear();
+                    menu_events.write(MenuEvent::ClearAllMenus);
+                    return;
                 }
                 match &event.logical_key {
                     Key::Character(value) => {
@@ -78,7 +87,13 @@ pub fn handle_chat_menu(
                         buffer.0.push(' ');
                     }
                     Key::Backspace => {
-                        buffer.0.pop();
+                        if ctrl_pressed && shift_pressed {
+                            buffer.0.clear();
+                        } else if ctrl_pressed || shift_pressed {
+                            delete_last_word(&mut buffer.0);
+                        } else {
+                            buffer.0.pop();
+                        }
                     }
                     _ => {}
                 }
@@ -210,4 +225,30 @@ fn spawn_chat_menu(commands: &mut Commands) -> Entity {
         .add_children(&[text, placeholder]);
     commands.entity(menu).add_children(&[container]);
     menu
+}
+
+fn delete_last_word(buffer: &mut String) {
+    let trimmed = buffer.trim_end_matches(' ');
+    if trimmed.is_empty() {
+        buffer.clear();
+        return;
+    }
+    let mut split_index = None;
+    for (idx, ch) in trimmed.char_indices() {
+        if ch.is_whitespace() {
+            split_index = Some(idx);
+        }
+    }
+    match split_index {
+        Some(idx) => {
+            let mut new_value = trimmed[..=idx].to_string();
+            if !new_value.ends_with(' ') {
+                new_value.push(' ');
+            }
+            *buffer = new_value;
+        }
+        None => {
+            buffer.clear();
+        }
+    }
 }

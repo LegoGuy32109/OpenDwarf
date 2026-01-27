@@ -12,6 +12,7 @@ pub enum MenuAction {
 pub enum MenuEvent {
     CloseCurrentMenu,
     OpenOptionsMenu,
+    ClearAllMenus,
 }
 
 pub fn menu_event_manager(
@@ -33,6 +34,13 @@ pub fn menu_event_manager(
                 let options_menu = super::options_menu::spawn_options_menu(&mut commands);
                 player_focus_state.push_new_menu(options_menu);
                 player_focus_state.within_system_menu = true;
+            }
+            MenuEvent::ClearAllMenus => {
+                for entity in player_focus_state.menu_stack.drain(..) {
+                    commands.entity(entity).despawn();
+                }
+                player_focus_state.within_system_menu = false;
+                player_focus_state.typing = false;
             }
         }
     }

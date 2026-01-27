@@ -17,6 +17,7 @@ pub struct InputState {
     pub return_key: Keys,
     pub debug_menu: Keys,
     pub preform_action: Keys,
+    pub clear_menu: Keys,
     pub groups: InputStateGroups,
     just_pressed_keys: HashSet<KeyCode>,
 }
@@ -145,6 +146,7 @@ impl Default for InputState {
             return_key: HashSet::from([KeyCode::Enter]),
             debug_menu: HashSet::from([KeyCode::F1]),
             preform_action: HashSet::from([KeyCode::Space]),
+            clear_menu: HashSet::from([KeyCode::KeyQ]),
             groups: InputStateGroups::default(),
             just_pressed_keys: HashSet::new(),
         };
