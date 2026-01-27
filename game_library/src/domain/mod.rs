@@ -3,11 +3,13 @@ use bevy::prelude::*;
 use bevy::render::RenderApp;
 use bevy::render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
 
+use crate::resources::input_state::{InputState, update_input_state};
+use crate::resources::player_focus_state::PlayerFocusState;
+
 pub mod messaging;
 pub mod movement;
 pub mod visuals;
 
-use crate::resources::input_state::{InputState, update_input_state};
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
@@ -15,8 +17,6 @@ use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
 use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
-
-use crate::resources::player_focus_state::PlayerFocusState;
 
 pub struct OpenDwarfPlugins;
 
@@ -26,12 +26,12 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
             .add_systems(Update, (update_tileset_image, consume_action))
+            .add_systems(Update, (process_game_messages, keyboard_movement))
             .add_systems(
                 Update,
                 (
-                    process_game_messages,
-                    keyboard_movement,
                     menu_event_manager,
+                    ApplyDeferred,
                     handle_escape_menu,
                     handle_options_menu,
                 ),
