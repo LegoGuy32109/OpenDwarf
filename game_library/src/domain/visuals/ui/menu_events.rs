@@ -5,11 +5,13 @@ use crate::resources::player_focus_state::PlayerFocusState;
 #[derive(Component, Debug, Clone, Copy)]
 pub enum MenuAction {
     CloseCurrentMenu,
+    OpenOptions,
 }
 
 #[derive(Message, Debug, Clone, Copy)]
 pub enum MenuEvent {
     CloseCurrentMenu,
+    OpenOptionsMenu,
 }
 
 pub fn menu_event_manager(
@@ -26,6 +28,11 @@ pub fn menu_event_manager(
                 if player_focus_state.menu_stack.is_empty() {
                     player_focus_state.within_system_menu = false;
                 }
+            }
+            MenuEvent::OpenOptionsMenu => {
+                let options_menu = super::options_menu::spawn_options_menu(&mut commands);
+                player_focus_state.push_new_menu(options_menu);
+                player_focus_state.within_system_menu = true;
             }
         }
     }

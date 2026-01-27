@@ -13,6 +13,7 @@ use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
 use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
+use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
 
 use crate::resources::player_focus_state::PlayerFocusState;
@@ -32,6 +33,7 @@ impl Plugin for OpenDwarfPlugins {
                     keyboard_movement,
                     menu_event_manager,
                     handle_escape_menu,
+                    handle_options_menu,
                 ),
             )
             .add_message::<MenuEvent>()

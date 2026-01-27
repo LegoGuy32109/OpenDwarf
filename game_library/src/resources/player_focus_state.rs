@@ -17,9 +17,13 @@ impl PlayerFocusState {
         self.menu_stack.iter().position(|&menu| menu == target_menu)
     }
 
-    // pub fn get_current_menu(&self) -> Option<Entity> {
-    //     self.menu_stack.last().map(|e| e.clone())
-    // }
+    pub fn current_menu_index(&self) -> Option<usize> {
+        if self.menu_stack.is_empty() {
+            None
+        } else {
+            Some(self.menu_stack.len() - 1)
+        }
+    }
 
     pub fn push_new_menu(&mut self, new_menu: Entity) {
         self.menu_stack.push(new_menu);
