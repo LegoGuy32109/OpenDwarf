@@ -13,9 +13,9 @@ pub fn handle_escape_menu(
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
     maybe_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<EscapeMenu>>,
-    button_action_query: Query<&MenuAction>,
-    button_style_query: Query<(
+    button_query: Query<(
         Entity,
+        &MenuAction,
         &EscapeMenuButton,
         &mut BackgroundColor,
         &mut BorderColor,
@@ -64,8 +64,7 @@ pub fn handle_escape_menu(
         process_escape_menu(
             input_state.as_ref(),
             ui_focus_map.reborrow(),
-            button_action_query,
-            button_style_query,
+            button_query,
             menu_events,
         );
     } else if toggle_menu_pressed {
@@ -78,9 +77,9 @@ pub fn handle_escape_menu(
 fn process_escape_menu(
     input_state: &InputState,
     mut ui_focus_map: Mut<UiFocusMap>,
-    button_action_query: Query<&MenuAction>,
-    mut button_style_query: Query<(
+    mut button_query: Query<(
         Entity,
+        &MenuAction,
         &EscapeMenuButton,
         &mut BackgroundColor,
         &mut BorderColor,
@@ -111,19 +110,17 @@ fn process_escape_menu(
         ui_focus_map.focus_visible = true;
     }
 
-    // trigger action from selected element
-    if input_state.just_pressed(&input_state.groups.ui_confirm)
-        && let Some(focused) = ui_focus_map.current_focus
-        && let Ok(action) = button_action_query.get(focused)
-    {
-        if matches!(action, MenuAction::CloseCurrentMenu) {
-            menu_events.write(MenuEvent::CloseCurrentMenu);
-        }
-    }
-
-    // change style of buttons if they are focused
+    let confirm_pressed = input_state.just_pressed(&input_state.groups.ui_confirm);
     let focused_entity = ui_focus_map.current_focus;
-    for (entity, button, mut background_color, mut border_color) in &mut button_style_query {
+    for (entity, action, button, mut background_color, mut border_color) in &mut button_query {
+        // trigger action from selected element
+        if confirm_pressed && Some(entity) == focused_entity {
+            if matches!(action, MenuAction::CloseCurrentMenu) {
+                menu_events.write(MenuEvent::CloseCurrentMenu);
+            }
+        }
+
+        // change style of buttons if they are focused
         let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
             (button.focus_background, button.focus_border)
         } else {
