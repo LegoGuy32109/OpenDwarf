@@ -22,6 +22,10 @@ pub fn handle_escape_menu(
     )>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
+    if player_focus_state.typing {
+        return;
+    }
+
     let toggle_menu_pressed = input_state.just_pressed(&input_state.exit_menu);
 
     // if somehow multiple escape menus exist, delete all of them
