@@ -3,7 +3,7 @@ use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 
 use crate::resources::input_state::InputState;
-use crate::resources::player_focus_state::PlayerFocusState;
+use crate::resources::player_focus_state::{self, PlayerFocusState};
 
 use super::super::visual_utils::color_from_hex_alpha;
 use super::menu_events::MenuEvent;
@@ -13,16 +13,28 @@ type MenuQueryBundle = (With<ChatMenu>, Without<ChatPlaceholderText>);
 
 pub fn handle_chat_menu(
     mut commands: Commands,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    input_state: Res<InputState>,
-    mut player_focus_state: ResMut<PlayerFocusState>,
-    maybe_menu: Query<MenuBundle, MenuQueryBundle>,
-    mut text_query: Query<(&mut Text, &mut ChatBuffer, &mut CursorBlink), With<ChatMenuText>>,
-    mut placeholder_query: Query<&mut Visibility, (With<ChatPlaceholderText>, Without<ChatMenu>)>,
     mut key_events: MessageReader<KeyboardInput>,
-    time: Res<Time>,
     mut menu_events: MessageWriter<MenuEvent>,
+    mut resources: ParamSet<(
+        ResMut<PlayerFocusState>,
+        Res<ButtonInput<KeyCode>>,
+        Res<InputState>,
+        Res<Time>,
+    )>,
+    mut queries: ParamSet<(
+        Query<MenuBundle, MenuQueryBundle>,
+        Query<(&mut Text, &mut ChatBuffer, &mut CursorBlink), With<ChatMenuText>>,
+        Query<&mut Visibility, (With<ChatPlaceholderText>, Without<ChatMenu>)>,
+    )>,
 ) {
+    let mut player_focus_state = resources.p0();
+    let keyboard_input = resources.p1();
+    let input_state = resources.p2();
+    let time = resources.p3();
+    let mut maybe_menu = queries.p0();
+    let mut text_query = queries.p1();
+    let mut placeholder_query = queries.p2();
+
     let open_pressed = keyboard_input.just_pressed(KeyCode::KeyT);
 
     let menu_entities: Vec<Entity> = maybe_menu.iter().map(|(entity, _)| entity).collect();
