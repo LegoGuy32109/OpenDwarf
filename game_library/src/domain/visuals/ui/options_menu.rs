@@ -102,10 +102,11 @@ fn process_options_menu(
     let confirm_pressed = input_state.just_pressed(&input_state.groups.ui_confirm);
     let focused_entity = ui_focus_map.current_focus;
     for (entity, action, button, mut background_color, mut border_color) in &mut button_query {
-        if confirm_pressed && Some(entity) == focused_entity {
-            if matches!(action, MenuAction::CloseCurrentMenu) {
-                menu_events.write(MenuEvent::CloseCurrentMenu);
-            }
+        if confirm_pressed
+            && Some(entity) == focused_entity
+            && matches!(action, MenuAction::CloseCurrentMenu)
+        {
+            menu_events.write(MenuEvent::CloseCurrentMenu);
         }
 
         let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {

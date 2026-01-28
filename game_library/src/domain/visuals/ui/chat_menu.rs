@@ -8,12 +8,15 @@ use crate::resources::player_focus_state::PlayerFocusState;
 use super::super::visual_utils::color_from_hex_alpha;
 use super::menu_events::MenuEvent;
 
+type MenuBundle<'a> = (Entity, &'a mut Visibility);
+type MenuQueryBundle = (With<ChatMenu>, Without<ChatPlaceholderText>);
+
 pub fn handle_chat_menu(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
-    maybe_menu: Query<(Entity, &mut Visibility), (With<ChatMenu>, Without<ChatPlaceholderText>)>,
+    maybe_menu: Query<MenuBundle, MenuQueryBundle>,
     mut text_query: Query<(&mut Text, &mut ChatBuffer, &mut CursorBlink), With<ChatMenuText>>,
     mut placeholder_query: Query<&mut Visibility, (With<ChatPlaceholderText>, Without<ChatMenu>)>,
     mut key_events: MessageReader<KeyboardInput>,
@@ -48,12 +51,11 @@ pub fn handle_chat_menu(
         let return_pressed = input_state.just_pressed(&input_state.return_key);
 
         if exit_pressed || return_pressed {
-            if return_pressed {
-                if let Ok((_, buffer, _)) = text_query.single() {
-                    if !buffer.0.is_empty() {
-                        info!("Chat: {}", buffer.0);
-                    }
-                }
+            if return_pressed
+                && let Ok((_, buffer, _)) = text_query.single()
+                && !buffer.0.is_empty()
+            {
+                info!("Chat: {}", buffer.0);
             }
             player_focus_state.typing = false;
             menu_events.write(MenuEvent::CloseCurrentMenu);

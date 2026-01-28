@@ -2,7 +2,7 @@
   "lock": false,
   "tasks": {
     "fmt": "deno fmt && cd game_library && cargo fmt",
-    "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx",
+    "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx && cd game_library && cargo clippy --fix",
     "cli": "echo \"import '\\$fresh/src/dev/cli.ts'\" | deno run --unstable -A -",
     "manifest": "deno task cli manifest $(pwd)",
     "start": "deno run -A --watch=static/,routes/ dev.ts",
@@ -20,7 +20,8 @@
     }
   },
   "exclude": [
-    "**/_fresh/*"
+    "**/_fresh/*",
+    "**/static/**/*open_dwarf*"
   ],
   "fmt": {
     "exclude": [
