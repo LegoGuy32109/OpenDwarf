@@ -13,7 +13,7 @@ pub mod visuals;
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::debug_menu::debug_menu;
-use visuals::ui::chat_menu::handle_chat_menu;
+use visuals::ui::chat_menu::ChatMenuPlugin;
 use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
 use visuals::ui::options_menu::handle_options_menu;
@@ -35,9 +35,9 @@ impl Plugin for OpenDwarfPlugins {
                     ApplyDeferred,
                     handle_escape_menu,
                     handle_options_menu,
-                    handle_chat_menu,
                 ),
             )
+            .add_plugins(ChatMenuPlugin)
             .add_message::<MenuEvent>()
             .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()

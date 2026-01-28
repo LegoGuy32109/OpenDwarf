@@ -1,6 +1,8 @@
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
+use bevy::text::{LineBreak, TextBounds, TextLayout, TextLayoutInfo};
+use bevy::ui::UiSystems;
 
 use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
@@ -8,31 +10,43 @@ use crate::resources::player_focus_state::PlayerFocusState;
 use super::super::visual_utils::color_from_hex_alpha;
 use super::menu_events::MenuEvent;
 
-type MenuBundle<'a> = (Entity, &'a mut Visibility);
-type MenuQueryBundle = (With<ChatMenu>, Without<ChatPlaceholderText>);
+pub struct ChatMenuPlugin;
 
-pub fn handle_chat_menu(
+impl Plugin for ChatMenuPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (
+                chat_menu_open_system,
+                chat_menu_input_system,
+                chat_menu_cursor_system,
+                chat_menu_text_system,
+            )
+                .chain()
+                .after(ApplyDeferred),
+        )
+        .add_systems(
+            Update,
+            (chat_menu_bounds_system, chat_menu_resize_system)
+                .chain()
+                .after(UiSystems::Layout),
+        );
+    }
+}
+
+/// Opens/closes the chat menu and manages visibility based on the menu stack.
+fn chat_menu_open_system(
     mut commands: Commands,
-    mut key_events: MessageReader<KeyboardInput>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    input_state: Res<InputState>,
+    mut player_focus_state: ResMut<PlayerFocusState>,
+    mut menu_query: Query<(Entity, &mut Visibility), With<ChatMenu>>,
+    text_query: Query<&ChatBuffer, With<ChatMenuText>>,
     mut menu_events: MessageWriter<MenuEvent>,
-    mut resources: ParamSet<((
-        ResMut<PlayerFocusState>,
-        Res<ButtonInput<KeyCode>>,
-        Res<InputState>,
-        Res<Time>,
-    ),)>,
-    mut queries: ParamSet<((
-        Query<MenuBundle, MenuQueryBundle>,
-        Query<(&mut Text, &mut ChatBuffer, &mut CursorBlink), With<ChatMenuText>>,
-        Query<&mut Visibility, (With<ChatPlaceholderText>, Without<ChatMenu>)>,
-    ),)>,
 ) {
-    let (mut player_focus_state, keyboard_input, input_state, time) = resources.p0();
-    let (maybe_menu, mut text_query, mut placeholder_query) = queries.p0();
-
     let open_pressed = keyboard_input.just_pressed(KeyCode::KeyT);
 
-    let menu_entities: Vec<Entity> = maybe_menu.iter().map(|(entity, _)| entity).collect();
+    let menu_entities: Vec<Entity> = menu_query.iter().map(|(entity, _)| entity).collect();
     let num_chat_menus = menu_entities.len();
     if num_chat_menus > 1 {
         for entity in menu_entities {
@@ -41,7 +55,7 @@ pub fn handle_chat_menu(
         return;
     }
 
-    if let Ok((menu, mut visibility)) = maybe_menu.single_inner() {
+    if let Ok((menu, mut visibility)) = menu_query.single_mut() {
         let menu_index = player_focus_state.get_menu_index(menu);
         if let Some(index) = menu_index {
             if player_focus_state.current_menu_index() != Some(index) {
@@ -56,74 +70,164 @@ pub fn handle_chat_menu(
 
         let exit_pressed = keyboard_input.just_pressed(KeyCode::Escape);
         let return_pressed = input_state.just_pressed(&input_state.return_key);
-
         if exit_pressed || return_pressed {
             if return_pressed
-                && let Ok((_, buffer, _)) = text_query.single()
+                && let Ok(buffer) = text_query.single()
                 && !buffer.0.is_empty()
             {
                 info!("Chat: {}", buffer.0);
             }
             player_focus_state.typing = false;
             menu_events.write(MenuEvent::CloseCurrentMenu);
-            return;
-        }
-
-        if let (Ok((mut text, mut buffer, mut cursor)), Ok(mut placeholder_visibility)) =
-            (text_query.single_mut(), placeholder_query.single_mut())
-        {
-            let ctrl_pressed = keyboard_input.pressed(KeyCode::ControlLeft)
-                || keyboard_input.pressed(KeyCode::ControlRight);
-            let shift_pressed = keyboard_input.pressed(KeyCode::ShiftLeft)
-                || keyboard_input.pressed(KeyCode::ShiftRight);
-            for event in key_events.read() {
-                // skip released events
-                if event.state == ButtonState::Released {
-                    continue;
-                }
-                if ctrl_pressed && input_state.just_pressed(&input_state.clear_menu) {
-                    buffer.0.clear();
-                    menu_events.write(MenuEvent::ClearAllMenus);
-                    return;
-                }
-                match &event.logical_key {
-                    Key::Character(value) => {
-                        if !value.is_empty() {
-                            buffer.0.push_str(value);
-                        }
-                    }
-                    Key::Space => {
-                        buffer.0.push(' ');
-                    }
-                    Key::Backspace => {
-                        if ctrl_pressed && shift_pressed {
-                            buffer.0.clear();
-                        } else if ctrl_pressed || shift_pressed {
-                            delete_last_word(&mut buffer.0);
-                        } else {
-                            buffer.0.pop();
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            if cursor.timer.tick(time.delta()).just_finished() {
-                cursor.visible = !cursor.visible;
-            }
-            let cursor_char = if cursor.visible { "_" } else { "" };
-            if buffer.0.is_empty() {
-                *placeholder_visibility = Visibility::Visible;
-                text.0 = cursor_char.to_string();
-            } else {
-                *placeholder_visibility = Visibility::Hidden;
-                text.0 = format!("{}{}", buffer.0, cursor_char);
-            }
         }
     } else if open_pressed && player_focus_state.menu_stack.is_empty() {
         let chat_menu = spawn_chat_menu(&mut commands);
         player_focus_state.push_new_menu(chat_menu);
         player_focus_state.typing = true;
+    }
+}
+
+/// Processes keyboard input into the chat buffer and menu actions.
+fn chat_menu_input_system(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    input_state: Res<InputState>,
+    player_focus_state: Res<PlayerFocusState>,
+    mut text_query: Query<&mut ChatBuffer, With<ChatMenuText>>,
+    menu_query: Query<Entity, With<ChatMenu>>,
+    mut key_events: MessageReader<KeyboardInput>,
+    mut menu_events: MessageWriter<MenuEvent>,
+) {
+    let Ok(menu) = menu_query.single() else {
+        return;
+    };
+    if player_focus_state.current_menu_index() != player_focus_state.get_menu_index(menu) {
+        return;
+    }
+
+    let mut buffer = match text_query.single_mut() {
+        Ok(buffer) => buffer,
+        Err(_) => return,
+    };
+
+    let ctrl_pressed = keyboard_input.pressed(KeyCode::ControlLeft)
+        || keyboard_input.pressed(KeyCode::ControlRight);
+    let shift_pressed =
+        keyboard_input.pressed(KeyCode::ShiftLeft) || keyboard_input.pressed(KeyCode::ShiftRight);
+    if ctrl_pressed && input_state.just_pressed(&input_state.clear_menu) {
+        buffer.0.clear();
+        menu_events.write(MenuEvent::ClearAllMenus);
+        return;
+    }
+
+    for event in key_events.read() {
+        if event.state == ButtonState::Released {
+            continue;
+        }
+        match &event.logical_key {
+            Key::Character(value) => {
+                if !value.is_empty() {
+                    buffer.0.push_str(value);
+                }
+            }
+            Key::Space => {
+                buffer.0.push(' ');
+            }
+            Key::Backspace => {
+                if ctrl_pressed && shift_pressed {
+                    buffer.0.clear();
+                } else if ctrl_pressed || shift_pressed {
+                    delete_last_word(&mut buffer.0);
+                } else {
+                    buffer.0.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Toggles the blinking cursor based on the timer.
+fn chat_menu_cursor_system(time: Res<Time>, mut cursor_query: Query<&mut CursorBlink>) {
+    for mut cursor in &mut cursor_query {
+        if cursor.timer.tick(time.delta()).just_finished() {
+            cursor.visible = !cursor.visible;
+        }
+    }
+}
+
+/// Updates the visible chat text and placeholder display.
+fn chat_menu_text_system(
+    mut text_query: Query<(&ChatBuffer, &CursorBlink, &mut Text), With<ChatMenuText>>,
+    mut placeholder_query: Query<&mut Visibility, With<ChatPlaceholderText>>,
+) {
+    let Ok((buffer, cursor, mut text)) = text_query.single_mut() else {
+        return;
+    };
+    let Ok(mut placeholder_visibility) = placeholder_query.single_mut() else {
+        return;
+    };
+
+    let cursor_char = if cursor.visible { "_" } else { " " };
+    if buffer.0.is_empty() {
+        *placeholder_visibility = Visibility::Visible;
+        text.0 = cursor_char.to_string();
+    } else {
+        *placeholder_visibility = Visibility::Hidden;
+        text.0 = format!("{}{}", buffer.0, cursor_char);
+    }
+}
+
+/// Applies a wrapping width to the chat text based on the container size.
+fn chat_menu_bounds_system(
+    container_query: Query<&ComputedNode, With<ChatTextContainer>>,
+    mut text_bounds_query: Query<
+        &mut TextBounds,
+        (With<ChatMenuText>, Without<ChatPlaceholderText>),
+    >,
+    mut placeholder_bounds_query: Query<
+        &mut TextBounds,
+        (With<ChatPlaceholderText>, Without<ChatMenuText>),
+    >,
+) {
+    let Ok(container) = container_query.single() else {
+        return;
+    };
+    return;
+    let width = container.size.x.max(1.0);
+    if let Ok(mut bounds) = text_bounds_query.single_mut() {
+        *bounds = TextBounds::new_horizontal(width);
+    }
+    if let Ok(mut bounds) = placeholder_bounds_query.single_mut() {
+        *bounds = TextBounds::new_horizontal(width);
+    }
+}
+
+/// Resizes the chat menu to fit wrapped text lines.
+fn chat_menu_resize_system(
+    text_query: Query<(&ChatBuffer, &TextLayoutInfo), With<ChatMenuText>>,
+    placeholder_query: Query<&TextLayoutInfo, With<ChatPlaceholderText>>,
+    mut container_query: Query<&mut Node, (With<ChatTextContainer>, Without<ChatMenu>)>,
+    mut menu_query: Query<&mut Node, (With<ChatMenu>, Without<ChatTextContainer>)>,
+) {
+    let Ok((buffer, text_layout)) = text_query.single() else {
+        return;
+    };
+    let Ok(placeholder_layout) = placeholder_query.single() else {
+        return;
+    };
+
+    let visible_height = if buffer.0.is_empty() {
+        placeholder_layout.size.y
+    } else {
+        text_layout.size.y
+    };
+    let text_height = visible_height.max(CHAT_MIN_TEXT_HEIGHT);
+    if let Ok(mut container_node) = container_query.single_mut() {
+        container_node.height = Val::Px(text_height.ceil());
+    }
+    let menu_height = text_height + CHAT_VERTICAL_PADDING * 2.0;
+    if let Ok(mut menu_node) = menu_query.single_mut() {
+        menu_node.height = Val::Px(menu_height.ceil());
     }
 }
 
@@ -149,19 +253,22 @@ pub struct CursorBlink {
 }
 
 const CHAT_PLACEHOLDER: &str = "Ctrl + Q to cancel";
+const CHAT_MIN_TEXT_HEIGHT: f32 = 22.0;
+const CHAT_VERTICAL_PADDING: f32 = 12.0;
 
 fn make_chat_menu() -> impl Bundle {
     let menu_background_color: Color = color_from_hex_alpha("#2C2C2C", 0.65);
     (
         ChatMenu,
         Node {
-            height: px(48.0),
+            height: px(CHAT_MIN_TEXT_HEIGHT + CHAT_VERTICAL_PADDING * 2.0),
             position_type: PositionType::Absolute,
             left: px(20.0),
             right: px(20.0),
             bottom: px(18.0),
             justify_content: JustifyContent::FlexStart,
             align_items: AlignItems::Center,
+            padding: UiRect::vertical(px(CHAT_VERTICAL_PADDING)),
             ..default()
         },
         BackgroundColor(menu_background_color),
@@ -184,6 +291,8 @@ fn make_chat_text() -> impl Bundle {
             visible: true,
         },
         Text::new(""),
+        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
+        TextBounds::UNBOUNDED,
         TextFont {
             font_size: 22.0,
             ..default()
@@ -203,6 +312,8 @@ fn make_chat_placeholder() -> impl Bundle {
             ..default()
         },
         Text::new(CHAT_PLACEHOLDER),
+        TextLayout::new_with_linebreak(LineBreak::WordOrCharacter),
+        TextBounds::UNBOUNDED,
         TextFont {
             font_size: 22.0,
             ..default()
@@ -216,9 +327,11 @@ fn make_chat_text_container() -> impl Bundle {
         ChatTextContainer,
         Node {
             width: percent(100.0),
-            height: percent(50.0),
+            height: Val::Auto,
             position_type: PositionType::Relative,
-            margin: UiRect::horizontal(px(10.0)),
+            padding: UiRect::horizontal(px(8.0)),
+            justify_content: JustifyContent::FlexStart,
+            align_items: AlignItems::Center,
             ..default()
         },
     )

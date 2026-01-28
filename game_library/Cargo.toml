@@ -38,6 +38,7 @@ core = [
   "bevy/default_font",
   "bevy/multi_threaded",
   "bevy/png",
+  "bevy/trace",
 ]
 native = ["bevy/wayland", "core"]
 web = ["bevy/bevy_winit", "bevy/web", "bevy/webgl2", "core"]
