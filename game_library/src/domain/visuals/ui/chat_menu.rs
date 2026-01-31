@@ -27,9 +27,7 @@ impl Plugin for ChatMenuPlugin {
         )
         .add_systems(
             Update,
-            (chat_menu_bounds_system, chat_menu_resize_system)
-                .chain()
-                .after(UiSystems::Layout),
+            (chat_menu_resize_system).chain().after(UiSystems::Layout),
         );
     }
 }
@@ -46,10 +44,10 @@ fn chat_menu_open_system(
 ) {
     let open_pressed = keyboard_input.just_pressed(KeyCode::KeyT);
 
-    let menu_entities: Vec<Entity> = menu_query.iter().map(|(entity, _)| entity).collect();
-    let num_chat_menus = menu_entities.len();
+    let chat_menu_entities: Vec<Entity> = menu_query.iter().map(|(entity, _)| entity).collect();
+    let num_chat_menus = chat_menu_entities.len();
     if num_chat_menus > 1 {
-        for entity in menu_entities {
+        for entity in chat_menu_entities {
             commands.entity(entity).despawn();
         }
         return;
@@ -177,31 +175,6 @@ fn chat_menu_text_system(
     }
 }
 
-/// Applies a wrapping width to the chat text based on the container size.
-fn chat_menu_bounds_system(
-    container_query: Query<&ComputedNode, With<ChatTextContainer>>,
-    mut text_bounds_query: Query<
-        &mut TextBounds,
-        (With<ChatMenuText>, Without<ChatPlaceholderText>),
-    >,
-    mut placeholder_bounds_query: Query<
-        &mut TextBounds,
-        (With<ChatPlaceholderText>, Without<ChatMenuText>),
-    >,
-) {
-    let Ok(container) = container_query.single() else {
-        return;
-    };
-    return;
-    let width = container.size.x.max(1.0);
-    if let Ok(mut bounds) = text_bounds_query.single_mut() {
-        *bounds = TextBounds::new_horizontal(width);
-    }
-    if let Ok(mut bounds) = placeholder_bounds_query.single_mut() {
-        *bounds = TextBounds::new_horizontal(width);
-    }
-}
-
 /// Resizes the chat menu to fit wrapped text lines.
 fn chat_menu_resize_system(
     text_query: Query<(&ChatBuffer, &TextLayoutInfo), With<ChatMenuText>>,
@@ -225,7 +198,7 @@ fn chat_menu_resize_system(
     if let Ok(mut container_node) = container_query.single_mut() {
         container_node.height = Val::Px(text_height.ceil());
     }
-    let menu_height = text_height + CHAT_VERTICAL_PADDING * 2.0;
+    let menu_height = text_height + CHAT_BOX_PADDING * 2.0;
     if let Ok(mut menu_node) = menu_query.single_mut() {
         menu_node.height = Val::Px(menu_height.ceil());
     }
@@ -254,21 +227,21 @@ pub struct CursorBlink {
 
 const CHAT_PLACEHOLDER: &str = "Ctrl + Q to cancel";
 const CHAT_MIN_TEXT_HEIGHT: f32 = 22.0;
-const CHAT_VERTICAL_PADDING: f32 = 12.0;
+const CHAT_BOX_PADDING: f32 = 12.0;
 
 fn make_chat_menu() -> impl Bundle {
     let menu_background_color: Color = color_from_hex_alpha("#2C2C2C", 0.65);
     (
         ChatMenu,
         Node {
-            height: px(CHAT_MIN_TEXT_HEIGHT + CHAT_VERTICAL_PADDING * 2.0),
+            height: px(CHAT_MIN_TEXT_HEIGHT + CHAT_BOX_PADDING * 2.0),
             position_type: PositionType::Absolute,
             left: px(20.0),
             right: px(20.0),
             bottom: px(18.0),
             justify_content: JustifyContent::FlexStart,
             align_items: AlignItems::Center,
-            padding: UiRect::vertical(px(CHAT_VERTICAL_PADDING)),
+            padding: UiRect::all(px(CHAT_BOX_PADDING)),
             ..default()
         },
         BackgroundColor(menu_background_color),
@@ -329,7 +302,6 @@ fn make_chat_text_container() -> impl Bundle {
             width: percent(100.0),
             height: Val::Auto,
             position_type: PositionType::Relative,
-            padding: UiRect::horizontal(px(8.0)),
             justify_content: JustifyContent::FlexStart,
             align_items: AlignItems::Center,
             ..default()
