@@ -1,6 +1,9 @@
-use bevy::input::keyboard::KeyboardInput;
+use bevy::input::ButtonState;
+use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
+
+use crate::resources::player_focus_state::PlayerFocusState;
 
 pub type Keys = HashSet<KeyCode>;
 
@@ -21,6 +24,8 @@ pub struct InputState {
     pub clear_menu: Keys,
     pub chat_open: Keys,
     pub chat_cancel: Keys,
+    pub clear_all_menus_command: bool,
+    pub chat_open_command: bool,
     pub groups: InputStateGroups,
     just_pressed_keys: HashSet<KeyCode>,
     pressed_keys: HashSet<KeyCode>,
@@ -123,6 +128,14 @@ impl InputState {
         &self.key_events
     }
 
+    pub fn clear_all_menus_triggered(&self) -> bool {
+        self.clear_all_menus_command
+    }
+
+    pub fn chat_open_triggered(&self) -> bool {
+        self.chat_open_command
+    }
+
     pub fn get_first_two_just_pressed(&self, codes: &Keys) -> (Option<KeyCode>, Option<KeyCode>) {
         let mut keys_just_pressed: Vec<KeyCode> = self
             .just_pressed_keys
@@ -170,6 +183,8 @@ impl Default for InputState {
             clear_menu: HashSet::from([KeyCode::KeyQ]),
             chat_open: HashSet::from([KeyCode::KeyT]),
             chat_cancel: HashSet::from([KeyCode::Escape]),
+            clear_all_menus_command: false,
+            chat_open_command: false,
             groups: InputStateGroups::default(),
             just_pressed_keys: HashSet::new(),
             pressed_keys: HashSet::new(),
@@ -181,12 +196,79 @@ impl Default for InputState {
 }
 
 pub fn update_input_state(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
     mut key_events: MessageReader<KeyboardInput>,
     mut input_state: ResMut<InputState>,
+    player_focus_state: Res<PlayerFocusState>,
 ) {
-    input_state.just_pressed_keys = keyboard_input.get_just_pressed().copied().collect();
-    input_state.pressed_keys = keyboard_input.get_pressed().copied().collect();
-    input_state.key_events.clear();
-    input_state.key_events.extend(key_events.read().cloned());
+    let clear_menu = input_state.clear_menu.clone();
+    let chat_open = input_state.chat_open.clone();
+    let prev_pressed = input_state.pressed_keys.clone();
+    let mut next_pressed = prev_pressed.clone();
+    let mut next_just_pressed = HashSet::new();
+    let mut filtered_events = Vec::new();
+    let mut clear_all_menus_command = false;
+    let mut chat_open_command = false;
+
+    for event in key_events.read().cloned() {
+        match event.state {
+            ButtonState::Pressed => {
+                let was_pressed = next_pressed.contains(&event.key_code);
+                next_pressed.insert(event.key_code);
+                if !was_pressed && !event.repeat {
+                    next_just_pressed.insert(event.key_code);
+                }
+            }
+            ButtonState::Released => {
+                next_pressed.remove(&event.key_code);
+            }
+        }
+
+        let ctrl_pressed = next_pressed.contains(&KeyCode::ControlLeft)
+            || next_pressed.contains(&KeyCode::ControlRight);
+        let clear_menu_pressed = event.state == ButtonState::Pressed
+            && clear_menu.contains(&event.key_code)
+            && ctrl_pressed;
+
+        if clear_menu_pressed {
+            clear_all_menus_command = true;
+            continue;
+        }
+
+        if clear_all_menus_command
+            && matches!(
+                &event.logical_key,
+                Key::Character(value) if value.eq_ignore_ascii_case("q")
+            )
+        {
+            continue;
+        }
+
+        if event.state == ButtonState::Pressed
+            && chat_open.contains(&event.key_code)
+            && matches!(
+                &event.logical_key,
+                Key::Character(value) if value.eq_ignore_ascii_case("t")
+            )
+            && !player_focus_state.typing
+        {
+            chat_open_command = true;
+            continue;
+        }
+
+        filtered_events.push(event);
+    }
+
+    if clear_all_menus_command {
+        next_pressed.retain(|key| !clear_menu.contains(key));
+        next_just_pressed.retain(|key| !clear_menu.contains(key));
+    }
+    if chat_open_command {
+        next_just_pressed.retain(|key| !chat_open.contains(key));
+    }
+
+    input_state.clear_all_menus_command = clear_all_menus_command;
+    input_state.chat_open_command = chat_open_command;
+    input_state.just_pressed_keys = next_just_pressed;
+    input_state.pressed_keys = next_pressed;
+    input_state.key_events = filtered_events;
 }

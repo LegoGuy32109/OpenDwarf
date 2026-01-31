@@ -41,7 +41,7 @@ fn chat_menu_open_system(
     text_query: Query<&ChatBuffer, With<ChatMenuText>>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
-    let open_pressed = input_state.just_pressed(&input_state.chat_open);
+    let open_pressed = input_state.chat_open_triggered();
 
     let chat_menu_entities: Vec<Entity> = menu_query.iter().map(|(entity, _)| entity).collect();
     let num_chat_menus = chat_menu_entities.len();
@@ -87,7 +87,7 @@ fn chat_menu_open_system(
 /// Processes keyboard input into the chat buffer and menu actions.
 fn chat_menu_input_system(
     input_state: Res<InputState>,
-    player_focus_state: Res<PlayerFocusState>,
+    mut player_focus_state: ResMut<PlayerFocusState>,
     mut text_query: Query<&mut ChatBuffer, With<ChatMenuText>>,
     menu_query: Query<Entity, With<ChatMenu>>,
     mut menu_events: MessageWriter<MenuEvent>,
@@ -99,11 +99,11 @@ fn chat_menu_input_system(
         return;
     }
 
-    let ctrl_pressed = input_state.ctrl_pressed();
-    if ctrl_pressed && input_state.just_pressed(&input_state.clear_menu) {
+    if input_state.clear_all_menus_triggered() {
         if let Ok(mut buffer) = text_query.single_mut() {
             buffer.0.clear();
         }
+        player_focus_state.typing = false;
         menu_events.write(MenuEvent::ClearAllMenus);
         return;
     }
@@ -117,6 +117,7 @@ fn chat_menu_input_system(
         Err(_) => return,
     };
 
+    let ctrl_pressed = input_state.ctrl_pressed();
     let shift_pressed = input_state.shift_pressed();
 
     for event in input_state.key_events() {
@@ -125,7 +126,11 @@ fn chat_menu_input_system(
         }
         match &event.logical_key {
             Key::Character(value) => {
+                if value == "q" && ctrl_pressed {
+                    return;
+                }
                 if !value.is_empty() {
+                    info!("pushing str {value}");
                     buffer.0.push_str(value);
                 }
             }
