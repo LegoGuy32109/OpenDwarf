@@ -40,7 +40,7 @@ core = [
   "bevy/png",
   "bevy/trace",
 ]
-native = ["bevy/wayland", "core"]
+native = ["bevy/wayland", "core", "bevy/debug"]
 web = ["bevy/bevy_winit", "bevy/web", "bevy/webgl2", "core"]
 
 # Enable a small amount of optimization in the dev profile.
