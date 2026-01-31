@@ -210,7 +210,7 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
         .spawn(make_button("Back to game", MenuAction::CloseCurrentMenu))
         .id();
     let button_options = commands
-        .spawn(make_button("Options...", MenuAction::OpenOptions))
+        .spawn(make_button("Options", MenuAction::OpenOptions))
         .id();
     let button_save_quit = commands
         .spawn(make_button(

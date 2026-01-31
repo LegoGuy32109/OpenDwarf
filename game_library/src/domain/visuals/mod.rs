@@ -29,7 +29,7 @@ pub fn update_tileset_image(
     for event in events.read() {
         if event.is_loaded_with_dependencies(image_asset_id) {
             let image = images.get_mut(tileset_image_handle).unwrap();
-            image.reinterpret_stacked_2d_as_array(NUM_TILES_IN_MAP.into());
+            let _ = image.reinterpret_stacked_2d_as_array(NUM_TILES_IN_MAP.into());
         }
     }
 }
