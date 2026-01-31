@@ -13,7 +13,6 @@ use crate::resources::input_state::InputState;
 pub struct Action {
     pub target_entity: Entity,
     pub direction: IVec3,
-    pub time_started: Duration,
     pub timer: Timer,
 }
 
@@ -52,19 +51,6 @@ pub fn consume_action(
             continue;
         };
 
-        // if the timer is finished, the entity has completed the move action
-        if action.timer.is_finished() {
-            map_coordinates.add_direction(action.direction);
-            info!(
-                "\nMoved {:?}, To {:?}\nTook {:?}",
-                action.direction,
-                entity_transform.translation,
-                time.elapsed() - action.time_started
-            );
-            commands.entity(action_entity).remove::<Action>();
-            continue;
-        }
-
         // keep track of this action so duplicates don't occur
         if !actions.insert(action.target_entity) {
             warn!("Duplicate action");
@@ -89,6 +75,19 @@ pub fn consume_action(
             destination_tile_transform.translation,
             fraction_done,
         );
+
+        // if the timer is finished, the entity has completed the move action
+        if action.timer.is_finished() {
+            entity_transform.translation = destination_tile_transform.translation;
+            map_coordinates.add_direction(action.direction);
+            info!(
+                "\nMoved {:?}, To {:?}\nTook {:?}",
+                action.direction,
+                entity_transform.translation,
+                action.timer.elapsed()
+            );
+            commands.entity(action_entity).remove::<Action>();
+        }
     }
 }
 
@@ -97,6 +96,7 @@ pub fn keyboard_movement(
     input_state: Res<InputState>,
     time: Res<Time>,
     player_query: Query<Entity, With<Player>>,
+    mut sprite_query: Query<&mut Sprite, With<Player>>,
     movement_chord_option: Option<ResMut<MovementChord>>,
     player_focus_state: Res<PlayerFocusState>,
 ) {
@@ -116,8 +116,13 @@ pub fn keyboard_movement(
         commands.remove_resource::<MovementChord>();
         // in some cases directions might cancel out, disregard if so
         if direction != IVec3::ZERO {
+            if direction.x != 0 {
+                if let Ok(mut sprite) = sprite_query.get_mut(player) {
+                    sprite.flip_x = direction.x > 0;
+                }
+            }
             // if there was somehow a Movement Chord still active, remove it
-            commands.spawn(make_movement_action(direction, player, time.elapsed()));
+            commands.spawn(make_movement_action(direction, player));
         }
     };
 
@@ -166,12 +171,11 @@ pub fn keyboard_movement(
     }
 }
 
-pub fn make_movement_action(direction: IVec3, entity: Entity, time_started: Duration) -> Action {
-    let duration_time = f64::from(direction.length_squared()) * 0.3;
+pub fn make_movement_action(direction: IVec3, entity: Entity) -> Action {
+    let duration_time = f64::from(direction.as_vec3().length()) * 0.3;
     Action {
         target_entity: entity,
         direction,
-        time_started,
         timer: Timer::new(Duration::from_secs_f64(duration_time), TimerMode::Once),
     }
 }
