@@ -1,5 +1,5 @@
 use bevy::input::ButtonState;
-use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::keyboard::Key;
 use bevy::prelude::*;
 use bevy::text::{LineBreak, TextBounds, TextLayout, TextLayoutInfo};
 use bevy::ui::UiSystems;
@@ -35,14 +35,13 @@ impl Plugin for ChatMenuPlugin {
 /// Opens/closes the chat menu and manages visibility based on the menu stack.
 fn chat_menu_open_system(
     mut commands: Commands,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
     mut menu_query: Query<(Entity, &mut Visibility), With<ChatMenu>>,
     text_query: Query<&ChatBuffer, With<ChatMenuText>>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
-    let open_pressed = keyboard_input.just_pressed(KeyCode::KeyT);
+    let open_pressed = input_state.just_pressed(&input_state.chat_open);
 
     let chat_menu_entities: Vec<Entity> = menu_query.iter().map(|(entity, _)| entity).collect();
     let num_chat_menus = chat_menu_entities.len();
@@ -66,7 +65,7 @@ fn chat_menu_open_system(
             return;
         }
 
-        let exit_pressed = keyboard_input.just_pressed(KeyCode::Escape);
+        let exit_pressed = input_state.just_pressed(&input_state.chat_cancel);
         let return_pressed = input_state.just_pressed(&input_state.return_key);
         if exit_pressed || return_pressed {
             if return_pressed
@@ -87,12 +86,10 @@ fn chat_menu_open_system(
 
 /// Processes keyboard input into the chat buffer and menu actions.
 fn chat_menu_input_system(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
     input_state: Res<InputState>,
     player_focus_state: Res<PlayerFocusState>,
     mut text_query: Query<&mut ChatBuffer, With<ChatMenuText>>,
     menu_query: Query<Entity, With<ChatMenu>>,
-    mut key_events: MessageReader<KeyboardInput>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
     let Ok(menu) = menu_query.single() else {
@@ -102,22 +99,27 @@ fn chat_menu_input_system(
         return;
     }
 
+    let ctrl_pressed = input_state.ctrl_pressed();
+    if ctrl_pressed && input_state.just_pressed(&input_state.clear_menu) {
+        if let Ok(mut buffer) = text_query.single_mut() {
+            buffer.0.clear();
+        }
+        menu_events.write(MenuEvent::ClearAllMenus);
+        return;
+    }
+
+    if !player_focus_state.typing {
+        return;
+    }
+
     let mut buffer = match text_query.single_mut() {
         Ok(buffer) => buffer,
         Err(_) => return,
     };
 
-    let ctrl_pressed = keyboard_input.pressed(KeyCode::ControlLeft)
-        || keyboard_input.pressed(KeyCode::ControlRight);
-    let shift_pressed =
-        keyboard_input.pressed(KeyCode::ShiftLeft) || keyboard_input.pressed(KeyCode::ShiftRight);
-    if ctrl_pressed && input_state.just_pressed(&input_state.clear_menu) {
-        buffer.0.clear();
-        menu_events.write(MenuEvent::ClearAllMenus);
-        return;
-    }
+    let shift_pressed = input_state.shift_pressed();
 
-    for event in key_events.read() {
+    for event in input_state.key_events() {
         if event.state == ButtonState::Released {
             continue;
         }

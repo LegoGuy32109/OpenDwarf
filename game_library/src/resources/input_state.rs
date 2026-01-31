@@ -1,3 +1,4 @@
+use bevy::input::keyboard::KeyboardInput;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
@@ -18,8 +19,12 @@ pub struct InputState {
     pub debug_menu: Keys,
     pub preform_action: Keys,
     pub clear_menu: Keys,
+    pub chat_open: Keys,
+    pub chat_cancel: Keys,
     pub groups: InputStateGroups,
     just_pressed_keys: HashSet<KeyCode>,
+    pressed_keys: HashSet<KeyCode>,
+    key_events: Vec<KeyboardInput>,
 }
 
 #[derive(Debug, Default)]
@@ -102,6 +107,22 @@ impl InputState {
         !self.just_pressed_keys.is_disjoint(codes)
     }
 
+    pub fn pressed_key(&self, key: KeyCode) -> bool {
+        self.pressed_keys.contains(&key)
+    }
+
+    pub fn shift_pressed(&self) -> bool {
+        self.pressed_key(KeyCode::ShiftLeft) || self.pressed_key(KeyCode::ShiftRight)
+    }
+
+    pub fn ctrl_pressed(&self) -> bool {
+        self.pressed_key(KeyCode::ControlLeft) || self.pressed_key(KeyCode::ControlRight)
+    }
+
+    pub fn key_events(&self) -> &[KeyboardInput] {
+        &self.key_events
+    }
+
     pub fn get_first_two_just_pressed(&self, codes: &Keys) -> (Option<KeyCode>, Option<KeyCode>) {
         let mut keys_just_pressed: Vec<KeyCode> = self
             .just_pressed_keys
@@ -147,8 +168,12 @@ impl Default for InputState {
             debug_menu: HashSet::from([KeyCode::F1]),
             preform_action: HashSet::from([KeyCode::Space]),
             clear_menu: HashSet::from([KeyCode::KeyQ]),
+            chat_open: HashSet::from([KeyCode::KeyT]),
+            chat_cancel: HashSet::from([KeyCode::Escape]),
             groups: InputStateGroups::default(),
             just_pressed_keys: HashSet::new(),
+            pressed_keys: HashSet::new(),
+            key_events: Vec::new(),
         };
         state.refresh_groups();
         state
@@ -157,7 +182,11 @@ impl Default for InputState {
 
 pub fn update_input_state(
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut key_events: MessageReader<KeyboardInput>,
     mut input_state: ResMut<InputState>,
 ) {
     input_state.just_pressed_keys = keyboard_input.get_just_pressed().copied().collect();
+    input_state.pressed_keys = keyboard_input.get_pressed().copied().collect();
+    input_state.key_events.clear();
+    input_state.key_events.extend(key_events.read().cloned());
 }
