@@ -12,6 +12,7 @@ pub mod visuals;
 
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
+use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::debug_menu;
 use visuals::ui::chat_menu::ChatMenuPlugin;
 use visuals::ui::escape_menu::handle_escape_menu;
@@ -38,6 +39,7 @@ impl Plugin for OpenDwarfPlugins {
                 ),
             )
             .add_plugins(ChatMenuPlugin)
+            .add_plugins(ChatBubblePlugin)
             .add_message::<MenuEvent>()
             .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()

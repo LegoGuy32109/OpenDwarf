@@ -7,6 +7,7 @@ use bevy::ui::UiSystems;
 use crate::resources::input_state::{InputCommand, InputState};
 use crate::resources::player_focus_state::PlayerFocusState;
 
+use super::super::chat_bubbles::ChatBubbleEvent;
 use super::super::visual_utils::color_from_hex_alpha;
 use super::menu_events::MenuEvent;
 
@@ -40,6 +41,7 @@ fn chat_menu_open_system(
     mut menu_query: Query<(Entity, &mut Visibility), With<ChatMenu>>,
     text_query: Query<&ChatBuffer, With<ChatMenuText>>,
     mut menu_events: MessageWriter<MenuEvent>,
+    mut chat_bubble_events: MessageWriter<ChatBubbleEvent>,
 ) {
     let open_pressed = input_state.command_triggered(InputCommand::ChatOpen);
 
@@ -72,7 +74,7 @@ fn chat_menu_open_system(
                 && let Ok(buffer) = text_query.single()
                 && !buffer.0.is_empty()
             {
-                info!("Chat: {}", buffer.0);
+                chat_bubble_events.write(ChatBubbleEvent::from_chat_input(&buffer.0));
             }
             player_focus_state.typing = false;
             menu_events.write(MenuEvent::CloseCurrentMenu);
