@@ -8,3 +8,4 @@ cargo build --manifest-path game_library/Cargo.toml --target wasm32-unknown-unkn
 echo Compiling DEBUG wasm library;
 wasm-bindgen --target web --out-dir static/game_debug game_library/target/wasm32-unknown-unknown/debug/open_dwarf_lib.wasm;
 echo Done 😎;
+notify-send -i game_library/assets/sprites/Dwarf.png "OpenDwarf" "web-dev complete";

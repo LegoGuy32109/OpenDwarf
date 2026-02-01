@@ -12,3 +12,4 @@ wasm-opt -Oz --strip-debug static/game/open_dwarf_lib_bg.wasm -o static/game/opt
 echo Compressing wasm to Brotli file;
 brotli -q 11 static/game/opt_open_dwarf_lib.wasm -f -o static/game/opt_open_dwarf_lib.wasm.br;
 echo Done 😎;
+notify-send -i game_library/assets/sprites/Dwarf.png "OpenDwarf" "web-release complete";
