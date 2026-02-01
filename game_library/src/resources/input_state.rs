@@ -1,11 +1,30 @@
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::math::CompassQuadrant;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
 use crate::resources::player_focus_state::PlayerFocusState;
 
 pub type Keys = HashSet<KeyCode>;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum InputCommand {
+    ClearAllMenus,
+    ChatOpen,
+}
+
+#[derive(Clone, Debug)]
+struct CommandBinding {
+    command: InputCommand,
+    keys: Keys,
+    require_ctrl: bool,
+    require_shift: bool,
+    require_alt: bool,
+    require_typing: Option<bool>,
+    suppress_char: Option<char>,
+    suppress_keycodes: bool,
+}
 
 #[derive(Resource, Debug)]
 pub struct InputState {
@@ -21,15 +40,13 @@ pub struct InputState {
     pub return_key: Keys,
     pub debug_menu: Keys,
     pub preform_action: Keys,
-    pub clear_menu: Keys,
-    pub chat_open: Keys,
     pub chat_cancel: Keys,
-    pub clear_all_menus_command: bool,
-    pub chat_open_command: bool,
     pub groups: InputStateGroups,
+    command_bindings: Vec<CommandBinding>,
     just_pressed_keys: HashSet<KeyCode>,
     pressed_keys: HashSet<KeyCode>,
     key_events: Vec<KeyboardInput>,
+    commands_triggered: HashSet<InputCommand>,
 }
 
 #[derive(Debug, Default)]
@@ -43,17 +60,13 @@ pub struct InputStateGroups {
     pub system_right: Keys,
 }
 
-#[derive(Copy, Clone)]
-enum Dir {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-impl Dir {
-    const ALL: [Dir; 4] = [Dir::Up, Dir::Down, Dir::Left, Dir::Right];
-}
+// useful const to set actions in a loop
+const QUADRANTS: [CompassQuadrant; 4] = [
+    CompassQuadrant::North,
+    CompassQuadrant::East,
+    CompassQuadrant::South,
+    CompassQuadrant::West,
+];
 
 impl InputState {
     fn rebuild_group(target: &mut Keys, sources: &[&Keys]) {
@@ -91,18 +104,18 @@ impl InputState {
             &[&self.return_key, &self.preform_action],
         );
 
-        for dir in Dir::ALL {
-            let (movement, reach) = match dir {
-                Dir::Up => (&self.move_up, &self.reach_up),
-                Dir::Down => (&self.move_down, &self.reach_down),
-                Dir::Left => (&self.move_left, &self.reach_left),
-                Dir::Right => (&self.move_right, &self.reach_right),
+        for quadrant in QUADRANTS {
+            let (movement, reach) = match quadrant {
+                CompassQuadrant::North => (&self.move_up, &self.reach_up),
+                CompassQuadrant::East => (&self.move_right, &self.reach_right),
+                CompassQuadrant::South => (&self.move_down, &self.reach_down),
+                CompassQuadrant::West => (&self.move_left, &self.reach_left),
             };
-            let target = match dir {
-                Dir::Up => &mut self.groups.system_up,
-                Dir::Down => &mut self.groups.system_down,
-                Dir::Left => &mut self.groups.system_left,
-                Dir::Right => &mut self.groups.system_right,
+            let target = match quadrant {
+                CompassQuadrant::North => &mut self.groups.system_up,
+                CompassQuadrant::East => &mut self.groups.system_right,
+                CompassQuadrant::South => &mut self.groups.system_down,
+                CompassQuadrant::West => &mut self.groups.system_left,
             };
             Self::rebuild_group(target, &[movement, reach]);
         }
@@ -128,12 +141,8 @@ impl InputState {
         &self.key_events
     }
 
-    pub fn clear_all_menus_triggered(&self) -> bool {
-        self.clear_all_menus_command
-    }
-
-    pub fn chat_open_triggered(&self) -> bool {
-        self.chat_open_command
+    pub fn command_triggered(&self, command: InputCommand) -> bool {
+        self.commands_triggered.contains(&command)
     }
 
     pub fn get_first_two_just_pressed(&self, codes: &Keys) -> (Option<KeyCode>, Option<KeyCode>) {
@@ -180,15 +189,34 @@ impl Default for InputState {
             return_key: HashSet::from([KeyCode::Enter]),
             debug_menu: HashSet::from([KeyCode::F1]),
             preform_action: HashSet::from([KeyCode::Space]),
-            clear_menu: HashSet::from([KeyCode::KeyQ]),
-            chat_open: HashSet::from([KeyCode::KeyT]),
             chat_cancel: HashSet::from([KeyCode::Escape]),
-            clear_all_menus_command: false,
-            chat_open_command: false,
             groups: InputStateGroups::default(),
+            command_bindings: vec![
+                CommandBinding {
+                    command: InputCommand::ClearAllMenus,
+                    keys: HashSet::from([KeyCode::KeyQ]),
+                    require_ctrl: true,
+                    require_shift: false,
+                    require_alt: false,
+                    require_typing: None,
+                    suppress_char: Some('q'),
+                    suppress_keycodes: true,
+                },
+                CommandBinding {
+                    command: InputCommand::ChatOpen,
+                    keys: HashSet::from([KeyCode::KeyT]),
+                    require_ctrl: false,
+                    require_shift: false,
+                    require_alt: false,
+                    require_typing: Some(false),
+                    suppress_char: Some('t'),
+                    suppress_keycodes: true,
+                },
+            ],
             just_pressed_keys: HashSet::new(),
             pressed_keys: HashSet::new(),
             key_events: Vec::new(),
+            commands_triggered: HashSet::new(),
         };
         state.refresh_groups();
         state
@@ -200,14 +228,14 @@ pub fn update_input_state(
     mut input_state: ResMut<InputState>,
     player_focus_state: Res<PlayerFocusState>,
 ) {
-    let clear_menu = input_state.clear_menu.clone();
-    let chat_open = input_state.chat_open.clone();
+    let bindings = input_state.command_bindings.clone();
     let prev_pressed = input_state.pressed_keys.clone();
     let mut next_pressed = prev_pressed.clone();
     let mut next_just_pressed = HashSet::new();
     let mut filtered_events = Vec::new();
-    let mut clear_all_menus_command = false;
-    let mut chat_open_command = false;
+    let mut commands_triggered = HashSet::new();
+    let mut suppressed_keycodes = HashSet::new();
+    let mut suppressed_chars = HashSet::new();
 
     for event in key_events.read().cloned() {
         match event.state {
@@ -223,52 +251,91 @@ pub fn update_input_state(
             }
         }
 
-        let ctrl_pressed = next_pressed.contains(&KeyCode::ControlLeft)
-            || next_pressed.contains(&KeyCode::ControlRight);
-        let clear_menu_pressed = event.state == ButtonState::Pressed
-            && clear_menu.contains(&event.key_code)
-            && ctrl_pressed;
-
-        if clear_menu_pressed {
-            clear_all_menus_command = true;
-            continue;
+        let mut suppress_event = false;
+        for binding in &bindings {
+            if binding.matches(&event, &next_pressed, player_focus_state.typing) {
+                commands_triggered.insert(binding.command);
+                if binding.suppress_keycodes {
+                    suppressed_keycodes.extend(binding.keys.iter().copied());
+                }
+                if let Some(ch) = binding.suppress_char {
+                    suppressed_chars.insert(ch.to_ascii_lowercase());
+                }
+                suppress_event = true;
+            }
         }
 
-        if clear_all_menus_command
-            && matches!(
-                &event.logical_key,
-                Key::Character(value) if value.eq_ignore_ascii_case("q")
-            )
-        {
-            continue;
-        }
-
-        if event.state == ButtonState::Pressed
-            && chat_open.contains(&event.key_code)
-            && matches!(
-                &event.logical_key,
-                Key::Character(value) if value.eq_ignore_ascii_case("t")
-            )
-            && !player_focus_state.typing
-        {
-            chat_open_command = true;
+        if suppress_event {
             continue;
         }
 
         filtered_events.push(event);
     }
 
-    if clear_all_menus_command {
-        next_pressed.retain(|key| !clear_menu.contains(key));
-        next_just_pressed.retain(|key| !clear_menu.contains(key));
+    if !suppressed_keycodes.is_empty() {
+        next_pressed.retain(|key| !suppressed_keycodes.contains(key));
+        next_just_pressed.retain(|key| !suppressed_keycodes.contains(key));
     }
-    if chat_open_command {
-        next_just_pressed.retain(|key| !chat_open.contains(key));
+    if !suppressed_chars.is_empty() {
+        filtered_events.retain(|event| {
+            !matches!(
+                &event.logical_key,
+                Key::Character(value)
+                    if value.chars().count() == 1
+                        && value
+                            .chars()
+                            .next()
+                            .map(|ch| suppressed_chars.contains(&ch.to_ascii_lowercase()))
+                            .unwrap_or(false)
+            )
+        });
     }
 
-    input_state.clear_all_menus_command = clear_all_menus_command;
-    input_state.chat_open_command = chat_open_command;
+    input_state.commands_triggered = commands_triggered;
     input_state.just_pressed_keys = next_just_pressed;
     input_state.pressed_keys = next_pressed;
     input_state.key_events = filtered_events;
+}
+
+impl CommandBinding {
+    fn matches(
+        &self,
+        event: &KeyboardInput,
+        pressed_keys: &HashSet<KeyCode>,
+        typing: bool,
+    ) -> bool {
+        if event.state != ButtonState::Pressed || event.repeat {
+            return false;
+        }
+        if !self.keys.contains(&event.key_code) {
+            return false;
+        }
+        if self.require_ctrl && !ctrl_pressed(pressed_keys) {
+            return false;
+        }
+        if self.require_shift && !shift_pressed(pressed_keys) {
+            return false;
+        }
+        if self.require_alt && !alt_pressed(pressed_keys) {
+            return false;
+        }
+        if let Some(required_typing) = self.require_typing {
+            if typing != required_typing {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn ctrl_pressed(pressed_keys: &HashSet<KeyCode>) -> bool {
+    pressed_keys.contains(&KeyCode::ControlLeft) || pressed_keys.contains(&KeyCode::ControlRight)
+}
+
+fn shift_pressed(pressed_keys: &HashSet<KeyCode>) -> bool {
+    pressed_keys.contains(&KeyCode::ShiftLeft) || pressed_keys.contains(&KeyCode::ShiftRight)
+}
+
+fn alt_pressed(pressed_keys: &HashSet<KeyCode>) -> bool {
+    pressed_keys.contains(&KeyCode::AltLeft) || pressed_keys.contains(&KeyCode::AltRight)
 }

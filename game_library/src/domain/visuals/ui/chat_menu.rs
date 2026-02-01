@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::text::{LineBreak, TextBounds, TextLayout, TextLayoutInfo};
 use bevy::ui::UiSystems;
 
-use crate::resources::input_state::InputState;
+use crate::resources::input_state::{InputCommand, InputState};
 use crate::resources::player_focus_state::PlayerFocusState;
 
 use super::super::visual_utils::color_from_hex_alpha;
@@ -41,7 +41,7 @@ fn chat_menu_open_system(
     text_query: Query<&ChatBuffer, With<ChatMenuText>>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
-    let open_pressed = input_state.chat_open_triggered();
+    let open_pressed = input_state.command_triggered(InputCommand::ChatOpen);
 
     let chat_menu_entities: Vec<Entity> = menu_query.iter().map(|(entity, _)| entity).collect();
     let num_chat_menus = chat_menu_entities.len();
@@ -95,14 +95,11 @@ fn chat_menu_input_system(
     let Ok(menu) = menu_query.single() else {
         return;
     };
-    if player_focus_state.current_menu_index() != player_focus_state.get_menu_index(menu) {
+    if !player_focus_state.is_menu_focused(menu) {
         return;
     }
 
-    if input_state.clear_all_menus_triggered() {
-        if let Ok(mut buffer) = text_query.single_mut() {
-            buffer.0.clear();
-        }
+    if input_state.command_triggered(InputCommand::ClearAllMenus) {
         player_focus_state.typing = false;
         menu_events.write(MenuEvent::ClearAllMenus);
         return;
@@ -126,11 +123,7 @@ fn chat_menu_input_system(
         }
         match &event.logical_key {
             Key::Character(value) => {
-                if value == "q" && ctrl_pressed {
-                    return;
-                }
                 if !value.is_empty() {
-                    info!("pushing str {value}");
                     buffer.0.push_str(value);
                 }
             }
