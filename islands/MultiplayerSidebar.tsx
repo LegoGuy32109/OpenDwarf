@@ -94,13 +94,13 @@ export default function MultiplayerSidebar() {
   const handleAnswerPayload = async () => {
     const payload = await readClipboardPayload();
     if (!payload) return;
-    const result = webrtc.recieveAnswerPayload(payload);
+    const result = await webrtc.receiveAnswerPayload(payload);
     if (!result.ok) {
       console.error(result.errors);
       return;
     }
 
-    console.log("answers recieved");
+    console.log("answers received");
   };
 
   const handleSaveConfig = () => {

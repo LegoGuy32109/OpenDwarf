@@ -161,9 +161,9 @@ export class WebrtcManager {
     return { ok: true, payload };
   }
 
-  public recieveAnswerPayload(
+  public async receiveAnswerPayload(
     remotePeers: Array<RemotePeer>,
-  ): Result {
+  ): AsyncResult {
     if (remotePeers.length === 0) {
       return makeError("No remote peers given");
     }
@@ -185,10 +185,14 @@ export class WebrtcManager {
     if (!remotePeer) {
       return makeError("Remote Peer filtering invalid, BUG");
     }
-    openPeer.peerConnection.setRemoteDescription({
-      type: "answer",
-      sdp: remotePeer.sdp,
-    });
+    try {
+      await openPeer.peerConnection.setRemoteDescription({
+        type: "answer",
+        sdp: remotePeer.sdp,
+      });
+    } catch (e) {
+      return makeError(e);
+    }
 
     return { ok: true };
   }
@@ -233,8 +237,8 @@ function makeEmptyPeer(config: RTCConfiguration, timeout = 5): Promise<Peer> {
       // onChannelOpen(dataChannel, id)
     };
     initialChannel.onmessage = (msgEvent: MessageEvent<unknown>) => {
-      // onMessageRecieved(msgEvent.data, id);
-      console.log("recieved message from Guest", msgEvent);
+      // onMessageReceived(msgEvent.data, id);
+      console.log("received message from Guest", msgEvent);
     };
     peer.channels.push(initialChannel);
 
@@ -280,40 +284,40 @@ function makeAnsweringPeer(
     peerConnection.setRemoteDescription({
       type: "offer",
       sdp: remotePeer.sdp,
-    });
+    }).then(() => {
+      // create a channel to transmit data in connection
+      const initialChannel = peerConnection.createDataChannel("chat", {
+        // initial channel for a peer connection is negotiated out of band
+        negotiated: true,
+        // id is agreed to be 0 for both clients
+        id: 0,
+      });
+      initialChannel.onopen = (channelEvent) => {
+        console.log("Channel to Guest was opened");
+        const dataChannel = channelEvent.target as RTCDataChannel;
+        console.log("new channel", dataChannel);
+        // onChannelOpen(dataChannel, id)
+      };
+      initialChannel.onmessage = (msgEvent: MessageEvent<unknown>) => {
+        // onMessageReceived(msgEvent.data, id);
+        console.log("received message from Guest", msgEvent);
+      };
+      peer.channels.push(initialChannel);
 
-    // create a channel to transmit data in connection
-    const initialChannel = peerConnection.createDataChannel("chat", {
-      // initial channel for a peer connection is negotiated out of band
-      negotiated: true,
-      // id is agreed to be 0 for both clients
-      id: 0,
-    });
-    initialChannel.onopen = (channelEvent) => {
-      console.log("Channel to Guest was opened");
-      const dataChannel = channelEvent.target as RTCDataChannel;
-      console.log("new channel", dataChannel);
-      // onChannelOpen(dataChannel, id)
-    };
-    initialChannel.onmessage = (msgEvent: MessageEvent<unknown>) => {
-      // onMessageRecieved(msgEvent.data, id);
-      console.log("recieved message from Guest", msgEvent);
-    };
-    peer.channels.push(initialChannel);
-
-    // create answer to offer to start generating ice candidates
-    const timeout = 5;
-    peerConnection.createAnswer()
-      .then((answer) => peerConnection.setLocalDescription(answer))
-      .then(
-        () =>
-          setTimeout(
-            () =>
-              reject(
-                `Failed adding candidates for answer after ${timeout} seconds`,
-              ),
-            timeout * 1000,
-          ),
-      );
+      // create answer to offer to start generating ice candidates
+      const timeout = 5;
+      peerConnection.createAnswer()
+        .then((answer) => peerConnection.setLocalDescription(answer))
+        .then(
+          () =>
+            setTimeout(
+              () =>
+                reject(
+                  `Failed adding candidates for answer after ${timeout} seconds`,
+                ),
+              timeout * 1000,
+            ),
+        );
+    }).catch((e) => reject(String(e)));
   });
 }
