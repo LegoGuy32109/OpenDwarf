@@ -17,6 +17,8 @@ use visuals::debug_menu::debug_menu;
 use visuals::ui::chat_menu::ChatMenuPlugin;
 use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
+#[cfg(not(target_arch = "wasm32"))]
+use visuals::ui::multiplayer_menu::drive_native_webrtc;
 use visuals::ui::multiplayer_menu::{MultiplayerWebrtcState, handle_multiplayer_menu};
 use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
@@ -52,6 +54,11 @@ impl Plugin for OpenDwarfPlugins {
             .insert_resource(GpuPreprocessingSupport {
                 max_supported_mode: GpuPreprocessingMode::None,
             });
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            app.add_systems(Update, drive_native_webrtc);
+        }
     }
 }
 

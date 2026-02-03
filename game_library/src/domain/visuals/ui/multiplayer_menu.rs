@@ -9,7 +9,6 @@ use std::rc::Rc;
 use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
 
-#[cfg(target_arch = "wasm32")]
 use crate::domain::messaging::webrtc::{
     RemotePeer, WebrtcManager, compress_remote_peers, decompress_remote_peers,
 };
@@ -25,15 +24,30 @@ use wasm_bindgen_futures::JsFuture;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{Clipboard, Navigator};
 
-#[cfg(target_arch = "wasm32")]
 pub struct MultiplayerWebrtcState {
+    #[cfg(target_arch = "wasm32")]
     manager: Option<Rc<RefCell<WebrtcManager>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    manager: Option<WebrtcManager>,
+    clipboard_text: Option<String>,
+    #[cfg(not(target_arch = "wasm32"))]
+    clipboard: Option<arboard::Clipboard>,
+    driver_active: bool,
+    #[cfg(target_arch = "wasm32")]
+    generation: Rc<RefCell<GenerationFlags>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    generation: GenerationFlags,
 }
 
 #[cfg(target_arch = "wasm32")]
 impl Default for MultiplayerWebrtcState {
     fn default() -> Self {
-        Self { manager: None }
+        Self {
+            manager: None,
+            clipboard_text: None,
+            driver_active: false,
+            generation: Rc::new(RefCell::new(GenerationFlags::default())),
+        }
     }
 }
 
@@ -49,11 +63,45 @@ impl MultiplayerWebrtcState {
         self.manager = Some(Rc::clone(&manager));
         Ok(manager)
     }
+
+    fn generation_handle(&self) -> Rc<RefCell<GenerationFlags>> {
+        Rc::clone(&self.generation)
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[derive(Default)]
-pub struct MultiplayerWebrtcState;
+impl Default for MultiplayerWebrtcState {
+    fn default() -> Self {
+        Self {
+            manager: None,
+            clipboard_text: None,
+            clipboard: None,
+            driver_active: false,
+            generation: GenerationFlags::default(),
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl MultiplayerWebrtcState {
+    fn manager_mut(&mut self) -> Result<&mut WebrtcManager, String> {
+        if self.manager.is_none() {
+            self.manager = Some(WebrtcManager::new()?);
+        }
+        self.manager
+            .as_mut()
+            .ok_or_else(|| "WebRTC manager unavailable".to_string())
+    }
+
+    fn clipboard_mut(&mut self) -> Result<&mut arboard::Clipboard, String> {
+        if self.clipboard.is_none() {
+            self.clipboard = Some(arboard::Clipboard::new().map_err(|err| err.to_string())?);
+        }
+        self.clipboard
+            .as_mut()
+            .ok_or_else(|| "Native clipboard unavailable".to_string())
+    }
+}
 
 pub fn handle_multiplayer_menu(
     mut commands: Commands,
@@ -68,6 +116,8 @@ pub fn handle_multiplayer_menu(
         &mut BackgroundColor,
         &mut BorderColor,
     )>,
+    button_children: Query<(&MultiplayerMenuAction, &Children), With<MultiplayerMenuButton>>,
+    mut text_query: Query<&mut Text>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
     let toggle_menu_pressed = input_state.just_pressed(&input_state.exit_menu);
@@ -104,6 +154,9 @@ pub fn handle_multiplayer_menu(
             menu_events.write(MenuEvent::CloseCurrentMenu);
             return;
         }
+
+        let flags = generation_snapshot(&webrtc_state);
+        update_generation_labels(flags, &button_children, &mut text_query);
 
         process_multiplayer_menu(
             input_state.as_ref(),
@@ -178,6 +231,14 @@ fn process_multiplayer_menu(
     }
 }
 
+#[derive(Clone, Copy, Default)]
+struct GenerationFlags {
+    offers_generating: bool,
+    answers_generating: bool,
+    offers_ready: bool,
+    answers_ready: bool,
+}
+
 #[derive(Component)]
 pub struct MultiplayerMenu;
 
@@ -206,13 +267,139 @@ fn trigger_multiplayer_action(
 ) {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        info!("Multiplayer action selected: {action:?}");
-        let _ = webrtc_state;
+        if matches!(action, MultiplayerMenuAction::GenerateConnections) {
+            webrtc_state.generation.offers_generating = true;
+            webrtc_state.generation.offers_ready = false;
+        }
+        if matches!(action, MultiplayerMenuAction::GenerateAnswerConnections) {
+            webrtc_state.generation.answers_generating = true;
+            webrtc_state.generation.answers_ready = false;
+        }
+
+        match action {
+            MultiplayerMenuAction::GenerateConnections => {
+                let manager = match webrtc_state.manager_mut() {
+                    Ok(manager) => manager,
+                    Err(err) => {
+                        warn!("Failed to initialize native WebRTC manager: {err}");
+                        webrtc_state.generation.offers_generating = false;
+                        return;
+                    }
+                };
+                let result = manager.make_offering_peers(2);
+                match result {
+                    Ok(()) => {
+                        webrtc_state.driver_active = true;
+                        info!("Native WebRTC offers generated")
+                    }
+                    Err(err) => {
+                        webrtc_state.generation.offers_generating = false;
+                        warn!("Failed to generate native offers: {err}");
+                    }
+                }
+            }
+            MultiplayerMenuAction::CopyOfferPayload => {
+                let manager = match webrtc_state.manager_mut() {
+                    Ok(manager) => manager,
+                    Err(err) => {
+                        warn!("Failed to initialize native WebRTC manager: {err}");
+                        return;
+                    }
+                };
+                let payload = manager.offer_payload();
+                match payload {
+                    Ok(payload) => {
+                        let text = compress_remote_peers(&payload);
+                        if let Err(err) = write_native_clipboard(webrtc_state, &text) {
+                            warn!("Failed to copy native offer payload: {err}");
+                            webrtc_state.clipboard_text = Some(text);
+                        } else {
+                            info!("Native offer payload copied to clipboard");
+                        }
+                    }
+                    Err(err) => warn!("Failed to get native offer payload: {err}"),
+                }
+            }
+            MultiplayerMenuAction::AcceptAnswerPayload => {
+                let payload = match read_buffer_payload(webrtc_state) {
+                    Ok(payload) => payload,
+                    Err(err) => {
+                        warn!("Failed to read native answer payload: {err}");
+                        return;
+                    }
+                };
+                let manager = match webrtc_state.manager_mut() {
+                    Ok(manager) => manager,
+                    Err(err) => {
+                        warn!("Failed to initialize native WebRTC manager: {err}");
+                        return;
+                    }
+                };
+                let result = manager.receive_answer_payload(&payload);
+                match result {
+                    Ok(()) => info!("Native answer payload accepted"),
+                    Err(err) => warn!("Failed to accept native answer payload: {err}"),
+                }
+            }
+            MultiplayerMenuAction::GenerateAnswerConnections => {
+                let payload = match read_buffer_payload(webrtc_state) {
+                    Ok(payload) => payload,
+                    Err(err) => {
+                        warn!("Failed to read native offer payload: {err}");
+                        webrtc_state.generation.answers_generating = false;
+                        return;
+                    }
+                };
+                let manager = match webrtc_state.manager_mut() {
+                    Ok(manager) => manager,
+                    Err(err) => {
+                        warn!("Failed to initialize native WebRTC manager: {err}");
+                        webrtc_state.generation.answers_generating = false;
+                        return;
+                    }
+                };
+                let result = manager.make_guest_answers(&payload);
+                match result {
+                    Ok(()) => {
+                        webrtc_state.driver_active = true;
+                        info!("Native WebRTC answers generated")
+                    }
+                    Err(err) => {
+                        webrtc_state.generation.answers_generating = false;
+                        warn!("Failed to generate native answers: {err}");
+                    }
+                }
+            }
+            MultiplayerMenuAction::CopyAnswerPayload => {
+                let manager = match webrtc_state.manager_mut() {
+                    Ok(manager) => manager,
+                    Err(err) => {
+                        warn!("Failed to initialize native WebRTC manager: {err}");
+                        return;
+                    }
+                };
+                let payload = manager.answer_payload();
+                match payload {
+                    Ok(payload) => {
+                        let text = compress_remote_peers(&payload);
+                        if let Err(err) = write_native_clipboard(webrtc_state, &text) {
+                            warn!("Failed to copy native answer payload: {err}");
+                            webrtc_state.clipboard_text = Some(text);
+                        } else {
+                            info!("Native answer payload copied to clipboard");
+                        }
+                    }
+                    Err(err) => warn!("Failed to get native answer payload: {err}"),
+                }
+            }
+            MultiplayerMenuAction::Configure | MultiplayerMenuAction::Back => {}
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen_futures::spawn_local;
+        let generation = webrtc_state.generation_handle();
         let manager = match webrtc_state.manager_rc() {
             Ok(manager) => manager,
             Err(err) => {
@@ -223,12 +410,26 @@ fn trigger_multiplayer_action(
 
         match action {
             MultiplayerMenuAction::GenerateConnections => {
+                {
+                    let mut flags = generation.borrow_mut();
+                    flags.offers_generating = true;
+                    flags.offers_ready = false;
+                }
                 let manager = Rc::clone(&manager);
+                let generation = Rc::clone(&generation);
                 spawn_local(async move {
                     let result = manager.borrow_mut().make_offering_peers(2).await;
                     match result {
-                        Ok(()) => info!("WebRTC offers generated"),
-                        Err(err) => warn!("Failed to generate offers: {err}"),
+                        Ok(()) => {
+                            let mut flags = generation.borrow_mut();
+                            flags.offers_generating = false;
+                            flags.offers_ready = true;
+                            info!("WebRTC offers generated");
+                        }
+                        Err(err) => {
+                            generation.borrow_mut().offers_generating = false;
+                            warn!("Failed to generate offers: {err}");
+                        }
                     }
                 });
             }
@@ -268,18 +469,33 @@ fn trigger_multiplayer_action(
             }
             MultiplayerMenuAction::GenerateAnswerConnections => {
                 let manager = Rc::clone(&manager);
+                {
+                    let mut flags = generation.borrow_mut();
+                    flags.answers_generating = true;
+                    flags.answers_ready = false;
+                }
+                let generation = Rc::clone(&generation);
                 spawn_local(async move {
                     let payload = match read_clipboard_payload().await {
                         Ok(payload) => payload,
                         Err(err) => {
+                            generation.borrow_mut().answers_generating = false;
                             warn!("Failed to read offer payload: {err}");
                             return;
                         }
                     };
                     let result = manager.borrow_mut().make_guest_answers(&payload).await;
                     match result {
-                        Ok(()) => info!("WebRTC answers generated"),
-                        Err(err) => warn!("Failed to generate answers: {err}"),
+                        Ok(()) => {
+                            let mut flags = generation.borrow_mut();
+                            flags.answers_generating = false;
+                            flags.answers_ready = true;
+                            info!("WebRTC answers generated");
+                        }
+                        Err(err) => {
+                            generation.borrow_mut().answers_generating = false;
+                            warn!("Failed to generate answers: {err}");
+                        }
                     }
                 });
             }
@@ -306,6 +522,49 @@ fn trigger_multiplayer_action(
 }
 
 #[cfg(target_arch = "wasm32")]
+fn generation_snapshot(state: &MultiplayerWebrtcState) -> GenerationFlags {
+    *state.generation.borrow()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn generation_snapshot(state: &MultiplayerWebrtcState) -> GenerationFlags {
+    state.generation
+}
+
+fn update_generation_labels(
+    flags: GenerationFlags,
+    button_children: &Query<(&MultiplayerMenuAction, &Children), With<MultiplayerMenuButton>>,
+    text_query: &mut Query<&mut Text>,
+) {
+    for (action, children) in button_children {
+        let label = match action {
+            MultiplayerMenuAction::GenerateConnections => {
+                if flags.offers_generating {
+                    "Generating..."
+                } else {
+                    "Generate Connections"
+                }
+            }
+            MultiplayerMenuAction::GenerateAnswerConnections => {
+                if flags.answers_generating {
+                    "Generating..."
+                } else {
+                    "Generate Answer Connections"
+                }
+            }
+            _ => continue,
+        };
+
+        for child in children.iter() {
+            if let Ok(mut text) = text_query.get_mut(child) {
+                *text = Text::new(label);
+                break;
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 async fn read_clipboard_payload() -> Result<Vec<RemotePeer>, String> {
     let text = read_clipboard().await?;
     let payload = decompress_remote_peers(&text)?;
@@ -314,6 +573,46 @@ async fn read_clipboard_payload() -> Result<Vec<RemotePeer>, String> {
     } else {
         Ok(payload)
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_buffer_payload(
+    webrtc_state: &mut MultiplayerWebrtcState,
+) -> Result<Vec<RemotePeer>, String> {
+    let text = match read_native_clipboard(webrtc_state) {
+        Ok(text) => text,
+        Err(err) => {
+            if let Some(fallback) = webrtc_state.clipboard_text.as_ref() {
+                warn!("Falling back to buffered clipboard text: {err}");
+                fallback.clone()
+            } else {
+                return Err(err);
+            }
+        }
+    };
+    let payload = decompress_remote_peers(&text)?;
+    if payload.is_empty() {
+        Err("Native clipboard payload was empty".to_string())
+    } else {
+        Ok(payload)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn write_native_clipboard(
+    webrtc_state: &mut MultiplayerWebrtcState,
+    text: &str,
+) -> Result<(), String> {
+    let clipboard = webrtc_state.clipboard_mut()?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|err| err.to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_native_clipboard(webrtc_state: &mut MultiplayerWebrtcState) -> Result<String, String> {
+    let clipboard = webrtc_state.clipboard_mut()?;
+    clipboard.get_text().map_err(|err| err.to_string())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -440,6 +739,36 @@ fn make_divider() -> impl Bundle {
         },
         BackgroundColor(color_from_hex("#4E4F54")),
     )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn drive_native_webrtc(mut webrtc_state: NonSendMut<MultiplayerWebrtcState>) {
+    if !webrtc_state.driver_active {
+        return;
+    }
+    let offers_generating = webrtc_state.generation.offers_generating;
+    let answers_generating = webrtc_state.generation.answers_generating;
+    let (offers_ready, answers_ready, drive_result) = {
+        let Some(manager) = webrtc_state.manager.as_mut() else {
+            return;
+        };
+        let drive_result = manager.drive_network();
+        let offers_ready = manager.offers_ready();
+        let answers_ready = manager.answers_ready();
+        (offers_ready, answers_ready, drive_result)
+    };
+
+    if let Err(err) = drive_result {
+        warn!("Native WebRTC driver error: {err}");
+    }
+    if offers_generating && offers_ready {
+        webrtc_state.generation.offers_generating = false;
+        webrtc_state.generation.offers_ready = true;
+    }
+    if answers_generating && answers_ready {
+        webrtc_state.generation.answers_generating = false;
+        webrtc_state.generation.answers_ready = true;
+    }
 }
 
 pub fn spawn_multiplayer_menu(commands: &mut Commands) -> Entity {
