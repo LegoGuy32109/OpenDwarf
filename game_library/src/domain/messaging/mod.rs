@@ -43,5 +43,4 @@ pub fn process_game_messages(_sprites: Query<&mut Sprite, With<Player>>) {
 #[cfg(target_arch = "wasm32")]
 pub mod protocol;
 
-#[cfg(target_arch = "wasm32")]
 pub mod webrtc;
