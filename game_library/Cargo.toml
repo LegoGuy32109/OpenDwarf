@@ -18,6 +18,27 @@ rand = "0.9.2"
 rand_chacha = "0.9.0"
 wasm-bindgen = "0.2.106"
 image = { version = "0.25.9", default-features = false, features = ["png"] }
+base64 = "0.22.1"
+flate2 = { version = "1.0.35", default-features = false, features = ["rust_backend"] }
+js-sys = "0.3.76"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+wasm-bindgen-futures = "0.4.49"
+web-sys = { version = "0.3.76", features = [
+  "Crypto",
+  "Event",
+  "MessageEvent",
+  "RtcConfiguration",
+  "RtcDataChannel",
+  "RtcDataChannelInit",
+  "RtcIceGatheringState",
+  "RtcIceServer",
+  "RtcPeerConnection",
+  "RtcSdpType",
+  "RtcSessionDescriptionInit",
+  "Window",
+  "console",
+] }
 
 [dev-dependencies]
 bacon = "3.20.1"

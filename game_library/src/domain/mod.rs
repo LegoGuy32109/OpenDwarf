@@ -17,6 +17,7 @@ use visuals::debug_menu::debug_menu;
 use visuals::ui::chat_menu::ChatMenuPlugin;
 use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
+use visuals::ui::multiplayer_menu::handle_multiplayer_menu;
 use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
 
@@ -36,6 +37,7 @@ impl Plugin for OpenDwarfPlugins {
                     ApplyDeferred,
                     handle_escape_menu,
                     handle_options_menu,
+                    handle_multiplayer_menu,
                 ),
             )
             .add_plugins(ChatMenuPlugin)

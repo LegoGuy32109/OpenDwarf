@@ -127,6 +127,9 @@ fn process_escape_menu(
                 MenuAction::OpenOptions => {
                     menu_events.write(MenuEvent::OpenOptionsMenu);
                 }
+                MenuAction::OpenMultiplayer => {
+                    menu_events.write(MenuEvent::OpenMultiplayerMenu);
+                }
             }
         }
 
@@ -212,6 +215,9 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
     let button_options = commands
         .spawn(make_button("Options", MenuAction::OpenOptions))
         .id();
+    let button_multiplayer = commands
+        .spawn(make_button("Multiplayer", MenuAction::OpenMultiplayer))
+        .id();
     let button_save_quit = commands
         .spawn(make_button(
             "Save and quit to title",
@@ -219,13 +225,17 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
         ))
         .id();
     // nest child elements in root escape menu
-    commands
-        .entity(menu)
-        .add_children(&[button_back, button_options, button_save_quit]);
+    commands.entity(menu).add_children(&[
+        button_back,
+        button_multiplayer,
+        button_options,
+        button_save_quit,
+    ]);
 
     // create the ui flow representations
     let mut focus_map = UiFocusMap::default();
     let index_back = focus_map.add_node(button_back);
+    let index_multiplayer = focus_map.add_node(button_multiplayer);
     let index_options = focus_map.add_node(button_options);
     let index_save_quit = focus_map.add_node(button_save_quit);
 
@@ -233,8 +243,10 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
     focus_map.set_focus(index_back);
     // set ui directions in focus_map
     focus_map.link(index_back, CompassOctant::North, index_save_quit);
-    focus_map.link(index_back, CompassOctant::South, index_options);
-    focus_map.link(index_options, CompassOctant::North, index_back);
+    focus_map.link(index_back, CompassOctant::South, index_multiplayer);
+    focus_map.link(index_multiplayer, CompassOctant::North, index_back);
+    focus_map.link(index_multiplayer, CompassOctant::South, index_options);
+    focus_map.link(index_options, CompassOctant::North, index_multiplayer);
     focus_map.link(index_options, CompassOctant::South, index_save_quit);
     focus_map.link(index_save_quit, CompassOctant::North, index_options);
     focus_map.link(index_save_quit, CompassOctant::South, index_back);

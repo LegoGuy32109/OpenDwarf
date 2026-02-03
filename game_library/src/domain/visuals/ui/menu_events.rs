@@ -6,12 +6,14 @@ use crate::resources::player_focus_state::PlayerFocusState;
 pub enum MenuAction {
     CloseCurrentMenu,
     OpenOptions,
+    OpenMultiplayer,
 }
 
 #[derive(Message, Debug, Clone, Copy)]
 pub enum MenuEvent {
     CloseCurrentMenu,
     OpenOptionsMenu,
+    OpenMultiplayerMenu,
     ClearAllMenus,
 }
 
@@ -33,6 +35,12 @@ pub fn menu_event_manager(
             MenuEvent::OpenOptionsMenu => {
                 let options_menu = super::options_menu::spawn_options_menu(&mut commands);
                 player_focus_state.push_new_menu(options_menu);
+                player_focus_state.within_system_menu = true;
+            }
+            MenuEvent::OpenMultiplayerMenu => {
+                let multiplayer_menu =
+                    super::multiplayer_menu::spawn_multiplayer_menu(&mut commands);
+                player_focus_state.push_new_menu(multiplayer_menu);
                 player_focus_state.within_system_menu = true;
             }
             MenuEvent::ClearAllMenus => {

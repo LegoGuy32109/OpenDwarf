@@ -38,3 +38,11 @@ cargo check --manifest-path game_library/Cargo.toml
 
 - After code changes are complete and about to end process
 - Run `deno task fmt` to format all files in repo
+
+## Formatting
+
+### Rust
+
+- Unmerge nested paths in use statements
+- If importing a new reference outside of the current file, don't Qualify the
+whole path in line, add a use statement at the top of the file
