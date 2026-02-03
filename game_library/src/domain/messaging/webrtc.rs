@@ -1,14 +1,17 @@
 #![cfg(target_arch = "wasm32")]
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-use flate2::{Compression, read::GzDecoder, write::GzEncoder};
-use js_sys::{Array, Function, Promise};
+use flate2::Compression;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use js_sys::{Array, Function, Promise, Reflect};
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::{JsCast, prelude::*};
+use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     Crypto, Event, MessageEvent, RtcConfiguration, RtcDataChannel, RtcDataChannelInit,
@@ -224,7 +227,9 @@ async fn make_offering_peer(config: &RtcConfiguration) -> Result<Peer, String> {
     let offer_value = JsFuture::from(peer.peer_connection.create_offer())
         .await
         .map_err(js_to_string)?;
-    let offer: RtcSessionDescriptionInit = offer_value.dyn_into().map_err(js_to_string)?;
+    let offer_sdp = sdp_from_js(offer_value)?;
+    let offer = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
+    offer.set_sdp(&offer_sdp);
     JsFuture::from(peer.peer_connection.set_local_description(&offer))
         .await
         .map_err(js_to_string)?;
@@ -260,7 +265,9 @@ async fn make_answering_peer(
     let answer_value = JsFuture::from(peer.peer_connection.create_answer())
         .await
         .map_err(js_to_string)?;
-    let answer: RtcSessionDescriptionInit = answer_value.dyn_into().map_err(js_to_string)?;
+    let answer_sdp = sdp_from_js(answer_value)?;
+    let answer = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
+    answer.set_sdp(&answer_sdp);
     JsFuture::from(peer.peer_connection.set_local_description(&answer))
         .await
         .map_err(js_to_string)?;
@@ -359,4 +366,10 @@ fn random_uuid() -> Result<String, String> {
 fn js_to_string(err: impl Into<JsValue>) -> String {
     let value: JsValue = err.into();
     value.as_string().unwrap_or_else(|| format!("{value:?}"))
+}
+
+fn sdp_from_js(value: JsValue) -> Result<String, String> {
+    let sdp = Reflect::get(&value, &JsValue::from_str("sdp")).map_err(js_to_string)?;
+    sdp.as_string()
+        .ok_or_else(|| "WebRTC offer/answer missing sdp".to_string())
 }
