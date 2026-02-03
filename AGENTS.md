@@ -45,4 +45,4 @@ cargo check --manifest-path game_library/Cargo.toml
 
 - Unmerge nested paths in use statements
 - If importing a new reference outside of the current file, don't Qualify the
-whole path in line, add a use statement at the top of the file
+  whole path in line, add a use statement at the top of the file

@@ -33,11 +33,11 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(
                 Update,
                 (
-                    menu_event_manager,
-                    ApplyDeferred,
                     handle_escape_menu,
                     handle_options_menu,
                     handle_multiplayer_menu,
+                    menu_event_manager,
+                    ApplyDeferred,
                 ),
             )
             .add_plugins(ChatMenuPlugin)
