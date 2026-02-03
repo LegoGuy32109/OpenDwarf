@@ -2,9 +2,12 @@ use bevy::prelude::warn;
 
 use super::{GameMessage, MESSAGE_QUEUE};
 
+#[allow(dead_code)]
 const OP_FLIP_PLAYER_SPRITE: u8 = 1;
+#[allow(dead_code)]
 const OP_LOG_DEBUG: u8 = 2;
 
+#[allow(dead_code)]
 pub fn enqueue_messages_from_bytes(data: &[u8]) -> Result<(), String> {
     let mut queue = MESSAGE_QUEUE.lock().expect("message queue poisoned");
 

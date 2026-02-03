@@ -1,17 +1,65 @@
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
 
+#[cfg(target_arch = "wasm32")]
+use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
+use std::rc::Rc;
+
 use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
+
+#[cfg(target_arch = "wasm32")]
+use crate::domain::messaging::webrtc::{
+    RemotePeer, WebrtcManager, compress_remote_peers, decompress_remote_peers,
+};
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use super::menu_events::MenuEvent;
 use super::ui_focus_map::UiFocusMap;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsValue;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::JsFuture;
+#[cfg(target_arch = "wasm32")]
+use web_sys::{Clipboard, Navigator};
+
+#[cfg(target_arch = "wasm32")]
+pub struct MultiplayerWebrtcState {
+    manager: Option<Rc<RefCell<WebrtcManager>>>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Default for MultiplayerWebrtcState {
+    fn default() -> Self {
+        Self { manager: None }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl MultiplayerWebrtcState {
+    fn manager_rc(&mut self) -> Result<Rc<RefCell<WebrtcManager>>, String> {
+        if let Some(manager) = self.manager.as_ref() {
+            return Ok(Rc::clone(manager));
+        }
+
+        let manager = WebrtcManager::new()?;
+        let manager = Rc::new(RefCell::new(manager));
+        self.manager = Some(Rc::clone(&manager));
+        Ok(manager)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+pub struct MultiplayerWebrtcState;
+
 pub fn handle_multiplayer_menu(
     mut commands: Commands,
     input_state: Res<InputState>,
     player_focus_state: ResMut<PlayerFocusState>,
+    mut webrtc_state: NonSendMut<MultiplayerWebrtcState>,
     maybe_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<MultiplayerMenu>>,
     mut button_query: Query<(
         Entity,
@@ -62,6 +110,7 @@ pub fn handle_multiplayer_menu(
             ui_focus_map.reborrow(),
             button_query.reborrow(),
             menu_events,
+            &mut *webrtc_state,
         );
     }
 }
@@ -77,6 +126,7 @@ fn process_multiplayer_menu(
         &mut BorderColor,
     )>,
     mut menu_events: MessageWriter<MenuEvent>,
+    webrtc_state: &mut MultiplayerWebrtcState,
 ) {
     let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
         Some(CompassOctant::North)
@@ -113,7 +163,7 @@ fn process_multiplayer_menu(
                 | MultiplayerMenuAction::GenerateAnswerConnections
                 | MultiplayerMenuAction::CopyAnswerPayload
                 | MultiplayerMenuAction::Configure => {
-                    info!("Multiplayer action selected: {action:?}");
+                    trigger_multiplayer_action(*action, webrtc_state);
                 }
             }
         }
@@ -148,6 +198,150 @@ pub struct MultiplayerMenuButton {
     normal_border: Color,
     focus_background: Color,
     focus_border: Color,
+}
+
+fn trigger_multiplayer_action(
+    action: MultiplayerMenuAction,
+    webrtc_state: &mut MultiplayerWebrtcState,
+) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        info!("Multiplayer action selected: {action:?}");
+        let _ = webrtc_state;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen_futures::spawn_local;
+        let manager = match webrtc_state.manager_rc() {
+            Ok(manager) => manager,
+            Err(err) => {
+                warn!("Failed to initialize WebRTC manager: {err}");
+                return;
+            }
+        };
+
+        match action {
+            MultiplayerMenuAction::GenerateConnections => {
+                let manager = Rc::clone(&manager);
+                spawn_local(async move {
+                    let result = manager.borrow_mut().make_offering_peers(2).await;
+                    match result {
+                        Ok(()) => info!("WebRTC offers generated"),
+                        Err(err) => warn!("Failed to generate offers: {err}"),
+                    }
+                });
+            }
+            MultiplayerMenuAction::CopyOfferPayload => {
+                let manager = Rc::clone(&manager);
+                spawn_local(async move {
+                    let payload = manager.borrow().offer_payload();
+                    match payload {
+                        Ok(payload) => {
+                            let text = compress_remote_peers(&payload);
+                            if let Err(err) = write_clipboard(&text).await {
+                                warn!("Failed to copy offer payload: {err}");
+                            } else {
+                                info!("Offer payload copied to clipboard");
+                            }
+                        }
+                        Err(err) => warn!("Failed to get offer payload: {err}"),
+                    }
+                });
+            }
+            MultiplayerMenuAction::AcceptAnswerPayload => {
+                let manager = Rc::clone(&manager);
+                spawn_local(async move {
+                    let payload = match read_clipboard_payload().await {
+                        Ok(payload) => payload,
+                        Err(err) => {
+                            warn!("Failed to read answer payload: {err}");
+                            return;
+                        }
+                    };
+                    let result = manager.borrow_mut().receive_answer_payload(&payload).await;
+                    match result {
+                        Ok(()) => info!("Answer payload accepted"),
+                        Err(err) => warn!("Failed to accept answer payload: {err}"),
+                    }
+                });
+            }
+            MultiplayerMenuAction::GenerateAnswerConnections => {
+                let manager = Rc::clone(&manager);
+                spawn_local(async move {
+                    let payload = match read_clipboard_payload().await {
+                        Ok(payload) => payload,
+                        Err(err) => {
+                            warn!("Failed to read offer payload: {err}");
+                            return;
+                        }
+                    };
+                    let result = manager.borrow_mut().make_guest_answers(&payload).await;
+                    match result {
+                        Ok(()) => info!("WebRTC answers generated"),
+                        Err(err) => warn!("Failed to generate answers: {err}"),
+                    }
+                });
+            }
+            MultiplayerMenuAction::CopyAnswerPayload => {
+                let manager = Rc::clone(&manager);
+                spawn_local(async move {
+                    let payload = manager.borrow().answer_payload();
+                    match payload {
+                        Ok(payload) => {
+                            let text = compress_remote_peers(&payload);
+                            if let Err(err) = write_clipboard(&text).await {
+                                warn!("Failed to copy answer payload: {err}");
+                            } else {
+                                info!("Answer payload copied to clipboard");
+                            }
+                        }
+                        Err(err) => warn!("Failed to get answer payload: {err}"),
+                    }
+                });
+            }
+            MultiplayerMenuAction::Configure | MultiplayerMenuAction::Back => {}
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn read_clipboard_payload() -> Result<Vec<RemotePeer>, String> {
+    let text = read_clipboard().await?;
+    let payload = decompress_remote_peers(&text)?;
+    if payload.is_empty() {
+        Err("Clipboard payload was empty".to_string())
+    } else {
+        Ok(payload)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn read_clipboard() -> Result<String, String> {
+    let window = web_sys::window().ok_or_else(|| "No window available".to_string())?;
+    let navigator: Navigator = window.navigator();
+    let clipboard: Clipboard = navigator.clipboard();
+    let future = JsFuture::from(clipboard.read_text());
+    let value = future.await.map_err(js_to_string)?;
+    value
+        .as_string()
+        .ok_or_else(|| "Clipboard read did not return text".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn write_clipboard(text: &str) -> Result<(), String> {
+    let window = web_sys::window().ok_or_else(|| "No window available".to_string())?;
+    let navigator: Navigator = window.navigator();
+    let clipboard: Clipboard = navigator.clipboard();
+    let future = JsFuture::from(clipboard.write_text(text));
+    future.await.map_err(js_to_string)?;
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn js_to_string(err: impl Into<JsValue>) -> String {
+    let value: JsValue = err.into();
+    value.as_string().unwrap_or_else(|| format!("{value:?}"))
 }
 
 fn make_multiplayer_menu() -> impl Bundle {
@@ -263,13 +457,6 @@ pub fn spawn_multiplayer_menu(commands: &mut Commands) -> Entity {
         ))
         .id();
 
-    let button_config = commands
-        .spawn(make_button(
-            "Configure WebRTC",
-            MultiplayerMenuAction::Configure,
-        ))
-        .id();
-
     let label_host = commands.spawn(make_section_label("Create a Room")).id();
     let button_generate = commands
         .spawn(make_button(
@@ -306,6 +493,14 @@ pub fn spawn_multiplayer_menu(commands: &mut Commands) -> Entity {
         ))
         .id();
 
+    let divider_config = commands.spawn(make_divider()).id();
+    let button_config = commands
+        .spawn(make_button(
+            "Configure WebRTC",
+            MultiplayerMenuAction::Configure,
+        ))
+        .id();
+
     let hint = commands
         .spawn(make_hint(
             "Use a TURN server for symmetric NAT or hidden IPs.",
@@ -318,7 +513,6 @@ pub fn spawn_multiplayer_menu(commands: &mut Commands) -> Entity {
 
     commands.entity(panel).add_children(&[
         title,
-        button_config,
         label_host,
         button_generate,
         button_copy_offer,
@@ -327,6 +521,8 @@ pub fn spawn_multiplayer_menu(commands: &mut Commands) -> Entity {
         label_join,
         button_generate_answers,
         button_copy_answer,
+        divider_config,
+        button_config,
         hint,
         button_back,
     ]);

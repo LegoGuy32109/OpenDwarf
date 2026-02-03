@@ -17,7 +17,7 @@ use visuals::debug_menu::debug_menu;
 use visuals::ui::chat_menu::ChatMenuPlugin;
 use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
-use visuals::ui::multiplayer_menu::handle_multiplayer_menu;
+use visuals::ui::multiplayer_menu::{MultiplayerWebrtcState, handle_multiplayer_menu};
 use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
 
@@ -45,6 +45,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_message::<MenuEvent>()
             .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()
+            .insert_non_send_resource(MultiplayerWebrtcState::default())
             // debug systems
             .add_systems(Update, debug_menu)
             .sub_app_mut(RenderApp)

@@ -11,6 +11,7 @@ use super::visuals::Player;
 pub static MESSAGE_QUEUE: Mutex<VecDeque<GameMessage>> = Mutex::new(VecDeque::new());
 
 #[derive(Debug)]
+#[allow(dead_code)]
 #[cfg(target_arch = "wasm32")]
 pub enum GameMessage {
     FlipPlayerSprite,

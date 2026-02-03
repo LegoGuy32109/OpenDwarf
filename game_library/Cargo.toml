@@ -25,9 +25,11 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 wasm-bindgen-futures = "0.4.49"
 web-sys = { version = "0.3.76", features = [
+  "Clipboard",
   "Crypto",
   "Event",
   "MessageEvent",
+  "Navigator",
   "RtcConfiguration",
   "RtcDataChannel",
   "RtcDataChannelInit",
@@ -35,6 +37,7 @@ web-sys = { version = "0.3.76", features = [
   "RtcIceServer",
   "RtcPeerConnection",
   "RtcSdpType",
+  "RtcSessionDescription",
   "RtcSessionDescriptionInit",
   "Window",
   "console",

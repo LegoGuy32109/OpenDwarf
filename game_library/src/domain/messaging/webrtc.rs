@@ -196,8 +196,8 @@ impl WebrtcManager {
             .find(|peer| peer.key == open_peer.key)
             .ok_or_else(|| "Remote Peer filtering invalid, BUG".to_string())?;
 
-        let mut answer = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
-        answer.sdp(&remote_peer.sdp);
+        let answer = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
+        answer.set_sdp(&remote_peer.sdp);
         JsFuture::from(open_peer.peer_connection.set_remote_description(&answer))
             .await
             .map_err(js_to_string)?;
@@ -212,9 +212,9 @@ async fn make_offering_peer(config: &RtcConfiguration) -> Result<Peer, String> {
     let key = random_uuid()?;
     let mut peer = Peer::new(key, peer_connection);
 
-    let mut channel_config = RtcDataChannelInit::new();
-    channel_config.negotiated(true);
-    channel_config.id(0);
+    let channel_config = RtcDataChannelInit::new();
+    channel_config.set_negotiated(true);
+    channel_config.set_id(0);
     let channel = peer
         .peer_connection
         .create_data_channel_with_data_channel_dict("chat", &channel_config);
@@ -242,15 +242,15 @@ async fn make_answering_peer(
         RtcPeerConnection::new_with_configuration(config).map_err(js_to_string)?;
     let mut peer = Peer::new(remote_peer.key.clone(), peer_connection);
 
-    let mut offer = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
-    offer.sdp(&remote_peer.sdp);
+    let offer = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
+    offer.set_sdp(&remote_peer.sdp);
     JsFuture::from(peer.peer_connection.set_remote_description(&offer))
         .await
         .map_err(js_to_string)?;
 
-    let mut channel_config = RtcDataChannelInit::new();
-    channel_config.negotiated(true);
-    channel_config.id(0);
+    let channel_config = RtcDataChannelInit::new();
+    channel_config.set_negotiated(true);
+    channel_config.set_id(0);
     let channel = peer
         .peer_connection
         .create_data_channel_with_data_channel_dict("chat", &channel_config);
@@ -338,22 +338,22 @@ fn ice_gathering_promise(
 }
 
 fn default_rtc_config() -> Result<RtcConfiguration, String> {
-    let mut config = RtcConfiguration::new();
-    let mut ice_server = RtcIceServer::new();
+    let config = RtcConfiguration::new();
+    let ice_server = RtcIceServer::new();
     let urls = Array::new();
     urls.push(&JsValue::from_str("stun:stun1.l.google.com:19302"));
     urls.push(&JsValue::from_str("stun:stun3.l.google.com:19302"));
-    ice_server.urls(&urls.into());
+    ice_server.set_urls(&urls.into());
     let ice_servers = Array::new();
     ice_servers.push(&ice_server);
-    config.ice_servers(&ice_servers.into());
+    config.set_ice_servers(&ice_servers.into());
     Ok(config)
 }
 
 fn random_uuid() -> Result<String, String> {
     let window: Window = web_sys::window().ok_or_else(|| "No window available".to_string())?;
     let crypto: Crypto = window.crypto().map_err(js_to_string)?;
-    crypto.random_uuid().map_err(js_to_string)
+    Ok(crypto.random_uuid())
 }
 
 fn js_to_string(err: impl Into<JsValue>) -> String {
