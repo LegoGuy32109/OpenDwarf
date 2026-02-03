@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::io;
-use std::net::UdpSocket;
+use std::net::{SocketAddr, UdpSocket};
 use std::time::{Duration, Instant};
 
 use bevy::prelude::info;
@@ -14,10 +14,8 @@ use rtc::peer_connection::event::{RTCDataChannelEvent, RTCPeerConnectionEvent};
 use rtc::peer_connection::message::RTCMessage;
 use rtc::peer_connection::sdp::RTCSessionDescription;
 use rtc::peer_connection::state::RTCIceGatheringState;
+use rtc::peer_connection::transport::RTCIceCandidateInit;
 use rtc::peer_connection::transport::RTCIceServer;
-use rtc::peer_connection::transport::{
-    CandidateConfig, CandidateHostConfig, RTCIceCandidate, RTCIceCandidateInit,
-};
 use rtc::sansio::Protocol;
 use shared::{TaggedBytesMut, TransportContext, TransportProtocol};
 
@@ -77,6 +75,7 @@ impl WebrtcManager {
         for peer in self.offering_peers.values() {
             if let Some(description) = peer.peer_connection.local_description() {
                 if !description.sdp.is_empty() {
+                    log_candidate_list("offer", &peer.key, &peer.local_candidates);
                     payload.push(RemotePeer {
                         key: peer.key.clone(),
                         sdp: description.sdp.clone(),
@@ -116,6 +115,7 @@ impl WebrtcManager {
         for peer in self.answering_peers.values() {
             if let Some(description) = peer.peer_connection.local_description() {
                 if !description.sdp.is_empty() {
+                    log_candidate_list("answer", &peer.key, &peer.local_candidates);
                     payload.push(RemotePeer {
                         key: peer.key.clone(),
                         sdp: description.sdp.clone(),
@@ -205,7 +205,6 @@ fn make_offering_peer() -> Result<Peer, String> {
     socket
         .set_nonblocking(true)
         .map_err(|err| err.to_string())?;
-    let local_candidate = add_local_candidate(&mut peer_connection, &socket)?;
 
     let channel_init = RTCDataChannelInit {
         negotiated: Some(0),
@@ -222,9 +221,7 @@ fn make_offering_peer() -> Result<Peer, String> {
         .set_local_description(offer)
         .map_err(|err| err.to_string())?;
 
-    let mut peer = Peer::new(random_key(), peer_connection, socket);
-    peer.local_candidates.push(local_candidate);
-    Ok(peer)
+    Ok(Peer::new(random_key(), peer_connection, socket))
 }
 
 fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
@@ -235,7 +232,6 @@ fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
     socket
         .set_nonblocking(true)
         .map_err(|err| err.to_string())?;
-    let local_candidate = add_local_candidate(&mut peer_connection, &socket)?;
 
     let offer =
         RTCSessionDescription::offer(remote_peer.sdp.clone()).map_err(|err| err.to_string())?;
@@ -259,36 +255,7 @@ fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
         .set_local_description(answer)
         .map_err(|err| err.to_string())?;
 
-    let mut peer = Peer::new(remote_peer.key.clone(), peer_connection, socket);
-    peer.local_candidates.push(local_candidate);
-    Ok(peer)
-}
-
-fn add_local_candidate(
-    peer_connection: &mut RTCPeerConnection,
-    socket: &UdpSocket,
-) -> Result<String, String> {
-    let local_addr = socket.local_addr().map_err(|err| err.to_string())?;
-    let candidate = CandidateHostConfig {
-        base_config: CandidateConfig {
-            network: "udp".to_string(),
-            address: local_addr.ip().to_string(),
-            port: local_addr.port(),
-            component: 1,
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-    .new_candidate_host()
-    .map_err(|err| err.to_string())?;
-    let candidate_init = RTCIceCandidate::from(&candidate)
-        .to_json()
-        .map_err(|err| err.to_string())?;
-    let candidate_string = candidate_init.candidate.clone();
-    peer_connection
-        .add_local_candidate(candidate_init)
-        .map_err(|err| err.to_string())?;
-    Ok(candidate_string)
+    Ok(Peer::new(remote_peer.key.clone(), peer_connection, socket))
 }
 
 fn default_rtc_config() -> rtc::peer_connection::configuration::RTCConfiguration {
@@ -317,10 +284,20 @@ fn add_remote_candidates_from_peer(
     remote_peer: &RemotePeer,
 ) -> Result<(), String> {
     if remote_peer.candidates.is_empty() {
+        info!(
+            "Native remote peer {} provided 0 ICE candidates",
+            remote_peer.key
+        );
         return Ok(());
     }
 
+    info!(
+        "Native applying {} ICE candidates for peer {}",
+        remote_peer.candidates.len(),
+        remote_peer.key
+    );
     for candidate in &remote_peer.candidates {
+        info!("Native remote candidate: {candidate}");
         let candidate_init = RTCIceCandidateInit {
             candidate: candidate.clone(),
             sdp_mid: Some("0".to_string()),
@@ -334,6 +311,20 @@ fn add_remote_candidates_from_peer(
     }
 
     Ok(())
+}
+
+fn log_candidate_list(kind: &str, key: &str, candidates: &[String]) {
+    if candidates.is_empty() {
+        info!("Native {kind} payload for {key} has 0 ICE candidates");
+        return;
+    }
+    info!(
+        "Native {kind} payload for {key} has {} ICE candidates",
+        candidates.len()
+    );
+    for candidate in candidates {
+        info!("Native local candidate: {candidate}");
+    }
 }
 
 const ICE_GATHERING_TIMEOUT: Duration = Duration::from_secs(6);
@@ -352,6 +343,22 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
             RTCPeerConnectionEvent::OnDataChannel(dc_event) => {
                 if let RTCDataChannelEvent::OnOpen(channel_id) = dc_event {
                     info!("Native data channel opened: {channel_id}");
+                }
+            }
+            RTCPeerConnectionEvent::OnIceCandidateEvent(ice_event) => {
+                let mut candidate_init = ice_event
+                    .candidate
+                    .to_json()
+                    .map_err(|err| err.to_string())?;
+                if !ice_event.url.is_empty() {
+                    candidate_init.url = Some(ice_event.url);
+                }
+                if !peer.local_candidates.contains(&candidate_init.candidate) {
+                    peer.local_candidates.push(candidate_init.candidate.clone());
+                    info!(
+                        "Native gathered ICE candidate: {}",
+                        candidate_init.candidate
+                    );
                 }
             }
             RTCPeerConnectionEvent::OnIceGatheringStateChangeEvent(state) => {
@@ -397,6 +404,7 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
         match peer._socket.recv_from(&mut buf) {
             Ok((n, peer_addr)) => {
                 let local_addr = peer._socket.local_addr().map_err(|err| err.to_string())?;
+                let local_addr = normalized_local_addr(local_addr, peer_addr);
                 let message = TaggedBytesMut {
                     now: Instant::now(),
                     transport: TransportContext {
@@ -417,4 +425,11 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn normalized_local_addr(local_addr: SocketAddr, peer_addr: SocketAddr) -> SocketAddr {
+    if !local_addr.ip().is_unspecified() {
+        return local_addr;
+    }
+    SocketAddr::new(peer_addr.ip(), local_addr.port())
 }
