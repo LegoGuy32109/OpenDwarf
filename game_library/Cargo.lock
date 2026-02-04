@@ -5129,6 +5129,7 @@ dependencies = [
  "rand_chacha",
  "rtc",
  "rtc-shared",
+ "rtc-stun",
  "serde",
  "serde_json",
  "wasm-bindgen",

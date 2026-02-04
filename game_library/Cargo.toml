@@ -46,6 +46,7 @@ web-sys = { version = "0.3.76", features = [
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rtc = "0.8.5"
 shared = { package = "rtc-shared", version = "0.8.5" }
+stun = { package = "rtc-stun", version = "0.8.5" }
 bytes = "1.11.0"
 arboard = { version = "3.6.1", features = ["wayland-data-control"] }
 
