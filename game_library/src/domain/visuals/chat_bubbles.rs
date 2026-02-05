@@ -159,9 +159,10 @@ fn chat_bubble_layout_system(
         let Ok(mut size) = size_query.get_mut(parent.parent()) else {
             continue;
         };
-        let width = (layout.size.x + CHAT_BUBBLE_PADDING_X * 2.0)
-            .max(CHAT_BUBBLE_MIN_WIDTH)
-            .min(CHAT_BUBBLE_MAX_WIDTH + CHAT_BUBBLE_PADDING_X * 2.0);
+        let width = (layout.size.x + CHAT_BUBBLE_PADDING_X * 2.0).clamp(
+            CHAT_BUBBLE_MIN_WIDTH,
+            CHAT_BUBBLE_MAX_WIDTH + CHAT_BUBBLE_PADDING_X * 2.0,
+        );
         let height = (layout.size.y + CHAT_BUBBLE_PADDING_Y * 2.0).max(CHAT_BUBBLE_MIN_HEIGHT);
         size.width = width;
         size.height = height;

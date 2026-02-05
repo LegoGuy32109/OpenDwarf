@@ -2,7 +2,7 @@
   "lock": false,
   "tasks": {
     "fmt": "deno fmt && cd game_library && cargo fmt",
-    "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx && cd game_library && cargo check",
+    "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx && cd game_library && cargo check && cargo check --target wasm32-unknown-unknown",
     "cli": "echo \"import '\\$fresh/src/dev/cli.ts'\" | deno run --unstable -A -",
     "manifest": "deno task cli manifest $(pwd)",
     "start": "deno run -A --watch=static/,routes/ dev.ts",

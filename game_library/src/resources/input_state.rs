@@ -282,11 +282,9 @@ pub fn update_input_state(
                 &event.logical_key,
                 Key::Character(value)
                     if value.chars().count() == 1
-                        && value
-                            .chars()
-                            .next()
-                            .map(|ch| suppressed_chars.contains(&ch.to_ascii_lowercase()))
-                            .unwrap_or(false)
+                        && value.chars().next().is_some_and(|ch| {
+                            suppressed_chars.contains(&ch.to_ascii_lowercase())
+                        })
             )
         });
     }
@@ -319,10 +317,10 @@ impl CommandBinding {
         if self.require_alt && !alt_pressed(pressed_keys) {
             return false;
         }
-        if let Some(required_typing) = self.require_typing {
-            if typing != required_typing {
-                return false;
-            }
+        if let Some(required_typing) = self.require_typing
+            && typing != required_typing
+        {
+            return false;
         }
         true
     }

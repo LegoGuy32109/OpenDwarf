@@ -10,6 +10,7 @@ pub mod messaging;
 pub mod movement;
 pub mod visuals;
 
+use crate::domain::messaging::webrtc::MultiplayerController;
 use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::chat_bubbles::ChatBubblePlugin;
@@ -19,7 +20,7 @@ use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
 #[cfg(not(target_arch = "wasm32"))]
 use visuals::ui::multiplayer_menu::drive_native_webrtc;
-use visuals::ui::multiplayer_menu::{MultiplayerWebrtcState, handle_multiplayer_menu};
+use visuals::ui::multiplayer_menu::handle_multiplayer_menu;
 use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
 
@@ -47,7 +48,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_message::<MenuEvent>()
             .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()
-            .insert_non_send_resource(MultiplayerWebrtcState::default())
+            .insert_non_send_resource(MultiplayerController::default())
             // debug systems
             .add_systems(Update, debug_menu)
             .sub_app_mut(RenderApp)

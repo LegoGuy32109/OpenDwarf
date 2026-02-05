@@ -116,10 +116,10 @@ pub fn keyboard_movement(
         commands.remove_resource::<MovementChord>();
         // in some cases directions might cancel out, disregard if so
         if direction != IVec3::ZERO {
-            if direction.x != 0 {
-                if let Ok(mut sprite) = sprite_query.get_mut(player) {
-                    sprite.flip_x = direction.x > 0;
-                }
+            if direction.x != 0
+                && let Ok(mut sprite) = sprite_query.get_mut(player)
+            {
+                sprite.flip_x = direction.x > 0;
             }
             // if there was somehow a Movement Chord still active, remove it
             commands.spawn(make_movement_action(direction, player));

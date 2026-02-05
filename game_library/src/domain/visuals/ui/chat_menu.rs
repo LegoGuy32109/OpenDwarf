@@ -111,9 +111,8 @@ fn chat_menu_input_system(
         return;
     }
 
-    let mut buffer = match text_query.single_mut() {
-        Ok(buffer) => buffer,
-        Err(_) => return,
+    let Ok(mut buffer) = text_query.single_mut() else {
+        return;
     };
 
     let ctrl_pressed = input_state.ctrl_pressed();

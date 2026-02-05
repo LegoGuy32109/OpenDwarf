@@ -12,7 +12,7 @@ use web_sys::{
     Window, console,
 };
 
-use super::RemotePeer;
+use super::{RemotePeer, RtcConfig};
 
 struct Peer {
     key: String,
@@ -53,7 +53,7 @@ enum PeerRole {
 }
 
 pub struct WebrtcManager {
-    peer_connection_config: RtcConfiguration,
+    rtc_config: RtcConfig,
     offering_peers: HashMap<String, Peer>,
     answering_peers: HashMap<String, Peer>,
 }
@@ -61,10 +61,18 @@ pub struct WebrtcManager {
 impl WebrtcManager {
     pub fn new() -> Result<Self, String> {
         Ok(Self {
-            peer_connection_config: default_rtc_config()?,
+            rtc_config: RtcConfig::default(),
             offering_peers: HashMap::new(),
             answering_peers: HashMap::new(),
         })
+    }
+
+    pub fn rtc_config(&self) -> &RtcConfig {
+        &self.rtc_config
+    }
+
+    pub fn rtc_config_mut(&mut self) -> &mut RtcConfig {
+        &mut self.rtc_config
     }
 
     pub async fn make_offering_peers(&mut self, num_peers: usize) -> Result<(), String> {
@@ -74,7 +82,7 @@ impl WebrtcManager {
         self.offering_peers.clear();
 
         for _ in 0..num_peers {
-            let peer = make_offering_peer(&self.peer_connection_config).await?;
+            let peer = make_offering_peer(&self.rtc_config).await?;
             self.offering_peers.insert(peer.key.clone(), peer);
         }
 
@@ -112,7 +120,7 @@ impl WebrtcManager {
         }
 
         for remote_peer in remote_peers {
-            let peer = make_answering_peer(&self.peer_connection_config, remote_peer).await?;
+            let peer = make_answering_peer(&self.rtc_config, remote_peer).await?;
             let key = random_uuid()?;
             self.answering_peers.insert(key, peer);
         }
@@ -179,9 +187,10 @@ impl WebrtcManager {
     }
 }
 
-async fn make_offering_peer(config: &RtcConfiguration) -> Result<Peer, String> {
+async fn make_offering_peer(rtc_config: &RtcConfig) -> Result<Peer, String> {
+    let peer_connection_config = build_rtc_configuration(rtc_config)?;
     let peer_connection =
-        RtcPeerConnection::new_with_configuration(config).map_err(js_to_string)?;
+        RtcPeerConnection::new_with_configuration(&peer_connection_config).map_err(js_to_string)?;
     let key = random_uuid()?;
     let mut peer = Peer::new(key, PeerRole::Offerer, peer_connection);
 
@@ -207,11 +216,12 @@ async fn make_offering_peer(config: &RtcConfiguration) -> Result<Peer, String> {
 }
 
 async fn make_answering_peer(
-    config: &RtcConfiguration,
+    rtc_config: &RtcConfig,
     remote_peer: &RemotePeer,
 ) -> Result<Peer, String> {
+    let peer_connection_config = build_rtc_configuration(rtc_config)?;
     let peer_connection =
-        RtcPeerConnection::new_with_configuration(config).map_err(js_to_string)?;
+        RtcPeerConnection::new_with_configuration(&peer_connection_config).map_err(js_to_string)?;
     let mut peer = Peer::new(remote_peer.key.clone(), PeerRole::Answerer, peer_connection);
 
     let handler_store = peer.handlers.clone();
@@ -366,17 +376,20 @@ fn ice_gathering_promise(
     }))
 }
 
-fn default_rtc_config() -> Result<RtcConfiguration, String> {
-    let config = RtcConfiguration::new();
-    let ice_server = RtcIceServer::new();
-    let urls = Array::new();
-    urls.push(&JsValue::from_str("stun:stun1.l.google.com:19302"));
-    urls.push(&JsValue::from_str("stun:stun3.l.google.com:19302"));
-    ice_server.set_urls(&urls.into());
+fn build_rtc_configuration(config: &RtcConfig) -> Result<RtcConfiguration, String> {
+    let rtc_config = RtcConfiguration::new();
     let ice_servers = Array::new();
-    ice_servers.push(&ice_server);
-    config.set_ice_servers(&ice_servers.into());
-    Ok(config)
+    for server in &config.ice_servers {
+        let ice_server = RtcIceServer::new();
+        let urls = Array::new();
+        for url in &server.urls {
+            urls.push(&JsValue::from_str(url));
+        }
+        ice_server.set_urls(&urls.into());
+        ice_servers.push(&ice_server);
+    }
+    rtc_config.set_ice_servers(&ice_servers.into());
+    Ok(rtc_config)
 }
 
 fn random_uuid() -> Result<String, String> {
