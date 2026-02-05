@@ -31,7 +31,7 @@ use rtc::sansio::Protocol;
 use rtc::shared::{TaggedBytesMut, TransportContext, TransportProtocol};
 use serde::{Deserialize, Serialize};
 use stun::fingerprint::FINGERPRINT;
-use stun::message::{Getter, Message, TransactionId, BINDING_REQUEST, MAGIC_COOKIE};
+use stun::message::{BINDING_REQUEST, Getter, MAGIC_COOKIE, Message, TransactionId};
 use stun::xoraddr::XorMappedAddress;
 use uuid::Uuid;
 
@@ -208,7 +208,10 @@ impl WebrtcManager {
             .offer_payload
             .clone()
             .ok_or_else(|| "No offer payload available".to_string())?;
-        info!("{}", payload_log_preview("Offer payload clipboard text", &payload));
+        info!(
+            "{}",
+            payload_log_preview("Offer payload clipboard text", &payload)
+        );
         self.write_clipboard_text(&payload)
     }
 
@@ -217,7 +220,10 @@ impl WebrtcManager {
             .answer_payload
             .clone()
             .ok_or_else(|| "No answer payload available".to_string())?;
-        info!("{}", payload_log_preview("Answer payload clipboard text", &payload));
+        info!(
+            "{}",
+            payload_log_preview("Answer payload clipboard text", &payload)
+        );
         self.write_clipboard_text(&payload)
     }
 
@@ -261,7 +267,7 @@ struct PeerIo {
     role: PeerRole,
     pc: RTCPeerConnection,
     socket: UdpSocket,
-    local_addr: std::net::SocketAddr,
+    local_addr: SocketAddr,
     local_ip: IpAddr,
     candidate_lines: Vec<String>,
     stun_queries: Vec<StunQuery>,
@@ -359,9 +365,10 @@ fn create_peer() -> Result<PeerIo, String> {
     let local_addr = socket.local_addr().map_err(|e| e.to_string())?;
     let mut local_ip = local_addr.ip();
     if local_ip.is_unspecified()
-        && let Some(resolved) = resolve_local_ip() {
-            local_ip = resolved;
-        }
+        && let Some(resolved) = resolve_local_ip()
+    {
+        local_ip = resolved;
+    }
     if local_ip.is_unspecified() {
         error!("Local IP resolution failed; ICE host candidate will be 0.0.0.0");
     }
@@ -398,9 +405,10 @@ fn create_peer_with_remote_offer(remote: &RemotePeer) -> Result<PeerIo, String> 
     let local_addr = socket.local_addr().map_err(|e| e.to_string())?;
     let mut local_ip = local_addr.ip();
     if local_ip.is_unspecified()
-        && let Some(resolved) = resolve_local_ip() {
-            local_ip = resolved;
-        }
+        && let Some(resolved) = resolve_local_ip()
+    {
+        local_ip = resolved;
+    }
     if local_ip.is_unspecified() {
         error!("Local IP resolution failed; ICE host candidate will be 0.0.0.0");
     }
@@ -483,8 +491,7 @@ fn add_host_candidate(
         .map_err(|e| e.to_string())?;
 
     let line = init.candidate.clone();
-    pc.add_local_candidate(init)
-        .map_err(|e| e.to_string())?;
+    pc.add_local_candidate(init).map_err(|e| e.to_string())?;
     Ok(line)
 }
 
@@ -549,9 +556,10 @@ fn pump_socket_reads(peer: &mut PeerIo) -> Result<(), String> {
                     // forward them to the peer connection. Only consume responses that
                     // match our own STUN queries.
                     if let Ok(consumed) = handle_stun_response(peer, &buf[..n])
-                        && consumed {
-                            continue;
-                        }
+                        && consumed
+                    {
+                        continue;
+                    }
                 }
                 let _ = peer.pc.handle_read(TaggedBytesMut {
                     now: Instant::now(),
@@ -661,10 +669,7 @@ fn send_scheduled_message_if_due(peer: &mut PeerIo) {
                 peer.next_message = None;
             }
             Err(err) => {
-                error!(
-                    "Failed sending {} to {}: {}",
-                    payload, peer.key, err
-                );
+                error!("Failed sending {} to {}: {}", payload, peer.key, err);
             }
         }
     } else {
@@ -697,10 +702,11 @@ fn resolve_local_ip() -> Option<IpAddr> {
     for url in DEFAULT_STUN {
         if let Some(server) = parse_stun_url(url)
             && socket.connect(server).is_ok()
-                && let Ok(addr) = socket.local_addr()
-                    && !addr.ip().is_unspecified() {
-                        return Some(addr.ip());
-                    }
+            && let Ok(addr) = socket.local_addr()
+            && !addr.ip().is_unspecified()
+        {
+            return Some(addr.ip());
+        }
     }
     if socket.connect("8.8.8.8:80").is_err() {
         return None;
@@ -759,14 +765,16 @@ fn start_stun_gather(peer: &mut PeerIo) {
         peer.stun_queries.len()
     );
     for query in &mut peer.stun_queries {
-        if !query.done && query.attempts == 0
-            && let Err(err) = send_stun_request(&peer.socket, query) {
-                error!(
-                    "STUN request failed to {} for {}: {}",
-                    query.server, peer.key, err
-                );
-                query.done = true;
-            }
+        if !query.done
+            && query.attempts == 0
+            && let Err(err) = send_stun_request(&peer.socket, query)
+        {
+            error!(
+                "STUN request failed to {} for {}: {}",
+                query.server, peer.key, err
+            );
+            query.done = true;
+        }
     }
 }
 
@@ -785,13 +793,14 @@ fn pump_stun(peer: &mut PeerIo) {
             continue;
         }
         if now.duration_since(query.sent_at) >= STUN_RETRY_INTERVAL
-            && let Err(err) = send_stun_request(&peer.socket, query) {
-                error!(
-                    "STUN request failed to {} for {}: {}",
-                    query.server, peer.key, err
-                );
-                query.done = true;
-            }
+            && let Err(err) = send_stun_request(&peer.socket, query)
+        {
+            error!(
+                "STUN request failed to {} for {}: {}",
+                query.server, peer.key, err
+            );
+            query.done = true;
+        }
     }
 
     if !peer.ice_complete && peer.stun_queries.iter().all(|q| q.done) {
@@ -905,9 +914,7 @@ fn build_payload_from_peers(peers: &HashMap<String, PeerIo>) -> Result<String, S
             .pc
             .local_description()
             .ok_or_else(|| "Local description missing".to_string())?;
-        let sdp = if description.sdp.contains("a=candidate:")
-            || peer.candidate_lines.is_empty()
-        {
+        let sdp = if description.sdp.contains("a=candidate:") || peer.candidate_lines.is_empty() {
             description.sdp.clone()
         } else {
             let mut sdp = description.sdp.clone();
@@ -920,9 +927,7 @@ fn build_payload_from_peers(peers: &HashMap<String, PeerIo>) -> Result<String, S
             sdp.push_str("a=end-of-candidates");
             sdp
         };
-        if !description.sdp.contains("a=candidate:")
-            && !peer.candidate_lines.is_empty()
-        {
+        if !description.sdp.contains("a=candidate:") && !peer.candidate_lines.is_empty() {
             info!(
                 "SDP missing candidates for {}; injected {} candidate line(s)",
                 peer.key,

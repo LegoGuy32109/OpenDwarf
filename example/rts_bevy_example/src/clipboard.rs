@@ -3,8 +3,7 @@ use std::process::{Command, Stdio};
 
 use bevy::log::warn;
 
-pub struct ClipboardClient {
-}
+pub struct ClipboardClient {}
 
 impl ClipboardClient {
     pub fn new() -> Self {
