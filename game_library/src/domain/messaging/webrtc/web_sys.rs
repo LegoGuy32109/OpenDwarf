@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use js_sys::{Array, Function, Promise, Reflect};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
@@ -13,25 +14,42 @@ use web_sys::{
 
 use super::RemotePeer;
 
-#[derive(Debug)]
 struct Peer {
     key: String,
+    role: PeerRole,
     peer_connection: RtcPeerConnection,
-    channels: Vec<RtcDataChannel>,
+    handlers: Rc<RefCell<HandlerStore>>,
+}
+
+impl Peer {
+    fn new(key: String, role: PeerRole, peer_connection: RtcPeerConnection) -> Self {
+        Self {
+            key,
+            role,
+            peer_connection,
+            handlers: Rc::new(RefCell::new(HandlerStore::new())),
+        }
+    }
+}
+
+struct HandlerStore {
     event_handlers: Vec<Closure<dyn FnMut(Event)>>,
     message_handlers: Vec<Closure<dyn FnMut(MessageEvent)>>,
 }
 
-impl Peer {
-    fn new(key: String, peer_connection: RtcPeerConnection) -> Self {
+impl HandlerStore {
+    fn new() -> Self {
         Self {
-            key,
-            peer_connection,
-            channels: Vec::new(),
             event_handlers: Vec::new(),
             message_handlers: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PeerRole {
+    Offerer,
+    Answerer,
 }
 
 pub struct WebrtcManager {
@@ -165,16 +183,13 @@ async fn make_offering_peer(config: &RtcConfiguration) -> Result<Peer, String> {
     let peer_connection =
         RtcPeerConnection::new_with_configuration(config).map_err(js_to_string)?;
     let key = random_uuid()?;
-    let mut peer = Peer::new(key, peer_connection);
+    let mut peer = Peer::new(key, PeerRole::Offerer, peer_connection);
 
     let channel_config = RtcDataChannelInit::new();
-    channel_config.set_negotiated(true);
-    channel_config.set_id(0);
     let channel = peer
         .peer_connection
         .create_data_channel_with_data_channel_dict("chat", &channel_config);
-    setup_data_channel_handlers(&mut peer, &channel);
-    peer.channels.push(channel);
+    setup_data_channel_handlers(peer.role, &channel, &peer.handlers);
 
     let offer_value = JsFuture::from(peer.peer_connection.create_offer())
         .await
@@ -197,22 +212,35 @@ async fn make_answering_peer(
 ) -> Result<Peer, String> {
     let peer_connection =
         RtcPeerConnection::new_with_configuration(config).map_err(js_to_string)?;
-    let mut peer = Peer::new(remote_peer.key.clone(), peer_connection);
+    let mut peer = Peer::new(remote_peer.key.clone(), PeerRole::Answerer, peer_connection);
+
+    let handler_store = peer.handlers.clone();
+    let role = peer.role;
+    let on_data_channel = Closure::wrap(Box::new(move |event: Event| {
+        let channel_value = match Reflect::get(&event, &JsValue::from_str("channel")) {
+            Ok(value) => value,
+            Err(err) => {
+                console::warn_1(&err);
+                return;
+            }
+        };
+        let Ok(channel) = channel_value.dyn_into::<RtcDataChannel>() else {
+            console::warn_1(&JsValue::from_str(
+                "WebRTC datachannel event missing channel",
+            ));
+            return;
+        };
+        setup_data_channel_handlers(role, &channel, &handler_store);
+    }) as Box<dyn FnMut(_)>);
+    peer.peer_connection
+        .set_ondatachannel(Some(on_data_channel.as_ref().unchecked_ref()));
+    on_data_channel.forget();
 
     let offer = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
     offer.set_sdp(&remote_peer.sdp);
     JsFuture::from(peer.peer_connection.set_remote_description(&offer))
         .await
         .map_err(js_to_string)?;
-
-    let channel_config = RtcDataChannelInit::new();
-    channel_config.set_negotiated(true);
-    channel_config.set_id(0);
-    let channel = peer
-        .peer_connection
-        .create_data_channel_with_data_channel_dict("chat", &channel_config);
-    setup_data_channel_handlers(&mut peer, &channel);
-    peer.channels.push(channel);
 
     let answer_value = JsFuture::from(peer.peer_connection.create_answer())
         .await
@@ -229,19 +257,61 @@ async fn make_answering_peer(
     Ok(peer)
 }
 
-fn setup_data_channel_handlers(peer: &mut Peer, channel: &RtcDataChannel) {
+fn setup_data_channel_handlers(
+    role: PeerRole,
+    channel: &RtcDataChannel,
+    handler_store: &Rc<RefCell<HandlerStore>>,
+) {
+    let channel_for_open = channel.clone();
     let open_handler = Closure::wrap(Box::new(move |_event: Event| {
         console::log_1(&JsValue::from_str("Channel was opened"));
+        if role == PeerRole::Offerer {
+            schedule_ping_with_delay(channel_for_open.clone(), 200);
+        }
     }) as Box<dyn FnMut(_)>);
     channel.set_onopen(Some(open_handler.as_ref().unchecked_ref()));
-    peer.event_handlers.push(open_handler);
+    handler_store.borrow_mut().event_handlers.push(open_handler);
 
+    let channel_for_message = channel.clone();
     let message_handler = Closure::wrap(Box::new(move |event: MessageEvent| {
-        console::log_1(&JsValue::from_str("received message from Guest"));
-        console::log_1(&event.data());
+        if let Some(text) = event.data().as_string() {
+            console::log_1(&JsValue::from_str(&text));
+            match text.as_str() {
+                "ping" => {
+                    if role == PeerRole::Answerer {
+                        let _ = channel_for_message.send_with_str("pong");
+                    }
+                }
+                "pong" => {
+                    if role == PeerRole::Offerer {
+                        schedule_ping_with_delay(channel_for_message.clone(), 1000);
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            console::log_1(&event.data());
+        }
     }) as Box<dyn FnMut(_)>);
     channel.set_onmessage(Some(message_handler.as_ref().unchecked_ref()));
-    peer.message_handlers.push(message_handler);
+    handler_store
+        .borrow_mut()
+        .message_handlers
+        .push(message_handler);
+}
+
+fn schedule_ping_with_delay(channel: RtcDataChannel, delay_ms: i32) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let closure = Closure::wrap(Box::new(move || {
+        let _ = channel.send_with_str("ping");
+    }) as Box<dyn FnMut()>);
+    let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+        closure.as_ref().unchecked_ref(),
+        delay_ms,
+    );
+    closure.forget();
 }
 
 async fn wait_for_ice_gathering(peer: &mut Peer, timeout_secs: u32) -> Result<(), String> {

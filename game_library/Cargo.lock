@@ -5132,6 +5132,7 @@ dependencies = [
  "rtc-stun",
  "serde",
  "serde_json",
+ "socket2",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

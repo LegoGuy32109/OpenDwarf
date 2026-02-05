@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use std::net::UdpSocket;
@@ -12,6 +14,7 @@ use std::time::Instant;
 use bevy::prelude::info;
 use bytes::BytesMut;
 use rtc::data_channel::RTCDataChannelInit;
+use rtc::data_channel::RTCDataChannelMessage;
 use rtc::peer_connection::RTCPeerConnection;
 use rtc::peer_connection::configuration::RTCConfigurationBuilder;
 use rtc::peer_connection::event::RTCDataChannelEvent;
@@ -28,6 +31,10 @@ use rtc::sansio::Protocol;
 use shared::TaggedBytesMut;
 use shared::TransportContext;
 use shared::TransportProtocol;
+use socket2::Domain;
+use socket2::Protocol as SocketProtocol;
+use socket2::Socket;
+use socket2::Type;
 use stun::fingerprint::FINGERPRINT;
 use stun::message::BINDING_REQUEST;
 use stun::message::Getter;
@@ -59,7 +66,14 @@ struct Peer {
     peer_connection: RTCPeerConnection,
     socket: UdpSocket,
     local_addr: SocketAddr,
-    local_ip: IpAddr,
+    local_ipv4: Option<Ipv4Addr>,
+    local_ipv6: Option<Ipv6Addr>,
+    supports_ipv6: bool,
+    role: PeerRole,
+    channel_id: Option<u16>,
+    channel_open: bool,
+    ping_started: bool,
+    next_ping_at: Option<Instant>,
     ice_gathering_complete: bool,
     ice_gathering_started_at: Option<Instant>,
     needs_sdp_refresh: bool,
@@ -68,13 +82,22 @@ struct Peer {
     needs_gather: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PeerRole {
+    Offerer,
+    Answerer,
+}
+
 impl Peer {
     fn new(
         key: String,
         peer_connection: RTCPeerConnection,
         socket: UdpSocket,
         local_addr: SocketAddr,
-        local_ip: IpAddr,
+        local_ipv4: Option<Ipv4Addr>,
+        local_ipv6: Option<Ipv6Addr>,
+        supports_ipv6: bool,
+        role: PeerRole,
         stun_queries: Vec<StunQuery>,
     ) -> Self {
         Self {
@@ -82,7 +105,14 @@ impl Peer {
             peer_connection,
             socket,
             local_addr,
-            local_ip,
+            local_ipv4,
+            local_ipv6,
+            supports_ipv6,
+            role,
+            channel_id: None,
+            channel_open: false,
+            ping_started: false,
+            next_ping_at: None,
             ice_gathering_complete: false,
             ice_gathering_started_at: None,
             needs_sdp_refresh: false,
@@ -194,7 +224,7 @@ impl WebrtcManager {
                 if local_peer.peer_connection.remote_description().is_some() {
                     continue;
                 }
-                let sanitized_sdp = sanitize_remote_sdp(local_peer.local_addr, &remote_peer.sdp);
+                let sanitized_sdp = sanitize_remote_sdp(local_peer.supports_ipv6, &remote_peer.sdp);
                 let answer =
                     RTCSessionDescription::answer(sanitized_sdp).map_err(|err| err.to_string())?;
                 local_peer
@@ -249,24 +279,17 @@ fn make_offering_peer() -> Result<Peer, String> {
     let config = default_rtc_config();
     let mut peer_connection = RTCPeerConnection::new(config).map_err(|err| err.to_string())?;
 
-    let socket = UdpSocket::bind("0.0.0.0:0").map_err(|err| err.to_string())?;
-    socket
-        .set_nonblocking(true)
-        .map_err(|err| err.to_string())?;
+    let (socket, supports_ipv6) = bind_udp_socket()?;
     let local_addr = socket.local_addr().map_err(|err| err.to_string())?;
-    let mut local_ip = local_addr.ip();
-    if local_ip.is_unspecified()
-        && let Some(resolved) = resolve_local_ip()
-    {
-        local_ip = resolved;
-    }
-    if local_ip.is_unspecified() {
-        info!("Local IP resolution failed; ICE host candidate will be 0.0.0.0");
+    let local_ipv4 = resolve_local_ipv4();
+    let local_ipv6 = resolve_local_ipv6();
+    if local_ipv4.is_none() && local_ipv6.is_none() {
+        info!("Local IP resolution failed; ICE host candidates will be skipped");
     }
     let stun_queries = build_stun_queries(local_addr);
 
     let channel_init = RTCDataChannelInit {
-        negotiated: Some(0),
+        ordered: true,
         ..Default::default()
     };
     let _ = peer_connection
@@ -285,7 +308,10 @@ fn make_offering_peer() -> Result<Peer, String> {
         peer_connection,
         socket,
         local_addr,
-        local_ip,
+        local_ipv4,
+        local_ipv6,
+        supports_ipv6,
+        PeerRole::Offerer,
         stun_queries,
     ))
 }
@@ -294,34 +320,19 @@ fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
     let config = default_rtc_config();
     let mut peer_connection = RTCPeerConnection::new(config).map_err(|err| err.to_string())?;
 
-    let socket = UdpSocket::bind("0.0.0.0:0").map_err(|err| err.to_string())?;
-    socket
-        .set_nonblocking(true)
-        .map_err(|err| err.to_string())?;
+    let (socket, supports_ipv6) = bind_udp_socket()?;
     let local_addr = socket.local_addr().map_err(|err| err.to_string())?;
-    let mut local_ip = local_addr.ip();
-    if local_ip.is_unspecified()
-        && let Some(resolved) = resolve_local_ip()
-    {
-        local_ip = resolved;
-    }
-    if local_ip.is_unspecified() {
-        info!("Local IP resolution failed; ICE host candidate will be 0.0.0.0");
+    let local_ipv4 = resolve_local_ipv4();
+    let local_ipv6 = resolve_local_ipv6();
+    if local_ipv4.is_none() && local_ipv6.is_none() {
+        info!("Local IP resolution failed; ICE host candidates will be skipped");
     }
     let stun_queries = build_stun_queries(local_addr);
 
-    let sanitized_sdp = sanitize_remote_sdp(local_addr, &remote_peer.sdp);
+    let sanitized_sdp = sanitize_remote_sdp(supports_ipv6, &remote_peer.sdp);
     let offer = RTCSessionDescription::offer(sanitized_sdp).map_err(|err| err.to_string())?;
     peer_connection
         .set_remote_description(offer)
-        .map_err(|err| err.to_string())?;
-
-    let channel_init = RTCDataChannelInit {
-        negotiated: Some(0),
-        ..Default::default()
-    };
-    let _ = peer_connection
-        .create_data_channel("chat", Some(channel_init))
         .map_err(|err| err.to_string())?;
 
     Ok(Peer::new(
@@ -329,7 +340,10 @@ fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
         peer_connection,
         socket,
         local_addr,
-        local_ip,
+        local_ipv4,
+        local_ipv6,
+        supports_ipv6,
+        PeerRole::Answerer,
         stun_queries,
     ))
 }
@@ -351,27 +365,78 @@ fn random_key() -> String {
     format!("{value:032x}")
 }
 
-fn resolve_local_ip() -> Option<IpAddr> {
+fn bind_udp_socket() -> Result<(UdpSocket, bool), String> {
+    let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(SocketProtocol::UDP));
+    if let Ok(socket) = socket {
+        if socket.set_only_v6(false).is_ok()
+            && socket
+                .bind(&SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)).into())
+                .is_ok()
+        {
+            let socket: UdpSocket = socket.into();
+            socket
+                .set_nonblocking(true)
+                .map_err(|err| err.to_string())?;
+            return Ok((socket, true));
+        }
+    }
+
+    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+        socket
+            .set_nonblocking(true)
+            .map_err(|err| err.to_string())?;
+        return Ok((socket, false));
+    }
+
+    let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(SocketProtocol::UDP))
+        .map_err(|err| err.to_string())?;
+    let _ = socket.set_only_v6(true);
+    socket
+        .bind(&SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0)).into())
+        .map_err(|err| err.to_string())?;
+    let socket: UdpSocket = socket.into();
+    socket
+        .set_nonblocking(true)
+        .map_err(|err| err.to_string())?;
+    Ok((socket, true))
+}
+
+fn resolve_local_ipv4() -> Option<Ipv4Addr> {
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     for url in DEFAULT_STUN {
-        if let Some(server) = parse_stun_url(url)
+        if let Some(server) = parse_stun_url_v4(url)
             && socket.connect(server).is_ok()
             && let Ok(addr) = socket.local_addr()
-            && !addr.ip().is_unspecified()
+            && let IpAddr::V4(ip) = addr.ip()
+            && !ip.is_unspecified()
         {
-            return Some(addr.ip());
+            return Some(ip);
         }
     }
     if socket.connect("8.8.8.8:80").is_err() {
         return None;
     }
-    socket.local_addr().ok().map(|addr| addr.ip())
+    match socket.local_addr().ok()?.ip() {
+        IpAddr::V4(ip) if !ip.is_unspecified() => Some(ip),
+        _ => None,
+    }
+}
+
+fn resolve_local_ipv6() -> Option<Ipv6Addr> {
+    let socket = UdpSocket::bind("[::]:0").ok()?;
+    if socket.connect("[2001:4860:4860::8888]:80").is_err() {
+        return None;
+    }
+    match socket.local_addr().ok()?.ip() {
+        IpAddr::V6(ip) if !ip.is_unspecified() => Some(ip),
+        _ => None,
+    }
 }
 
 fn build_stun_queries(local_addr: SocketAddr) -> Vec<StunQuery> {
     let mut queries = Vec::new();
     for url in DEFAULT_STUN {
-        if let Some(server) = parse_stun_url(url) {
+        if let Some(server) = parse_stun_url_v4(url) {
             queries.push(StunQuery {
                 server,
                 url: url.to_string(),
@@ -389,7 +454,7 @@ fn build_stun_queries(local_addr: SocketAddr) -> Vec<StunQuery> {
     queries
 }
 
-fn parse_stun_url(url: &str) -> Option<SocketAddr> {
+fn parse_stun_url_v4(url: &str) -> Option<SocketAddr> {
     let mut rest = url.trim();
     if let Some(stripped) = rest.strip_prefix("stun:") {
         rest = stripped;
@@ -404,8 +469,7 @@ fn parse_stun_url(url: &str) -> Option<SocketAddr> {
     addrs.find(SocketAddr::is_ipv4)
 }
 
-fn sanitize_remote_sdp(local_addr: SocketAddr, sdp: &str) -> String {
-    let allow_ipv6 = local_addr.is_ipv6();
+fn sanitize_remote_sdp(allow_ipv6: bool, sdp: &str) -> String {
     let mut output = String::with_capacity(sdp.len());
     for line in sdp.lines() {
         let line = line.trim_end_matches('\r');
@@ -432,6 +496,24 @@ fn sanitize_remote_sdp(local_addr: SocketAddr, sdp: &str) -> String {
     output
 }
 
+fn select_local_addr(peer: &Peer, peer_addr: SocketAddr) -> SocketAddr {
+    let port = peer.local_addr.port();
+    match peer_addr {
+        SocketAddr::V4(_) => SocketAddr::new(
+            peer.local_ipv4
+                .map(IpAddr::V4)
+                .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            port,
+        ),
+        SocketAddr::V6(_) => SocketAddr::new(
+            peer.local_ipv6
+                .map(IpAddr::V6)
+                .unwrap_or(IpAddr::V6(Ipv6Addr::UNSPECIFIED)),
+            port,
+        ),
+    }
+}
+
 fn log_candidate_list(kind: &str, key: &str, candidates: &[String]) {
     if candidates.is_empty() {
         info!("Native {kind} payload for {key} has 0 ICE candidates");
@@ -456,27 +538,39 @@ fn start_gather_if_needed(peer: &mut Peer) {
     info!("Native starting ICE gather for {}", peer.key);
     peer.ice_gathering_started_at = Some(Instant::now());
 
-    if peer.local_ip.is_unspecified() {
+    if peer.local_ipv4.is_none() && peer.local_ipv6.is_none() {
         info!(
-            "Native skipping host candidate for {} because local IP is unspecified",
+            "Native skipping host candidates for {} because local IPs are unavailable",
             peer.key
         );
-    } else if let Err(err) = add_host_candidate(peer) {
-        info!("Native host candidate failed for {}: {}", peer.key, err);
-        peer.needs_gather = false;
-        peer.ice_gathering_complete = true;
-        return;
+    } else {
+        if let Some(ipv4) = peer.local_ipv4 {
+            if let Err(err) = add_host_candidate(peer, IpAddr::V4(ipv4)) {
+                info!(
+                    "Native IPv4 host candidate failed for {}: {}",
+                    peer.key, err
+                );
+            }
+        }
+        if let Some(ipv6) = peer.local_ipv6 {
+            if let Err(err) = add_host_candidate(peer, IpAddr::V6(ipv6)) {
+                info!(
+                    "Native IPv6 host candidate failed for {}: {}",
+                    peer.key, err
+                );
+            }
+        }
     }
 
     start_stun_gather(peer);
     peer.needs_gather = false;
 }
 
-fn add_host_candidate(peer: &mut Peer) -> Result<(), String> {
+fn add_host_candidate(peer: &mut Peer, ip: IpAddr) -> Result<(), String> {
     let host_candidate = CandidateHostConfig {
         base_config: CandidateConfig {
             network: "udp".to_string(),
-            address: peer.local_ip.to_string(),
+            address: ip.to_string(),
             port: peer.local_addr.port(),
             component: 1,
             ..Default::default()
@@ -610,12 +704,16 @@ fn handle_stun_response(peer: &mut Peer, buf: &[u8]) -> Result<bool, String> {
     let mut mapped = XorMappedAddress::default();
     mapped.get_from(&msg).map_err(|err| err.to_string())?;
 
-    if peer.local_ip.is_unspecified() {
+    if peer.local_ipv4.is_none() {
         info!(
-            "Native server-reflexive candidate for {} has unspecified local IP",
+            "Native server-reflexive candidate for {} has unspecified local IPv4",
             peer.key
         );
     }
+    let rel_addr = peer
+        .local_ipv4
+        .map(|ip| ip.to_string())
+        .unwrap_or_else(|| "0.0.0.0".to_string());
     let config = CandidateServerReflexiveConfig {
         base_config: CandidateConfig {
             network: "udp".to_string(),
@@ -624,7 +722,7 @@ fn handle_stun_response(peer: &mut Peer, buf: &[u8]) -> Result<bool, String> {
             component: 1,
             ..Default::default()
         },
-        rel_addr: peer.local_ip.to_string(),
+        rel_addr,
         rel_port: peer.local_addr.port(),
         url: Some(query.url.clone()),
     };
@@ -657,9 +755,6 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
     pump_stun(peer);
 
     while let Some(msg) = peer.peer_connection.poll_write() {
-        if msg.transport.peer_addr.is_ipv6() && peer.local_addr.is_ipv4() {
-            continue;
-        }
         peer.socket
             .send_to(&msg.message, msg.transport.peer_addr)
             .map_err(|err| err.to_string())?;
@@ -669,7 +764,13 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
         match event {
             RTCPeerConnectionEvent::OnDataChannel(dc_event) => {
                 if let RTCDataChannelEvent::OnOpen(channel_id) = dc_event {
+                    peer.channel_open = true;
+                    peer.channel_id = Some(channel_id);
                     info!("Native data channel opened: {channel_id}");
+                    if peer.role == PeerRole::Offerer && !peer.ping_started {
+                        peer.next_ping_at = Some(Instant::now() + Duration::from_millis(200));
+                        peer.ping_started = true;
+                    }
                 }
             }
             RTCPeerConnectionEvent::OnIceCandidateEvent(ice_event) => {
@@ -712,6 +813,19 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
             let payload = data_channel_message.data.to_vec();
             if let Ok(text) = String::from_utf8(payload) {
                 info!("Native data channel {channel_id} message: {text}");
+                match text.as_str() {
+                    "ping" => {
+                        if peer.role == PeerRole::Answerer {
+                            let _ = send_data_message(peer, "pong");
+                        }
+                    }
+                    "pong" => {
+                        if peer.role == PeerRole::Offerer {
+                            peer.next_ping_at = Some(Instant::now() + Duration::from_secs(1));
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -740,6 +854,8 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
         peer.needs_sdp_refresh = false;
     }
 
+    send_scheduled_ping(peer, now)?;
+
     let mut buf = [0u8; 2048];
     loop {
         match peer.socket.recv_from(&mut buf) {
@@ -752,11 +868,7 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
                         continue;
                     }
                 }
-                let local_addr = if peer.local_ip.is_unspecified() {
-                    peer.local_addr
-                } else {
-                    SocketAddr::new(peer.local_ip, peer.local_addr.port())
-                };
+                let local_addr = select_local_addr(peer, peer_addr);
                 let message = TaggedBytesMut {
                     now: Instant::now(),
                     transport: TransportContext {
@@ -816,4 +928,34 @@ fn refresh_local_description(peer: &mut Peer) -> Result<(), String> {
         .map_err(|err| err.to_string())?;
     info!("Native generated answer SDP for {}", peer.key);
     Ok(())
+}
+
+fn send_scheduled_ping(peer: &mut Peer, now: Instant) -> Result<(), String> {
+    if peer.role != PeerRole::Offerer {
+        return Ok(());
+    }
+    let Some(when) = peer.next_ping_at else {
+        return Ok(());
+    };
+    if when > now {
+        return Ok(());
+    }
+    if peer.channel_open && peer.channel_id.is_some() {
+        send_data_message(peer, "ping")?;
+        peer.next_ping_at = None;
+    }
+    Ok(())
+}
+
+fn send_data_message(peer: &mut Peer, payload: &str) -> Result<(), String> {
+    let Some(channel_id) = peer.channel_id else {
+        return Err("Data channel not ready".to_string());
+    };
+    let msg = RTCDataChannelMessage {
+        is_string: true,
+        data: BytesMut::from(payload.as_bytes()),
+    };
+    peer.peer_connection
+        .handle_write(RTCMessage::DataChannelMessage(channel_id, msg))
+        .map_err(|err| err.to_string())
 }

@@ -49,6 +49,7 @@ shared = { package = "rtc-shared", version = "0.8.5" }
 stun = { package = "rtc-stun", version = "0.8.5" }
 bytes = "1.11.0"
 arboard = { version = "3.6.1", features = ["wayland-data-control"] }
+socket2 = "0.5.8"
 
 [dev-dependencies]
 bacon = "3.20.1"
