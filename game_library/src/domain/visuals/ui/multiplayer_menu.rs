@@ -309,7 +309,7 @@ fn trigger_multiplayer_action(
                 let payload = manager.offer_payload();
                 match payload {
                     Ok(payload) => {
-                        let text = compress_remote_peers(&payload);
+                        let text = compress_and_log_payload("Native offer", &payload);
                         if let Err(err) = write_native_clipboard(webrtc_state, &text) {
                             warn!("Failed to copy native offer payload: {err}");
                             webrtc_state.clipboard_text = Some(text);
@@ -381,7 +381,7 @@ fn trigger_multiplayer_action(
                 let payload = manager.answer_payload();
                 match payload {
                     Ok(payload) => {
-                        let text = compress_remote_peers(&payload);
+                        let text = compress_and_log_payload("Native answer", &payload);
                         if let Err(err) = write_native_clipboard(webrtc_state, &text) {
                             warn!("Failed to copy native answer payload: {err}");
                             webrtc_state.clipboard_text = Some(text);
@@ -439,7 +439,7 @@ fn trigger_multiplayer_action(
                     let payload = manager.borrow().offer_payload();
                     match payload {
                         Ok(payload) => {
-                            let text = compress_remote_peers(&payload);
+                            let text = compress_and_log_payload("Web offer", &payload);
                             if let Err(err) = write_clipboard(&text).await {
                                 warn!("Failed to copy offer payload: {err}");
                             } else {
@@ -505,7 +505,7 @@ fn trigger_multiplayer_action(
                     let payload = manager.borrow().answer_payload();
                     match payload {
                         Ok(payload) => {
-                            let text = compress_remote_peers(&payload);
+                            let text = compress_and_log_payload("Web answer", &payload);
                             if let Err(err) = write_clipboard(&text).await {
                                 warn!("Failed to copy answer payload: {err}");
                             } else {
@@ -573,6 +573,16 @@ async fn read_clipboard_payload() -> Result<Vec<RemotePeer>, String> {
     } else {
         Ok(payload)
     }
+}
+
+fn compress_and_log_payload(label: &str, payload: &[RemotePeer]) -> String {
+    match serde_json::to_string(payload) {
+        Ok(json) => info!("{label} SDP payload: {json}"),
+        Err(err) => warn!("Failed to serialize {label} payload: {err}"),
+    }
+    let compressed = compress_remote_peers(payload);
+    info!("{label} compressed payload: {compressed}");
+    compressed
 }
 
 #[cfg(not(target_arch = "wasm32"))]

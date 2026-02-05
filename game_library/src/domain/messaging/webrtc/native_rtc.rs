@@ -23,7 +23,6 @@ use rtc::peer_connection::transport::CandidateConfig;
 use rtc::peer_connection::transport::CandidateHostConfig;
 use rtc::peer_connection::transport::CandidateServerReflexiveConfig;
 use rtc::peer_connection::transport::RTCIceCandidate;
-use rtc::peer_connection::transport::RTCIceCandidateInit;
 use rtc::peer_connection::transport::RTCIceServer;
 use rtc::sansio::Protocol;
 use shared::TaggedBytesMut;
@@ -63,6 +62,7 @@ struct Peer {
     local_ip: IpAddr,
     ice_gathering_complete: bool,
     ice_gathering_started_at: Option<Instant>,
+    needs_sdp_refresh: bool,
     local_candidates: Vec<String>,
     stun_queries: Vec<StunQuery>,
     needs_gather: bool,
@@ -85,6 +85,7 @@ impl Peer {
             local_ip,
             ice_gathering_complete: false,
             ice_gathering_started_at: None,
+            needs_sdp_refresh: false,
             local_candidates: Vec::new(),
             stun_queries,
             needs_gather: true,
@@ -128,7 +129,6 @@ impl WebrtcManager {
                     payload.push(RemotePeer {
                         key: peer.key.clone(),
                         sdp: description.sdp.clone(),
-                        candidates: peer.local_candidates.clone(),
                     });
                 }
             }
@@ -168,7 +168,6 @@ impl WebrtcManager {
                     payload.push(RemotePeer {
                         key: peer.key.clone(),
                         sdp: description.sdp.clone(),
-                        candidates: peer.local_candidates.clone(),
                     });
                 }
             }
@@ -189,30 +188,25 @@ impl WebrtcManager {
             return Err("No Local Offers exist".to_string());
         }
 
-        let remote_keys: Vec<&str> = remote_peers.iter().map(|peer| peer.key.as_str()).collect();
-        let mut open_peer: Option<&mut Peer> = None;
-        for (key, peer) in self.offering_peers.iter_mut() {
-            if peer.peer_connection.remote_description().is_none()
-                && remote_keys.iter().any(|remote_key| remote_key == key)
-            {
-                open_peer = Some(peer);
-                break;
+        let mut accepted = 0;
+        for remote_peer in remote_peers {
+            if let Some(local_peer) = self.offering_peers.get_mut(&remote_peer.key) {
+                if local_peer.peer_connection.remote_description().is_some() {
+                    continue;
+                }
+                let answer = RTCSessionDescription::answer(remote_peer.sdp.clone())
+                    .map_err(|err| err.to_string())?;
+                local_peer
+                    .peer_connection
+                    .set_remote_description(answer)
+                    .map_err(|err| err.to_string())?;
+                accepted += 1;
             }
         }
 
-        let open_peer = open_peer.ok_or_else(|| "No Open Offers exist".to_string())?;
-        let remote_peer = remote_peers
-            .iter()
-            .find(|peer| peer.key == open_peer.key)
-            .ok_or_else(|| "Remote Peer filtering invalid, BUG".to_string())?;
-
-        let answer = RTCSessionDescription::answer(remote_peer.sdp.clone())
-            .map_err(|err| err.to_string())?;
-        open_peer
-            .peer_connection
-            .set_remote_description(answer)
-            .map_err(|err| err.to_string())?;
-        add_remote_candidates(open_peer, remote_peer)?;
+        if accepted == 0 {
+            return Err("No matching offer peers for answer payload".to_string());
+        }
 
         Ok(())
     }
@@ -221,18 +215,22 @@ impl WebrtcManager {
         if self.offering_peers.is_empty() {
             return false;
         }
-        self.offering_peers
-            .values()
-            .all(|peer| peer.ice_gathering_complete)
+        self.offering_peers.values().all(|peer| {
+            peer.ice_gathering_complete
+                && !peer.needs_sdp_refresh
+                && peer.peer_connection.local_description().is_some()
+        })
     }
 
     pub fn answers_ready(&self) -> bool {
         if self.answering_peers.is_empty() {
             return false;
         }
-        self.answering_peers
-            .values()
-            .all(|peer| peer.ice_gathering_complete)
+        self.answering_peers.values().all(|peer| {
+            peer.ice_gathering_complete
+                && !peer.needs_sdp_refresh
+                && peer.peer_connection.local_description().is_some()
+        })
     }
 
     pub fn drive_network(&mut self) -> Result<(), String> {
@@ -316,7 +314,6 @@ fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
     peer_connection
         .set_remote_description(offer)
         .map_err(|err| err.to_string())?;
-    add_remote_candidates_from_peer(&mut peer_connection, remote_peer)?;
 
     let channel_init = RTCDataChannelInit {
         negotiated: Some(0),
@@ -324,13 +321,6 @@ fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
     };
     let _ = peer_connection
         .create_data_channel("chat", Some(channel_init))
-        .map_err(|err| err.to_string())?;
-
-    let answer = peer_connection
-        .create_answer(None)
-        .map_err(|err| err.to_string())?;
-    peer_connection
-        .set_local_description(answer)
         .map_err(|err| err.to_string())?;
 
     Ok(Peer::new(
@@ -413,44 +403,6 @@ fn parse_stun_url(url: &str) -> Option<SocketAddr> {
     addrs.find(SocketAddr::is_ipv4)
 }
 
-fn add_remote_candidates(peer: &mut Peer, remote_peer: &RemotePeer) -> Result<(), String> {
-    add_remote_candidates_from_peer(&mut peer.peer_connection, remote_peer)
-}
-
-fn add_remote_candidates_from_peer(
-    peer_connection: &mut RTCPeerConnection,
-    remote_peer: &RemotePeer,
-) -> Result<(), String> {
-    if remote_peer.candidates.is_empty() {
-        info!(
-            "Native remote peer {} provided 0 ICE candidates",
-            remote_peer.key
-        );
-        return Ok(());
-    }
-
-    info!(
-        "Native applying {} ICE candidates for peer {}",
-        remote_peer.candidates.len(),
-        remote_peer.key
-    );
-    for candidate in &remote_peer.candidates {
-        info!("Native remote candidate: {candidate}");
-        let candidate_init = RTCIceCandidateInit {
-            candidate: candidate.clone(),
-            sdp_mid: Some("0".to_string()),
-            sdp_mline_index: Some(0),
-            username_fragment: None,
-            url: None,
-        };
-        peer_connection
-            .add_remote_candidate(candidate_init)
-            .map_err(|err| err.to_string())?;
-    }
-
-    Ok(())
-}
-
 fn log_candidate_list(kind: &str, key: &str, candidates: &[String]) {
     if candidates.is_empty() {
         info!("Native {kind} payload for {key} has 0 ICE candidates");
@@ -520,7 +472,7 @@ fn add_host_candidate(peer: &mut Peer) -> Result<(), String> {
 
 fn start_stun_gather(peer: &mut Peer) {
     if peer.stun_queries.is_empty() {
-        peer.ice_gathering_complete = true;
+        mark_ice_gathering_complete(peer);
         info!(
             "Native ICE gathering complete for {} (no STUN servers)",
             peer.key
@@ -573,7 +525,7 @@ fn pump_stun(peer: &mut Peer) {
     }
 
     if !peer.ice_gathering_complete && peer.stun_queries.iter().all(|query| query.done) {
-        peer.ice_gathering_complete = true;
+        mark_ice_gathering_complete(peer);
         info!("Native ICE gathering complete for {}", peer.key);
     }
 }
@@ -705,12 +657,19 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
                 }
             }
             RTCPeerConnectionEvent::OnIceGatheringStateChangeEvent(state) => {
+                info!("Native ICE gathering state for {}: {}", peer.key, state);
                 if state == RTCIceGatheringState::Gathering {
                     peer.ice_gathering_started_at = Some(Instant::now());
                 }
                 if state == RTCIceGatheringState::Complete {
-                    peer.ice_gathering_complete = true;
+                    mark_ice_gathering_complete(peer);
                 }
+            }
+            RTCPeerConnectionEvent::OnIceConnectionStateChangeEvent(state) => {
+                info!("Native ICE connection state for {}: {}", peer.key, state);
+            }
+            RTCPeerConnectionEvent::OnConnectionStateChangeEvent(state) => {
+                info!("Native peer connection state for {}: {}", peer.key, state);
             }
             _ => {}
         }
@@ -736,10 +695,17 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
     if !peer.ice_gathering_complete {
         if let Some(started_at) = peer.ice_gathering_started_at {
             if now.duration_since(started_at) >= ICE_GATHERING_TIMEOUT {
-                peer.ice_gathering_complete = true;
+                mark_ice_gathering_complete(peer);
                 info!("Native ICE gathering timed out; continuing with current candidates");
             }
         }
+    }
+
+    if peer.ice_gathering_complete && peer.needs_sdp_refresh {
+        if let Err(err) = refresh_local_description(peer) {
+            return Err(err);
+        }
+        peer.needs_sdp_refresh = false;
     }
 
     let mut buf = [0u8; 2048];
@@ -750,7 +716,7 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
                     continue;
                 }
                 let local_addr = if peer.local_ip.is_unspecified() {
-                    normalized_local_addr(peer.local_addr, peer_addr)
+                    peer.local_addr
                 } else {
                     SocketAddr::new(peer.local_ip, peer.local_addr.port())
                 };
@@ -776,9 +742,41 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
     Ok(())
 }
 
-fn normalized_local_addr(local_addr: SocketAddr, peer_addr: SocketAddr) -> SocketAddr {
-    if !local_addr.ip().is_unspecified() {
-        return local_addr;
+fn mark_ice_gathering_complete(peer: &mut Peer) {
+    if !peer.ice_gathering_complete {
+        peer.ice_gathering_complete = true;
+        peer.needs_sdp_refresh = true;
     }
-    SocketAddr::new(peer_addr.ip(), local_addr.port())
+}
+
+fn refresh_local_description(peer: &mut Peer) -> Result<(), String> {
+    if peer.peer_connection.remote_description().is_none() {
+        let offer = peer
+            .peer_connection
+            .create_offer(None)
+            .map_err(|err| err.to_string())?;
+        peer.peer_connection
+            .set_local_description(offer)
+            .map_err(|err| err.to_string())?;
+        info!("Native refreshed offer SDP for {}", peer.key);
+        return Ok(());
+    }
+
+    if peer.peer_connection.local_description().is_some() {
+        info!(
+            "Native skipping SDP refresh for {} (local description already set)",
+            peer.key
+        );
+        return Ok(());
+    }
+
+    let answer = peer
+        .peer_connection
+        .create_answer(None)
+        .map_err(|err| err.to_string())?;
+    peer.peer_connection
+        .set_local_description(answer)
+        .map_err(|err| err.to_string())?;
+    info!("Native generated answer SDP for {}", peer.key);
+    Ok(())
 }

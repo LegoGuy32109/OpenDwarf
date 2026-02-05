@@ -72,7 +72,6 @@ impl WebrtcManager {
                     payload.push(RemotePeer {
                         key: peer.key.clone(),
                         sdp,
-                        candidates: Vec::new(),
                     });
                 }
             }
@@ -112,7 +111,6 @@ impl WebrtcManager {
                     payload.push(RemotePeer {
                         key: peer.key.clone(),
                         sdp,
-                        candidates: Vec::new(),
                     });
                 }
             }

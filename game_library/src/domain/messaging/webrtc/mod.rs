@@ -12,8 +12,6 @@ use serde::{Deserialize, Serialize};
 pub struct RemotePeer {
     pub key: String,
     pub sdp: String,
-    #[serde(default)]
-    pub candidates: Vec<String>,
 }
 
 pub fn compress_remote_peers(peers: &[RemotePeer]) -> String {
