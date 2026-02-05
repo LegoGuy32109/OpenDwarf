@@ -83,7 +83,6 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         Sprite {
             image: dwarf_texture,
             custom_size: Some(Vec2::splat(TILE_SIZE_IN_PX.into())),
-            // start unflipped; JS can flip via wasm_bindgen
             flip_y: false,
             ..default()
         },

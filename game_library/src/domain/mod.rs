@@ -11,7 +11,6 @@ pub mod movement;
 pub mod visuals;
 
 use crate::domain::messaging::webrtc::MultiplayerController;
-use messaging::process_game_messages;
 use movement::{consume_action, keyboard_movement};
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::debug_menu;
@@ -32,7 +31,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
             .add_systems(Update, (update_tileset_image, consume_action))
-            .add_systems(Update, (process_game_messages, keyboard_movement))
+            .add_systems(Update, keyboard_movement)
             .add_systems(
                 Update,
                 (

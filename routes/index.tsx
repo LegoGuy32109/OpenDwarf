@@ -1,6 +1,5 @@
 import { Head } from "$fresh/runtime.ts";
 import { PageProps } from "$fresh/server.ts";
-import DebugControls from "../islands/DebugControls.tsx";
 import GameCanvas from "../islands/GameCanvas.tsx";
 import FullscreenButton from "../islands/FullscreenButton.tsx";
 import MultiplayerSidebar from "../islands/MultiplayerSidebar.tsx";
@@ -40,7 +39,6 @@ export default function Home({ url }: PageProps) {
         gameDir={isDebug ? "/game_debug/" : undefined}
         wasmFile={isDebug ? "open_dwarf_lib_bg.wasm" : undefined}
       />
-      <DebugControls />
     </div>
   );
 }
