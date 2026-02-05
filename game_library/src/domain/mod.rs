@@ -67,8 +67,6 @@ fn define_defaults() -> impl PluginGroup {
         .set(ImagePlugin::default_nearest())
         .set(WindowPlugin {
             primary_window: Some(Window {
-                // fill entire browser window
-                fit_canvas_to_parent: true,
                 // don't hijack keyboard shortcuts
                 prevent_default_event_handling: false,
                 canvas: Some("#game-canvas".to_string()),

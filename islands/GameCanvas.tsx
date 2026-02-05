@@ -14,23 +14,22 @@ export default function GameCanvas(
       <style>
         {`
           #game-canvas {
-            width: 100%;
-            max-width: 960px;
-            aspect-ratio: 16 / 9;
-            background: #0f0f10;
+            width: 90vw !important;
+            height: 75vh !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
             border-radius: 0.5rem;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.45);
           }
-          #game-canvas:fullscreen {
-            width: 100vw;
-            height: 100vh;
-            max-width: none;
-            border-radius: 0;
+          #game-canvas:focus {
+            outline: 2px solid rgba(183, 149, 96, 0.7);
+            outline-offset: 2px;
           }
-          #game-canvas.full-window {
-            width: 100vw;
-            height: 100vh;
-            max-width: none;
+          #game-canvas.is-fullscreen {
+            width: 100vw !important;
+            height: 100vh !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
             border-radius: 0;
           }
         `}

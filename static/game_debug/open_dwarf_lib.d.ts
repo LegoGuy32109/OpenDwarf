@@ -3,14 +3,11 @@
 
 export function main(): void;
 
-export function send_game_bytes(bytes: Uint8Array): void;
-
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly main: () => void;
-    readonly send_game_bytes: (a: number, b: number) => void;
     readonly wasm_bindgen__closure__destroy__h409dbfd498be2084: (a: number, b: number) => void;
     readonly wasm_bindgen__closure__destroy__h0f13f4d71da59067: (a: number, b: number) => void;
     readonly wasm_bindgen__closure__destroy__h72f4a2845496e1bb: (a: number, b: number) => void;

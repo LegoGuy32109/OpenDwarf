@@ -2,7 +2,6 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const main: () => void;
-export const send_game_bytes: (a: number, b: number) => void;
 export const wasm_bindgen__closure__destroy__h409dbfd498be2084: (a: number, b: number) => void;
 export const wasm_bindgen__closure__destroy__h0f13f4d71da59067: (a: number, b: number) => void;
 export const wasm_bindgen__closure__destroy__h72f4a2845496e1bb: (a: number, b: number) => void;

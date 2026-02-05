@@ -140,7 +140,13 @@ export default function MultiplayerSidebar() {
   return (
     <>
       <div class="flex items-center gap-2">
-        <Button onClick={() => setOpen(true)}>Multiplayer</Button>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 text-sm font-medium uppercase tracking-[0.18em] text-white/80 transition hover:bg-white/10 hover:text-white"
+        >
+          Multiplayer
+        </button>
       </div>
 
       <div
