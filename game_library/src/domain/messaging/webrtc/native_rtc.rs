@@ -194,8 +194,9 @@ impl WebrtcManager {
                 if local_peer.peer_connection.remote_description().is_some() {
                     continue;
                 }
-                let answer = RTCSessionDescription::answer(remote_peer.sdp.clone())
-                    .map_err(|err| err.to_string())?;
+                let sanitized_sdp = sanitize_remote_sdp(local_peer.local_addr, &remote_peer.sdp);
+                let answer =
+                    RTCSessionDescription::answer(sanitized_sdp).map_err(|err| err.to_string())?;
                 local_peer
                     .peer_connection
                     .set_remote_description(answer)
@@ -309,8 +310,8 @@ fn make_answering_peer(remote_peer: &RemotePeer) -> Result<Peer, String> {
     }
     let stun_queries = build_stun_queries(local_addr);
 
-    let offer =
-        RTCSessionDescription::offer(remote_peer.sdp.clone()).map_err(|err| err.to_string())?;
+    let sanitized_sdp = sanitize_remote_sdp(local_addr, &remote_peer.sdp);
+    let offer = RTCSessionDescription::offer(sanitized_sdp).map_err(|err| err.to_string())?;
     peer_connection
         .set_remote_description(offer)
         .map_err(|err| err.to_string())?;
@@ -401,6 +402,34 @@ fn parse_stun_url(url: &str) -> Option<SocketAddr> {
     let addr = format!("{host}:{port}");
     let mut addrs = addr.to_socket_addrs().ok()?;
     addrs.find(SocketAddr::is_ipv4)
+}
+
+fn sanitize_remote_sdp(local_addr: SocketAddr, sdp: &str) -> String {
+    let allow_ipv6 = local_addr.is_ipv6();
+    let mut output = String::with_capacity(sdp.len());
+    for line in sdp.lines() {
+        let line = line.trim_end_matches('\r');
+        if let Some(candidate_line) = line
+            .strip_prefix("a=candidate:")
+            .or_else(|| line.strip_prefix("candidate:"))
+        {
+            let mut parts = candidate_line.split_whitespace();
+            let _foundation = parts.next();
+            let _component = parts.next();
+            let _transport = parts.next();
+            let _priority = parts.next();
+            let addr = parts.next().unwrap_or("");
+            if addr.ends_with(".local") {
+                continue;
+            }
+            if !allow_ipv6 && addr.contains(':') {
+                continue;
+            }
+        }
+        output.push_str(line);
+        output.push_str("\r\n");
+    }
+    output
 }
 
 fn log_candidate_list(kind: &str, key: &str, candidates: &[String]) {
@@ -628,6 +657,9 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
     pump_stun(peer);
 
     while let Some(msg) = peer.peer_connection.poll_write() {
+        if msg.transport.peer_addr.is_ipv6() && peer.local_addr.is_ipv4() {
+            continue;
+        }
         peer.socket
             .send_to(&msg.message, msg.transport.peer_addr)
             .map_err(|err| err.to_string())?;
@@ -712,8 +744,13 @@ fn drive_peer(peer: &mut Peer) -> Result<(), String> {
     loop {
         match peer.socket.recv_from(&mut buf) {
             Ok((n, peer_addr)) => {
-                if is_stun_message(&buf[..n]) && handle_stun_response(peer, &buf[..n])? {
-                    continue;
+                if is_stun_message(&buf[..n]) {
+                    if handle_stun_response(peer, &buf[..n])? {
+                        continue;
+                    }
+                    if peer.peer_connection.remote_description().is_none() {
+                        continue;
+                    }
                 }
                 let local_addr = if peer.local_ip.is_unspecified() {
                     peer.local_addr
