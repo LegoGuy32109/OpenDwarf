@@ -202,7 +202,7 @@ fn update_generation_labels(
                 if flags.answers_generating {
                     "Generating..."
                 } else {
-                    "Generate Answer Connections"
+                    "Accept Offer Payload"
                 }
             }
             _ => continue,
