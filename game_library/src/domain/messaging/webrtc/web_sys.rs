@@ -75,6 +75,14 @@ impl WebrtcManager {
         &mut self.rtc_config
     }
 
+    pub fn has_peers(&self) -> bool {
+        !self.offering_peers.is_empty() || !self.answering_peers.is_empty()
+    }
+
+    pub fn has_offers(&self) -> bool {
+        !self.offering_peers.is_empty()
+    }
+
     pub async fn make_offering_peers(&mut self, num_peers: usize) -> Result<(), String> {
         for peer in self.offering_peers.values() {
             peer.peer_connection.close();

@@ -1,7 +1,9 @@
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use bevy::prelude::{info, warn};
+use bevy::time::{Timer, TimerMode};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
@@ -90,7 +92,16 @@ pub struct MultiplayerController {
     #[cfg(not(target_arch = "wasm32"))]
     clipboard: clipboard::ClipboardState,
     clipboard_text: Option<String>,
-    driver_active: bool,
+    enabled: bool,
+    menu_open: bool,
+    started: bool,
+    flow: MultiplayerFlow,
+    guest_connected: bool,
+    #[cfg(target_arch = "wasm32")]
+    clipboard_scan: Rc<RefCell<ClipboardScanResult>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    clipboard_scan: ClipboardScanResult,
+    clipboard_scan_timer: Timer,
     #[cfg(target_arch = "wasm32")]
     generation: Rc<RefCell<GenerationFlags>>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -107,7 +118,16 @@ impl Default for MultiplayerController {
             #[cfg(not(target_arch = "wasm32"))]
             clipboard: clipboard::ClipboardState::new(),
             clipboard_text: None,
-            driver_active: false,
+            enabled: false,
+            menu_open: false,
+            started: false,
+            flow: MultiplayerFlow::None,
+            guest_connected: false,
+            #[cfg(target_arch = "wasm32")]
+            clipboard_scan: Rc::new(RefCell::new(ClipboardScanResult::default())),
+            #[cfg(not(target_arch = "wasm32"))]
+            clipboard_scan: ClipboardScanResult::default(),
+            clipboard_scan_timer: Timer::from_seconds(0.5, TimerMode::Repeating),
             #[cfg(target_arch = "wasm32")]
             generation: Rc::new(RefCell::new(GenerationFlags::default())),
             #[cfg(not(target_arch = "wasm32"))]
@@ -117,6 +137,18 @@ impl Default for MultiplayerController {
 }
 
 impl MultiplayerController {
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn flow_state(&self) -> MultiplayerFlow {
+        self.flow
+    }
+
+    pub fn guest_connected(&self) -> bool {
+        self.guest_connected
+    }
+
     pub fn generation_flags(&self) -> GenerationFlags {
         #[cfg(target_arch = "wasm32")]
         {
@@ -128,9 +160,68 @@ impl MultiplayerController {
         }
     }
 
+    pub fn clipboard_scan(&self) -> ClipboardScanResult {
+        #[cfg(target_arch = "wasm32")]
+        {
+            *self.clipboard_scan.borrow()
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.clipboard_scan
+        }
+    }
+
+    pub fn sync_menu_presence(&mut self, menu_present: bool) -> MenuPresenceChange {
+        let was_open = self.menu_open;
+        if self.has_peers() {
+            self.started = true;
+            if self.flow == MultiplayerFlow::None {
+                self.flow = if self.has_local_offers() {
+                    MultiplayerFlow::Host
+                } else {
+                    MultiplayerFlow::Guest
+                };
+            }
+        }
+        self.menu_open = menu_present;
+        if menu_present {
+            self.enabled = true;
+        } else if was_open && !self.should_remain_enabled() {
+            self.enabled = false;
+            self.started = false;
+            self.flow = MultiplayerFlow::None;
+            self.guest_connected = false;
+            self.set_clipboard_scan(ClipboardScanResult::default());
+        }
+
+        match (was_open, menu_present) {
+            (false, true) => MenuPresenceChange::Opened,
+            (true, false) => MenuPresenceChange::Closed,
+            _ => MenuPresenceChange::None,
+        }
+    }
+
+    pub fn tick_clipboard_scan(&mut self, delta: Duration) {
+        if !self.enabled {
+            return;
+        }
+        self.clipboard_scan_timer.tick(delta);
+        if self.clipboard_scan_timer.just_finished() {
+            self.scan_clipboard();
+        }
+    }
+
+    pub fn force_clipboard_scan(&mut self) {
+        if !self.enabled {
+            return;
+        }
+        self.clipboard_scan_timer.reset();
+        self.scan_clipboard();
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn drive(&mut self) {
-        if !self.driver_active {
+        if !self.enabled {
             return;
         }
         let offers_generating = self.generation.offers_generating;
@@ -142,6 +233,7 @@ impl MultiplayerController {
             let drive_result = manager.drive_network();
             let offers_ready = manager.offers_ready();
             let answers_ready = manager.answers_ready();
+            self.guest_connected = manager.guest_connected();
             (offers_ready, answers_ready, drive_result)
         };
 
@@ -175,6 +267,8 @@ impl MultiplayerController {
             MultiplayerAction::GenerateConnections => {
                 self.generation.offers_generating = true;
                 self.generation.offers_ready = false;
+                self.flow = MultiplayerFlow::Host;
+                self.guest_connected = false;
 
                 let manager = match self.manager_mut() {
                     Ok(manager) => manager,
@@ -186,7 +280,8 @@ impl MultiplayerController {
                 };
                 match manager.make_offering_peers(2) {
                     Ok(()) => {
-                        self.driver_active = true;
+                        self.enabled = true;
+                        self.started = true;
                         info!("Native WebRTC offers generated");
                     }
                     Err(err) => {
@@ -217,13 +312,16 @@ impl MultiplayerController {
                 }
             }
             MultiplayerAction::AcceptAnswerPayload => {
+                self.flow = MultiplayerFlow::Host;
                 let payload = match self.read_native_payload() {
                     Ok(payload) => payload,
                     Err(err) => {
                         warn!("Failed to read native answer payload: {err}");
+                        self.clear_clipboard_payload();
                         return;
                     }
                 };
+                self.clear_clipboard_payload();
                 let manager = match self.manager_mut() {
                     Ok(manager) => manager,
                     Err(err) => {
@@ -239,6 +337,8 @@ impl MultiplayerController {
             MultiplayerAction::GenerateAnswerConnections => {
                 self.generation.answers_generating = true;
                 self.generation.answers_ready = false;
+                self.flow = MultiplayerFlow::Guest;
+                self.guest_connected = false;
 
                 let payload = match self.read_native_payload() {
                     Ok(payload) => payload,
@@ -258,7 +358,8 @@ impl MultiplayerController {
                 };
                 match manager.make_guest_answers(&payload) {
                     Ok(()) => {
-                        self.driver_active = true;
+                        self.enabled = true;
+                        self.started = true;
                         info!("Native WebRTC answers generated");
                     }
                     Err(err) => {
@@ -309,6 +410,10 @@ impl MultiplayerController {
                     flags.offers_generating = true;
                     flags.offers_ready = false;
                 }
+                self.enabled = true;
+                self.flow = MultiplayerFlow::Host;
+                self.started = true;
+                self.guest_connected = false;
                 let manager = Rc::clone(&manager);
                 let generation = Rc::clone(&generation);
                 spawn_local(async move {
@@ -345,15 +450,18 @@ impl MultiplayerController {
                 });
             }
             MultiplayerAction::AcceptAnswerPayload => {
+                self.flow = MultiplayerFlow::Host;
                 let manager = Rc::clone(&manager);
                 spawn_local(async move {
                     let payload = match read_web_payload().await {
                         Ok(payload) => payload,
                         Err(err) => {
                             warn!("Failed to read answer payload: {err}");
+                            let _ = clipboard::write_text("").await;
                             return;
                         }
                     };
+                    let _ = clipboard::write_text("").await;
                     let result = manager.borrow_mut().receive_answer_payload(&payload).await;
                     match result {
                         Ok(()) => info!("Answer payload accepted"),
@@ -367,6 +475,10 @@ impl MultiplayerController {
                     flags.answers_generating = true;
                     flags.answers_ready = false;
                 }
+                self.enabled = true;
+                self.flow = MultiplayerFlow::Guest;
+                self.started = true;
+                self.guest_connected = false;
                 let manager = Rc::clone(&manager);
                 let generation = Rc::clone(&generation);
                 spawn_local(async move {
@@ -436,22 +548,178 @@ impl MultiplayerController {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn read_native_payload(&mut self) -> Result<Vec<RemotePeer>, String> {
-        let text = match self.clipboard.read_text() {
-            Ok(text) => text,
-            Err(err) => {
-                if let Some(fallback) = self.clipboard_text.as_ref() {
-                    warn!("Falling back to buffered clipboard text: {err}");
-                    fallback.clone()
-                } else {
-                    return Err(err);
-                }
-            }
-        };
+        let text = self.read_native_clipboard_text()?;
         let payload = decompress_remote_peers(&text)?;
         if payload.is_empty() {
             Err("Native clipboard payload was empty".to_string())
         } else {
             Ok(payload)
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn read_native_clipboard_text(&mut self) -> Result<String, String> {
+        match self.clipboard.read_text() {
+            Ok(text) => Ok(text),
+            Err(err) => {
+                if let Some(fallback) = self.clipboard_text.as_ref() {
+                    warn!("Falling back to buffered clipboard text: {err}");
+                    Ok(fallback.clone())
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    }
+
+    fn has_peers(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.manager
+                .as_ref()
+                .map_or(false, |manager| manager.has_peers())
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.manager
+                .as_ref()
+                .map_or(false, |manager| manager.borrow().has_peers())
+        }
+    }
+
+    fn has_local_offers(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.manager
+                .as_ref()
+                .map_or(false, |manager| manager.has_offers())
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.manager
+                .as_ref()
+                .map_or(false, |manager| manager.borrow().has_offers())
+        }
+    }
+
+    fn should_remain_enabled(&self) -> bool {
+        self.started || self.has_peers()
+    }
+
+    fn scan_clipboard(&mut self) {
+        self.set_clipboard_scan(ClipboardScanResult::default());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let text = match self.read_native_clipboard_text() {
+                Ok(text) => text,
+                Err(_) => return,
+            };
+            if text.trim().is_empty() {
+                return;
+            }
+            let payload = match decompress_remote_peers(&text) {
+                Ok(payload) => payload,
+                Err(_) => return,
+            };
+            if !is_valid_payload(&payload) {
+                return;
+            }
+            match classify_payload(&payload).unwrap_or_else(|| {
+                if self.has_local_offers() {
+                    ClipboardPayloadKind::Answer
+                } else {
+                    ClipboardPayloadKind::Offer
+                }
+            }) {
+                ClipboardPayloadKind::Offer => self.mark_clipboard_offer(),
+                ClipboardPayloadKind::Answer => self.mark_clipboard_answer(),
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let scan_store = Rc::clone(&self.clipboard_scan);
+            let local_has_offers = self.has_local_offers();
+            spawn_local(async move {
+                let text = match clipboard::read_text().await {
+                    Ok(text) => text,
+                    Err(_) => return,
+                };
+                if text.trim().is_empty() {
+                    return;
+                }
+                let payload = match decompress_remote_peers(&text) {
+                    Ok(payload) => payload,
+                    Err(_) => return,
+                };
+                if !is_valid_payload(&payload) {
+                    return;
+                }
+                let kind = classify_payload(&payload).unwrap_or_else(|| {
+                    if local_has_offers {
+                        ClipboardPayloadKind::Answer
+                    } else {
+                        ClipboardPayloadKind::Offer
+                    }
+                });
+                let mut scan = scan_store.borrow_mut();
+                *scan = ClipboardScanResult::default();
+                match kind {
+                    ClipboardPayloadKind::Offer => scan.offer_available = true,
+                    ClipboardPayloadKind::Answer => scan.answer_available = true,
+                }
+            });
+        }
+    }
+
+    fn clear_clipboard_payload(&mut self) {
+        self.set_clipboard_scan(ClipboardScanResult::default());
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Err(err) = self.clipboard.write_text("") {
+                warn!("Failed to clear clipboard payload: {err}");
+            }
+            self.clipboard_text = None;
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            spawn_local(async {
+                let _ = clipboard::write_text("").await;
+            });
+        }
+    }
+
+    fn set_clipboard_scan(&mut self, value: ClipboardScanResult) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            *self.clipboard_scan.borrow_mut() = value;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.clipboard_scan = value;
+        }
+    }
+
+    fn mark_clipboard_offer(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut scan = self.clipboard_scan.borrow_mut();
+            scan.offer_available = true;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.clipboard_scan.offer_available = true;
+        }
+    }
+
+    fn mark_clipboard_answer(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut scan = self.clipboard_scan.borrow_mut();
+            scan.answer_available = true;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.clipboard_scan.answer_available = true;
         }
     }
 }
@@ -465,4 +733,56 @@ async fn read_web_payload() -> Result<Vec<RemotePeer>, String> {
     } else {
         Ok(payload)
     }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ClipboardScanResult {
+    pub offer_available: bool,
+    pub answer_available: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuPresenceChange {
+    Opened,
+    Closed,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClipboardPayloadKind {
+    Offer,
+    Answer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MultiplayerFlow {
+    #[default]
+    None,
+    Host,
+    Guest,
+}
+
+fn classify_payload(payload: &[RemotePeer]) -> Option<ClipboardPayloadKind> {
+    let mut saw_offer = false;
+    let mut saw_answer = false;
+    for peer in payload {
+        if peer.sdp.contains("a=setup:actpass") {
+            saw_offer = true;
+        }
+        if peer.sdp.contains("a=setup:active") || peer.sdp.contains("a=setup:passive") {
+            saw_answer = true;
+        }
+    }
+    match (saw_offer, saw_answer) {
+        (true, false) => Some(ClipboardPayloadKind::Offer),
+        (false, true) => Some(ClipboardPayloadKind::Answer),
+        _ => None,
+    }
+}
+
+fn is_valid_payload(payload: &[RemotePeer]) -> bool {
+    !payload.is_empty()
+        && payload
+            .iter()
+            .all(|peer| !peer.key.trim().is_empty() && !peer.sdp.trim().is_empty())
 }

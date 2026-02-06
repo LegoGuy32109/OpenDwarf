@@ -141,6 +141,18 @@ impl WebrtcManager {
         &mut self.rtc_config
     }
 
+    pub fn has_peers(&self) -> bool {
+        !self.offering_peers.is_empty() || !self.answering_peers.is_empty()
+    }
+
+    pub fn has_offers(&self) -> bool {
+        !self.offering_peers.is_empty()
+    }
+
+    pub fn guest_connected(&self) -> bool {
+        self.answering_peers.values().any(|peer| peer.channel_open)
+    }
+
     pub fn make_offering_peers(&mut self, num_peers: usize) -> Result<(), String> {
         self.offering_peers.clear();
 
@@ -223,26 +235,32 @@ impl WebrtcManager {
             return Err("No Local Offers exist".to_string());
         }
 
-        let mut accepted = 0;
-        for remote_peer in remote_peers {
-            if let Some(local_peer) = self.offering_peers.get_mut(&remote_peer.key) {
-                if local_peer.peer_connection.remote_description().is_some() {
-                    continue;
-                }
-                let sanitized_sdp = sanitize_remote_sdp(local_peer.supports_ipv6, &remote_peer.sdp);
-                let answer =
-                    RTCSessionDescription::answer(sanitized_sdp).map_err(|err| err.to_string())?;
-                local_peer
-                    .peer_connection
-                    .set_remote_description(answer)
-                    .map_err(|err| err.to_string())?;
-                accepted += 1;
+        let remote_keys: Vec<&str> = remote_peers.iter().map(|peer| peer.key.as_str()).collect();
+        let mut open_peer: Option<&mut Peer> = None;
+        for (key, peer) in self.offering_peers.iter_mut() {
+            if peer.peer_connection.remote_description().is_none()
+                && remote_keys
+                    .iter()
+                    .any(|remote_key| *remote_key == key.as_str())
+            {
+                open_peer = Some(peer);
+                break;
             }
         }
 
-        if accepted == 0 {
-            return Err("No matching offer peers for answer payload".to_string());
-        }
+        let open_peer =
+            open_peer.ok_or_else(|| "No matching offer peers for answer payload".to_string())?;
+        let remote_peer = remote_peers
+            .iter()
+            .find(|peer| peer.key == open_peer.key)
+            .ok_or_else(|| "Remote Peer filtering invalid, BUG".to_string())?;
+
+        let sanitized_sdp = sanitize_remote_sdp(open_peer.supports_ipv6, &remote_peer.sdp);
+        let answer = RTCSessionDescription::answer(sanitized_sdp).map_err(|err| err.to_string())?;
+        open_peer
+            .peer_connection
+            .set_remote_description(answer)
+            .map_err(|err| err.to_string())?;
 
         Ok(())
     }

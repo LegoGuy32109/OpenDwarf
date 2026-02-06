@@ -1,10 +1,15 @@
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
+use bevy::window::WindowFocused;
 
 use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
 
-use crate::domain::messaging::webrtc::{GenerationFlags, MultiplayerAction, MultiplayerController};
+use crate::domain::messaging::webrtc::{
+    ClipboardScanResult, GenerationFlags, MenuPresenceChange, MultiplayerAction,
+    MultiplayerController, MultiplayerFlow,
+};
+use std::collections::HashSet;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use super::menu_events::MenuEvent;
@@ -16,6 +21,7 @@ pub fn handle_multiplayer_menu(
     player_focus_state: ResMut<PlayerFocusState>,
     mut webrtc_state: NonSendMut<MultiplayerController>,
     maybe_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<MultiplayerMenu>>,
+    button_actions: Query<(Entity, &MultiplayerMenuAction), With<MultiplayerMenuButton>>,
     mut button_query: Query<(
         Entity,
         &MultiplayerMenuAction,
@@ -31,10 +37,12 @@ pub fn handle_multiplayer_menu(
 
     let menu_entities: Vec<Entity> = maybe_menu.iter().map(|(entity, _, _)| entity).collect();
     let num_menus = menu_entities.len();
+    let presence_change = webrtc_state.sync_menu_presence(num_menus > 0);
     if num_menus > 1 {
         for entity in menu_entities {
             commands.entity(entity).despawn();
         }
+        webrtc_state.sync_menu_presence(false);
         return;
     }
 
@@ -57,6 +65,19 @@ pub fn handle_multiplayer_menu(
             return;
         }
 
+        if presence_change == MenuPresenceChange::Opened {
+            webrtc_state.force_clipboard_scan();
+            if webrtc_state.clipboard_scan().offer_available {
+                if let Some(entity) = find_button_entity(
+                    &button_actions,
+                    MultiplayerMenuAction::GenerateAnswerConnections,
+                ) {
+                    ui_focus_map.current_focus = Some(entity);
+                    ui_focus_map.focus_visible = true;
+                }
+            }
+        }
+
         if toggle_menu_pressed {
             menu_events.write(MenuEvent::CloseCurrentMenu);
             return;
@@ -64,6 +85,22 @@ pub fn handle_multiplayer_menu(
 
         let flags = generation_snapshot(&webrtc_state);
         update_generation_labels(flags, &button_children, &mut text_query);
+        let clipboard_scan = webrtc_state.clipboard_scan();
+        let flow_state = webrtc_state.flow_state();
+        let guest_connected = webrtc_state.guest_connected();
+        let disabled_entities =
+            collect_disabled_entities(&button_actions, flow_state, clipboard_scan, guest_connected);
+        if ui_focus_map
+            .current_focus
+            .is_some_and(|entity| disabled_entities.contains(&entity))
+        {
+            if let Some(entity) =
+                first_enabled_entity(&button_actions, flow_state, clipboard_scan, guest_connected)
+            {
+                ui_focus_map.current_focus = Some(entity);
+                ui_focus_map.focus_visible = true;
+            }
+        }
 
         process_multiplayer_menu(
             input_state.as_ref(),
@@ -71,6 +108,10 @@ pub fn handle_multiplayer_menu(
             button_query.reborrow(),
             menu_events,
             &mut webrtc_state,
+            clipboard_scan,
+            flow_state,
+            guest_connected,
+            &disabled_entities,
         );
     }
 }
@@ -87,6 +128,10 @@ fn process_multiplayer_menu(
     )>,
     mut menu_events: MessageWriter<MenuEvent>,
     webrtc_state: &mut MultiplayerController,
+    clipboard_scan: ClipboardScanResult,
+    flow_state: MultiplayerFlow,
+    guest_connected: bool,
+    disabled_entities: &HashSet<Entity>,
 ) {
     let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
         Some(CompassOctant::North)
@@ -105,13 +150,27 @@ fn process_multiplayer_menu(
         && let Some(next_entity_to_focus) =
             ui_focus_map.get_next_entity(focused_entity, selected_direction)
     {
-        ui_focus_map.current_focus = Some(next_entity_to_focus);
-        ui_focus_map.focus_visible = true;
+        let mut next = Some(next_entity_to_focus);
+        let mut attempts = 0;
+        while let Some(candidate) = next {
+            if !disabled_entities.contains(&candidate) {
+                ui_focus_map.current_focus = Some(candidate);
+                ui_focus_map.focus_visible = true;
+                break;
+            }
+            attempts += 1;
+            if attempts >= ui_focus_map.nodes.len() {
+                break;
+            }
+            next = ui_focus_map.get_next_entity(candidate, selected_direction);
+        }
     }
 
     let confirm_pressed = input_state.just_pressed(&input_state.groups.ui_confirm);
     let focused_entity = ui_focus_map.current_focus;
     for (entity, action, button, mut background_color, mut border_color) in &mut button_query {
+        let is_disabled = is_action_disabled(*action, flow_state, clipboard_scan, guest_connected)
+            || disabled_entities.contains(&entity);
         if confirm_pressed && Some(entity) == focused_entity {
             match action {
                 MultiplayerMenuAction::Back => {
@@ -119,16 +178,24 @@ fn process_multiplayer_menu(
                 }
                 MultiplayerMenuAction::GenerateConnections
                 | MultiplayerMenuAction::CopyOfferPayload
-                | MultiplayerMenuAction::AcceptAnswerPayload
                 | MultiplayerMenuAction::GenerateAnswerConnections
                 | MultiplayerMenuAction::CopyAnswerPayload
                 | MultiplayerMenuAction::Configure => {
-                    trigger_multiplayer_action(*action, webrtc_state);
+                    if !is_disabled {
+                        trigger_multiplayer_action(*action, webrtc_state);
+                    }
+                }
+                MultiplayerMenuAction::AcceptAnswerPayload => {
+                    if !is_disabled {
+                        trigger_multiplayer_action(*action, webrtc_state);
+                    }
                 }
             }
         }
 
-        let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
+        let (bg, bd) = if is_disabled {
+            (button.disabled_background, button.disabled_border)
+        } else if ui_focus_map.focus_visible && Some(entity) == focused_entity {
             (button.focus_background, button.focus_border)
         } else {
             (button.normal_background, button.normal_border)
@@ -141,7 +208,7 @@ fn process_multiplayer_menu(
 #[derive(Component)]
 pub struct MultiplayerMenu;
 
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MultiplayerMenuAction {
     GenerateConnections,
     CopyOfferPayload,
@@ -158,6 +225,8 @@ pub struct MultiplayerMenuButton {
     normal_border: Color,
     focus_background: Color,
     focus_border: Color,
+    disabled_background: Color,
+    disabled_border: Color,
 }
 
 fn trigger_multiplayer_action(
@@ -215,6 +284,84 @@ fn update_generation_labels(
             }
         }
     }
+}
+
+fn find_button_entity(
+    button_actions: &Query<(Entity, &MultiplayerMenuAction), With<MultiplayerMenuButton>>,
+    action: MultiplayerMenuAction,
+) -> Option<Entity> {
+    button_actions
+        .iter()
+        .find(|(_, button_action)| **button_action == action)
+        .map(|(entity, _)| entity)
+}
+
+fn is_action_disabled(
+    action: MultiplayerMenuAction,
+    flow_state: MultiplayerFlow,
+    clipboard_scan: ClipboardScanResult,
+    guest_connected: bool,
+) -> bool {
+    match action {
+        MultiplayerMenuAction::GenerateConnections
+        | MultiplayerMenuAction::CopyOfferPayload
+        | MultiplayerMenuAction::AcceptAnswerPayload => {
+            flow_state == MultiplayerFlow::Guest
+                || (action == MultiplayerMenuAction::AcceptAnswerPayload
+                    && !clipboard_scan.answer_available)
+        }
+        MultiplayerMenuAction::GenerateAnswerConnections
+        | MultiplayerMenuAction::CopyAnswerPayload => {
+            flow_state == MultiplayerFlow::Host
+                || (flow_state == MultiplayerFlow::Guest && guest_connected)
+        }
+        MultiplayerMenuAction::Configure | MultiplayerMenuAction::Back => false,
+    }
+}
+
+fn collect_disabled_entities(
+    button_actions: &Query<(Entity, &MultiplayerMenuAction), With<MultiplayerMenuButton>>,
+    flow_state: MultiplayerFlow,
+    clipboard_scan: ClipboardScanResult,
+    guest_connected: bool,
+) -> HashSet<Entity> {
+    button_actions
+        .iter()
+        .filter_map(|(entity, action)| {
+            if is_action_disabled(*action, flow_state, clipboard_scan, guest_connected) {
+                Some(entity)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn first_enabled_entity(
+    button_actions: &Query<(Entity, &MultiplayerMenuAction), With<MultiplayerMenuButton>>,
+    flow_state: MultiplayerFlow,
+    clipboard_scan: ClipboardScanResult,
+    guest_connected: bool,
+) -> Option<Entity> {
+    let action_order = [
+        MultiplayerMenuAction::GenerateConnections,
+        MultiplayerMenuAction::CopyOfferPayload,
+        MultiplayerMenuAction::AcceptAnswerPayload,
+        MultiplayerMenuAction::GenerateAnswerConnections,
+        MultiplayerMenuAction::CopyAnswerPayload,
+        MultiplayerMenuAction::Configure,
+        MultiplayerMenuAction::Back,
+    ];
+
+    for action in action_order {
+        if is_action_disabled(action, flow_state, clipboard_scan, guest_connected) {
+            continue;
+        }
+        if let Some(entity) = find_button_entity(button_actions, action) {
+            return Some(entity);
+        }
+    }
+    None
 }
 
 fn make_multiplayer_menu() -> impl Bundle {
@@ -275,6 +422,8 @@ fn make_button(text: &'static str, action: MultiplayerMenuAction) -> impl Bundle
     let button_border_color: Color = color_from_hex("#AFAFAB");
     let focus_button_color: Color = color_from_hex("#2B3D61");
     let focus_button_border_color: Color = color_from_hex("#E2D9D6");
+    let disabled_button_color: Color = color_from_hex("#3B3B3B");
+    let disabled_button_border_color: Color = color_from_hex("#7B7B7B");
     (
         Node {
             width: percent(100.),
@@ -292,6 +441,8 @@ fn make_button(text: &'static str, action: MultiplayerMenuAction) -> impl Bundle
             normal_border: button_border_color,
             focus_background: focus_button_color,
             focus_border: focus_button_border_color,
+            disabled_background: disabled_button_color,
+            disabled_border: disabled_button_border_color,
         },
         children![(
             Text::new(text),
@@ -318,6 +469,24 @@ fn make_divider() -> impl Bundle {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn drive_native_webrtc(mut webrtc_state: NonSendMut<MultiplayerController>) {
     webrtc_state.drive();
+}
+
+pub fn tick_multiplayer_clipboard_scan(
+    time: Res<Time>,
+    mut webrtc_state: NonSendMut<MultiplayerController>,
+) {
+    webrtc_state.tick_clipboard_scan(time.delta());
+}
+
+pub fn scan_multiplayer_clipboard_on_focus(
+    mut focus_events: MessageReader<WindowFocused>,
+    mut webrtc_state: NonSendMut<MultiplayerController>,
+) {
+    for event in focus_events.read() {
+        if event.focused {
+            webrtc_state.force_clipboard_scan();
+        }
+    }
 }
 
 pub fn spawn_multiplayer_menu(commands: &mut Commands) -> Entity {

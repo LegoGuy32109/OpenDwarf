@@ -6,12 +6,14 @@ use crate::resources::player_focus_state::PlayerFocusState;
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use super::menu_events::{MenuAction, MenuEvent};
 use super::ui_focus_map::UiFocusMap;
+use crate::domain::messaging::webrtc::MultiplayerController;
 use crate::resources::input_state::InputState;
 
 pub fn handle_escape_menu(
     mut commands: Commands,
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
+    webrtc_state: NonSend<MultiplayerController>,
     maybe_escape_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<EscapeMenu>>,
     button_query: Query<(
         Entity,
@@ -20,6 +22,10 @@ pub fn handle_escape_menu(
         &mut BackgroundColor,
         &mut BorderColor,
     )>,
+    mut indicator_query: Query<
+        &mut Visibility,
+        (With<MultiplayerStatusIndicator>, Without<EscapeMenu>),
+    >,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
     if player_focus_state.typing {
@@ -64,6 +70,15 @@ pub fn handle_escape_menu(
         if toggle_menu_pressed {
             menu_events.write(MenuEvent::CloseCurrentMenu);
             return;
+        }
+
+        let indicator_visibility = if webrtc_state.is_enabled() {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        for mut visibility in &mut indicator_query {
+            *visibility = indicator_visibility;
         }
 
         process_escape_menu(
@@ -206,6 +221,9 @@ fn make_button(text: &'static str, action: MenuAction) -> impl Bundle {
     )
 }
 
+#[derive(Component)]
+pub(crate) struct MultiplayerStatusIndicator;
+
 fn spawn_escape_menu(commands: &mut Commands) -> Entity {
     // generate components
     let menu = commands.spawn(make_escape_menu()).id();
@@ -217,6 +235,22 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
         .id();
     let button_multiplayer = commands
         .spawn(make_button("Multiplayer", MenuAction::OpenMultiplayer))
+        .id();
+    let multiplayer_indicator = commands
+        .spawn((
+            MultiplayerStatusIndicator,
+            Node {
+                width: px(10),
+                height: px(10),
+                position_type: PositionType::Absolute,
+                top: px(10),
+                right: px(12),
+                border_radius: BorderRadius::all(px(999.)),
+                ..default()
+            },
+            BackgroundColor(color_from_hex("#53D06C")),
+            Visibility::Hidden,
+        ))
         .id();
     let button_save_quit = commands
         .spawn(make_button(
@@ -231,6 +265,9 @@ fn spawn_escape_menu(commands: &mut Commands) -> Entity {
         button_options,
         button_save_quit,
     ]);
+    commands
+        .entity(button_multiplayer)
+        .add_child(multiplayer_indicator);
 
     // create the ui flow representations
     let mut focus_map = UiFocusMap::default();
