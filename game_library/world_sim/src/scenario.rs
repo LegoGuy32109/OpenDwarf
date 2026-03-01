@@ -9,6 +9,7 @@ use crate::world_core::WorldConfig;
 pub enum ScenarioStep {
     MoveEntity { id: u64, direction: Vec3i },
     Tick { count: u32 },
+    SetChunkLoaded { chunk: Vec3i, loaded: bool },
     AssertEntityPosition { id: u64, expected: Vec3i },
     AssertEntityFacingLeft { id: u64, expected: bool },
     AssertEntityProne { id: u64, expected: bool },
@@ -63,6 +64,14 @@ impl ScenarioBuilder {
     #[must_use]
     pub fn tick(mut self, count: u32) -> Self {
         self.scenario.steps.push(ScenarioStep::Tick { count });
+        self
+    }
+
+    #[must_use]
+    pub fn set_chunk_loaded(mut self, chunk: Vec3i, loaded: bool) -> Self {
+        self.scenario
+            .steps
+            .push(ScenarioStep::SetChunkLoaded { chunk, loaded });
         self
     }
 
@@ -182,6 +191,21 @@ pub fn run_scenario(
             }
             ScenarioStep::Tick { count } => {
                 let command = WorldCommand::AdvanceTicks { count: *count };
+                let tick_before = app.snapshot().tick;
+                app.send_command(command.clone())
+                    .map_err(ScenarioError::CommandEnqueue)?;
+                app.step_ticks(1);
+                if let Some(recorder) = &mut replay {
+                    recorder.record_command(tick_before, command);
+                    recorder.record_updates(app.drain_updates());
+                    recorder.maybe_checkpoint(&app.snapshot());
+                }
+            }
+            ScenarioStep::SetChunkLoaded { chunk, loaded } => {
+                let command = WorldCommand::SetChunkLoaded {
+                    chunk: *chunk,
+                    loaded: *loaded,
+                };
                 let tick_before = app.snapshot().tick;
                 app.send_command(command.clone())
                     .map_err(ScenarioError::CommandEnqueue)?;

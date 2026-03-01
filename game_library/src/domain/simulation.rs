@@ -359,6 +359,12 @@ fn describe_replay_event(event: &ReplayEvent) -> String {
             WorldCommand::AdvanceTicks { count } => {
                 format!("[tick {tick_before}] CMD AdvanceTicks count={count}")
             }
+            WorldCommand::SetChunkLoaded { chunk, loaded } => {
+                format!(
+                    "[tick {tick_before}] CMD SetChunkLoaded chunk=({}, {}, {}) loaded={}",
+                    chunk.x, chunk.y, chunk.z, loaded
+                )
+            }
         },
         ReplayEvent::Update(WorldUpdate::Snapshot(snapshot)) => {
             format!(

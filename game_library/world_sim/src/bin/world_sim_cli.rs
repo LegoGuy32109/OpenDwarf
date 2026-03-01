@@ -14,7 +14,9 @@ fn main() {
     } else {
         println!("no primary entity spawned");
     }
-    println!("commands: move <dx> <dy> <dz>, tick <count>, snapshot, updates, quit");
+    println!(
+        "commands: move <dx> <dy> <dz>, tick <count>, chunk <x> <y> <z> <loaded:0|1>, snapshot, updates, quit"
+    );
     print!("> ");
     io::stdout().flush().expect("flush should work");
 
@@ -71,6 +73,35 @@ fn main() {
                 }
                 app.step_ticks(1);
                 println!("stepped simulation");
+            }
+            "chunk" => {
+                if parts.len() != 5 {
+                    println!("usage: chunk <x> <y> <z> <loaded:0|1>");
+                } else {
+                    let parsed = (
+                        parts[1].parse::<i32>(),
+                        parts[2].parse::<i32>(),
+                        parts[3].parse::<i32>(),
+                        parts[4].parse::<u8>(),
+                    );
+                    if let (Ok(x), Ok(y), Ok(z), Ok(flag)) = parsed {
+                        if flag > 1 {
+                            println!("usage: chunk <x> <y> <z> <loaded:0|1>");
+                        } else if let Err(err) = app.send_command(WorldCommand::SetChunkLoaded {
+                            chunk: Vec3i::new(x, y, z),
+                            loaded: flag == 1,
+                        }) {
+                            println!("failed to enqueue chunk command: {err}");
+                        } else {
+                            println!(
+                                "queued chunk ({x}, {y}, {z}) => {}",
+                                if flag == 1 { "loaded" } else { "unloaded" }
+                            );
+                        }
+                    } else {
+                        println!("usage: chunk <x> <y> <z> <loaded:0|1>");
+                    }
+                }
             }
             "snapshot" => {
                 let snapshot = app.snapshot();

@@ -151,10 +151,32 @@ fn run_simulation_tick(
                             max.z,
                         );
                     }
+                    Err(MoveEntityError::ChunkNotLoaded { from, to, chunk }) => {
+                        eprintln!(
+                            "World command rejected: chunk not loaded id={id} from=({}, {}, {}) to=({}, {}, {}), chunk=({}, {}, {})",
+                            from.x,
+                            from.y,
+                            from.z,
+                            to.x,
+                            to.y,
+                            to.z,
+                            chunk.x,
+                            chunk.y,
+                            chunk.z,
+                        );
+                    }
                 }
             }
             WorldCommand::AdvanceTicks { count } => {
                 if let Some(delta) = sim_state.world.apply_command(WorldCommand::AdvanceTicks { count }) {
+                    updates.0.push(WorldUpdate::Delta(delta));
+                }
+            }
+            WorldCommand::SetChunkLoaded { chunk, loaded } => {
+                if let Some(delta) = sim_state
+                    .world
+                    .apply_command(WorldCommand::SetChunkLoaded { chunk, loaded })
+                {
                     updates.0.push(WorldUpdate::Delta(delta));
                 }
             }

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +50,7 @@ pub struct WorldState {
     world_chunks: Vec3u,
     blocks: Vec<BlockType>,
     entities: BTreeMap<u64, EntityState>,
+    loaded_chunks: HashSet<Vec3i>,
     next_entity_id: u64,
 }
 
@@ -82,6 +84,7 @@ impl WorldState {
             world_chunks: config.world_chunks,
             blocks: make_initial_blocks(config.chunk_edge, config.world_chunks, block_count),
             entities: BTreeMap::new(),
+            loaded_chunks: make_initial_loaded_chunks(config.world_chunks),
             next_entity_id: 1,
         }
     }
@@ -121,6 +124,19 @@ impl WorldState {
             return Err(MoveEntityError::OutOfBounds {
                 from: current.position,
                 to: target_position,
+            });
+        }
+        let Some(target_chunk) = self.world_position_to_chunk_coord(target_position) else {
+            return Err(MoveEntityError::OutOfBounds {
+                from: current.position,
+                to: target_position,
+            });
+        };
+        if !self.is_chunk_loaded(target_chunk) {
+            return Err(MoveEntityError::ChunkNotLoaded {
+                from: current.position,
+                to: target_position,
+                chunk: target_chunk,
             });
         }
 
@@ -183,6 +199,19 @@ impl WorldState {
         self.entities.contains_key(&id)
     }
 
+    pub fn set_chunk_loaded(&mut self, chunk: Vec3i, loaded: bool) {
+        if loaded {
+            self.loaded_chunks.insert(chunk);
+        } else {
+            self.loaded_chunks.remove(&chunk);
+        }
+    }
+
+    #[must_use]
+    pub fn is_chunk_loaded(&self, chunk: Vec3i) -> bool {
+        self.loaded_chunks.contains(&chunk)
+    }
+
     pub fn spawn_or_replace_entity(&mut self, id: u64, position: Vec3i) -> Result<(), String> {
         if !self.contains_position(position) {
             return Err(format!("spawn position is out of bounds: {position:?}"));
@@ -201,6 +230,13 @@ impl WorldState {
             WorldCommand::AdvanceTicks { count } => {
                 let ticks = count.max(1);
                 self.tick = self.tick.saturating_add(u64::from(ticks));
+                Some(WorldDelta {
+                    tick: self.tick,
+                    moved_entities: vec![],
+                })
+            }
+            WorldCommand::SetChunkLoaded { chunk, loaded } => {
+                self.set_chunk_loaded(chunk, loaded);
                 Some(WorldDelta {
                     tick: self.tick,
                     moved_entities: vec![],
@@ -266,6 +302,43 @@ impl WorldState {
         )
     }
 
+    fn world_position_to_chunk_coord(&self, position: Vec3i) -> Option<Vec3i> {
+        let world_size = self.world_size_in_voxels();
+        let min = Vec3i::new(
+            -(i32::try_from(world_size.x).ok()? / 2),
+            -(i32::try_from(world_size.y).ok()? / 2),
+            -(i32::try_from(world_size.z).ok()? / 2),
+        );
+
+        let local_x = position.x - min.x;
+        let local_y = position.y - min.y;
+        let local_z = position.z - min.z;
+        if local_x < 0 || local_y < 0 || local_z < 0 {
+            return None;
+        }
+        let local_x_u = u32::try_from(local_x).ok()?;
+        let local_y_u = u32::try_from(local_y).ok()?;
+        let local_z_u = u32::try_from(local_z).ok()?;
+        if local_x_u >= world_size.x || local_y_u >= world_size.y || local_z_u >= world_size.z {
+            return None;
+        }
+
+        let edge = self.chunk_edge.max(1);
+        let chunk_local_x = local_x_u / edge;
+        let chunk_local_y = local_y_u / edge;
+        let chunk_local_z = local_z_u / edge;
+
+        let center_x = i32::try_from(self.world_chunks.x).ok()? / 2;
+        let center_y = i32::try_from(self.world_chunks.y).ok()? / 2;
+        let center_z = i32::try_from(self.world_chunks.z).ok()? / 2;
+
+        Some(Vec3i::new(
+            i32::try_from(chunk_local_x).ok()? - center_x,
+            i32::try_from(chunk_local_y).ok()? - center_y,
+            i32::try_from(chunk_local_z).ok()? - center_z,
+        ))
+    }
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,6 +348,30 @@ pub enum MoveEntityError {
         from: Vec3i,
         to: Vec3i,
     },
+    ChunkNotLoaded {
+        from: Vec3i,
+        to: Vec3i,
+        chunk: Vec3i,
+    },
+}
+
+fn make_initial_loaded_chunks(world_chunks: Vec3u) -> HashSet<Vec3i> {
+    let mut loaded = HashSet::new();
+    let offset_x = i32::try_from(world_chunks.x).expect("world_chunks.x too large") / 2;
+    let offset_y = i32::try_from(world_chunks.y).expect("world_chunks.y too large") / 2;
+    let offset_z = i32::try_from(world_chunks.z).expect("world_chunks.z too large") / 2;
+    for z in 0..world_chunks.z {
+        for y in 0..world_chunks.y {
+            for x in 0..world_chunks.x {
+                loaded.insert(Vec3i::new(
+                    i32::try_from(x).expect("x too large") - offset_x,
+                    i32::try_from(y).expect("y too large") - offset_y,
+                    i32::try_from(z).expect("z too large") - offset_z,
+                ));
+            }
+        }
+    }
+    loaded
 }
 
 fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize) -> Vec<BlockType> {
@@ -444,5 +541,20 @@ mod tests {
             .find(|entity| entity.id == 1)
             .expect("entity should exist");
         assert!(!entity.is_prone);
+    }
+
+    #[test]
+    fn move_entity_into_unloaded_chunk_is_rejected() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("spawn should succeed");
+        world.set_chunk_loaded(Vec3i::ZERO, false);
+
+        let err = world
+            .move_entity_with_reason(1, Vec3i::new(1, 0, 0))
+            .expect_err("move should fail when chunk is unloaded");
+
+        assert!(matches!(err, MoveEntityError::ChunkNotLoaded { .. }));
     }
 }

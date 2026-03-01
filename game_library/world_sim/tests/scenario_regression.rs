@@ -62,6 +62,19 @@ fn scenario_asserts_entity_facing_after_pattern() {
         .expect("scenario should validate facing successfully");
 }
 
+#[test]
+fn scenario_rejects_movement_into_unloaded_chunk() {
+    let scenario = ScenarioBuilder::new("unloaded_chunk_rejects_move")
+        .set_chunk_loaded(Vec3i::ZERO, false)
+        .move_entity(1, Vec3i::new(1, 0, 0))
+        .assert_entity_position(1, Vec3i::ZERO)
+        .assert_tick(0)
+        .build();
+
+    run_scenario(&scenario, ScenarioRunOptions::default())
+        .expect("scenario should keep entity in place when chunk is unloaded");
+}
+
 fn unique_temp_path(filename: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

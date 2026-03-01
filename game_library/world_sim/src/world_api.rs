@@ -83,6 +83,7 @@ pub struct WorldDelta {
 pub enum WorldCommand {
     MoveEntity { id: u64, direction: Vec3i },
     AdvanceTicks { count: u32 },
+    SetChunkLoaded { chunk: Vec3i, loaded: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

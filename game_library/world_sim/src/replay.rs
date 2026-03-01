@@ -10,7 +10,7 @@ use crate::bevy_app::{WorldSimApp, WorldSimSettings, WorldSimulationPlugin};
 use crate::world_api::{WorldCommand, WorldSnapshot, WorldUpdate};
 use crate::world_core::WorldConfig;
 
-pub const REPLAY_FORMAT_VERSION: u32 = 3;
+pub const REPLAY_FORMAT_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplayMetadata {
