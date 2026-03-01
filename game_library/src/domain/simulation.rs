@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use bevy::prelude::*;
 use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
@@ -16,7 +16,8 @@ use world_sim::world_api::{BlockType, Vec3i, Vec3u, WorldCommand, WorldSnapshot,
 use super::visuals::Player;
 
 const FLOOR_Z: i32 = -1;
-const STONE_TILE_INDEX: u16 = 1;
+const CHUNK_STREAM_RADIUS_XY: i32 = 2;
+const CHUNK_STREAM_RADIUS_Z: i32 = 0;
 #[cfg(not(target_arch = "wasm32"))]
 const REPLAY_PATH_ENV: &str = "OPEN_DWARF_REPLAY_PATH";
 
@@ -62,6 +63,11 @@ pub struct RenderEntityState {
     pub is_prone: bool,
 }
 
+#[derive(Resource, Default)]
+pub struct ChunkStreamingState {
+    loaded_chunks: HashSet<Vec3i>,
+}
+
 impl RenderWorldState {
     fn mark_all_dirty(&mut self) {
         self.terrain_dirty = true;
@@ -96,6 +102,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(replay_mode);
     commands.insert_resource(replay_hud_state);
     commands.insert_resource(render_world_state);
+    commands.insert_resource(ChunkStreamingState::default());
 }
 
 pub fn queue_world_commands_from_input(
@@ -224,6 +231,8 @@ pub fn drive_replay_playback(
 }
 
 pub fn project_world_to_tilemap(
+    replay_mode: Res<ReplayMode>,
+    chunk_streaming_state: Option<Res<ChunkStreamingState>>,
     mut render_world_state: ResMut<RenderWorldState>,
     mut chunk_data_query: Single<&mut TilemapChunkTileData>,
 ) {
@@ -232,18 +241,49 @@ pub fn project_world_to_tilemap(
     }
 
     let chunk_edge = render_world_state.chunk_edge;
-    let tile_count = chunk_edge.checked_mul(chunk_edge).unwrap_or(0);
+    let world_size_x = render_world_state
+        .world_chunks
+        .x
+        .checked_mul(chunk_edge)
+        .expect("project_world_to_tilemap world x-size overflowed");
+    let world_size_y = render_world_state
+        .world_chunks
+        .y
+        .checked_mul(chunk_edge)
+        .expect("project_world_to_tilemap world y-size overflowed");
+
+    let tile_count = world_size_x
+        .checked_mul(world_size_y)
+        .expect("project_world_to_tilemap tile count overflowed");
     let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
-    for y in 0..chunk_edge {
-        for x in 0..chunk_edge {
-            let world_position = world_pos_from_xy(chunk_edge, x, y, FLOOR_Z);
+    let loaded_chunks = chunk_streaming_state
+        .as_ref()
+        .map(|state| &state.loaded_chunks);
+    for y in 0..world_size_y {
+        for x in 0..world_size_x {
+            let world_position = world_pos_from_xy(world_size_x, world_size_y, x, y, FLOOR_Z);
             let index_in_slice = usize::try_from(y)
                 .expect("y does not fit in usize")
-                .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
+                .checked_mul(
+                    usize::try_from(world_size_x).expect("world size x does not fit in usize"),
+                )
                 .and_then(|offset| {
                     offset.checked_add(usize::try_from(x).expect("x does not fit in usize"))
                 })
                 .expect("tile slice index overflowed");
+
+            if !replay_mode.active
+                && let Some(loaded_chunks) = loaded_chunks
+                && !loaded_chunks.is_empty()
+                && !is_loaded_chunk_position(
+                    world_position,
+                    chunk_edge,
+                    render_world_state.world_chunks,
+                    loaded_chunks,
+                )
+            {
+                continue;
+            }
 
             if matches!(
                 block_at_world_position(
@@ -254,7 +294,9 @@ pub fn project_world_to_tilemap(
                 ),
                 Some(BlockType::SolidStone)
             ) {
-                tile_data[index_in_slice] = Some(TileData::from_tileset_index(STONE_TILE_INDEX));
+                tile_data[index_in_slice] = Some(TileData::from_tileset_index(stone_tile_index(
+                    world_position,
+                )));
             }
         }
     }
@@ -281,11 +323,17 @@ pub fn project_world_entities_to_sprites(
     };
 
     if let Ok((mut transform, mut coordinates, mut sprite)) = player_query.single_mut() {
-        let map_size = uvec3(
-            render_world_state.chunk_edge,
-            render_world_state.chunk_edge,
-            1,
-        );
+        let world_voxels_x = render_world_state
+            .world_chunks
+            .x
+            .checked_mul(render_world_state.chunk_edge)
+            .expect("project_world_entities_to_sprites world x-size overflowed");
+        let world_voxels_y = render_world_state
+            .world_chunks
+            .y
+            .checked_mul(render_world_state.chunk_edge)
+            .expect("project_world_entities_to_sprites world y-size overflowed");
+        let map_size = uvec3(world_voxels_x, world_voxels_y, 1);
         *coordinates = MapCoordinates::new(
             IVec3::new(
                 player_world_position.position.x,
@@ -299,6 +347,61 @@ pub fn project_world_entities_to_sprites(
     }
 
     render_world_state.entities_dirty = false;
+}
+
+pub fn stream_chunks_around_player(
+    replay_mode: Res<ReplayMode>,
+    primary_entity_id: Res<PrimarySimulationEntityId>,
+    render_world_state: Res<RenderWorldState>,
+    mut chunk_streaming_state: ResMut<ChunkStreamingState>,
+    mut world_command_queue: ResMut<WorldCommandQueue>,
+) {
+    if replay_mode.active {
+        return;
+    }
+
+    let Some(entity_id) = primary_entity_id.0 else {
+        return;
+    };
+    if render_world_state.chunk_edge == 0 {
+        return;
+    }
+    let Some(entity) = render_world_state.entities.get(&entity_id) else {
+        return;
+    };
+    let Some(center_chunk) = world_pos_to_chunk_coord(
+        entity.position,
+        render_world_state.chunk_edge,
+        render_world_state.world_chunks,
+    ) else {
+        return;
+    };
+
+    let desired = chunk_window(center_chunk, render_world_state.world_chunks);
+
+    for chunk in desired.difference(&chunk_streaming_state.loaded_chunks) {
+        world_command_queue.push(WorldCommand::SetChunkLoaded {
+            chunk: *chunk,
+            loaded: true,
+        });
+    }
+
+    chunk_streaming_state.loaded_chunks.extend(desired);
+}
+
+pub fn follow_player_camera(
+    player_query: Query<&Transform, With<Player>>,
+    mut camera_query: Query<&mut Transform, (With<Camera2d>, Without<Player>)>,
+) {
+    let Ok(player_transform) = player_query.single() else {
+        return;
+    };
+    let Ok(mut camera_transform) = camera_query.single_mut() else {
+        return;
+    };
+
+    camera_transform.translation.x = player_transform.translation.x;
+    camera_transform.translation.y = player_transform.translation.y;
 }
 
 fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnapshot) {
@@ -459,13 +562,117 @@ fn apply_next_replay_event(
     false
 }
 
-fn world_pos_from_xy(chunk_edge: u32, x: u32, y: u32, z: i32) -> Vec3i {
-    let half = i32::try_from(chunk_edge).expect("chunk edge does not fit in i32") / 2;
+fn world_pos_from_xy(world_size_x: u32, world_size_y: u32, x: u32, y: u32, z: i32) -> Vec3i {
+    let half_x = i32::try_from(world_size_x).expect("world size x does not fit in i32") / 2;
+    let half_y = i32::try_from(world_size_y).expect("world size y does not fit in i32") / 2;
     Vec3i::new(
-        i32::try_from(x).expect("x does not fit in i32") - half,
-        i32::try_from(y).expect("y does not fit in i32") - half,
+        i32::try_from(x).expect("x does not fit in i32") - half_x,
+        i32::try_from(y).expect("y does not fit in i32") - half_y,
         z,
     )
+}
+
+fn is_loaded_chunk_position(
+    world_position: Vec3i,
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+    loaded_chunks: &HashSet<Vec3i>,
+) -> bool {
+    world_pos_to_chunk_coord(world_position, chunk_edge, world_chunks)
+        .map(|chunk| loaded_chunks.contains(&chunk))
+        .unwrap_or(false)
+}
+
+fn stone_tile_index(world_position: Vec3i) -> u16 {
+    let pattern = (world_position.x + world_position.y).rem_euclid(6) + 1;
+    u16::try_from(pattern).expect("stone tile pattern index should fit in u16")
+}
+
+fn all_world_chunk_coords(world_chunks: Vec3u) -> HashSet<Vec3i> {
+    let mut result = HashSet::new();
+    let center_x = i32::try_from(world_chunks.x).expect("world_chunks.x too large") / 2;
+    let center_y = i32::try_from(world_chunks.y).expect("world_chunks.y too large") / 2;
+    let center_z = i32::try_from(world_chunks.z).expect("world_chunks.z too large") / 2;
+
+    for z in 0..world_chunks.z {
+        for y in 0..world_chunks.y {
+            for x in 0..world_chunks.x {
+                result.insert(Vec3i::new(
+                    i32::try_from(x).expect("x too large") - center_x,
+                    i32::try_from(y).expect("y too large") - center_y,
+                    i32::try_from(z).expect("z too large") - center_z,
+                ));
+            }
+        }
+    }
+
+    result
+}
+
+fn chunk_window(center_chunk: Vec3i, world_chunks: Vec3u) -> HashSet<Vec3i> {
+    let all_chunks = all_world_chunk_coords(world_chunks);
+    let mut window = HashSet::new();
+    for z in (center_chunk.z - CHUNK_STREAM_RADIUS_Z)..=(center_chunk.z + CHUNK_STREAM_RADIUS_Z) {
+        for y in
+            (center_chunk.y - CHUNK_STREAM_RADIUS_XY)..=(center_chunk.y + CHUNK_STREAM_RADIUS_XY)
+        {
+            for x in (center_chunk.x - CHUNK_STREAM_RADIUS_XY)
+                ..=(center_chunk.x + CHUNK_STREAM_RADIUS_XY)
+            {
+                let chunk = Vec3i::new(x, y, z);
+                if all_chunks.contains(&chunk) {
+                    window.insert(chunk);
+                }
+            }
+        }
+    }
+    window
+}
+
+fn world_pos_to_chunk_coord(
+    world_position: Vec3i,
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+) -> Option<Vec3i> {
+    let edge = chunk_edge.max(1);
+    let world_size = Vec3u::new(
+        world_chunks.x.checked_mul(edge)?,
+        world_chunks.y.checked_mul(edge)?,
+        world_chunks.z.checked_mul(edge)?,
+    );
+    let min = Vec3i::new(
+        -(i32::try_from(world_size.x).ok()? / 2),
+        -(i32::try_from(world_size.y).ok()? / 2),
+        -(i32::try_from(world_size.z).ok()? / 2),
+    );
+
+    let local_x = world_position.x - min.x;
+    let local_y = world_position.y - min.y;
+    let local_z = world_position.z - min.z;
+    if local_x < 0 || local_y < 0 || local_z < 0 {
+        return None;
+    }
+
+    let local_x_u = u32::try_from(local_x).ok()?;
+    let local_y_u = u32::try_from(local_y).ok()?;
+    let local_z_u = u32::try_from(local_z).ok()?;
+    if local_x_u >= world_size.x || local_y_u >= world_size.y || local_z_u >= world_size.z {
+        return None;
+    }
+
+    let chunk_local_x = local_x_u / edge;
+    let chunk_local_y = local_y_u / edge;
+    let chunk_local_z = local_z_u / edge;
+
+    let center_x = i32::try_from(world_chunks.x).ok()? / 2;
+    let center_y = i32::try_from(world_chunks.y).ok()? / 2;
+    let center_z = i32::try_from(world_chunks.z).ok()? / 2;
+
+    Some(Vec3i::new(
+        i32::try_from(chunk_local_x).ok()? - center_x,
+        i32::try_from(chunk_local_y).ok()? - center_y,
+        i32::try_from(chunk_local_z).ok()? - center_z,
+    ))
 }
 
 fn block_at_world_position(

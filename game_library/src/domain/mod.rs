@@ -14,8 +14,9 @@ use crate::domain::messaging::webrtc::MultiplayerController;
 #[cfg(not(target_arch = "wasm32"))]
 use simulation::drive_replay_playback;
 use simulation::{
-    project_world_entities_to_sprites, project_world_to_tilemap,
+    follow_player_camera, project_world_entities_to_sprites, project_world_to_tilemap,
     pull_world_updates_into_render_state, queue_world_commands_from_input, setup_simulation_state,
+    stream_chunks_around_player,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -29,14 +30,24 @@ use visuals::ui::multiplayer_menu::{
 };
 use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
-use world_sim::bevy_app::WorldSimulationPlugin;
+use world_sim::bevy_app::{WorldSimSettings, WorldSimulationPlugin};
+use world_sim::world_api::Vec3u;
+use world_sim::world_core::WorldConfig;
 
 pub struct OpenDwarfPlugins;
 
 impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(define_defaults())
-            .add_plugins(WorldSimulationPlugin::default())
+            .add_plugins(WorldSimulationPlugin {
+                settings: WorldSimSettings {
+                    config: WorldConfig {
+                        world_chunks: Vec3u::new(16, 16, 1),
+                        ..WorldConfig::default()
+                    },
+                    spawn_default_player: true,
+                },
+            })
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
@@ -46,8 +57,10 @@ impl Plugin for OpenDwarfPlugins {
                 (
                     queue_world_commands_from_input,
                     pull_world_updates_into_render_state,
+                    stream_chunks_around_player,
                     project_world_to_tilemap,
                     project_world_entities_to_sprites,
+                    follow_player_camera,
                 )
                     .chain(),
             )

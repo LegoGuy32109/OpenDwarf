@@ -10,6 +10,9 @@ pub mod ui;
 pub mod visual_utils;
 
 const TILE_SIZE_IN_PX: u16 = 64;
+const INITIAL_WORLD_CHUNKS_X: u32 = 16;
+const INITIAL_WORLD_CHUNKS_Y: u32 = 16;
+const INITIAL_CHUNK_EDGE: u32 = 16;
 
 const TILE_MAP_PATH: &str = "sprites/StackedTextures.png";
 // WARN: CANNOT BE A MULTIPLE OF 6
@@ -40,7 +43,14 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Load textures for tile map
     let tile_textures: Handle<Image> = asset_server.load(TILE_MAP_PATH);
 
-    let chunk_size = UVec2::splat(16);
+    let chunk_size = uvec2(
+        INITIAL_WORLD_CHUNKS_X
+            .checked_mul(INITIAL_CHUNK_EDGE)
+            .expect("initial tilemap x-size overflowed"),
+        INITIAL_WORLD_CHUNKS_Y
+            .checked_mul(INITIAL_CHUNK_EDGE)
+            .expect("initial tilemap y-size overflowed"),
+    );
     let tile_display_size = UVec2::splat(TILE_SIZE_IN_PX.into());
 
     // INFO: Determine data for tile map
