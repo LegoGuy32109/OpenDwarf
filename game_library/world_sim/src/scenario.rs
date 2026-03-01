@@ -1,9 +1,8 @@
 use std::fmt::{Display, Formatter};
-use std::sync::mpsc::Receiver;
 
 use crate::bevy_app::{WorldSimApp, WorldSimulationPlugin};
 use crate::replay::{ReplayFile, ReplayRecorder, ReplayRecorderOptions};
-use crate::world_api::{Vec3i, WorldCommand, WorldSnapshot, WorldUpdate};
+use crate::world_api::{Vec3i, WorldCommand, WorldSnapshot};
 use crate::world_core::WorldConfig;
 
 #[derive(Debug, Clone)]
@@ -128,17 +127,21 @@ pub fn run_scenario(
     options: ScenarioRunOptions,
 ) -> Result<ScenarioRunResult, ScenarioError> {
     let mut app = WorldSimApp::new(WorldSimulationPlugin {
-        config: scenario.world_config.clone(),
-        spawn_default_player: scenario.spawn_default_player,
+        settings: crate::bevy_app::WorldSimSettings {
+            config: scenario.world_config.clone(),
+            spawn_default_player: scenario.spawn_default_player,
+        },
     });
-    let updates = app.subscribe();
     let mut replay = options.record_replay.then(|| {
+        let initial_snapshot = app.snapshot();
+        let initial_updates = app.drain_updates();
         ReplayRecorder::new(
             scenario.name.clone(),
             scenario.world_config.clone(),
             scenario.spawn_default_player,
             options.replay.clone(),
-            app.snapshot(),
+            initial_snapshot,
+            initial_updates,
         )
     });
 
@@ -155,7 +158,7 @@ pub fn run_scenario(
                 app.step_ticks(1);
                 if let Some(recorder) = &mut replay {
                     recorder.record_command(tick_before, command);
-                    recorder.record_updates(drain_updates(&updates));
+                    recorder.record_updates(app.drain_updates());
                     recorder.maybe_checkpoint(&app.snapshot());
                 }
             }
@@ -167,7 +170,7 @@ pub fn run_scenario(
                 app.step_ticks(1);
                 if let Some(recorder) = &mut replay {
                     recorder.record_command(tick_before, command);
-                    recorder.record_updates(drain_updates(&updates));
+                    recorder.record_updates(app.drain_updates());
                     recorder.maybe_checkpoint(&app.snapshot());
                 }
             }
@@ -207,12 +210,4 @@ pub fn run_scenario(
         final_snapshot,
         replay,
     })
-}
-
-fn drain_updates(updates: &Receiver<WorldUpdate>) -> Vec<WorldUpdate> {
-    let mut drained = Vec::new();
-    while let Ok(update) = updates.try_recv() {
-        drained.push(update);
-    }
-    drained
 }

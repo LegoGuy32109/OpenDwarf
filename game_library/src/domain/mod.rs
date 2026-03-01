@@ -15,11 +15,10 @@ use crate::domain::messaging::webrtc::MultiplayerController;
 use simulation::drive_replay_playback;
 use simulation::{
     project_world_entities_to_sprites, project_world_to_tilemap,
-    pull_world_updates_into_render_state, queue_world_commands_from_input, run_world_simulation,
-    setup_simulation_runtime,
+    pull_world_updates_into_render_state, queue_world_commands_from_input, setup_simulation_state,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
-use visuals::debug_menu::debug_menu;
+use visuals::debug_menu::{debug_menu, replay_debug_overlay};
 use visuals::ui::chat_menu::ChatMenuPlugin;
 use visuals::ui::escape_menu::handle_escape_menu;
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
@@ -30,13 +29,15 @@ use visuals::ui::multiplayer_menu::{
 };
 use visuals::ui::options_menu::handle_options_menu;
 use visuals::{setup, update_tileset_image};
+use world_sim::bevy_app::WorldSimulationPlugin;
 
 pub struct OpenDwarfPlugins;
 
 impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(define_defaults())
-            .add_systems(Startup, setup_simulation_runtime)
+            .add_plugins(WorldSimulationPlugin::default())
+            .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
             .add_systems(Update, update_tileset_image)
@@ -44,7 +45,6 @@ impl Plugin for OpenDwarfPlugins {
                 Update,
                 (
                     queue_world_commands_from_input,
-                    run_world_simulation,
                     pull_world_updates_into_render_state,
                     project_world_to_tilemap,
                     project_world_entities_to_sprites,
@@ -70,7 +70,7 @@ impl Plugin for OpenDwarfPlugins {
             .init_resource::<PlayerFocusState>()
             .insert_non_send_resource(MultiplayerController::default())
             // debug systems
-            .add_systems(Update, debug_menu)
+            .add_systems(Update, (debug_menu, replay_debug_overlay))
             .sub_app_mut(RenderApp)
             .insert_resource(GpuPreprocessingSupport {
                 max_supported_mode: GpuPreprocessingMode::None,

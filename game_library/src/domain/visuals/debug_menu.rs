@@ -1,10 +1,17 @@
 use bevy::ecs::system::Commands;
 use bevy::prelude::*;
 
+use crate::domain::simulation::ReplayHudState;
 use crate::resources::input_state::InputState;
 
 #[derive(Component)]
 pub struct DebugText;
+
+#[derive(Component)]
+pub struct ReplayDebugText;
+
+#[derive(Component)]
+pub struct ReplayEventLine;
 
 pub fn debug_menu(
     mut commands: Commands,
@@ -71,5 +78,93 @@ pub fn debug_menu(
             keyboard_input.get_just_released().copied(),
         );
         text.0 = [just_pressed_output, pressed_output, just_released_output].join("\n");
+    }
+}
+
+pub fn replay_debug_overlay(
+    mut commands: Commands,
+    replay_hud_state: Option<Res<ReplayHudState>>,
+    mut replay_text_query: Query<(Entity, &mut Text), With<ReplayDebugText>>,
+    replay_event_lines_query: Query<Entity, With<ReplayEventLine>>,
+) {
+    let is_replay_active = replay_hud_state
+        .as_ref()
+        .map(|state| state.active)
+        .unwrap_or(false);
+
+    if !is_replay_active {
+        if let Ok((entity, _)) = replay_text_query.single() {
+            commands.entity(entity).despawn();
+        }
+        for entity in &replay_event_lines_query {
+            commands.entity(entity).despawn();
+        }
+        return;
+    }
+
+    let replay_hud_state =
+        replay_hud_state.expect("replay state should exist when replay is active");
+    let status = if replay_hud_state.playing {
+        "Playing"
+    } else {
+        "Paused"
+    };
+    let text = format!(
+        "Replay Mode\nControls: F6 Play/Pause | F7 Step | F8 Restart | F9 Toggle Events\nStatus: {}\nEvent: {}/{}\nWorld Tick: {}",
+        status, replay_hud_state.cursor, replay_hud_state.total_events, replay_hud_state.tick
+    );
+
+    for entity in &replay_event_lines_query {
+        commands.entity(entity).despawn();
+    }
+
+    if let Ok((_, mut existing_text)) = replay_text_query.single_mut() {
+        existing_text.0 = text;
+    } else {
+        commands.spawn((
+            Text::new(text),
+            TextFont {
+                font_size: 20.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.95, 0.96, 1.0, 0.96)),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(20.0),
+                left: Val::Px(20.0),
+                ..default()
+            },
+            ReplayDebugText,
+        ));
+    }
+
+    if !replay_hud_state.show_all_events {
+        return;
+    }
+
+    let mut line_y = 155.0;
+    for (index, event_label) in replay_hud_state.event_labels.iter().enumerate() {
+        let performed = index < replay_hud_state.cursor;
+        let color = if performed {
+            Color::srgba(0.9, 0.95, 1.0, 0.95)
+        } else {
+            Color::srgba(0.5, 0.54, 0.6, 0.85)
+        };
+        commands.spawn((
+            Text::new(format!("{:04}: {}", index + 1, event_label)),
+            TextFont {
+                font_size: 14.0,
+                ..default()
+            },
+            TextColor(color),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(line_y),
+                left: Val::Px(20.0),
+                ..default()
+            },
+            ReplayEventLine,
+        ));
+        line_y += 18.0;
     }
 }

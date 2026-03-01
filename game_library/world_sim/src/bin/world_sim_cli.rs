@@ -5,7 +5,7 @@ use world_sim::world_api::{Vec3i, WorldCommand, WorldUpdate};
 
 fn main() {
     let mut app = WorldSimApp::new(WorldSimulationPlugin::default());
-    let updates = app.subscribe();
+    let _ = app.drain_updates();
 
     println!("world_sim_cli ready");
     println!("commands: move <dx> <dy> <dz>, tick <count>, snapshot, updates, quit");
@@ -80,7 +80,7 @@ fn main() {
             }
             "updates" => {
                 let mut seen = 0usize;
-                while let Ok(update) = updates.try_recv() {
+                for update in app.drain_updates() {
                     match update {
                         WorldUpdate::Snapshot(snapshot) => println!(
                             "snapshot: tick={}, entities={}",

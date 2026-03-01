@@ -1,6 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Mutex;
-use std::sync::mpsc::Receiver;
 
 use bevy::prelude::*;
 use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
@@ -8,11 +6,10 @@ use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 use crate::components::map_coordinates::MapCoordinates;
 use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
+use world_sim::bevy_app::{WorldCommandQueue, WorldUpdateBuffer};
 #[cfg(not(target_arch = "wasm32"))]
 use world_sim::replay::{ReplayEvent, load_replay};
 use world_sim::world_api::{BlockType, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate};
-use world_sim::world_bus::{InProcessWorldBus, WorldBus};
-use world_sim::world_core::{WorldConfig, WorldState};
 
 use super::visuals::Player;
 
@@ -27,23 +24,23 @@ pub struct ReplayMode {
     pub active: bool,
 }
 
+#[derive(Resource, Default, Clone)]
+pub struct ReplayHudState {
+    pub active: bool,
+    pub playing: bool,
+    pub cursor: usize,
+    pub total_events: usize,
+    pub tick: u64,
+    pub show_all_events: bool,
+    pub event_labels: Vec<String>,
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
 pub struct ReplayPlayback {
     events: Vec<ReplayEvent>,
     cursor: usize,
     playing: bool,
-}
-
-#[derive(Resource)]
-pub struct SimulationRuntime {
-    pub world: WorldState,
-    pub bus: InProcessWorldBus,
-}
-
-#[derive(Resource)]
-pub struct WorldSubscription {
-    rx: Mutex<Receiver<WorldUpdate>>,
 }
 
 #[derive(Resource, Default)]
@@ -64,19 +61,10 @@ impl RenderWorldState {
     }
 }
 
-pub fn setup_simulation_runtime(mut commands: Commands) {
-    let config = WorldConfig::default();
-    let mut world = WorldState::new(config);
-    world
-        .spawn_entity(PLAYER_SIMULATION_ID, Vec3i::new(0, 0, 0))
-        .expect("player should spawn at origin");
-
-    let mut bus = InProcessWorldBus::default();
-    let rx = bus.subscribe();
-    bus.publish(WorldUpdate::Snapshot(world.snapshot()));
-
+pub fn setup_simulation_state(mut commands: Commands) {
     let mut replay_mode = ReplayMode::default();
     let mut render_world_state = RenderWorldState::default();
+
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(mut replay_playback) = try_load_replay_playback() {
         replay_mode.active = true;
@@ -87,13 +75,18 @@ pub fn setup_simulation_runtime(mut commands: Commands) {
         commands.insert_resource(replay_playback);
     }
 
-    if !replay_mode.active {
-        apply_snapshot(&mut render_world_state, world.snapshot());
-    }
+    let replay_hud_state = ReplayHudState {
+        active: replay_mode.active,
+        playing: false,
+        cursor: 0,
+        total_events: 0,
+        tick: render_world_state.tick,
+        show_all_events: false,
+        event_labels: Vec::new(),
+    };
 
-    commands.insert_resource(SimulationRuntime { world, bus });
-    commands.insert_resource(WorldSubscription { rx: Mutex::new(rx) });
     commands.insert_resource(replay_mode);
+    commands.insert_resource(replay_hud_state);
     commands.insert_resource(render_world_state);
 }
 
@@ -101,7 +94,7 @@ pub fn queue_world_commands_from_input(
     input_state: Res<InputState>,
     player_focus_state: Res<PlayerFocusState>,
     replay_mode: Res<ReplayMode>,
-    runtime: Res<SimulationRuntime>,
+    mut world_command_queue: ResMut<WorldCommandQueue>,
     mut player_sprite: Query<&mut Sprite, With<Player>>,
 ) {
     if replay_mode.active {
@@ -133,43 +126,24 @@ pub fn queue_world_commands_from_input(
         sprite.flip_x = direction.x > 0;
     }
 
-    if let Err(err) = runtime.bus.send_command(WorldCommand::MoveEntity {
+    let command = WorldCommand::MoveEntity {
         id: PLAYER_SIMULATION_ID,
         direction: Vec3i::new(direction.x, direction.y, direction.z),
-    }) {
-        warn!("Failed to queue world command: {err}");
-    }
-}
+    };
 
-pub fn run_world_simulation(replay_mode: Res<ReplayMode>, mut runtime: ResMut<SimulationRuntime>) {
-    if replay_mode.active {
-        return;
-    }
-
-    let commands = runtime.bus.drain_commands();
-    for command in commands {
-        if let Some(delta) = runtime.world.apply_command(command) {
-            runtime.bus.publish(WorldUpdate::Delta(delta));
-        } else {
-            warn!("World command rejected (likely out of bounds or unknown entity)");
-        }
-    }
+    world_command_queue.push(command);
 }
 
 pub fn pull_world_updates_into_render_state(
     replay_mode: Res<ReplayMode>,
-    subscription: Res<WorldSubscription>,
+    mut world_update_buffer: ResMut<WorldUpdateBuffer>,
     mut render_world_state: ResMut<RenderWorldState>,
 ) {
     if replay_mode.active {
         return;
     }
 
-    let Ok(receiver) = subscription.rx.lock() else {
-        return;
-    };
-
-    while let Ok(update) = receiver.try_recv() {
+    for update in world_update_buffer.drain() {
         apply_update(&mut render_world_state, update);
     }
 }
@@ -179,14 +153,20 @@ pub fn drive_replay_playback(
     replay_mode: Res<ReplayMode>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     replay_playback: Option<ResMut<ReplayPlayback>>,
+    mut replay_hud_state: ResMut<ReplayHudState>,
     mut render_world_state: ResMut<RenderWorldState>,
 ) {
     if !replay_mode.active {
+        replay_hud_state.active = false;
         return;
     }
     let Some(mut replay_playback) = replay_playback else {
+        replay_hud_state.active = false;
         return;
     };
+
+    replay_hud_state.active = true;
+    replay_hud_state.total_events = replay_playback.events.len();
 
     if keyboard_input.just_pressed(KeyCode::F6) {
         replay_playback.playing = !replay_playback.playing;
@@ -216,12 +196,25 @@ pub fn drive_replay_playback(
         let _ = apply_next_replay_event(&mut replay_playback, &mut render_world_state);
     }
 
+    if keyboard_input.just_pressed(KeyCode::F9) {
+        replay_hud_state.show_all_events = !replay_hud_state.show_all_events;
+    }
+
     if replay_playback.playing
         && !apply_next_replay_event(&mut replay_playback, &mut render_world_state)
     {
         replay_playback.playing = false;
         info!("Replay playback reached end");
     }
+
+    replay_hud_state.playing = replay_playback.playing;
+    replay_hud_state.cursor = replay_playback.cursor;
+    replay_hud_state.tick = render_world_state.tick;
+    replay_hud_state.event_labels = replay_playback
+        .events
+        .iter()
+        .map(describe_replay_event)
+        .collect();
 }
 
 pub fn project_world_to_tilemap(
@@ -322,6 +315,47 @@ fn apply_update(render_world_state: &mut RenderWorldState, update: WorldUpdate) 
                 render_world_state.entities.insert(movement.id, movement.to);
             }
             render_world_state.entities_dirty = true;
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn describe_replay_event(event: &ReplayEvent) -> String {
+    match event {
+        ReplayEvent::Command {
+            tick_before,
+            command,
+        } => match command {
+            WorldCommand::MoveEntity { id, direction } => {
+                format!(
+                    "[tick {tick_before}] CMD MoveEntity id={id} dir=({}, {}, {})",
+                    direction.x, direction.y, direction.z
+                )
+            }
+            WorldCommand::AdvanceTicks { count } => {
+                format!("[tick {tick_before}] CMD AdvanceTicks count={count}")
+            }
+        },
+        ReplayEvent::Update(WorldUpdate::Snapshot(snapshot)) => {
+            format!(
+                "UPDATE Snapshot tick={} entities={}",
+                snapshot.tick,
+                snapshot.entities.len()
+            )
+        }
+        ReplayEvent::Update(WorldUpdate::Delta(delta)) => {
+            format!(
+                "UPDATE Delta tick={} moved={}",
+                delta.tick,
+                delta.moved_entities.len()
+            )
+        }
+        ReplayEvent::Checkpoint(snapshot) => {
+            format!(
+                "CHECKPOINT tick={} entities={}",
+                snapshot.tick,
+                snapshot.entities.len()
+            )
         }
     }
 }

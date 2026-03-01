@@ -6,7 +6,7 @@ use bincode::config::standard;
 use bincode::serde::{decode_from_slice, encode_to_vec};
 use serde::{Deserialize, Serialize};
 
-use crate::bevy_app::{WorldSimApp, WorldSimulationPlugin};
+use crate::bevy_app::{WorldSimApp, WorldSimSettings, WorldSimulationPlugin};
 use crate::world_api::{WorldCommand, WorldSnapshot, WorldUpdate};
 use crate::world_core::WorldConfig;
 
@@ -67,6 +67,7 @@ impl ReplayRecorder {
         spawn_default_player: bool,
         options: ReplayRecorderOptions,
         initial_snapshot: WorldSnapshot,
+        initial_updates: Vec<WorldUpdate>,
     ) -> Self {
         let metadata = ReplayMetadata {
             format_version: REPLAY_FORMAT_VERSION,
@@ -79,7 +80,11 @@ impl ReplayRecorder {
             metadata,
             options,
             next_checkpoint_tick,
-            events: vec![ReplayEvent::Checkpoint(initial_snapshot)],
+            events: {
+                let mut events = vec![ReplayEvent::Checkpoint(initial_snapshot)];
+                events.extend(initial_updates.into_iter().map(ReplayEvent::Update));
+                events
+            },
         }
     }
 
@@ -173,8 +178,10 @@ pub fn replay_commands_to_snapshot(replay: &ReplayFile) -> Result<WorldSnapshot,
     }
 
     let mut app = WorldSimApp::new(WorldSimulationPlugin {
-        config: replay.metadata.world_config.clone(),
-        spawn_default_player: replay.metadata.spawn_default_player,
+        settings: WorldSimSettings {
+            config: replay.metadata.world_config.clone(),
+            spawn_default_player: replay.metadata.spawn_default_player,
+        },
     });
 
     for event in &replay.events {
