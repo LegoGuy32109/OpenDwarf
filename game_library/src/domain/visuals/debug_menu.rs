@@ -1,8 +1,6 @@
 use bevy::ecs::system::Commands;
 use bevy::prelude::*;
-use std::fmt::Write;
 
-use crate::domain::movement::MovementChord;
 use crate::resources::input_state::InputState;
 
 #[derive(Component)]
@@ -13,7 +11,6 @@ pub fn debug_menu(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     input_state: Res<InputState>,
     debug_text_query: Query<(Entity, &mut Text), With<DebugText>>,
-    movement_chord_option: Option<ResMut<MovementChord>>,
 ) {
     // toggle debug text component
     let maybe_debug_text = debug_text_query.single_inner();
@@ -74,10 +71,5 @@ pub fn debug_menu(
             keyboard_input.get_just_released().copied(),
         );
         text.0 = [just_pressed_output, pressed_output, just_released_output].join("\n");
-
-        // chord info
-        if let Some(ref movement_chord) = movement_chord_option {
-            let _ = write!(text.0, "\nMovement Chord: {:?}", movement_chord.first_key);
-        }
     }
 }

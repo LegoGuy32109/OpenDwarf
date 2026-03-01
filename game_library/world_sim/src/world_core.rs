@@ -60,7 +60,7 @@ impl WorldState {
             tick: 0,
             chunk_edge: config.chunk_edge,
             world_chunks: config.world_chunks,
-            blocks: vec![BlockType::SolidStone; block_count],
+            blocks: make_initial_blocks(config.chunk_edge, config.world_chunks, block_count),
             entities: BTreeMap::new(),
         }
     }
@@ -77,6 +77,14 @@ impl WorldState {
     pub fn apply_command(&mut self, command: WorldCommand) -> Option<WorldDelta> {
         match command {
             WorldCommand::MoveEntity { id, direction } => self.move_entity(id, direction),
+            WorldCommand::AdvanceTicks { count } => {
+                let ticks = count.max(1);
+                self.tick = self.tick.saturating_add(u64::from(ticks));
+                Some(WorldDelta {
+                    tick: self.tick,
+                    moved_entities: vec![],
+                })
+            }
         }
     }
 
@@ -167,6 +175,53 @@ impl WorldState {
     }
 }
 
+fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize) -> Vec<BlockType> {
+    let mut blocks = vec![BlockType::Air; block_count];
+
+    let world_size = Vec3u::new(
+        world_chunks
+            .x
+            .checked_mul(chunk_edge)
+            .expect("world x-size overflowed"),
+        world_chunks
+            .y
+            .checked_mul(chunk_edge)
+            .expect("world y-size overflowed"),
+        world_chunks
+            .z
+            .checked_mul(chunk_edge)
+            .expect("world z-size overflowed"),
+    );
+    let min_z = -(i32::try_from(world_size.z).expect("world size z does not fit in i32") / 2);
+    let floor_z = -1;
+    let floor_local_z = floor_z - min_z;
+    if floor_local_z < 0 || u32::try_from(floor_local_z).expect("floor z negative") >= world_size.z
+    {
+        return blocks;
+    }
+
+    let floor_local_z =
+        usize::try_from(floor_local_z).expect("floor local z does not fit in usize");
+    let world_size_x = usize::try_from(world_size.x).expect("world size x does not fit in usize");
+    let world_size_y = usize::try_from(world_size.y).expect("world size y does not fit in usize");
+    let layer_size = world_size_x
+        .checked_mul(world_size_y)
+        .expect("world layer size overflowed");
+    let layer_offset = floor_local_z
+        .checked_mul(layer_size)
+        .expect("world layer offset overflowed");
+    for y in 0..world_size_y {
+        for x in 0..world_size_x {
+            let index = layer_offset
+                .checked_add(y.checked_mul(world_size_x).expect("floor y overflowed"))
+                .and_then(|offset| offset.checked_add(x))
+                .expect("floor index overflowed");
+            blocks[index] = BlockType::SolidStone;
+        }
+    }
+    blocks
+}
+
 #[cfg(test)]
 mod tests {
     use super::{WorldConfig, WorldState};
@@ -204,5 +259,15 @@ mod tests {
         });
 
         assert!(delta.is_none());
+    }
+
+    #[test]
+    fn advance_ticks_updates_tick_counter() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .apply_command(WorldCommand::AdvanceTicks { count: 4 })
+            .expect("advance ticks should always produce a delta");
+        let snapshot = world.snapshot();
+        assert_eq!(snapshot.tick, 4);
     }
 }

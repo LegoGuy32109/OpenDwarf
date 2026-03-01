@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::world_api::{WorldCommand, WorldUpdate};
@@ -11,7 +12,7 @@ pub trait WorldBus {
 
 #[derive(Debug)]
 pub struct InProcessWorldBus {
-    command_rx: Receiver<WorldCommand>,
+    command_rx: Mutex<Receiver<WorldCommand>>,
     command_tx: Sender<WorldCommand>,
     subscribers: Vec<Sender<WorldUpdate>>,
 }
@@ -20,7 +21,7 @@ impl Default for InProcessWorldBus {
     fn default() -> Self {
         let (command_tx, command_rx) = channel();
         Self {
-            command_rx,
+            command_rx: Mutex::new(command_rx),
             command_tx,
             subscribers: Vec::new(),
         }
@@ -46,8 +47,11 @@ impl WorldBus for InProcessWorldBus {
     }
 
     fn drain_commands(&mut self) -> Vec<WorldCommand> {
+        let Ok(command_rx) = self.command_rx.lock() else {
+            return Vec::new();
+        };
         let mut commands = Vec::new();
-        while let Ok(command) = self.command_rx.try_recv() {
+        while let Ok(command) = command_rx.try_recv() {
             commands.push(command);
         }
         commands

@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 use bevy::sprite_render::{AlphaMode2d, TileData, TilemapChunk, TilemapChunkTileData};
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 
 use crate::components::map_coordinates::MapCoordinates;
 
@@ -45,25 +43,31 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let chunk_size = UVec2::splat(16);
     let tile_display_size = UVec2::splat(TILE_SIZE_IN_PX.into());
 
-    // Determine data for tile map
-    let mut rng = ChaCha8Rng::seed_from_u64(42);
-    let tile_data: Vec<Option<TileData>> = (0..chunk_size.element_product())
-        // range of stone variations
-        .map(|_| rng.random_range(1..=6))
-        .enumerate()
-        .map(|(i, texture_index)| {
-            if (i + 11) % 31 == 0 {
-                return Some(TileData::from_tileset_index(13));
-            } else if (i + 18) % 43 == 0 {
-                return Some(TileData::from_tileset_index(14));
-            } else if (i + 4) % 62 == 0 {
-                return Some(TileData::from_tileset_index(11));
-            } else if (i + 6) % 23 == 0 {
-                return Some(TileData::from_tileset_index(16));
-            }
-            Some(TileData::from_tileset_index(texture_index))
-        })
-        .collect();
+    // INFO: Determine data for tile map
+    // let mut rng = ChaCha8Rng::seed_from_u64(42);
+    // let tile_data: Vec<Option<TileData>> = (0..chunk_size.element_product())
+    //     // range of stone variations
+    //     .map(|_| rng.random_range(1..=6))
+    //     .enumerate()
+    //     .map(|(i, texture_index)| {
+    //         if (i + 11) % 31 == 0 {
+    //             return Some(TileData::from_tileset_index(13));
+    //         } else if (i + 18) % 43 == 0 {
+    //             return Some(TileData::from_tileset_index(14));
+    //         } else if (i + 4) % 62 == 0 {
+    //             return Some(TileData::from_tileset_index(11));
+    //         } else if (i + 6) % 23 == 0 {
+    //             return Some(TileData::from_tileset_index(16));
+    //         }
+    //         Some(TileData::from_tileset_index(texture_index))
+    //     })
+    //     .collect();
+
+    let tile_data = vec![
+        Some(TileData::from_tileset_index(2));
+        usize::try_from(chunk_size.element_product())
+            .expect("chunk tile count too large")
+    ];
 
     let chunk_data = TilemapChunkTileData(tile_data);
     let chunk = TilemapChunk {

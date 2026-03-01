@@ -25,7 +25,7 @@ impl Vec3i {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Vec3u {
     pub x: u32,
     pub y: u32,
@@ -76,6 +76,7 @@ pub struct WorldDelta {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WorldCommand {
     MoveEntity { id: u64, direction: Vec3i },
+    AdvanceTicks { count: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

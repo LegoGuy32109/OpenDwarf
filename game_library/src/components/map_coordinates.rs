@@ -7,12 +7,6 @@ pub struct MapCoordinates {
 }
 
 impl MapCoordinates {
-    /// move these coordinates along this direction
-    pub fn add_direction(&mut self, vec: IVec3) -> &mut Self {
-        self.origin += IVec3::new(vec.x, vec.y, vec.z);
-        self
-    }
-
     pub fn new(origin: IVec3, map_size: UVec3) -> Self {
         MapCoordinates { origin, map_size }
     }

@@ -7,11 +7,15 @@ use crate::resources::input_state::{InputState, update_input_state};
 use crate::resources::player_focus_state::PlayerFocusState;
 
 pub mod messaging;
-pub mod movement;
+pub mod simulation;
 pub mod visuals;
 
 use crate::domain::messaging::webrtc::MultiplayerController;
-use movement::{consume_action, keyboard_movement};
+use simulation::{
+    project_world_entities_to_sprites, project_world_to_tilemap,
+    pull_world_updates_into_render_state, queue_world_commands_from_input, run_world_simulation,
+    setup_simulation_runtime,
+};
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::debug_menu;
 use visuals::ui::chat_menu::ChatMenuPlugin;
@@ -30,10 +34,21 @@ pub struct OpenDwarfPlugins;
 impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(define_defaults())
+            .add_systems(Startup, setup_simulation_runtime)
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
-            .add_systems(Update, (update_tileset_image, consume_action))
-            .add_systems(Update, keyboard_movement)
+            .add_systems(Update, update_tileset_image)
+            .add_systems(
+                Update,
+                (
+                    queue_world_commands_from_input,
+                    run_world_simulation,
+                    pull_world_updates_into_render_state,
+                    project_world_to_tilemap,
+                    project_world_entities_to_sprites,
+                )
+                    .chain(),
+            )
             .add_systems(
                 Update,
                 (
