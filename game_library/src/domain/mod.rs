@@ -15,8 +15,8 @@ use crate::domain::messaging::webrtc::MultiplayerController;
 use simulation::drive_replay_playback;
 use simulation::{
     follow_player_camera, project_world_entities_to_sprites, project_world_to_tilemap,
-    pull_world_updates_into_render_state, queue_world_commands_from_input, setup_simulation_state,
-    stream_chunks_around_player,
+    queue_world_commands_from_input, setup_simulation_state, stream_chunks_around_player,
+    sync_render_world_from_snapshot,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -56,7 +56,7 @@ impl Plugin for OpenDwarfPlugins {
                 Update,
                 (
                     queue_world_commands_from_input,
-                    pull_world_updates_into_render_state,
+                    sync_render_world_from_snapshot,
                     stream_chunks_around_player,
                     project_world_to_tilemap,
                     project_world_entities_to_sprites,

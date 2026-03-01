@@ -8,7 +8,8 @@ use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
 use world_sim::bevy_app::PrimarySimulationEntityId;
 use world_sim::bevy_app::WorldCommandQueue;
-use world_sim::bevy_app::WorldUpdateBuffer;
+use world_sim::bevy_app::WorldSimDiagnostics;
+use world_sim::bevy_app::WorldView;
 #[cfg(not(target_arch = "wasm32"))]
 use world_sim::replay::{ReplayEvent, load_replay};
 use world_sim::world_api::{BlockType, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate};
@@ -66,6 +67,15 @@ pub struct RenderEntityState {
 #[derive(Resource, Default)]
 pub struct ChunkStreamingState {
     loaded_chunks: HashSet<Vec3i>,
+    last_center_chunk: Option<Vec3i>,
+}
+
+#[derive(Resource, Debug, Default, Clone)]
+pub struct TilemapRenderMetrics {
+    pub chunk_count: usize,
+    pub non_empty_tile_count: usize,
+    pub last_rebuild_micros: u128,
+    pub rebuild_count: u64,
 }
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +118,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(replay_hud_state);
     commands.insert_resource(render_world_state);
     commands.insert_resource(ChunkStreamingState::default());
+    commands.insert_resource(TilemapRenderMetrics::default());
 }
 
 pub fn queue_world_commands_from_input(
@@ -144,26 +155,28 @@ pub fn queue_world_commands_from_input(
         return;
     };
 
-    let command = WorldCommand::MoveEntity {
-        id: entity_id,
-        direction: Vec3i::new(direction.x, direction.y, direction.z),
-    };
-
-    world_command_queue.push(command);
+    world_command_queue.move_entity(entity_id, Vec3i::new(direction.x, direction.y, direction.z));
 }
 
-pub fn pull_world_updates_into_render_state(
+pub fn sync_render_world_from_snapshot(
     replay_mode: Res<ReplayMode>,
-    mut world_update_buffer: ResMut<WorldUpdateBuffer>,
+    world_view: Res<WorldView>,
     mut render_world_state: ResMut<RenderWorldState>,
 ) {
     if replay_mode.active {
         return;
     }
 
-    for update in world_update_buffer.drain() {
-        apply_update(&mut render_world_state, update);
+    let snapshot = world_view.snapshot();
+    if render_world_state.tick == snapshot.tick
+        && render_world_state.chunk_edge == snapshot.chunk_edge
+        && render_world_state.world_chunks == snapshot.world_chunks
+        && render_world_state.entities.len() == snapshot.entities.len()
+    {
+        return;
     }
+
+    apply_snapshot(&mut render_world_state, snapshot.clone());
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -241,6 +254,7 @@ pub fn project_world_to_tilemap(
     chunk_streaming_state: Option<Res<ChunkStreamingState>>,
     tilemap_assets: Res<TilemapAssets>,
     mut render_world_state: ResMut<RenderWorldState>,
+    mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
     mut chunk_query: Query<(
         Entity,
         &WorldTileChunk,
@@ -249,6 +263,7 @@ pub fn project_world_to_tilemap(
         &mut Transform,
     )>,
 ) {
+    let start = std::time::Instant::now();
     if !render_world_state.terrain_dirty {
         return;
     }
@@ -308,14 +323,31 @@ pub fn project_world_to_tilemap(
         }
     }
 
+    let mut non_empty_tile_count = 0usize;
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
         *transform =
             Transform::from_translation(chunk_world_translation(world_chunk.coord, chunk_edge));
-        chunk_data.0 = build_chunk_tile_data(
+        let tile_data = build_chunk_tile_data(
             world_chunk.coord,
             chunk_edge,
             &render_world_state.blocks,
             render_world_state.world_chunks,
+        );
+        non_empty_tile_count = non_empty_tile_count
+            .saturating_add(tile_data.iter().filter(|tile| tile.is_some()).count());
+        chunk_data.0 = tile_data;
+    }
+
+    tilemap_render_metrics.chunk_count = active_chunks.len();
+    tilemap_render_metrics.non_empty_tile_count = non_empty_tile_count;
+    tilemap_render_metrics.last_rebuild_micros = start.elapsed().as_micros();
+    tilemap_render_metrics.rebuild_count = tilemap_render_metrics.rebuild_count.saturating_add(1);
+    if tilemap_render_metrics.last_rebuild_micros > 8_000 {
+        warn!(
+            "Tilemap rebuild slow: {}us across {} chunks and {} non-empty tiles",
+            tilemap_render_metrics.last_rebuild_micros,
+            tilemap_render_metrics.chunk_count,
+            tilemap_render_metrics.non_empty_tile_count
         );
     }
     render_world_state.terrain_dirty = false;
@@ -372,7 +404,8 @@ pub fn project_world_entities_to_sprites(
 pub fn stream_chunks_around_player(
     replay_mode: Res<ReplayMode>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
-    render_world_state: Res<RenderWorldState>,
+    world_sim_diagnostics: Res<WorldSimDiagnostics>,
+    mut render_world_state: ResMut<RenderWorldState>,
     mut chunk_streaming_state: ResMut<ChunkStreamingState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
 ) {
@@ -399,14 +432,35 @@ pub fn stream_chunks_around_player(
 
     let desired = chunk_window(center_chunk, render_world_state.world_chunks);
 
+    if chunk_streaming_state.last_center_chunk != Some(center_chunk) {
+        info!(
+            "Player chunk changed to ({}, {}, {}), loaded_chunks={}, desired_window={}",
+            center_chunk.x,
+            center_chunk.y,
+            center_chunk.z,
+            world_sim_diagnostics.loaded_chunk_count,
+            desired.len()
+        );
+        chunk_streaming_state.last_center_chunk = Some(center_chunk);
+    }
+
+    if !chunk_streaming_state.loaded_chunks.contains(&center_chunk) {
+        warn!(
+            "Center chunk ({}, {}, {}) was not tracked as loaded; enqueueing load",
+            center_chunk.x, center_chunk.y, center_chunk.z
+        );
+    }
+
+    let mut tracked_chunk_set_changed = false;
     for chunk in desired.difference(&chunk_streaming_state.loaded_chunks) {
-        world_command_queue.push(WorldCommand::SetChunkLoaded {
-            chunk: *chunk,
-            loaded: true,
-        });
+        world_command_queue.set_chunk_loaded(*chunk, true);
+        tracked_chunk_set_changed = true;
     }
 
     chunk_streaming_state.loaded_chunks.extend(desired);
+    if tracked_chunk_set_changed {
+        render_world_state.terrain_dirty = true;
+    }
 }
 
 pub fn follow_player_camera(

@@ -28,6 +28,18 @@ impl WorldCommandQueue {
         self.0.push(command);
     }
 
+    pub fn move_entity(&mut self, id: u64, direction: Vec3i) {
+        self.push(WorldCommand::MoveEntity { id, direction });
+    }
+
+    pub fn advance_ticks(&mut self, count: u32) {
+        self.push(WorldCommand::AdvanceTicks { count });
+    }
+
+    pub fn set_chunk_loaded(&mut self, chunk: Vec3i, loaded: bool) {
+        self.push(WorldCommand::SetChunkLoaded { chunk, loaded });
+    }
+
     #[must_use]
     pub fn drain(&mut self) -> Vec<WorldCommand> {
         std::mem::take(&mut self.0)
@@ -62,6 +74,26 @@ pub struct WorldSimState {
     pub world: WorldState,
 }
 
+#[derive(Resource, Debug, Clone)]
+pub struct WorldView(pub WorldSnapshot);
+
+impl WorldView {
+    #[must_use]
+    pub fn snapshot(&self) -> &WorldSnapshot {
+        &self.0
+    }
+}
+
+#[derive(Resource, Debug, Clone, Default)]
+pub struct WorldSimDiagnostics {
+    pub commands_processed: u64,
+    pub rejected_unknown_entity: u64,
+    pub rejected_out_of_bounds: u64,
+    pub rejected_chunk_not_loaded: u64,
+    pub loaded_chunk_count: usize,
+    pub last_center_chunk_load_requested: Option<Vec3i>,
+}
+
 #[derive(Resource, Debug, Clone, Copy, Default)]
 pub struct PrimarySimulationEntityId(pub Option<u64>);
 
@@ -91,12 +123,23 @@ impl Plugin for WorldSimulationPlugin {
 
         app.insert_resource(WorldSimState { world })
             .insert_resource(PrimarySimulationEntityId(primary_entity))
+            .insert_resource(WorldSimDiagnostics::default())
             .init_resource::<WorldCommandQueue>()
             .init_resource::<WorldTickControl>()
             .init_resource::<WorldUpdateBuffer>()
             .add_systems(Update, run_simulation_tick);
 
         let initial_snapshot = app.world().resource::<WorldSimState>().world.snapshot();
+        app.insert_resource(WorldView(initial_snapshot.clone()));
+        let loaded_chunk_count = app
+            .world()
+            .resource::<WorldSimState>()
+            .world
+            .loaded_chunk_count();
+        {
+            let mut diagnostics = app.world_mut().resource_mut::<WorldSimDiagnostics>();
+            diagnostics.loaded_chunk_count = loaded_chunk_count;
+        }
         let mut updates = app.world_mut().resource_mut::<WorldUpdateBuffer>();
         updates.0.push(WorldUpdate::Snapshot(initial_snapshot));
     }
@@ -107,6 +150,8 @@ fn run_simulation_tick(
     mut sim_state: ResMut<WorldSimState>,
     mut command_queue: ResMut<WorldCommandQueue>,
     mut updates: ResMut<WorldUpdateBuffer>,
+    mut world_view: ResMut<WorldView>,
+    mut diagnostics: ResMut<WorldSimDiagnostics>,
 ) {
     let should_tick = match *tick_control {
         WorldTickControl::Run => true,
@@ -126,14 +171,19 @@ fn run_simulation_tick(
 
     let queued = command_queue.drain();
     for command in queued {
+        diagnostics.commands_processed = diagnostics.commands_processed.saturating_add(1);
         match command {
             WorldCommand::MoveEntity { id, direction } => {
                 match sim_state.world.move_entity_with_reason(id, direction) {
                     Ok(delta) => updates.0.push(WorldUpdate::Delta(delta)),
                     Err(MoveEntityError::UnknownEntity) => {
+                        diagnostics.rejected_unknown_entity =
+                            diagnostics.rejected_unknown_entity.saturating_add(1);
                         eprintln!("World command rejected: unknown entity id={id}");
                     }
                     Err(MoveEntityError::OutOfBounds { from, to }) => {
+                        diagnostics.rejected_out_of_bounds =
+                            diagnostics.rejected_out_of_bounds.saturating_add(1);
                         let (min, max) = sim_state.world.world_bounds();
                         eprintln!(
                             "World command rejected: out of bounds id={id} from=({}, {}, {}) to=({}, {}, {}), bounds min=({}, {}, {}) max=({}, {}, {})",
@@ -152,6 +202,8 @@ fn run_simulation_tick(
                         );
                     }
                     Err(MoveEntityError::ChunkNotLoaded { from, to, chunk }) => {
+                        diagnostics.rejected_chunk_not_loaded =
+                            diagnostics.rejected_chunk_not_loaded.saturating_add(1);
                         eprintln!(
                             "World command rejected: chunk not loaded id={id} from=({}, {}, {}) to=({}, {}, {}), chunk=({}, {}, {})",
                             from.x,
@@ -173,6 +225,9 @@ fn run_simulation_tick(
                 }
             }
             WorldCommand::SetChunkLoaded { chunk, loaded } => {
+                if loaded {
+                    diagnostics.last_center_chunk_load_requested = Some(chunk);
+                }
                 if let Some(delta) = sim_state
                     .world
                     .apply_command(WorldCommand::SetChunkLoaded { chunk, loaded })
@@ -182,6 +237,9 @@ fn run_simulation_tick(
             }
         }
     }
+
+    diagnostics.loaded_chunk_count = sim_state.world.loaded_chunk_count();
+    world_view.0 = sim_state.world.snapshot();
 }
 
 pub struct WorldSimApp {
@@ -200,6 +258,14 @@ impl WorldSimApp {
         let mut command_queue = self.app.world_mut().resource_mut::<WorldCommandQueue>();
         command_queue.push(command);
         Ok(())
+    }
+
+    pub fn move_entity(&mut self, id: u64, direction: Vec3i) -> Result<(), String> {
+        self.send_command(WorldCommand::MoveEntity { id, direction })
+    }
+
+    pub fn set_chunk_loaded(&mut self, chunk: Vec3i, loaded: bool) -> Result<(), String> {
+        self.send_command(WorldCommand::SetChunkLoaded { chunk, loaded })
     }
 
     pub fn step_ticks(&mut self, count: u32) {
@@ -227,8 +293,7 @@ impl WorldSimApp {
 
     #[must_use]
     pub fn snapshot(&mut self) -> WorldSnapshot {
-        let runtime = self.app.world_mut().resource::<WorldSimState>();
-        runtime.world.snapshot()
+        self.app.world().resource::<WorldView>().0.clone()
     }
 
     #[must_use]
@@ -238,5 +303,10 @@ impl WorldSimApp {
             .world_mut()
             .resource::<PrimarySimulationEntityId>();
         id.0
+    }
+
+    #[must_use]
+    pub fn diagnostics(&self) -> WorldSimDiagnostics {
+        self.app.world().resource::<WorldSimDiagnostics>().clone()
     }
 }

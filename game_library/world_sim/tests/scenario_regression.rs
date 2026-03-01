@@ -4,7 +4,8 @@ use world_sim::replay::{
     ReplayRecorderOptions, load_replay, replay_commands_to_snapshot, save_replay,
 };
 use world_sim::scenario::{ScenarioBuilder, ScenarioRunOptions, run_scenario};
-use world_sim::world_api::Vec3i;
+use world_sim::world_api::{Vec3i, Vec3u};
+use world_sim::world_core::WorldConfig;
 
 #[test]
 fn scenario_builder_records_and_replays_deterministically() {
@@ -73,6 +74,82 @@ fn scenario_rejects_movement_into_unloaded_chunk() {
 
     run_scenario(&scenario, ScenarioRunOptions::default())
         .expect("scenario should keep entity in place when chunk is unloaded");
+}
+
+#[test]
+fn scenario_chunk_boundary_transition_requires_loaded_target_chunk() {
+    let mut builder = ScenarioBuilder::new("chunk_boundary_transition")
+        .world_config(WorldConfig {
+            chunk_edge: 16,
+            world_chunks: Vec3u::new(4, 1, 1),
+        })
+        .set_chunk_loaded(Vec3i::new(1, 0, 0), false);
+    for _ in 0..16 {
+        builder = builder.move_entity(1, Vec3i::new(1, 0, 0));
+    }
+    let scenario = builder
+        .assert_entity_position(1, Vec3i::new(15, 0, 0))
+        .assert_tick(15)
+        .set_chunk_loaded(Vec3i::new(1, 0, 0), true)
+        .move_entity(1, Vec3i::new(1, 0, 0))
+        .assert_entity_position(1, Vec3i::new(16, 0, 0))
+        .assert_entity_facing_left(1, true)
+        .assert_entity_prone(1, false)
+        .assert_tick(16)
+        .build();
+
+    run_scenario(&scenario, ScenarioRunOptions::default())
+        .expect("scenario should cross boundary only after target chunk is loaded");
+}
+
+#[test]
+fn scenario_chunk_streaming_replay_is_deterministic() {
+    let mut builder = ScenarioBuilder::new("chunk_streaming_replay_determinism").world_config(
+        WorldConfig {
+            chunk_edge: 16,
+            world_chunks: Vec3u::new(4, 4, 1),
+        },
+    );
+    builder = builder
+        .set_chunk_loaded(Vec3i::new(1, 0, 0), false)
+        .set_chunk_loaded(Vec3i::new(1, 1, 0), false);
+    for _ in 0..16 {
+        builder = builder.move_entity(1, Vec3i::new(1, 0, 0));
+    }
+    let scenario = builder
+        .assert_entity_position(1, Vec3i::new(15, 0, 0))
+        .set_chunk_loaded(Vec3i::new(1, 0, 0), true)
+        .move_entity(1, Vec3i::new(1, 0, 0))
+        .move_entity(1, Vec3i::new(0, 1, 0))
+        .assert_entity_position(1, Vec3i::new(16, 1, 0))
+        .assert_entity_facing_left(1, true)
+        .assert_entity_prone(1, false)
+        .build();
+
+    let run = run_scenario(
+        &scenario,
+        ScenarioRunOptions {
+            record_replay: true,
+            replay: ReplayRecorderOptions {
+                checkpoint_interval_ticks: 3,
+                include_updates: true,
+            },
+        },
+    )
+    .expect("scenario with chunk streaming should execute");
+
+    let replay = run.replay.expect("recorded replay should be present");
+    let replay_path = unique_temp_path("world_sim_chunk_streaming_replay.bin");
+    save_replay(&replay_path, &replay).expect("should save replay");
+    let loaded = load_replay(&replay_path).expect("should load replay");
+    let replayed_snapshot = replay_commands_to_snapshot(&loaded).expect("should replay commands");
+
+    assert_eq!(run.final_snapshot.tick, replayed_snapshot.tick);
+    assert_eq!(run.final_snapshot.entities, replayed_snapshot.entities);
+    assert_eq!(run.final_snapshot.world_chunks, replayed_snapshot.world_chunks);
+    assert_eq!(run.final_snapshot.chunk_edge, replayed_snapshot.chunk_edge);
+
+    let _ = std::fs::remove_file(&replay_path);
 }
 
 fn unique_temp_path(filename: &str) -> std::path::PathBuf {

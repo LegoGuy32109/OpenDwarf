@@ -212,6 +212,11 @@ impl WorldState {
         self.loaded_chunks.contains(&chunk)
     }
 
+    #[must_use]
+    pub fn loaded_chunk_count(&self) -> usize {
+        self.loaded_chunks.len()
+    }
+
     pub fn spawn_or_replace_entity(&mut self, id: u64, position: Vec3i) -> Result<(), String> {
         if !self.contains_position(position) {
             return Err(format!("spawn position is out of bounds: {position:?}"));
