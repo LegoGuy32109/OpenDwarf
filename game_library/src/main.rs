@@ -6,6 +6,9 @@ use bevy::prelude::*;
 mod components;
 mod domain;
 mod resources;
+pub mod world_api;
+pub mod world_bus;
+pub mod world_core;
 
 use domain::OpenDwarfPlugins;
 

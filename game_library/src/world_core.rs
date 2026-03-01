@@ -1,0 +1,208 @@
+use std::collections::BTreeMap;
+
+use crate::world_api::{
+    BlockType, EntityMovedDelta, EntitySnapshot, Vec3i, Vec3u, WorldCommand, WorldDelta,
+    WorldSnapshot,
+};
+
+pub const DEFAULT_CHUNK_EDGE: u32 = 16;
+pub const DEFAULT_WORLD_CHUNKS: Vec3u = Vec3u { x: 1, y: 1, z: 1 };
+
+#[derive(Debug, Clone)]
+pub struct WorldConfig {
+    pub chunk_edge: u32,
+    pub world_chunks: Vec3u,
+}
+
+impl Default for WorldConfig {
+    fn default() -> Self {
+        Self {
+            chunk_edge: DEFAULT_CHUNK_EDGE,
+            world_chunks: DEFAULT_WORLD_CHUNKS,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WorldState {
+    tick: u64,
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+    blocks: Vec<BlockType>,
+    entities: BTreeMap<u64, Vec3i>,
+}
+
+impl WorldState {
+    #[must_use]
+    pub fn new(config: WorldConfig) -> Self {
+        let block_count = usize::try_from(config.world_chunks.x)
+            .expect("world_chunks.x does not fit in usize")
+            .checked_mul(
+                usize::try_from(config.world_chunks.y)
+                    .expect("world_chunks.y does not fit in usize"),
+            )
+            .and_then(|n| {
+                n.checked_mul(
+                    usize::try_from(config.world_chunks.z)
+                        .expect("world_chunks.z does not fit in usize"),
+                )
+            })
+            .and_then(|n| {
+                n.checked_mul(
+                    usize::try_from(config.chunk_edge)
+                        .expect("chunk_edge does not fit in usize")
+                        .pow(3),
+                )
+            })
+            .expect("world block count overflowed");
+
+        Self {
+            tick: 0,
+            chunk_edge: config.chunk_edge,
+            world_chunks: config.world_chunks,
+            blocks: vec![BlockType::SolidStone; block_count],
+            entities: BTreeMap::new(),
+        }
+    }
+
+    pub fn spawn_entity(&mut self, id: u64, position: Vec3i) -> Result<(), String> {
+        if !self.contains_position(position) {
+            return Err(format!("spawn position is out of bounds: {position:?}"));
+        }
+        self.entities.insert(id, position);
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn apply_command(&mut self, command: WorldCommand) -> Option<WorldDelta> {
+        match command {
+            WorldCommand::MoveEntity { id, direction } => self.move_entity(id, direction),
+        }
+    }
+
+    #[must_use]
+    pub fn snapshot(&self) -> WorldSnapshot {
+        let entities = self
+            .entities
+            .iter()
+            .map(|(id, position)| EntitySnapshot {
+                id: *id,
+                position: *position,
+            })
+            .collect();
+
+        WorldSnapshot {
+            tick: self.tick,
+            chunk_edge: self.chunk_edge,
+            world_chunks: self.world_chunks,
+            blocks: self.blocks.clone(),
+            entities,
+        }
+    }
+
+    #[must_use]
+    pub fn centered_bounds(&self) -> (Vec3i, Vec3i) {
+        let size = self.world_size_in_voxels();
+
+        let min = Vec3i::new(
+            -(i32::try_from(size.x).expect("size.x does not fit in i32") / 2),
+            -(i32::try_from(size.y).expect("size.y does not fit in i32") / 2),
+            -(i32::try_from(size.z).expect("size.z does not fit in i32") / 2),
+        );
+        let max = Vec3i::new(
+            min.x + i32::try_from(size.x).expect("size.x does not fit in i32") - 1,
+            min.y + i32::try_from(size.y).expect("size.y does not fit in i32") - 1,
+            min.z + i32::try_from(size.z).expect("size.z does not fit in i32") - 1,
+        );
+
+        (min, max)
+    }
+
+    fn move_entity(&mut self, id: u64, direction: Vec3i) -> Option<WorldDelta> {
+        let current_position = *self.entities.get(&id)?;
+        let target_position = current_position.add(direction);
+
+        if !self.contains_position(target_position) {
+            return None;
+        }
+
+        self.tick = self.tick.saturating_add(1);
+        self.entities.insert(id, target_position);
+
+        Some(WorldDelta {
+            tick: self.tick,
+            moved_entities: vec![EntityMovedDelta {
+                id,
+                from: current_position,
+                to: target_position,
+            }],
+        })
+    }
+
+    fn world_size_in_voxels(&self) -> Vec3u {
+        Vec3u::new(
+            self.world_chunks
+                .x
+                .checked_mul(self.chunk_edge)
+                .expect("world x-size overflowed"),
+            self.world_chunks
+                .y
+                .checked_mul(self.chunk_edge)
+                .expect("world y-size overflowed"),
+            self.world_chunks
+                .z
+                .checked_mul(self.chunk_edge)
+                .expect("world z-size overflowed"),
+        )
+    }
+
+    fn contains_position(&self, position: Vec3i) -> bool {
+        let (min, max) = self.centered_bounds();
+        position.x >= min.x
+            && position.x <= max.x
+            && position.y >= min.y
+            && position.y <= max.y
+            && position.z >= min.z
+            && position.z <= max.z
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorldConfig, WorldState};
+    use crate::world_api::{Vec3i, WorldCommand};
+
+    #[test]
+    fn move_entity_within_bounds_produces_delta() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .spawn_entity(1, Vec3i::ZERO)
+            .expect("entity should spawn at origin");
+
+        let delta = world
+            .apply_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(1, 0, 0),
+            })
+            .expect("move should be in bounds");
+
+        assert_eq!(delta.tick, 1);
+        assert_eq!(delta.moved_entities.len(), 1);
+        assert_eq!(delta.moved_entities[0].to, Vec3i::new(1, 0, 0));
+    }
+
+    #[test]
+    fn move_entity_out_of_bounds_is_rejected() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .spawn_entity(1, Vec3i::new(7, 0, 0))
+            .expect("entity should spawn at edge");
+
+        let delta = world.apply_command(WorldCommand::MoveEntity {
+            id: 1,
+            direction: Vec3i::new(1, 0, 0),
+        });
+
+        assert!(delta.is_none());
+    }
+}
