@@ -10,6 +10,8 @@ pub enum ScenarioStep {
     MoveEntity { id: u64, direction: Vec3i },
     Tick { count: u32 },
     AssertEntityPosition { id: u64, expected: Vec3i },
+    AssertEntityFacingLeft { id: u64, expected: bool },
+    AssertEntityProne { id: u64, expected: bool },
     AssertTick { expected: u64 },
 }
 
@@ -69,6 +71,22 @@ impl ScenarioBuilder {
         self.scenario
             .steps
             .push(ScenarioStep::AssertEntityPosition { id, expected });
+        self
+    }
+
+    #[must_use]
+    pub fn assert_entity_facing_left(mut self, id: u64, expected: bool) -> Self {
+        self.scenario
+            .steps
+            .push(ScenarioStep::AssertEntityFacingLeft { id, expected });
+        self
+    }
+
+    #[must_use]
+    pub fn assert_entity_prone(mut self, id: u64, expected: bool) -> Self {
+        self.scenario
+            .steps
+            .push(ScenarioStep::AssertEntityProne { id, expected });
         self
     }
 
@@ -198,6 +216,42 @@ pub fn run_scenario(
                     return Err(ScenarioError::AssertionFailed(format!(
                         "tick mismatch, expected {expected} got {}",
                         snapshot.tick
+                    )));
+                }
+            }
+            ScenarioStep::AssertEntityFacingLeft { id, expected } => {
+                let snapshot = app.snapshot();
+                let entity = snapshot
+                    .entities
+                    .iter()
+                    .find(|entity| entity.id == *id)
+                    .ok_or_else(|| {
+                        ScenarioError::AssertionFailed(format!(
+                            "expected entity {id} to exist in snapshot"
+                        ))
+                    })?;
+                if entity.facing_left != *expected {
+                    return Err(ScenarioError::AssertionFailed(format!(
+                        "entity {id} facing_left mismatch, expected {:?} got {:?}",
+                        expected, entity.facing_left
+                    )));
+                }
+            }
+            ScenarioStep::AssertEntityProne { id, expected } => {
+                let snapshot = app.snapshot();
+                let entity = snapshot
+                    .entities
+                    .iter()
+                    .find(|entity| entity.id == *id)
+                    .ok_or_else(|| {
+                        ScenarioError::AssertionFailed(format!(
+                            "expected entity {id} to exist in snapshot"
+                        ))
+                    })?;
+                if entity.is_prone != *expected {
+                    return Err(ScenarioError::AssertionFailed(format!(
+                        "entity {id} is_prone mismatch, expected {:?} got {:?}",
+                        expected, entity.is_prone
                     )));
                 }
             }

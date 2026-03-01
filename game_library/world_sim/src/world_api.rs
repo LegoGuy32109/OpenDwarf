@@ -49,6 +49,8 @@ pub enum BlockType {
 pub struct EntitySnapshot {
     pub id: u64,
     pub position: Vec3i,
+    pub facing_left: bool,
+    pub is_prone: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +67,10 @@ pub struct EntityMovedDelta {
     pub id: u64,
     pub from: Vec3i,
     pub to: Vec3i,
+    pub facing_left_before: bool,
+    pub facing_left_after: bool,
+    pub is_prone_before: bool,
+    pub is_prone_after: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

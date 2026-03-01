@@ -10,10 +10,13 @@ use world_sim::world_api::Vec3i;
 fn scenario_builder_records_and_replays_deterministically() {
     let scenario = ScenarioBuilder::new("player_moves_and_ticks")
         .move_entity(1, Vec3i::new(1, 0, 0))
-        .move_entity(1, Vec3i::new(0, 1, 0))
+        .move_entity(1, Vec3i::new(0, -1, 0))
+        .move_entity(1, Vec3i::new(-1, 0, 0))
         .tick(3)
-        .assert_entity_position(1, Vec3i::new(1, 1, 0))
-        .assert_tick(5)
+        .assert_entity_position(1, Vec3i::new(0, -1, 0))
+        .assert_entity_facing_left(1, false)
+        .assert_entity_prone(1, false)
+        .assert_tick(6)
         .build();
 
     let run = run_scenario(
@@ -41,6 +44,22 @@ fn scenario_builder_records_and_replays_deterministically() {
     assert_eq!(run.final_snapshot.entities, replayed_snapshot.entities);
 
     let _ = std::fs::remove_file(&replay_path);
+}
+
+#[test]
+fn scenario_asserts_entity_facing_after_pattern() {
+    let scenario = ScenarioBuilder::new("entity_facing_pattern")
+        .move_entity(1, Vec3i::new(1, 0, 0))
+        .move_entity(1, Vec3i::new(0, 1, 0))
+        .move_entity(1, Vec3i::new(-1, 0, 0))
+        .move_entity(1, Vec3i::new(0, -1, 0))
+        .assert_entity_position(1, Vec3i::ZERO)
+        .assert_entity_facing_left(1, false)
+        .assert_entity_prone(1, false)
+        .build();
+
+    run_scenario(&scenario, ScenarioRunOptions::default())
+        .expect("scenario should validate facing successfully");
 }
 
 fn unique_temp_path(filename: &str) -> std::path::PathBuf {

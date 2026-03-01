@@ -6,14 +6,15 @@ use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 use crate::components::map_coordinates::MapCoordinates;
 use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
-use world_sim::bevy_app::{WorldCommandQueue, WorldUpdateBuffer};
+use world_sim::bevy_app::PrimarySimulationEntityId;
+use world_sim::bevy_app::WorldCommandQueue;
+use world_sim::bevy_app::WorldUpdateBuffer;
 #[cfg(not(target_arch = "wasm32"))]
 use world_sim::replay::{ReplayEvent, load_replay};
 use world_sim::world_api::{BlockType, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate};
 
 use super::visuals::Player;
 
-const PLAYER_SIMULATION_ID: u64 = 1;
 const FLOOR_Z: i32 = -1;
 const STONE_TILE_INDEX: u16 = 1;
 #[cfg(not(target_arch = "wasm32"))]
@@ -49,9 +50,16 @@ pub struct RenderWorldState {
     pub chunk_edge: u32,
     pub world_chunks: Vec3u,
     pub blocks: Vec<BlockType>,
-    pub entities: BTreeMap<u64, Vec3i>,
+    pub entities: BTreeMap<u64, RenderEntityState>,
     terrain_dirty: bool,
     entities_dirty: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderEntityState {
+    pub position: Vec3i,
+    pub facing_left: bool,
+    pub is_prone: bool,
 }
 
 impl RenderWorldState {
@@ -94,8 +102,8 @@ pub fn queue_world_commands_from_input(
     input_state: Res<InputState>,
     player_focus_state: Res<PlayerFocusState>,
     replay_mode: Res<ReplayMode>,
+    primary_entity_id: Res<PrimarySimulationEntityId>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
-    mut player_sprite: Query<&mut Sprite, With<Player>>,
 ) {
     if replay_mode.active {
         return;
@@ -120,14 +128,12 @@ pub fn queue_world_commands_from_input(
         return;
     }
 
-    if direction.x != 0
-        && let Ok(mut sprite) = player_sprite.single_mut()
-    {
-        sprite.flip_x = direction.x > 0;
-    }
+    let Some(entity_id) = primary_entity_id.0 else {
+        return;
+    };
 
     let command = WorldCommand::MoveEntity {
-        id: PLAYER_SIMULATION_ID,
+        id: entity_id,
         direction: Vec3i::new(direction.x, direction.y, direction.z),
     };
 
@@ -258,22 +264,23 @@ pub fn project_world_to_tilemap(
 
 pub fn project_world_entities_to_sprites(
     mut render_world_state: ResMut<RenderWorldState>,
+    primary_entity_id: Res<PrimarySimulationEntityId>,
     tilemap: Single<&TilemapChunk>,
-    mut player_query: Query<(&mut Transform, &mut MapCoordinates), With<Player>>,
+    mut player_query: Query<(&mut Transform, &mut MapCoordinates, &mut Sprite), With<Player>>,
 ) {
     if !render_world_state.entities_dirty {
         return;
     }
 
-    let Some(player_world_position) = render_world_state
-        .entities
-        .get(&PLAYER_SIMULATION_ID)
-        .copied()
-    else {
+    let Some(entity_id) = primary_entity_id.0 else {
         return;
     };
 
-    if let Ok((mut transform, mut coordinates)) = player_query.single_mut() {
+    let Some(player_world_position) = render_world_state.entities.get(&entity_id).copied() else {
+        return;
+    };
+
+    if let Ok((mut transform, mut coordinates, mut sprite)) = player_query.single_mut() {
         let map_size = uvec3(
             render_world_state.chunk_edge,
             render_world_state.chunk_edge,
@@ -281,13 +288,14 @@ pub fn project_world_entities_to_sprites(
         );
         *coordinates = MapCoordinates::new(
             IVec3::new(
-                player_world_position.x,
-                player_world_position.y,
-                player_world_position.z,
+                player_world_position.position.x,
+                player_world_position.position.y,
+                player_world_position.position.z,
             ),
             map_size,
         );
         *transform = tilemap.calculate_tile_transform(coordinates.as_uvec2());
+        sprite.flip_x = player_world_position.facing_left;
     }
 
     render_world_state.entities_dirty = false;
@@ -301,7 +309,16 @@ fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnap
     render_world_state.entities = snapshot
         .entities
         .into_iter()
-        .map(|entity| (entity.id, entity.position))
+        .map(|entity| {
+            (
+                entity.id,
+                RenderEntityState {
+                    position: entity.position,
+                    facing_left: entity.facing_left,
+                    is_prone: entity.is_prone,
+                },
+            )
+        })
         .collect();
     render_world_state.mark_all_dirty();
 }
@@ -312,7 +329,14 @@ fn apply_update(render_world_state: &mut RenderWorldState, update: WorldUpdate) 
         WorldUpdate::Delta(delta) => {
             render_world_state.tick = delta.tick;
             for movement in delta.moved_entities {
-                render_world_state.entities.insert(movement.id, movement.to);
+                render_world_state.entities.insert(
+                    movement.id,
+                    RenderEntityState {
+                        position: movement.to,
+                        facing_left: movement.facing_left_after,
+                        is_prone: movement.is_prone_after,
+                    },
+                );
             }
             render_world_state.entities_dirty = true;
         }

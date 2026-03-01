@@ -3,9 +3,7 @@ use bevy_ecs::prelude::Resource;
 use bevy_ecs::system::ResMut;
 
 use crate::world_api::{Vec3i, WorldCommand, WorldSnapshot, WorldUpdate};
-use crate::world_core::{WorldConfig, WorldState};
-
-const DEFAULT_PLAYER_ID: u64 = 1;
+use crate::world_core::{MoveEntityError, WorldConfig, WorldState};
 
 #[derive(Resource, Debug, Clone)]
 pub struct WorldSimSettings {
@@ -64,6 +62,9 @@ pub struct WorldSimState {
     pub world: WorldState,
 }
 
+#[derive(Resource, Debug, Clone, Copy, Default)]
+pub struct PrimarySimulationEntityId(pub Option<u64>);
+
 pub struct WorldSimulationPlugin {
     pub settings: WorldSimSettings,
 }
@@ -79,13 +80,17 @@ impl Default for WorldSimulationPlugin {
 impl Plugin for WorldSimulationPlugin {
     fn build(&self, app: &mut App) {
         let mut world = WorldState::new(self.settings.config.clone());
+        let mut primary_entity = None;
         if self.settings.spawn_default_player {
-            world
-                .spawn_entity(DEFAULT_PLAYER_ID, Vec3i::ZERO)
-                .expect("default player should spawn in bounds");
+            primary_entity = Some(
+                world
+                    .spawn_entity_auto(Vec3i::ZERO)
+                    .expect("default player should spawn in bounds"),
+            );
         }
 
         app.insert_resource(WorldSimState { world })
+            .insert_resource(PrimarySimulationEntityId(primary_entity))
             .init_resource::<WorldCommandQueue>()
             .init_resource::<WorldTickControl>()
             .init_resource::<WorldUpdateBuffer>()
@@ -121,10 +126,38 @@ fn run_simulation_tick(
 
     let queued = command_queue.drain();
     for command in queued {
-        if let Some(delta) = sim_state.world.apply_command(command) {
-            updates.0.push(WorldUpdate::Delta(delta));
-        } else {
-            eprintln!("World command rejected (likely out of bounds or unknown entity)");
+        match command {
+            WorldCommand::MoveEntity { id, direction } => {
+                match sim_state.world.move_entity_with_reason(id, direction) {
+                    Ok(delta) => updates.0.push(WorldUpdate::Delta(delta)),
+                    Err(MoveEntityError::UnknownEntity) => {
+                        eprintln!("World command rejected: unknown entity id={id}");
+                    }
+                    Err(MoveEntityError::OutOfBounds { from, to }) => {
+                        let (min, max) = sim_state.world.world_bounds();
+                        eprintln!(
+                            "World command rejected: out of bounds id={id} from=({}, {}, {}) to=({}, {}, {}), bounds min=({}, {}, {}) max=({}, {}, {})",
+                            from.x,
+                            from.y,
+                            from.z,
+                            to.x,
+                            to.y,
+                            to.z,
+                            min.x,
+                            min.y,
+                            min.z,
+                            max.x,
+                            max.y,
+                            max.z,
+                        );
+                    }
+                }
+            }
+            WorldCommand::AdvanceTicks { count } => {
+                if let Some(delta) = sim_state.world.apply_command(WorldCommand::AdvanceTicks { count }) {
+                    updates.0.push(WorldUpdate::Delta(delta));
+                }
+            }
         }
     }
 }
@@ -174,5 +207,14 @@ impl WorldSimApp {
     pub fn snapshot(&mut self) -> WorldSnapshot {
         let runtime = self.app.world_mut().resource::<WorldSimState>();
         runtime.world.snapshot()
+    }
+
+    #[must_use]
+    pub fn primary_entity_id(&mut self) -> Option<u64> {
+        let id = self
+            .app
+            .world_mut()
+            .resource::<PrimarySimulationEntityId>();
+        id.0
     }
 }

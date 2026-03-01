@@ -6,8 +6,14 @@ use world_sim::world_api::{Vec3i, WorldCommand, WorldUpdate};
 fn main() {
     let mut app = WorldSimApp::new(WorldSimulationPlugin::default());
     let _ = app.drain_updates();
+    let primary_entity_id = app.primary_entity_id();
 
     println!("world_sim_cli ready");
+    if let Some(id) = primary_entity_id {
+        println!("primary entity id={id}");
+    } else {
+        println!("no primary entity spawned");
+    }
     println!("commands: move <dx> <dy> <dz>, tick <count>, snapshot, updates, quit");
     print!("> ");
     io::stdout().flush().expect("flush should work");
@@ -35,13 +41,19 @@ fn main() {
                         parts[3].parse::<i32>(),
                     );
                     if let (Ok(dx), Ok(dy), Ok(dz)) = parsed {
+                        let Some(id) = primary_entity_id else {
+                            println!("no primary entity available");
+                            print!("> ");
+                            io::stdout().flush().expect("flush should work");
+                            continue;
+                        };
                         if let Err(err) = app.send_command(WorldCommand::MoveEntity {
-                            id: 1,
+                            id,
                             direction: Vec3i::new(dx, dy, dz),
                         }) {
                             println!("failed to enqueue move: {err}");
                         } else {
-                            println!("queued move for entity 1");
+                            println!("queued move for entity {id}");
                         }
                     } else {
                         println!("usage: move <dx> <dy> <dz>");
@@ -73,8 +85,13 @@ fn main() {
                 );
                 for entity in snapshot.entities {
                     println!(
-                        "entity {} @ ({}, {}, {})",
-                        entity.id, entity.position.x, entity.position.y, entity.position.z
+                        "entity {} @ ({}, {}, {}), facing_left={}, is_prone={}",
+                        entity.id,
+                        entity.position.x,
+                        entity.position.y,
+                        entity.position.z,
+                        entity.facing_left,
+                        entity.is_prone
                     );
                 }
             }

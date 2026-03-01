@@ -25,13 +25,31 @@ impl Default for WorldConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EntityState {
+    position: Vec3i,
+    facing_left: bool,
+    is_prone: bool,
+}
+
+impl EntityState {
+    fn new(position: Vec3i) -> Self {
+        Self {
+            position,
+            facing_left: true,
+            is_prone: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorldState {
     tick: u64,
     chunk_edge: u32,
     world_chunks: Vec3u,
     blocks: Vec<BlockType>,
-    entities: BTreeMap<u64, Vec3i>,
+    entities: BTreeMap<u64, EntityState>,
+    next_entity_id: u64,
 }
 
 impl WorldState {
@@ -64,6 +82,7 @@ impl WorldState {
             world_chunks: config.world_chunks,
             blocks: make_initial_blocks(config.chunk_edge, config.world_chunks, block_count),
             entities: BTreeMap::new(),
+            next_entity_id: 1,
         }
     }
 
@@ -71,14 +90,114 @@ impl WorldState {
         if !self.contains_position(position) {
             return Err(format!("spawn position is out of bounds: {position:?}"));
         }
-        self.entities.insert(id, position);
+        self.entities.insert(id, EntityState::new(position));
+        self.next_entity_id = self.next_entity_id.max(id.saturating_add(1));
+        Ok(())
+    }
+
+    pub fn spawn_entity_auto(&mut self, position: Vec3i) -> Result<u64, String> {
+        if !self.contains_position(position) {
+            return Err(format!("spawn position is out of bounds: {position:?}"));
+        }
+
+        let mut candidate = self.next_entity_id.max(1);
+        while self.entities.contains_key(&candidate) {
+            candidate = candidate.saturating_add(1);
+        }
+        self.entities.insert(candidate, EntityState::new(position));
+        self.next_entity_id = candidate.saturating_add(1);
+        Ok(candidate)
+    }
+
+    pub fn move_entity_with_reason(
+        &mut self,
+        id: u64,
+        direction: Vec3i,
+    ) -> Result<WorldDelta, MoveEntityError> {
+        let current = *self.entities.get(&id).ok_or(MoveEntityError::UnknownEntity)?;
+        let target_position = current.position.add(direction);
+
+        if !self.contains_position(target_position) {
+            return Err(MoveEntityError::OutOfBounds {
+                from: current.position,
+                to: target_position,
+            });
+        }
+
+        let facing_left_before = current.facing_left;
+        let facing_left_after = if direction.x > 0 {
+            true
+        } else if direction.x < 0 {
+            false
+        } else {
+            current.facing_left
+        };
+        let is_prone_before = current.is_prone;
+        let is_prone_after = current.is_prone;
+        self.tick = self.tick.saturating_add(1);
+        self.entities.insert(
+            id,
+            EntityState {
+                position: target_position,
+                facing_left: facing_left_after,
+                is_prone: is_prone_after,
+            },
+        );
+
+        Ok(WorldDelta {
+            tick: self.tick,
+            moved_entities: vec![EntityMovedDelta {
+                id,
+                from: current.position,
+                to: target_position,
+                facing_left_before,
+                facing_left_after,
+                is_prone_before,
+                is_prone_after,
+            }],
+        })
+    }
+
+    pub fn contains_position(&self, position: Vec3i) -> bool {
+        let (min, max) = self.centered_bounds();
+        position.x >= min.x
+            && position.x <= max.x
+            && position.y >= min.y
+            && position.y <= max.y
+            && position.z >= min.z
+            && position.z <= max.z
+    }
+
+    #[must_use]
+    pub fn world_bounds(&self) -> (Vec3i, Vec3i) {
+        self.centered_bounds()
+    }
+
+    #[must_use]
+    pub fn next_entity_id(&self) -> u64 {
+        self.next_entity_id
+    }
+
+    #[must_use]
+    pub fn has_entity(&self, id: u64) -> bool {
+        self.entities.contains_key(&id)
+    }
+
+    pub fn spawn_or_replace_entity(&mut self, id: u64, position: Vec3i) -> Result<(), String> {
+        if !self.contains_position(position) {
+            return Err(format!("spawn position is out of bounds: {position:?}"));
+        }
+        self.entities.insert(id, EntityState::new(position));
+        self.next_entity_id = self.next_entity_id.max(id.saturating_add(1));
         Ok(())
     }
 
     #[must_use]
     pub fn apply_command(&mut self, command: WorldCommand) -> Option<WorldDelta> {
         match command {
-            WorldCommand::MoveEntity { id, direction } => self.move_entity(id, direction),
+            WorldCommand::MoveEntity { id, direction } => {
+                self.move_entity_with_reason(id, direction).ok()
+            }
             WorldCommand::AdvanceTicks { count } => {
                 let ticks = count.max(1);
                 self.tick = self.tick.saturating_add(u64::from(ticks));
@@ -95,9 +214,11 @@ impl WorldState {
         let entities = self
             .entities
             .iter()
-            .map(|(id, position)| EntitySnapshot {
+            .map(|(id, entity)| EntitySnapshot {
                 id: *id,
-                position: *position,
+                position: entity.position,
+                facing_left: entity.facing_left,
+                is_prone: entity.is_prone,
             })
             .collect();
 
@@ -128,27 +249,6 @@ impl WorldState {
         (min, max)
     }
 
-    fn move_entity(&mut self, id: u64, direction: Vec3i) -> Option<WorldDelta> {
-        let current_position = *self.entities.get(&id)?;
-        let target_position = current_position.add(direction);
-
-        if !self.contains_position(target_position) {
-            return None;
-        }
-
-        self.tick = self.tick.saturating_add(1);
-        self.entities.insert(id, target_position);
-
-        Some(WorldDelta {
-            tick: self.tick,
-            moved_entities: vec![EntityMovedDelta {
-                id,
-                from: current_position,
-                to: target_position,
-            }],
-        })
-    }
-
     fn world_size_in_voxels(&self) -> Vec3u {
         Vec3u::new(
             self.world_chunks
@@ -166,15 +266,15 @@ impl WorldState {
         )
     }
 
-    fn contains_position(&self, position: Vec3i) -> bool {
-        let (min, max) = self.centered_bounds();
-        position.x >= min.x
-            && position.x <= max.x
-            && position.y >= min.y
-            && position.y <= max.y
-            && position.z >= min.z
-            && position.z <= max.z
-    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveEntityError {
+    UnknownEntity,
+    OutOfBounds {
+        from: Vec3i,
+        to: Vec3i,
+    },
 }
 
 fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize) -> Vec<BlockType> {
@@ -226,7 +326,7 @@ fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize)
 
 #[cfg(test)]
 mod tests {
-    use super::{WorldConfig, WorldState};
+    use super::{MoveEntityError, WorldConfig, WorldState};
     use crate::world_api::{Vec3i, WorldCommand};
 
     #[test]
@@ -246,6 +346,8 @@ mod tests {
         assert_eq!(delta.tick, 1);
         assert_eq!(delta.moved_entities.len(), 1);
         assert_eq!(delta.moved_entities[0].to, Vec3i::new(1, 0, 0));
+        assert!(delta.moved_entities[0].facing_left_after);
+        assert!(!delta.moved_entities[0].is_prone_after);
     }
 
     #[test]
@@ -271,5 +373,76 @@ mod tests {
             .expect("advance ticks should always produce a delta");
         let snapshot = world.snapshot();
         assert_eq!(snapshot.tick, 4);
+    }
+
+    #[test]
+    fn auto_spawn_assigns_incrementing_ids() {
+        let mut world = WorldState::new(WorldConfig::default());
+        let first = world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("first auto spawn should work");
+        let second = world
+            .spawn_entity_auto(Vec3i::new(1, 0, 0))
+            .expect("second auto spawn should work");
+
+        assert_eq!(first, 1);
+        assert_eq!(second, 2);
+    }
+
+    #[test]
+    fn move_entity_reports_out_of_bounds_reason() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .spawn_entity_auto(Vec3i::new(7, 0, 0))
+            .expect("entity should spawn at edge");
+
+        let err = world
+            .move_entity_with_reason(1, Vec3i::new(1, 0, 0))
+            .expect_err("move should be out of bounds");
+
+        assert!(matches!(err, MoveEntityError::OutOfBounds { .. }));
+    }
+
+    #[test]
+    fn movement_updates_entity_facing() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("spawn should succeed");
+
+        let _ = world
+            .apply_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(0, -1, 0),
+            })
+            .expect("move should be in bounds");
+        let _ = world
+            .apply_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(-1, 0, 0),
+            })
+            .expect("move should be in bounds");
+        let snapshot = world.snapshot();
+        let entity = snapshot
+            .entities
+            .into_iter()
+            .find(|entity| entity.id == 1)
+            .expect("entity should exist");
+        assert!(!entity.facing_left);
+    }
+
+    #[test]
+    fn entity_starts_not_prone() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("spawn should succeed");
+        let snapshot = world.snapshot();
+        let entity = snapshot
+            .entities
+            .into_iter()
+            .find(|entity| entity.id == 1)
+            .expect("entity should exist");
+        assert!(!entity.is_prone);
     }
 }
