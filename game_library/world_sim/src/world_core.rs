@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::world_api::{
     BlockType, EntityMovedDelta, EntitySnapshot, Vec3i, Vec3u, WorldCommand, WorldDelta,
     WorldSnapshot,
@@ -8,7 +10,7 @@ use crate::world_api::{
 pub const DEFAULT_CHUNK_EDGE: u32 = 16;
 pub const DEFAULT_WORLD_CHUNKS: Vec3u = Vec3u { x: 1, y: 1, z: 1 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldConfig {
     pub chunk_edge: u32,
     pub world_chunks: Vec3u,
