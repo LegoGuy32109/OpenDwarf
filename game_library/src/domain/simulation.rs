@@ -8,6 +8,8 @@ use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 use crate::components::map_coordinates::MapCoordinates;
 use crate::resources::input_state::InputState;
 use crate::resources::player_focus_state::PlayerFocusState;
+#[cfg(not(target_arch = "wasm32"))]
+use world_sim::replay::{ReplayEvent, load_replay};
 use world_sim::world_api::{BlockType, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate};
 use world_sim::world_bus::{InProcessWorldBus, WorldBus};
 use world_sim::world_core::{WorldConfig, WorldState};
@@ -17,6 +19,21 @@ use super::visuals::Player;
 const PLAYER_SIMULATION_ID: u64 = 1;
 const FLOOR_Z: i32 = -1;
 const STONE_TILE_INDEX: u16 = 1;
+#[cfg(not(target_arch = "wasm32"))]
+const REPLAY_PATH_ENV: &str = "OPEN_DWARF_REPLAY_PATH";
+
+#[derive(Resource, Default)]
+pub struct ReplayMode {
+    pub active: bool,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Resource)]
+pub struct ReplayPlayback {
+    events: Vec<ReplayEvent>,
+    cursor: usize,
+    playing: bool,
+}
 
 #[derive(Resource)]
 pub struct SimulationRuntime {
@@ -58,17 +75,39 @@ pub fn setup_simulation_runtime(mut commands: Commands) {
     let rx = bus.subscribe();
     bus.publish(WorldUpdate::Snapshot(world.snapshot()));
 
+    let mut replay_mode = ReplayMode::default();
+    let mut render_world_state = RenderWorldState::default();
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(mut replay_playback) = try_load_replay_playback() {
+        replay_mode.active = true;
+        replay_playback.playing = false;
+        if !apply_first_checkpoint(&mut replay_playback, &mut render_world_state) {
+            warn!("Replay did not contain any checkpoint/snapshot data");
+        }
+        commands.insert_resource(replay_playback);
+    }
+
+    if !replay_mode.active {
+        apply_snapshot(&mut render_world_state, world.snapshot());
+    }
+
     commands.insert_resource(SimulationRuntime { world, bus });
     commands.insert_resource(WorldSubscription { rx: Mutex::new(rx) });
-    commands.init_resource::<RenderWorldState>();
+    commands.insert_resource(replay_mode);
+    commands.insert_resource(render_world_state);
 }
 
 pub fn queue_world_commands_from_input(
     input_state: Res<InputState>,
     player_focus_state: Res<PlayerFocusState>,
+    replay_mode: Res<ReplayMode>,
     runtime: Res<SimulationRuntime>,
     mut player_sprite: Query<&mut Sprite, With<Player>>,
 ) {
+    if replay_mode.active {
+        return;
+    }
+
     if !player_focus_state.can_move_in_world() {
         return;
     }
@@ -102,7 +141,11 @@ pub fn queue_world_commands_from_input(
     }
 }
 
-pub fn run_world_simulation(mut runtime: ResMut<SimulationRuntime>) {
+pub fn run_world_simulation(replay_mode: Res<ReplayMode>, mut runtime: ResMut<SimulationRuntime>) {
+    if replay_mode.active {
+        return;
+    }
+
     let commands = runtime.bus.drain_commands();
     for command in commands {
         if let Some(delta) = runtime.world.apply_command(command) {
@@ -114,24 +157,70 @@ pub fn run_world_simulation(mut runtime: ResMut<SimulationRuntime>) {
 }
 
 pub fn pull_world_updates_into_render_state(
+    replay_mode: Res<ReplayMode>,
     subscription: Res<WorldSubscription>,
     mut render_world_state: ResMut<RenderWorldState>,
 ) {
+    if replay_mode.active {
+        return;
+    }
+
     let Ok(receiver) = subscription.rx.lock() else {
         return;
     };
 
     while let Ok(update) = receiver.try_recv() {
-        match update {
-            WorldUpdate::Snapshot(snapshot) => apply_snapshot(&mut render_world_state, snapshot),
-            WorldUpdate::Delta(delta) => {
-                render_world_state.tick = delta.tick;
-                for movement in delta.moved_entities {
-                    render_world_state.entities.insert(movement.id, movement.to);
-                }
-                render_world_state.entities_dirty = true;
+        apply_update(&mut render_world_state, update);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn drive_replay_playback(
+    replay_mode: Res<ReplayMode>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    replay_playback: Option<ResMut<ReplayPlayback>>,
+    mut render_world_state: ResMut<RenderWorldState>,
+) {
+    if !replay_mode.active {
+        return;
+    }
+    let Some(mut replay_playback) = replay_playback else {
+        return;
+    };
+
+    if keyboard_input.just_pressed(KeyCode::F6) {
+        replay_playback.playing = !replay_playback.playing;
+        info!(
+            "Replay playback {}",
+            if replay_playback.playing {
+                "resumed"
+            } else {
+                "paused"
             }
-        }
+        );
+    }
+
+    if keyboard_input.just_pressed(KeyCode::F8) {
+        replay_playback.cursor = 0;
+        render_world_state.entities.clear();
+        render_world_state.blocks.clear();
+        render_world_state.chunk_edge = 0;
+        render_world_state.world_chunks = Vec3u::default();
+        render_world_state.tick = 0;
+        render_world_state.mark_all_dirty();
+        let _ = apply_first_checkpoint(&mut replay_playback, &mut render_world_state);
+        info!("Replay reset to beginning");
+    }
+
+    if keyboard_input.just_pressed(KeyCode::F7) {
+        let _ = apply_next_replay_event(&mut replay_playback, &mut render_world_state);
+    }
+
+    if replay_playback.playing
+        && !apply_next_replay_event(&mut replay_playback, &mut render_world_state)
+    {
+        replay_playback.playing = false;
+        info!("Replay playback reached end");
     }
 }
 
@@ -222,6 +311,88 @@ fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnap
         .map(|entity| (entity.id, entity.position))
         .collect();
     render_world_state.mark_all_dirty();
+}
+
+fn apply_update(render_world_state: &mut RenderWorldState, update: WorldUpdate) {
+    match update {
+        WorldUpdate::Snapshot(snapshot) => apply_snapshot(render_world_state, snapshot),
+        WorldUpdate::Delta(delta) => {
+            render_world_state.tick = delta.tick;
+            for movement in delta.moved_entities {
+                render_world_state.entities.insert(movement.id, movement.to);
+            }
+            render_world_state.entities_dirty = true;
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn try_load_replay_playback() -> Option<ReplayPlayback> {
+    let replay_path = std::env::var(REPLAY_PATH_ENV).ok()?;
+    match load_replay(std::path::Path::new(&replay_path)) {
+        Ok(replay) => {
+            info!(
+                "Loaded replay from {} with {} events",
+                replay_path,
+                replay.events.len()
+            );
+            Some(ReplayPlayback {
+                events: replay.events,
+                cursor: 0,
+                playing: false,
+            })
+        }
+        Err(err) => {
+            warn!("Failed to load replay from {replay_path}: {err}");
+            None
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_first_checkpoint(
+    replay_playback: &mut ReplayPlayback,
+    render_world_state: &mut RenderWorldState,
+) -> bool {
+    while replay_playback.cursor < replay_playback.events.len() {
+        let event = replay_playback.events[replay_playback.cursor].clone();
+        replay_playback.cursor += 1;
+        match event {
+            ReplayEvent::Checkpoint(snapshot) => {
+                apply_snapshot(render_world_state, snapshot);
+                return true;
+            }
+            ReplayEvent::Update(update) => {
+                apply_update(render_world_state, update);
+                return true;
+            }
+            ReplayEvent::Command { .. } => {}
+        }
+    }
+    false
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_next_replay_event(
+    replay_playback: &mut ReplayPlayback,
+    render_world_state: &mut RenderWorldState,
+) -> bool {
+    while replay_playback.cursor < replay_playback.events.len() {
+        let event = replay_playback.events[replay_playback.cursor].clone();
+        replay_playback.cursor += 1;
+        match event {
+            ReplayEvent::Command { .. } => {}
+            ReplayEvent::Update(update) => {
+                apply_update(render_world_state, update);
+                return true;
+            }
+            ReplayEvent::Checkpoint(snapshot) => {
+                apply_snapshot(render_world_state, snapshot);
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn world_pos_from_xy(chunk_edge: u32, x: u32, y: u32, z: i32) -> Vec3i {

@@ -11,6 +11,8 @@ pub mod simulation;
 pub mod visuals;
 
 use crate::domain::messaging::webrtc::MultiplayerController;
+#[cfg(not(target_arch = "wasm32"))]
+use simulation::drive_replay_playback;
 use simulation::{
     project_world_entities_to_sprites, project_world_to_tilemap,
     pull_world_updates_into_render_state, queue_world_commands_from_input, run_world_simulation,
@@ -76,7 +78,7 @@ impl Plugin for OpenDwarfPlugins {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            app.add_systems(Update, drive_native_webrtc);
+            app.add_systems(Update, (drive_native_webrtc, drive_replay_playback));
         }
     }
 }
