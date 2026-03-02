@@ -17,11 +17,14 @@ fn diagnostics_count_chunk_not_loaded_rejections() {
     app.set_chunk_loaded(Vec3i::new(1, 0, 0), false)
         .expect("set_chunk_loaded should enqueue");
 
-    for _ in 0..16 {
+    for _ in 0..15 {
         app.move_entity(1, Vec3i::new(1, 0, 0))
             .expect("move command should enqueue");
+        app.step_ticks(4);
     }
-    app.step_ticks(17);
+    app.move_entity(1, Vec3i::new(1, 0, 0))
+        .expect("move command should enqueue");
+    app.step_ticks(1);
 
     let diagnostics = app.diagnostics();
     assert_eq!(diagnostics.rejected_chunk_not_loaded, 1);
@@ -40,7 +43,7 @@ fn diagnostics_count_unknown_entity_rejections() {
 
     app.move_entity(99, Vec3i::new(1, 0, 0))
         .expect("move command should enqueue");
-    app.step_ticks(1);
+    app.step_ticks(2);
 
     let diagnostics = app.diagnostics();
     assert_eq!(diagnostics.rejected_unknown_entity, 1);

@@ -190,10 +190,44 @@ pub fn replay_commands_to_snapshot(replay: &ReplayFile) -> Result<WorldSnapshot,
             command,
         } = event
         {
-            app.send_command(command.clone())?;
-            app.step_ticks(1);
+            match command {
+                WorldCommand::MoveEntity { id, direction } => {
+                    app.send_command(WorldCommand::MoveEntity {
+                        id: *id,
+                        direction: *direction,
+                    })?;
+                    app.step_ticks(1);
+                    wait_for_entity_movement_to_finish(&mut app, *id);
+                }
+                WorldCommand::AdvanceTicks { count } => {
+                    app.step_ticks(*count);
+                }
+                WorldCommand::SetChunkLoaded { chunk, loaded } => {
+                    app.send_command(WorldCommand::SetChunkLoaded {
+                        chunk: *chunk,
+                        loaded: *loaded,
+                    })?;
+                    app.step_ticks(1);
+                }
+            }
         }
     }
 
     Ok(app.snapshot())
+}
+
+fn wait_for_entity_movement_to_finish(app: &mut WorldSimApp, id: u64) {
+    for _ in 0..256 {
+        let is_moving = app
+            .snapshot()
+            .entities
+            .iter()
+            .find(|entity| entity.id == id)
+            .and_then(|entity| entity.movement.as_ref())
+            .is_some();
+        if !is_moving {
+            return;
+        }
+        app.step_ticks(1);
+    }
 }

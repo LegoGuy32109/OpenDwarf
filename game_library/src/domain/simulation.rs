@@ -12,7 +12,9 @@ use world_sim::bevy_app::WorldSimDiagnostics;
 use world_sim::bevy_app::WorldView;
 #[cfg(not(target_arch = "wasm32"))]
 use world_sim::replay::{ReplayEvent, load_replay};
-use world_sim::world_api::{BlockType, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate};
+use world_sim::world_api::{
+    BlockType, EntityMovementSnapshot, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate,
+};
 
 use super::visuals::{Player, TILE_SIZE_IN_PX, TilemapAssets};
 
@@ -62,6 +64,14 @@ pub struct RenderEntityState {
     pub position: Vec3i,
     pub facing_left: bool,
     pub is_prone: bool,
+    pub movement: Option<RenderEntityMovementState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderEntityMovementState {
+    pub origin: Vec3i,
+    pub target: Vec3i,
+    pub progress_percent: u8,
 }
 
 #[derive(Resource, Default)]
@@ -391,10 +401,15 @@ pub fn project_world_entities_to_sprites(
             ),
             map_size,
         );
-        *transform = Transform::from_translation(world_to_pixel_translation(
-            player_world_position.position,
-            tilemap_assets.tile_display_size.x as f32,
-        ));
+        let tile_size = tilemap_assets.tile_display_size.x as f32;
+        let render_world_position = if let Some(movement) = player_world_position.movement {
+            let start = world_to_pixel_translation(movement.origin, tile_size);
+            let end = world_to_pixel_translation(movement.target, tile_size);
+            start.lerp(end, f32::from(movement.progress_percent) / 100.0)
+        } else {
+            world_to_pixel_translation(player_world_position.position, tile_size)
+        };
+        *transform = Transform::from_translation(render_world_position);
         sprite.flip_x = player_world_position.facing_left;
     }
 
@@ -493,6 +508,7 @@ fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnap
                     position: entity.position,
                     facing_left: entity.facing_left,
                     is_prone: entity.is_prone,
+                    movement: entity.movement.map(render_movement_state),
                 },
             )
         })
@@ -512,6 +528,7 @@ fn apply_update(render_world_state: &mut RenderWorldState, update: WorldUpdate) 
                         position: movement.to,
                         facing_left: movement.facing_left_after,
                         is_prone: movement.is_prone_after,
+                        movement: movement.movement_after.map(render_movement_state),
                     },
                 );
             }
@@ -723,6 +740,14 @@ fn world_to_pixel_translation(world_position: Vec3i, tile_size: f32) -> Vec3 {
         (world_position.y as f32) * tile_size,
         1.0,
     )
+}
+
+fn render_movement_state(movement: EntityMovementSnapshot) -> RenderEntityMovementState {
+    RenderEntityMovementState {
+        origin: movement.origin,
+        target: movement.target,
+        progress_percent: movement.progress_percent,
+    }
 }
 
 fn all_world_chunk_coords(world_chunks: Vec3u) -> HashSet<Vec3i> {

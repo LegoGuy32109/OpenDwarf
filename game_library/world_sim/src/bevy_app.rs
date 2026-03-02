@@ -170,16 +170,26 @@ fn run_simulation_tick(
     }
 
     let queued = command_queue.drain();
+    let mut advanced_time_explicitly = false;
     for command in queued {
         diagnostics.commands_processed = diagnostics.commands_processed.saturating_add(1);
         match command {
             WorldCommand::MoveEntity { id, direction } => {
-                match sim_state.world.move_entity_with_reason(id, direction) {
-                    Ok(delta) => updates.0.push(WorldUpdate::Delta(delta)),
+                match sim_state.world.start_entity_move_with_reason(id, direction) {
+                    Ok(()) => {}
                     Err(MoveEntityError::UnknownEntity) => {
                         diagnostics.rejected_unknown_entity =
                             diagnostics.rejected_unknown_entity.saturating_add(1);
                         eprintln!("World command rejected: unknown entity id={id}");
+                    }
+                    Err(MoveEntityError::MovementInProgress) => {
+                        eprintln!("World command rejected: movement already in progress id={id}");
+                    }
+                    Err(MoveEntityError::NonAdjacentDirection { direction }) => {
+                        eprintln!(
+                            "World command rejected: non-adjacent move id={id} dir=({}, {}, {})",
+                            direction.x, direction.y, direction.z
+                        );
                     }
                     Err(MoveEntityError::OutOfBounds { from, to }) => {
                         diagnostics.rejected_out_of_bounds =
@@ -220,7 +230,8 @@ fn run_simulation_tick(
                 }
             }
             WorldCommand::AdvanceTicks { count } => {
-                if let Some(delta) = sim_state.world.apply_command(WorldCommand::AdvanceTicks { count }) {
+                advanced_time_explicitly = true;
+                for delta in sim_state.world.force_advance_ticks(count) {
                     updates.0.push(WorldUpdate::Delta(delta));
                 }
             }
@@ -236,6 +247,11 @@ fn run_simulation_tick(
                 }
             }
         }
+    }
+    if !advanced_time_explicitly
+        && let Some(delta) = sim_state.world.advance_active_movements_one_tick()
+    {
+        updates.0.push(WorldUpdate::Delta(delta));
     }
 
     diagnostics.loaded_chunk_count = sim_state.world.loaded_chunk_count();

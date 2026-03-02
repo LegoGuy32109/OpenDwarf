@@ -17,7 +17,7 @@ fn scenario_builder_records_and_replays_deterministically() {
         .assert_entity_position(1, Vec3i::new(0, -1, 0))
         .assert_entity_facing_left(1, false)
         .assert_entity_prone(1, false)
-        .assert_tick(6)
+        .assert_tick(15)
         .build();
 
     let run = run_scenario(
@@ -89,13 +89,13 @@ fn scenario_chunk_boundary_transition_requires_loaded_target_chunk() {
     }
     let scenario = builder
         .assert_entity_position(1, Vec3i::new(15, 0, 0))
-        .assert_tick(15)
+        .assert_tick(60)
         .set_chunk_loaded(Vec3i::new(1, 0, 0), true)
         .move_entity(1, Vec3i::new(1, 0, 0))
         .assert_entity_position(1, Vec3i::new(16, 0, 0))
         .assert_entity_facing_left(1, true)
         .assert_entity_prone(1, false)
-        .assert_tick(16)
+        .assert_tick(64)
         .build();
 
     run_scenario(&scenario, ScenarioRunOptions::default())

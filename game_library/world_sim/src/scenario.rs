@@ -183,6 +183,7 @@ pub fn run_scenario(
                 app.send_command(command.clone())
                     .map_err(ScenarioError::CommandEnqueue)?;
                 app.step_ticks(1);
+                wait_for_entity_movement_to_finish(&mut app, *id);
                 if let Some(recorder) = &mut replay {
                     recorder.record_command(tick_before, command);
                     recorder.record_updates(app.drain_updates());
@@ -192,9 +193,7 @@ pub fn run_scenario(
             ScenarioStep::Tick { count } => {
                 let command = WorldCommand::AdvanceTicks { count: *count };
                 let tick_before = app.snapshot().tick;
-                app.send_command(command.clone())
-                    .map_err(ScenarioError::CommandEnqueue)?;
-                app.step_ticks(1);
+                app.step_ticks(*count);
                 if let Some(recorder) = &mut replay {
                     recorder.record_command(tick_before, command);
                     recorder.record_updates(app.drain_updates());
@@ -288,4 +287,20 @@ pub fn run_scenario(
         final_snapshot,
         replay,
     })
+}
+
+fn wait_for_entity_movement_to_finish(app: &mut WorldSimApp, id: u64) {
+    for _ in 0..256 {
+        let is_moving = app
+            .snapshot()
+            .entities
+            .iter()
+            .find(|entity| entity.id == id)
+            .and_then(|entity| entity.movement.as_ref())
+            .is_some();
+        if !is_moving {
+            return;
+        }
+        app.step_ticks(1);
+    }
 }

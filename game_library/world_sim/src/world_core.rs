@@ -4,17 +4,19 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::world_api::{
-    BlockType, EntityMovedDelta, EntitySnapshot, Vec3i, Vec3u, WorldCommand, WorldDelta,
-    WorldSnapshot,
+    BlockType, EntityMovedDelta, EntityMovementSnapshot, EntitySnapshot, Vec3i, Vec3u,
+    WorldCommand, WorldDelta, WorldSnapshot,
 };
 
 pub const DEFAULT_CHUNK_EDGE: u32 = 16;
 pub const DEFAULT_WORLD_CHUNKS: Vec3u = Vec3u { x: 1, y: 1, z: 1 };
+pub const DEFAULT_MOVEMENT_TICKS_PER_TILE: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldConfig {
     pub chunk_edge: u32,
     pub world_chunks: Vec3u,
+    pub movement_ticks_per_tile: u32,
 }
 
 impl Default for WorldConfig {
@@ -22,6 +24,53 @@ impl Default for WorldConfig {
         Self {
             chunk_edge: DEFAULT_CHUNK_EDGE,
             world_chunks: DEFAULT_WORLD_CHUNKS,
+            movement_ticks_per_tile: DEFAULT_MOVEMENT_TICKS_PER_TILE,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EntityMovementState {
+    origin: Vec3i,
+    target: Vec3i,
+    elapsed_ticks: u32,
+    total_ticks: u32,
+}
+
+impl EntityMovementState {
+    fn new(origin: Vec3i, target: Vec3i, total_ticks: u32) -> Self {
+        Self {
+            origin,
+            target,
+            elapsed_ticks: 0,
+            total_ticks: total_ticks.max(1),
+        }
+    }
+
+    fn progress_percent(self) -> u8 {
+        let value = self.elapsed_ticks.saturating_mul(100) / self.total_ticks.max(1);
+        u8::try_from(value).expect("progress percent should fit in u8")
+    }
+
+    fn occupies_origin(self) -> bool {
+        self.progress_percent() < 75
+    }
+
+    fn occupies_target(self) -> bool {
+        self.progress_percent() >= 25
+    }
+
+    fn is_complete(self) -> bool {
+        self.elapsed_ticks >= self.total_ticks
+    }
+
+    fn snapshot(self) -> EntityMovementSnapshot {
+        EntityMovementSnapshot {
+            origin: self.origin,
+            target: self.target,
+            progress_percent: self.progress_percent(),
+            occupies_origin: self.occupies_origin(),
+            occupies_target: self.occupies_target(),
         }
     }
 }
@@ -31,6 +80,7 @@ struct EntityState {
     position: Vec3i,
     facing_left: bool,
     is_prone: bool,
+    movement: Option<EntityMovementState>,
 }
 
 impl EntityState {
@@ -39,6 +89,7 @@ impl EntityState {
             position,
             facing_left: true,
             is_prone: false,
+            movement: None,
         }
     }
 }
@@ -48,6 +99,7 @@ pub struct WorldState {
     tick: u64,
     chunk_edge: u32,
     world_chunks: Vec3u,
+    movement_ticks_per_tile: u32,
     blocks: Vec<BlockType>,
     entities: BTreeMap<u64, EntityState>,
     loaded_chunks: HashSet<Vec3i>,
@@ -82,6 +134,7 @@ impl WorldState {
             tick: 0,
             chunk_edge: config.chunk_edge,
             world_chunks: config.world_chunks,
+            movement_ticks_per_tile: config.movement_ticks_per_tile.max(1),
             blocks: make_initial_blocks(config.chunk_edge, config.world_chunks, block_count),
             entities: BTreeMap::new(),
             loaded_chunks: make_initial_loaded_chunks(config.world_chunks),
@@ -112,12 +165,18 @@ impl WorldState {
         Ok(candidate)
     }
 
-    pub fn move_entity_with_reason(
+    pub fn start_entity_move_with_reason(
         &mut self,
         id: u64,
         direction: Vec3i,
-    ) -> Result<WorldDelta, MoveEntityError> {
+    ) -> Result<(), MoveEntityError> {
+        if !is_adjacent_direction(direction) {
+            return Err(MoveEntityError::NonAdjacentDirection { direction });
+        }
         let current = *self.entities.get(&id).ok_or(MoveEntityError::UnknownEntity)?;
+        if current.movement.is_some() {
+            return Err(MoveEntityError::MovementInProgress);
+        }
         let target_position = current.position.add(direction);
 
         if !self.contains_position(target_position) {
@@ -140,7 +199,6 @@ impl WorldState {
             });
         }
 
-        let facing_left_before = current.facing_left;
         let facing_left_after = if direction.x > 0 {
             true
         } else if direction.x < 0 {
@@ -148,30 +206,98 @@ impl WorldState {
         } else {
             current.facing_left
         };
-        let is_prone_before = current.is_prone;
         let is_prone_after = current.is_prone;
-        self.tick = self.tick.saturating_add(1);
+        let distance = movement_distance(direction);
+        let total_ticks = (distance * self.movement_ticks_per_tile as f32).ceil() as u32;
         self.entities.insert(
             id,
             EntityState {
-                position: target_position,
+                position: current.position,
                 facing_left: facing_left_after,
                 is_prone: is_prone_after,
+                movement: Some(EntityMovementState::new(
+                    current.position,
+                    target_position,
+                    total_ticks,
+                )),
             },
         );
 
-        Ok(WorldDelta {
+        let _ = is_prone_after;
+        Ok(())
+    }
+
+    pub fn advance_active_movements_one_tick(&mut self) -> Option<WorldDelta> {
+        let moving_ids: Vec<u64> = self
+            .entities
+            .iter()
+            .filter_map(|(id, entity)| entity.movement.map(|_| *id))
+            .collect();
+        if moving_ids.is_empty() {
+            return None;
+        }
+
+        self.tick = self.tick.saturating_add(1);
+        let mut moved_entities = Vec::new();
+        for id in moving_ids {
+            let Some(entity) = self.entities.get_mut(&id) else {
+                continue;
+            };
+            let from = entity.position;
+            let facing_left_before = entity.facing_left;
+            let is_prone_before = entity.is_prone;
+
+            if let Some(mut movement) = entity.movement {
+                movement.elapsed_ticks = movement
+                    .elapsed_ticks
+                    .saturating_add(1)
+                    .min(movement.total_ticks.max(1));
+                if movement.progress_percent() >= 75 {
+                    entity.position = movement.target;
+                }
+                let movement_after = if movement.is_complete() {
+                    entity.position = movement.target;
+                    entity.movement = None;
+                    None
+                } else {
+                    entity.movement = Some(movement);
+                    Some(movement.snapshot())
+                };
+
+                moved_entities.push(EntityMovedDelta {
+                    id,
+                    from,
+                    to: entity.position,
+                    facing_left_before,
+                    facing_left_after: entity.facing_left,
+                    is_prone_before,
+                    is_prone_after: entity.is_prone,
+                    movement_after,
+                });
+            }
+        }
+
+        Some(WorldDelta {
             tick: self.tick,
-            moved_entities: vec![EntityMovedDelta {
-                id,
-                from: current.position,
-                to: target_position,
-                facing_left_before,
-                facing_left_after,
-                is_prone_before,
-                is_prone_after,
-            }],
+            moved_entities,
         })
+    }
+
+    pub fn force_advance_ticks(&mut self, count: u32) -> Vec<WorldDelta> {
+        let ticks = count.max(1);
+        let mut deltas = Vec::new();
+        for _ in 0..ticks {
+            if let Some(delta) = self.advance_active_movements_one_tick() {
+                deltas.push(delta);
+            } else {
+                self.tick = self.tick.saturating_add(1);
+                deltas.push(WorldDelta {
+                    tick: self.tick,
+                    moved_entities: vec![],
+                });
+            }
+        }
+        deltas
     }
 
     pub fn contains_position(&self, position: Vec3i) -> bool {
@@ -230,15 +356,11 @@ impl WorldState {
     pub fn apply_command(&mut self, command: WorldCommand) -> Option<WorldDelta> {
         match command {
             WorldCommand::MoveEntity { id, direction } => {
-                self.move_entity_with_reason(id, direction).ok()
+                self.start_entity_move_with_reason(id, direction).ok()?;
+                self.advance_active_movements_one_tick()
             }
             WorldCommand::AdvanceTicks { count } => {
-                let ticks = count.max(1);
-                self.tick = self.tick.saturating_add(u64::from(ticks));
-                Some(WorldDelta {
-                    tick: self.tick,
-                    moved_entities: vec![],
-                })
+                self.force_advance_ticks(count).pop()
             }
             WorldCommand::SetChunkLoaded { chunk, loaded } => {
                 self.set_chunk_loaded(chunk, loaded);
@@ -260,6 +382,7 @@ impl WorldState {
                 position: entity.position,
                 facing_left: entity.facing_left,
                 is_prone: entity.is_prone,
+                movement: entity.movement.map(EntityMovementState::snapshot),
             })
             .collect();
 
@@ -349,6 +472,10 @@ impl WorldState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveEntityError {
     UnknownEntity,
+    MovementInProgress,
+    NonAdjacentDirection {
+        direction: Vec3i,
+    },
     OutOfBounds {
         from: Vec3i,
         to: Vec3i,
@@ -358,6 +485,23 @@ pub enum MoveEntityError {
         to: Vec3i,
         chunk: Vec3i,
     },
+}
+
+fn is_adjacent_direction(direction: Vec3i) -> bool {
+    let max_component = direction
+        .x
+        .unsigned_abs()
+        .max(direction.y.unsigned_abs())
+        .max(direction.z.unsigned_abs());
+    let has_any_axis = direction.x != 0 || direction.y != 0 || direction.z != 0;
+    has_any_axis && max_component <= 1
+}
+
+fn movement_distance(direction: Vec3i) -> f32 {
+    let x = direction.x as f32;
+    let y = direction.y as f32;
+    let z = direction.z as f32;
+    (x * x + y * y + z * z).sqrt()
 }
 
 fn make_initial_loaded_chunks(world_chunks: Vec3u) -> HashSet<Vec3i> {
@@ -432,22 +576,26 @@ mod tests {
     use crate::world_api::{Vec3i, WorldCommand};
 
     #[test]
-    fn move_entity_within_bounds_produces_delta() {
+    fn move_entity_within_bounds_produces_progress_delta() {
         let mut world = WorldState::new(WorldConfig::default());
         world
             .spawn_entity(1, Vec3i::ZERO)
             .expect("entity should spawn at origin");
 
+        world
+            .start_entity_move_with_reason(1, Vec3i::new(1, 0, 0))
+            .expect("move should start");
         let delta = world
-            .apply_command(WorldCommand::MoveEntity {
-                id: 1,
-                direction: Vec3i::new(1, 0, 0),
-            })
-            .expect("move should be in bounds");
+            .advance_active_movements_one_tick()
+            .expect("movement tick should produce a delta");
 
         assert_eq!(delta.tick, 1);
         assert_eq!(delta.moved_entities.len(), 1);
-        assert_eq!(delta.moved_entities[0].to, Vec3i::new(1, 0, 0));
+        assert_eq!(delta.moved_entities[0].to, Vec3i::ZERO);
+        assert_eq!(
+            delta.moved_entities[0].movement_after.as_ref().map(|m| m.progress_percent),
+            Some(25)
+        );
         assert!(delta.moved_entities[0].facing_left_after);
         assert!(!delta.moved_entities[0].is_prone_after);
     }
@@ -499,7 +647,7 @@ mod tests {
             .expect("entity should spawn at edge");
 
         let err = world
-            .move_entity_with_reason(1, Vec3i::new(1, 0, 0))
+            .start_entity_move_with_reason(1, Vec3i::new(1, 0, 0))
             .expect_err("move should be out of bounds");
 
         assert!(matches!(err, MoveEntityError::OutOfBounds { .. }));
@@ -513,17 +661,17 @@ mod tests {
             .expect("spawn should succeed");
 
         let _ = world
-            .apply_command(WorldCommand::MoveEntity {
-                id: 1,
-                direction: Vec3i::new(0, -1, 0),
-            })
-            .expect("move should be in bounds");
+            .start_entity_move_with_reason(1, Vec3i::new(0, -1, 0))
+            .expect("move should start");
+        for _ in 0..4 {
+            let _ = world.advance_active_movements_one_tick();
+        }
         let _ = world
-            .apply_command(WorldCommand::MoveEntity {
-                id: 1,
-                direction: Vec3i::new(-1, 0, 0),
-            })
-            .expect("move should be in bounds");
+            .start_entity_move_with_reason(1, Vec3i::new(-1, 0, 0))
+            .expect("move should start");
+        for _ in 0..4 {
+            let _ = world.advance_active_movements_one_tick();
+        }
         let snapshot = world.snapshot();
         let entity = snapshot
             .entities
@@ -557,9 +705,46 @@ mod tests {
         world.set_chunk_loaded(Vec3i::ZERO, false);
 
         let err = world
-            .move_entity_with_reason(1, Vec3i::new(1, 0, 0))
+            .start_entity_move_with_reason(1, Vec3i::new(1, 0, 0))
             .expect_err("move should fail when chunk is unloaded");
 
         assert!(matches!(err, MoveEntityError::ChunkNotLoaded { .. }));
+    }
+
+    #[test]
+    fn movement_transitions_tile_occupancy_at_quarters() {
+        let mut world = WorldState::new(WorldConfig::default());
+        world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("spawn should succeed");
+        world
+            .start_entity_move_with_reason(1, Vec3i::new(1, 0, 0))
+            .expect("move should start");
+
+        for expected in [25_u8, 50_u8, 75_u8, 100_u8] {
+            let _ = world
+                .advance_active_movements_one_tick()
+                .expect("tick should progress movement");
+            let snapshot = world.snapshot();
+            let entity = snapshot
+                .entities
+                .into_iter()
+                .find(|entity| entity.id == 1)
+                .expect("entity should exist");
+            if expected == 100 {
+                assert!(entity.movement.is_none());
+                assert_eq!(entity.position, Vec3i::new(1, 0, 0));
+            } else {
+                let movement = entity.movement.expect("movement should be active");
+                assert_eq!(movement.progress_percent, expected);
+                if expected < 75 {
+                    assert_eq!(entity.position, Vec3i::ZERO);
+                } else {
+                    assert_eq!(entity.position, Vec3i::new(1, 0, 0));
+                }
+                assert_eq!(movement.occupies_origin, expected < 75);
+                assert_eq!(movement.occupies_target, expected >= 25);
+            }
+        }
     }
 }
