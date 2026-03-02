@@ -129,6 +129,10 @@ impl InputState {
         self.pressed_keys.contains(&key)
     }
 
+    pub fn just_pressed_key(&self, key: KeyCode) -> bool {
+        self.just_pressed_keys.contains(&key)
+    }
+
     pub fn shift_pressed(&self) -> bool {
         self.pressed_key(KeyCode::ShiftLeft) || self.pressed_key(KeyCode::ShiftRight)
     }
@@ -154,6 +158,18 @@ impl InputState {
             .collect();
         keys_just_pressed.sort();
         let mut maybe_keys = keys_just_pressed.into_iter();
+        (maybe_keys.next(), maybe_keys.next())
+    }
+
+    pub fn get_first_two_pressed(&self, codes: &Keys) -> (Option<KeyCode>, Option<KeyCode>) {
+        let mut keys_pressed: Vec<KeyCode> = self
+            .pressed_keys
+            .iter()
+            .filter(|key| codes.contains(*key))
+            .copied()
+            .collect();
+        keys_pressed.sort();
+        let mut maybe_keys = keys_pressed.into_iter();
         (maybe_keys.next(), maybe_keys.next())
     }
 

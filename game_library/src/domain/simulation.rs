@@ -29,6 +29,11 @@ pub struct ReplayMode {
     pub active: bool,
 }
 
+#[derive(Resource, Default)]
+pub struct HeldMovementState {
+    was_moving_last_frame: bool,
+}
+
 #[derive(Resource, Default, Clone)]
 pub struct ReplayHudState {
     pub active: bool,
@@ -126,6 +131,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
 
     commands.insert_resource(replay_mode);
     commands.insert_resource(replay_hud_state);
+    commands.insert_resource(HeldMovementState::default());
     commands.insert_resource(render_world_state);
     commands.insert_resource(ChunkStreamingState::default());
     commands.insert_resource(TilemapRenderMetrics::default());
@@ -136,13 +142,17 @@ pub fn queue_world_commands_from_input(
     player_focus_state: Res<PlayerFocusState>,
     replay_mode: Res<ReplayMode>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
+    render_world_state: Res<RenderWorldState>,
+    mut held_movement_state: ResMut<HeldMovementState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
 ) {
     if replay_mode.active {
+        held_movement_state.was_moving_last_frame = false;
         return;
     }
 
     if !player_focus_state.can_move_in_world() {
+        held_movement_state.was_moving_last_frame = false;
         return;
     }
 
@@ -157,15 +167,37 @@ pub fn queue_world_commands_from_input(
         _ => IVec3::ZERO,
     };
 
-    if direction == IVec3::ZERO {
-        return;
-    }
-
     let Some(entity_id) = primary_entity_id.0 else {
+        held_movement_state.was_moving_last_frame = false;
         return;
     };
 
-    world_command_queue.move_entity(entity_id, Vec3i::new(direction.x, direction.y, direction.z));
+    let Some(entity) = render_world_state.entities.get(&entity_id) else {
+        held_movement_state.was_moving_last_frame = false;
+        return;
+    };
+    let is_moving = entity.movement.is_some();
+
+    let (first_pressed, second_pressed) =
+        input_state.get_first_two_pressed(&input_state.groups.movement);
+    let held_direction = movement_direction_from_keys(&input_state, first_pressed, second_pressed);
+    let should_chain_held = held_movement_state.was_moving_last_frame && !is_moving;
+
+    if !is_moving
+        && (direction != IVec3::ZERO || (should_chain_held && held_direction != IVec3::ZERO))
+    {
+        let chosen_direction = if direction != IVec3::ZERO {
+            direction
+        } else {
+            held_direction
+        };
+        world_command_queue.move_entity(
+            entity_id,
+            Vec3i::new(chosen_direction.x, chosen_direction.y, chosen_direction.z),
+        );
+    }
+
+    held_movement_state.was_moving_last_frame = is_moving;
 }
 
 pub fn sync_render_world_from_snapshot(
@@ -479,18 +511,47 @@ pub fn stream_chunks_around_player(
 }
 
 pub fn follow_player_camera(
+    input_state: Res<InputState>,
     player_query: Query<&Transform, With<Player>>,
-    mut camera_query: Query<&mut Transform, (With<Camera2d>, Without<Player>)>,
+    mut camera_query: Query<(&mut Transform, &mut Projection), (With<Camera2d>, Without<Player>)>,
 ) {
     let Ok(player_transform) = player_query.single() else {
         return;
     };
-    let Ok(mut camera_transform) = camera_query.single_mut() else {
+    let Ok((mut camera_transform, mut projection)) = camera_query.single_mut() else {
         return;
     };
 
     camera_transform.translation.x = player_transform.translation.x;
     camera_transform.translation.y = player_transform.translation.y;
+
+    let zoom_in_pressed = input_state.just_pressed_key(KeyCode::Equal)
+        || input_state.just_pressed_key(KeyCode::NumpadAdd);
+    let zoom_out_pressed = input_state.just_pressed_key(KeyCode::Minus)
+        || input_state.just_pressed_key(KeyCode::NumpadSubtract);
+
+    if let Projection::Orthographic(ref mut orthographic) = *projection {
+        if zoom_in_pressed {
+            orthographic.scale = (orthographic.scale * 0.9).clamp(0.25, 4.0);
+        }
+        if zoom_out_pressed {
+            orthographic.scale = (orthographic.scale * 1.1).clamp(0.25, 4.0);
+        }
+    }
+}
+
+fn movement_direction_from_keys(
+    input_state: &InputState,
+    first: Option<KeyCode>,
+    second: Option<KeyCode>,
+) -> IVec3 {
+    match (first, second) {
+        (Some(first), Some(second)) => {
+            input_state.movement_direction(first) + input_state.movement_direction(second)
+        }
+        (Some(first), None) => input_state.movement_direction(first),
+        _ => IVec3::ZERO,
+    }
 }
 
 fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnapshot) {
