@@ -64,6 +64,8 @@ core = [
   "bevy/bevy_image",
   "bevy/bevy_log",
   "bevy/bevy_render",
+  "bevy/bevy_gizmos",
+  "bevy/bevy_gizmos_render",
   "bevy/bevy_sprite",
   "bevy/bevy_sprite_render",
   "bevy/bevy_text",

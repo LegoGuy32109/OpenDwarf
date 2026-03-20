@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
+use bevy::math::Isometry2d;
 use bevy::prelude::*;
 use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 
@@ -85,6 +86,11 @@ pub struct ChunkStreamingState {
     last_center_chunk: Option<Vec3i>,
 }
 
+#[derive(Resource, Default)]
+pub struct ChunkBorderDebugState {
+    pub visible: bool,
+}
+
 #[derive(Resource, Debug, Default, Clone)]
 pub struct TilemapRenderMetrics {
     pub chunk_count: usize,
@@ -134,6 +140,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(HeldMovementState::default());
     commands.insert_resource(render_world_state);
     commands.insert_resource(ChunkStreamingState::default());
+    commands.insert_resource(ChunkBorderDebugState::default());
     commands.insert_resource(TilemapRenderMetrics::default());
 }
 
@@ -393,6 +400,46 @@ pub fn project_world_to_tilemap(
         );
     }
     render_world_state.terrain_dirty = false;
+}
+
+pub fn toggle_chunk_borders(
+    input_state: Res<InputState>,
+    mut chunk_border_debug_state: ResMut<ChunkBorderDebugState>,
+) {
+    if input_state.just_pressed_key(KeyCode::F3) {
+        chunk_border_debug_state.visible = !chunk_border_debug_state.visible;
+        info!(
+            "Chunk borders {}",
+            if chunk_border_debug_state.visible {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    }
+}
+
+pub fn draw_chunk_borders(
+    chunk_border_debug_state: Res<ChunkBorderDebugState>,
+    mut gizmos: Gizmos,
+    chunk_query: Query<(&TilemapChunk, &Transform), With<WorldTileChunk>>,
+) {
+    if !chunk_border_debug_state.visible {
+        return;
+    }
+
+    let border_color = Color::srgba(1.0, 1.0, 0.0, 0.95);
+    for (tilemap_chunk, transform) in &chunk_query {
+        let size = Vec2::new(
+            tilemap_chunk.chunk_size.x as f32 * tilemap_chunk.tile_display_size.x as f32,
+            tilemap_chunk.chunk_size.y as f32 * tilemap_chunk.tile_display_size.y as f32,
+        );
+        gizmos.rect_2d(
+            Isometry2d::from_translation(transform.translation.truncate()),
+            size,
+            border_color,
+        );
+    }
 }
 
 pub fn project_world_entities_to_sprites(
@@ -797,8 +844,8 @@ fn chunk_world_translation(chunk_coord: Vec3i, chunk_edge: u32) -> Vec3 {
 
 fn world_to_pixel_translation(world_position: Vec3i, tile_size: f32) -> Vec3 {
     Vec3::new(
-        (world_position.x as f32) * tile_size,
-        (world_position.y as f32) * tile_size,
+        ((world_position.x as f32) + 0.5) * tile_size,
+        ((world_position.y as f32) + 0.5) * tile_size,
         1.0,
     )
 }

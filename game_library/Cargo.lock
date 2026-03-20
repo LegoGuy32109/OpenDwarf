@@ -968,6 +968,7 @@ dependencies = [
  "bevy_dev_tools",
  "bevy_diagnostic",
  "bevy_ecs",
+ "bevy_gizmos",
  "bevy_gizmos_render",
  "bevy_image",
  "bevy_input",

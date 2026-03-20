@@ -10,7 +10,7 @@ use crate::world_api::{
 
 pub const DEFAULT_CHUNK_EDGE: u32 = 16;
 pub const DEFAULT_WORLD_CHUNKS: Vec3u = Vec3u { x: 1, y: 1, z: 1 };
-pub const DEFAULT_MOVEMENT_TICKS_PER_TILE: u32 = 4;
+pub const DEFAULT_MOVEMENT_TICKS_PER_TILE: u32 = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldConfig {
@@ -575,9 +575,16 @@ mod tests {
     use super::{MoveEntityError, WorldConfig, WorldState};
     use crate::world_api::{Vec3i, WorldCommand};
 
+    fn test_world() -> WorldState {
+        WorldState::new(WorldConfig {
+            movement_ticks_per_tile: 4,
+            ..WorldConfig::default()
+        })
+    }
+
     #[test]
     fn move_entity_within_bounds_produces_progress_delta() {
-        let mut world = WorldState::new(WorldConfig::default());
+        let mut world = test_world();
         world
             .spawn_entity(1, Vec3i::ZERO)
             .expect("entity should spawn at origin");
@@ -602,7 +609,7 @@ mod tests {
 
     #[test]
     fn move_entity_out_of_bounds_is_rejected() {
-        let mut world = WorldState::new(WorldConfig::default());
+        let mut world = test_world();
         world
             .spawn_entity(1, Vec3i::new(7, 0, 0))
             .expect("entity should spawn at edge");
@@ -655,7 +662,7 @@ mod tests {
 
     #[test]
     fn movement_updates_entity_facing() {
-        let mut world = WorldState::new(WorldConfig::default());
+        let mut world = test_world();
         world
             .spawn_entity_auto(Vec3i::ZERO)
             .expect("spawn should succeed");
@@ -698,7 +705,7 @@ mod tests {
 
     #[test]
     fn move_entity_into_unloaded_chunk_is_rejected() {
-        let mut world = WorldState::new(WorldConfig::default());
+        let mut world = test_world();
         world
             .spawn_entity_auto(Vec3i::ZERO)
             .expect("spawn should succeed");
@@ -713,7 +720,7 @@ mod tests {
 
     #[test]
     fn movement_transitions_tile_occupancy_at_quarters() {
-        let mut world = WorldState::new(WorldConfig::default());
+        let mut world = test_world();
         world
             .spawn_entity_auto(Vec3i::ZERO)
             .expect("spawn should succeed");
