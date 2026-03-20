@@ -17,6 +17,9 @@ const NUM_TILES_IN_MAP: u16 = 31;
 #[derive(Component)]
 pub struct Player;
 
+#[derive(Component, Debug, Clone, Copy)]
+pub struct PlayerRenderTarget(pub Vec3);
+
 #[derive(Resource, Clone)]
 pub struct TilemapAssets {
     pub tileset: Handle<Image>,
@@ -53,7 +56,11 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Load a sprite for the player; you must have an image at "assets/Dwarf.png"
     let dwarf_texture = asset_server.load("sprites/Dwarf.png");
     let dwarf_coordinates = MapCoordinates::new(IVec3::ZERO, uvec3(16, 16, 1));
-    let dwarf_transform = Transform::default();
+    let dwarf_transform = Transform::from_translation(Vec3::new(
+        f32::from(TILE_SIZE_IN_PX) * 0.5,
+        f32::from(TILE_SIZE_IN_PX) * 0.5,
+        1.0,
+    ));
 
     commands.spawn((
         Sprite {
@@ -64,6 +71,7 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         dwarf_transform,
         Player,
+        PlayerRenderTarget(dwarf_transform.translation),
         dwarf_coordinates,
     ));
 }

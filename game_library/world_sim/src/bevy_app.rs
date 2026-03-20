@@ -1,4 +1,4 @@
-use bevy_app::{App, Plugin, Update};
+use bevy_app::{App, FixedUpdate, Plugin};
 use bevy_ecs::prelude::Resource;
 use bevy_ecs::system::ResMut;
 
@@ -127,7 +127,7 @@ impl Plugin for WorldSimulationPlugin {
             .init_resource::<WorldCommandQueue>()
             .init_resource::<WorldTickControl>()
             .init_resource::<WorldUpdateBuffer>()
-            .add_systems(Update, run_simulation_tick);
+            .add_systems(FixedUpdate, run_simulation_tick);
 
         let initial_snapshot = app.world().resource::<WorldSimState>().world.snapshot();
         app.insert_resource(WorldView(initial_snapshot.clone()));

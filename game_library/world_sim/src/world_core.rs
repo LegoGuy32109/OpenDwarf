@@ -10,7 +10,7 @@ use crate::world_api::{
 
 pub const DEFAULT_CHUNK_EDGE: u32 = 16;
 pub const DEFAULT_WORLD_CHUNKS: Vec3u = Vec3u { x: 1, y: 1, z: 1 };
-pub const DEFAULT_MOVEMENT_TICKS_PER_TILE: u32 = 8;
+pub const DEFAULT_MOVEMENT_TICKS_PER_TILE: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldConfig {
@@ -173,7 +173,10 @@ impl WorldState {
         if !is_adjacent_direction(direction) {
             return Err(MoveEntityError::NonAdjacentDirection { direction });
         }
-        let current = *self.entities.get(&id).ok_or(MoveEntityError::UnknownEntity)?;
+        let current = *self
+            .entities
+            .get(&id)
+            .ok_or(MoveEntityError::UnknownEntity)?;
         if current.movement.is_some() {
             return Err(MoveEntityError::MovementInProgress);
         }
@@ -359,9 +362,7 @@ impl WorldState {
                 self.start_entity_move_with_reason(id, direction).ok()?;
                 self.advance_active_movements_one_tick()
             }
-            WorldCommand::AdvanceTicks { count } => {
-                self.force_advance_ticks(count).pop()
-            }
+            WorldCommand::AdvanceTicks { count } => self.force_advance_ticks(count).pop(),
             WorldCommand::SetChunkLoaded { chunk, loaded } => {
                 self.set_chunk_loaded(chunk, loaded);
                 Some(WorldDelta {
@@ -466,7 +467,6 @@ impl WorldState {
             i32::try_from(chunk_local_z).ok()? - center_z,
         ))
     }
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -600,7 +600,10 @@ mod tests {
         assert_eq!(delta.moved_entities.len(), 1);
         assert_eq!(delta.moved_entities[0].to, Vec3i::ZERO);
         assert_eq!(
-            delta.moved_entities[0].movement_after.as_ref().map(|m| m.progress_percent),
+            delta.moved_entities[0]
+                .movement_after
+                .as_ref()
+                .map(|m| m.progress_percent),
             Some(25)
         );
         assert!(delta.moved_entities[0].facing_left_after);

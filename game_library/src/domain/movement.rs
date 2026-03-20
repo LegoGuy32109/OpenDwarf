@@ -172,7 +172,7 @@ pub fn keyboard_movement(
 }
 
 pub fn make_movement_action(direction: IVec3, entity: Entity) -> Action {
-    let duration_time = f64::from(direction.as_vec3().length()) * 0.3;
+    let duration_time = f64::from(direction.as_vec3().length());
     Action {
         target_entity: entity,
         direction,

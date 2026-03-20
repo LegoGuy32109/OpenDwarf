@@ -17,7 +17,7 @@ use world_sim::world_api::{
     BlockType, EntityMovementSnapshot, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate,
 };
 
-use super::visuals::{Player, TILE_SIZE_IN_PX, TilemapAssets};
+use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets};
 
 const FLOOR_Z: i32 = -1;
 const CHUNK_STREAM_RADIUS_XY: i32 = 2;
@@ -446,7 +446,10 @@ pub fn project_world_entities_to_sprites(
     mut render_world_state: ResMut<RenderWorldState>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
     tilemap_assets: Res<TilemapAssets>,
-    mut player_query: Query<(&mut Transform, &mut MapCoordinates, &mut Sprite), With<Player>>,
+    mut player_query: Query<
+        (&mut MapCoordinates, &mut Sprite, &mut PlayerRenderTarget),
+        With<Player>,
+    >,
 ) {
     if !render_world_state.entities_dirty {
         return;
@@ -460,7 +463,7 @@ pub fn project_world_entities_to_sprites(
         return;
     };
 
-    if let Ok((mut transform, mut coordinates, mut sprite)) = player_query.single_mut() {
+    if let Ok((mut coordinates, mut sprite, mut render_target)) = player_query.single_mut() {
         let world_voxels_x = render_world_state
             .world_chunks
             .x
@@ -488,11 +491,32 @@ pub fn project_world_entities_to_sprites(
         } else {
             world_to_pixel_translation(player_world_position.position, tile_size)
         };
-        *transform = Transform::from_translation(render_world_position);
+        render_target.0 = render_world_position;
         sprite.flip_x = player_world_position.facing_left;
     }
 
     render_world_state.entities_dirty = false;
+}
+
+pub fn smooth_player_render_transform(
+    time: Res<Time>,
+    mut player_query: Query<(&mut Transform, &PlayerRenderTarget), With<Player>>,
+) {
+    let Ok((mut transform, render_target)) = player_query.single_mut() else {
+        return;
+    };
+
+    let target = render_target.0;
+    let delta = time.delta_secs();
+    let smoothing = 1.0 - (-20.0 * delta).exp();
+    let distance = transform.translation.distance(target);
+
+    if distance <= 0.01 || smoothing >= 0.999 {
+        transform.translation = target;
+        return;
+    }
+
+    transform.translation = transform.translation.lerp(target, smoothing);
 }
 
 pub fn stream_chunks_around_player(

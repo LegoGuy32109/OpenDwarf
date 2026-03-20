@@ -16,7 +16,8 @@ use simulation::drive_replay_playback;
 use simulation::{
     draw_chunk_borders, follow_player_camera, project_world_entities_to_sprites,
     project_world_to_tilemap, queue_world_commands_from_input, setup_simulation_state,
-    stream_chunks_around_player, sync_render_world_from_snapshot, toggle_chunk_borders,
+    smooth_player_render_transform, stream_chunks_around_player, sync_render_world_from_snapshot,
+    toggle_chunk_borders,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -39,6 +40,7 @@ pub struct OpenDwarfPlugins;
 impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(define_defaults())
+            .insert_resource(bevy::time::Time::<bevy::time::Fixed>::from_hz(20.0))
             .add_plugins(WorldSimulationPlugin {
                 settings: WorldSimSettings {
                     config: WorldConfig {
@@ -62,6 +64,7 @@ impl Plugin for OpenDwarfPlugins {
                     project_world_to_tilemap,
                     draw_chunk_borders,
                     project_world_entities_to_sprites,
+                    smooth_player_render_transform,
                     follow_player_camera,
                 )
                     .chain(),
