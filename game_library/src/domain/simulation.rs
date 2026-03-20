@@ -442,6 +442,44 @@ pub fn draw_chunk_borders(
     }
 }
 
+pub fn draw_entity_occupancy_boxes(
+    chunk_border_debug_state: Res<ChunkBorderDebugState>,
+    tilemap_assets: Res<TilemapAssets>,
+    render_world_state: Res<RenderWorldState>,
+    mut gizmos: Gizmos,
+) {
+    if !chunk_border_debug_state.visible {
+        return;
+    }
+
+    let tile_size = tilemap_assets.tile_display_size.x as f32;
+    let occupancy_color = Color::srgba(1.0, 0.72, 0.16, 0.95);
+
+    for entity in render_world_state.entities.values() {
+        let mut occupied_tiles = Vec::new();
+        if let Some(movement) = entity.movement {
+            if movement.progress_percent < 75 {
+                occupied_tiles.push(movement.origin);
+            }
+            if movement.progress_percent >= 25 {
+                occupied_tiles.push(movement.target);
+            }
+        } else {
+            occupied_tiles.push(entity.position);
+        }
+
+        for world_position in occupied_tiles {
+            gizmos.rect_2d(
+                Isometry2d::from_translation(
+                    world_to_pixel_translation(world_position, tile_size).truncate(),
+                ),
+                Vec2::splat(tile_size),
+                occupancy_color,
+            );
+        }
+    }
+}
+
 pub fn project_world_entities_to_sprites(
     mut render_world_state: ResMut<RenderWorldState>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
@@ -508,7 +546,7 @@ pub fn smooth_player_render_transform(
 
     let target = render_target.0;
     let delta = time.delta_secs();
-    let smoothing = 1.0 - (-20.0 * delta).exp();
+    let smoothing = 1.0 - (-10.0 * delta).exp();
     let distance = transform.translation.distance(target);
 
     if distance <= 0.01 || smoothing >= 0.999 {
