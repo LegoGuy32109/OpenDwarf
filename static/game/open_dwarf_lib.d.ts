@@ -3,20 +3,17 @@
 
 export function main(): void;
 
-export function send_game_bytes(bytes: Uint8Array): void;
-
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly main: () => void;
-    readonly send_game_bytes: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_1569: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_2890: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_68643: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_63471: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_1570: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2891: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_1683: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_3185: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_70398: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_65230: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_1684: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_3186: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
