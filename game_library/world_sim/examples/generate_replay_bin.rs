@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .move_entity(1, Vec3i::new(0, 1, 0))
         .tick(5)
         .assert_entity_position(1, Vec3i::new(2, 1, 0))
-        .assert_entity_facing_left(1, true)
+        .assert_entity_facing_left(1, false)
         .assert_entity_prone(1, false)
         .assert_tick(8)
         .build();

@@ -119,7 +119,7 @@ pub fn keyboard_movement(
             if direction.x != 0
                 && let Ok(mut sprite) = sprite_query.get_mut(player)
             {
-                sprite.flip_x = direction.x > 0;
+                sprite.flip_x = direction.x < 0;
             }
             // if there was somehow a Movement Chord still active, remove it
             commands.spawn(make_movement_action(direction, player));

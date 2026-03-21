@@ -87,7 +87,7 @@ impl EntityState {
     fn new(position: Vec3i) -> Self {
         Self {
             position,
-            facing_left: true,
+            facing_left: false,
             is_prone: false,
             movement: None,
         }
@@ -203,9 +203,9 @@ impl WorldState {
         }
 
         let facing_left_after = if direction.x > 0 {
-            true
-        } else if direction.x < 0 {
             false
+        } else if direction.x < 0 {
+            true
         } else {
             current.facing_left
         };
@@ -606,7 +606,7 @@ mod tests {
                 .map(|m| m.progress_percent),
             Some(25)
         );
-        assert!(delta.moved_entities[0].facing_left_after);
+        assert!(!delta.moved_entities[0].facing_left_after);
         assert!(!delta.moved_entities[0].is_prone_after);
     }
 
@@ -688,7 +688,7 @@ mod tests {
             .into_iter()
             .find(|entity| entity.id == 1)
             .expect("entity should exist");
-        assert!(!entity.facing_left);
+        assert!(entity.facing_left);
     }
 
     #[test]
