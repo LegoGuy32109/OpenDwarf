@@ -65,7 +65,7 @@ pub struct RenderWorldState {
     entities_dirty: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderEntityState {
     pub position: Vec3i,
     pub facing_left: bool,
@@ -73,8 +73,9 @@ pub struct RenderEntityState {
     pub movement: Option<RenderEntityMovementState>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderEntityMovementState {
+    pub start_position: Vec3,
     pub origin: Vec3i,
     pub target: Vec3i,
     pub progress_percent: u8,
@@ -184,11 +185,14 @@ pub fn queue_world_commands_from_input(
         return;
     };
     let is_moving = entity.movement.is_some();
+    let active_direction = entity.movement.map(render_movement_direction);
 
     let (first_pressed, second_pressed) =
         input_state.get_first_two_pressed(&input_state.groups.movement);
     let held_direction = movement_direction_from_keys(&input_state, first_pressed, second_pressed);
     let should_chain_held = held_movement_state.was_moving_last_frame && !is_moving;
+    let active_direction_is_held = active_direction
+        .is_some_and(|active_direction| direction_contains(held_direction, active_direction));
 
     if !is_moving
         && (direction != IVec3::ZERO || (should_chain_held && held_direction != IVec3::ZERO))
@@ -202,6 +206,13 @@ pub fn queue_world_commands_from_input(
             entity_id,
             Vec3i::new(chosen_direction.x, chosen_direction.y, chosen_direction.z),
         );
+    } else if is_moving
+        && direction != IVec3::ZERO
+        && active_direction != Some(direction)
+        && !active_direction_is_held
+    {
+        world_command_queue
+            .move_entity(entity_id, Vec3i::new(direction.x, direction.y, direction.z));
     }
 
     held_movement_state.was_moving_last_frame = is_moving;
@@ -312,6 +323,7 @@ pub fn project_world_to_tilemap(
         &mut Transform,
     )>,
 ) {
+    #[cfg(not(target_arch = "wasm32"))]
     let start = std::time::Instant::now();
     if !render_world_state.terrain_dirty {
         return;
@@ -389,15 +401,19 @@ pub fn project_world_to_tilemap(
 
     tilemap_render_metrics.chunk_count = active_chunks.len();
     tilemap_render_metrics.non_empty_tile_count = non_empty_tile_count;
-    tilemap_render_metrics.last_rebuild_micros = start.elapsed().as_micros();
-    tilemap_render_metrics.rebuild_count = tilemap_render_metrics.rebuild_count.saturating_add(1);
-    if tilemap_render_metrics.last_rebuild_micros > 8_000 {
-        warn!(
-            "Tilemap rebuild slow: {}us across {} chunks and {} non-empty tiles",
-            tilemap_render_metrics.last_rebuild_micros,
-            tilemap_render_metrics.chunk_count,
-            tilemap_render_metrics.non_empty_tile_count
-        );
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        tilemap_render_metrics.last_rebuild_micros = start.elapsed().as_micros();
+        tilemap_render_metrics.rebuild_count =
+            tilemap_render_metrics.rebuild_count.saturating_add(1);
+        if tilemap_render_metrics.last_rebuild_micros > 8_000 {
+            warn!(
+                "Tilemap rebuild slow: {}us across {} chunks and {} non-empty tiles",
+                tilemap_render_metrics.last_rebuild_micros,
+                tilemap_render_metrics.chunk_count,
+                tilemap_render_metrics.non_empty_tile_count
+            );
+        }
     }
     render_world_state.terrain_dirty = false;
 }
@@ -523,7 +539,7 @@ pub fn project_world_entities_to_sprites(
         );
         let tile_size = tilemap_assets.tile_display_size.x as f32;
         let render_world_position = if let Some(movement) = player_world_position.movement {
-            let start = world_to_pixel_translation(movement.origin, tile_size);
+            let start = world_to_pixel_translation_f32(movement.start_position, tile_size);
             let end = world_to_pixel_translation(movement.target, tile_size);
             start.lerp(end, f32::from(movement.progress_percent) / 100.0)
         } else {
@@ -661,6 +677,16 @@ fn movement_direction_from_keys(
         (Some(first), None) => input_state.movement_direction(first),
         _ => IVec3::ZERO,
     }
+}
+
+fn direction_contains(container: IVec3, direction: IVec3) -> bool {
+    if container == IVec3::ZERO || direction == IVec3::ZERO {
+        return false;
+    }
+
+    (direction.x == 0 || container.x.signum() == direction.x.signum())
+        && (direction.y == 0 || container.y.signum() == direction.y.signum())
+        && (direction.z == 0 || container.z.signum() == direction.z.signum())
 }
 
 fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnapshot) {
@@ -912,11 +938,55 @@ fn world_to_pixel_translation(world_position: Vec3i, tile_size: f32) -> Vec3 {
     )
 }
 
+fn world_to_pixel_translation_f32(world_position: Vec3, tile_size: f32) -> Vec3 {
+    Vec3::new(
+        (world_position.x + 0.5) * tile_size,
+        (world_position.y + 0.5) * tile_size,
+        1.0,
+    )
+}
+
 fn render_movement_state(movement: EntityMovementSnapshot) -> RenderEntityMovementState {
     RenderEntityMovementState {
+        start_position: Vec3::new(
+            movement.start_position[0],
+            movement.start_position[1],
+            movement.start_position[2],
+        ),
         origin: movement.origin,
         target: movement.target,
         progress_percent: movement.progress_percent,
+    }
+}
+
+fn render_movement_direction(movement: RenderEntityMovementState) -> IVec3 {
+    IVec3::new(
+        (movement.target.x - movement.origin.x).signum(),
+        (movement.target.y - movement.origin.y).signum(),
+        (movement.target.z - movement.origin.z).signum(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::direction_contains;
+    use bevy::math::IVec3;
+
+    #[test]
+    fn direction_contains_requires_active_direction_to_still_be_held() {
+        assert!(direction_contains(
+            IVec3::new(1, -1, 0),
+            IVec3::new(0, -1, 0)
+        ));
+        assert!(direction_contains(IVec3::new(1, 1, 0), IVec3::new(1, 0, 0)));
+        assert!(!direction_contains(
+            IVec3::new(1, 0, 0),
+            IVec3::new(0, -1, 0)
+        ));
+        assert!(!direction_contains(
+            IVec3::new(0, -1, 0),
+            IVec3::new(0, -1, 1)
+        ));
     }
 }
 

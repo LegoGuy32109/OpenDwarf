@@ -15,7 +15,7 @@ fn scenario_builder_records_and_replays_deterministically() {
         .move_entity(1, Vec3i::new(-1, 0, 0))
         .tick(3)
         .assert_entity_position(1, Vec3i::new(0, -1, 0))
-        .assert_entity_facing_left(1, false)
+        .assert_entity_facing_left(1, true)
         .assert_entity_prone(1, false)
         .assert_tick(15)
         .build();
@@ -55,7 +55,7 @@ fn scenario_asserts_entity_facing_after_pattern() {
         .move_entity(1, Vec3i::new(-1, 0, 0))
         .move_entity(1, Vec3i::new(0, -1, 0))
         .assert_entity_position(1, Vec3i::ZERO)
-        .assert_entity_facing_left(1, false)
+        .assert_entity_facing_left(1, true)
         .assert_entity_prone(1, false)
         .build();
 
@@ -93,7 +93,7 @@ fn scenario_chunk_boundary_transition_requires_loaded_target_chunk() {
         .set_chunk_loaded(Vec3i::new(1, 0, 0), true)
         .move_entity(1, Vec3i::new(1, 0, 0))
         .assert_entity_position(1, Vec3i::new(16, 0, 0))
-        .assert_entity_facing_left(1, true)
+        .assert_entity_facing_left(1, false)
         .assert_entity_prone(1, false)
         .assert_tick(64)
         .build();
@@ -122,7 +122,7 @@ fn scenario_chunk_streaming_replay_is_deterministic() {
         .move_entity(1, Vec3i::new(1, 0, 0))
         .move_entity(1, Vec3i::new(0, 1, 0))
         .assert_entity_position(1, Vec3i::new(16, 1, 0))
-        .assert_entity_facing_left(1, true)
+        .assert_entity_facing_left(1, false)
         .assert_entity_prone(1, false)
         .build();
 

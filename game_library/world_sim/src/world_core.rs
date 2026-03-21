@@ -29,27 +29,56 @@ impl Default for WorldConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct EntityMovementState {
     origin: Vec3i,
     target: Vec3i,
+    start_position: [f32; 3],
     elapsed_ticks: u32,
     total_ticks: u32,
 }
 
 impl EntityMovementState {
-    fn new(origin: Vec3i, target: Vec3i, total_ticks: u32) -> Self {
+    fn with_start_position(
+        origin: Vec3i,
+        target: Vec3i,
+        total_ticks: u32,
+        start_position: [f32; 3],
+    ) -> Self {
         Self {
             origin,
             target,
+            start_position,
             elapsed_ticks: 0,
             total_ticks: total_ticks.max(1),
         }
     }
 
+    fn progress_fraction(self) -> f32 {
+        self.elapsed_ticks as f32 / self.total_ticks.max(1) as f32
+    }
+
     fn progress_percent(self) -> u8 {
         let value = self.elapsed_ticks.saturating_mul(100) / self.total_ticks.max(1);
         u8::try_from(value).expect("progress percent should fit in u8")
+    }
+
+    fn direction(self) -> Vec3i {
+        Vec3i::new(
+            (self.target.x - self.origin.x).signum(),
+            (self.target.y - self.origin.y).signum(),
+            (self.target.z - self.origin.z).signum(),
+        )
+    }
+
+    fn interpolated_position(self) -> [f32; 3] {
+        let fraction = self.progress_fraction();
+        let target_position = vec3i_to_f32(self.target);
+        [
+            self.start_position[0] + (target_position[0] - self.start_position[0]) * fraction,
+            self.start_position[1] + (target_position[1] - self.start_position[1]) * fraction,
+            self.start_position[2] + (target_position[2] - self.start_position[2]) * fraction,
+        ]
     }
 
     fn occupies_origin(self) -> bool {
@@ -68,6 +97,7 @@ impl EntityMovementState {
         EntityMovementSnapshot {
             origin: self.origin,
             target: self.target,
+            start_position: self.start_position,
             progress_percent: self.progress_percent(),
             occupies_origin: self.occupies_origin(),
             occupies_target: self.occupies_target(),
@@ -75,7 +105,7 @@ impl EntityMovementState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct EntityState {
     position: Vec3i,
     facing_left: bool,
@@ -177,9 +207,6 @@ impl WorldState {
             .entities
             .get(&id)
             .ok_or(MoveEntityError::UnknownEntity)?;
-        if current.movement.is_some() {
-            return Err(MoveEntityError::MovementInProgress);
-        }
         let target_position = current.position.add(direction);
 
         if !self.contains_position(target_position) {
@@ -202,6 +229,15 @@ impl WorldState {
             });
         }
 
+        let (movement_start_position, movement_origin) = if let Some(movement) = current.movement {
+            if movement.direction() == direction {
+                return Err(MoveEntityError::MovementInProgress);
+            }
+            (movement.interpolated_position(), current.position)
+        } else {
+            (vec3i_to_f32(current.position), current.position)
+        };
+
         let facing_left_after = if direction.x > 0 {
             false
         } else if direction.x < 0 {
@@ -210,7 +246,11 @@ impl WorldState {
             current.facing_left
         };
         let is_prone_after = current.is_prone;
-        let distance = movement_distance(direction);
+        let distance = if current.movement.is_some() {
+            movement_distance_between(movement_start_position, target_position)
+        } else {
+            movement_distance(direction)
+        };
         let total_ticks = (distance * self.movement_ticks_per_tile as f32).ceil() as u32;
         self.entities.insert(
             id,
@@ -218,10 +258,11 @@ impl WorldState {
                 position: current.position,
                 facing_left: facing_left_after,
                 is_prone: is_prone_after,
-                movement: Some(EntityMovementState::new(
-                    current.position,
+                movement: Some(EntityMovementState::with_start_position(
+                    movement_origin,
                     target_position,
                     total_ticks,
+                    movement_start_position,
                 )),
             },
         );
@@ -504,6 +545,18 @@ fn movement_distance(direction: Vec3i) -> f32 {
     (x * x + y * y + z * z).sqrt()
 }
 
+fn movement_distance_between(from: [f32; 3], to: Vec3i) -> f32 {
+    let to = vec3i_to_f32(to);
+    let x = to[0] - from[0];
+    let y = to[1] - from[1];
+    let z = to[2] - from[2];
+    (x * x + y * y + z * z).sqrt()
+}
+
+fn vec3i_to_f32(position: Vec3i) -> [f32; 3] {
+    [position.x as f32, position.y as f32, position.z as f32]
+}
+
 fn make_initial_loaded_chunks(world_chunks: Vec3u) -> HashSet<Vec3i> {
     let mut loaded = HashSet::new();
     let offset_x = i32::try_from(world_chunks.x).expect("world_chunks.x too large") / 2;
@@ -756,5 +809,50 @@ mod tests {
                 assert_eq!(movement.occupies_target, expected >= 25);
             }
         }
+    }
+
+    #[test]
+    fn interrupting_movement_uses_interpolated_start_position() {
+        let mut world = test_world();
+        world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("spawn should succeed");
+        world
+            .start_entity_move_with_reason(1, Vec3i::new(0, -1, 0))
+            .expect("south move should start");
+
+        for _ in 0..3 {
+            let _ = world.advance_active_movements_one_tick();
+        }
+
+        world
+            .start_entity_move_with_reason(1, Vec3i::new(1, 1, 0))
+            .expect("interrupting octant move should start");
+
+        let snapshot = world.snapshot();
+        let entity = snapshot
+            .entities
+            .into_iter()
+            .find(|entity| entity.id == 1)
+            .expect("entity should exist");
+        let movement = entity.movement.expect("movement should be active");
+
+        assert_eq!(movement.origin, Vec3i::new(0, -1, 0));
+        assert_eq!(movement.target, Vec3i::new(1, 0, 0));
+        assert_eq!(movement.start_position, [0.0, -0.75, 0.0]);
+        assert_eq!(movement.progress_percent, 0);
+
+        for _ in 0..4 {
+            let _ = world.advance_active_movements_one_tick();
+        }
+
+        let snapshot = world.snapshot();
+        let entity = snapshot
+            .entities
+            .into_iter()
+            .find(|entity| entity.id == 1)
+            .expect("entity should exist");
+        assert_eq!(entity.position, Vec3i::new(1, 0, 0));
+        assert!(entity.movement.is_none());
     }
 }

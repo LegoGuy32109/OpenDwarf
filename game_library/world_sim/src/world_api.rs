@@ -45,16 +45,17 @@ pub enum BlockType {
     SolidStone,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EntityMovementSnapshot {
     pub origin: Vec3i,
     pub target: Vec3i,
+    pub start_position: [f32; 3],
     pub progress_percent: u8,
     pub occupies_origin: bool,
     pub occupies_target: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EntitySnapshot {
     pub id: u64,
     pub position: Vec3i,
@@ -63,7 +64,7 @@ pub struct EntitySnapshot {
     pub movement: Option<EntityMovementSnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldSnapshot {
     pub tick: u64,
     pub chunk_edge: u32,
@@ -72,7 +73,7 @@ pub struct WorldSnapshot {
     pub entities: Vec<EntitySnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EntityMovedDelta {
     pub id: u64,
     pub from: Vec3i,
@@ -84,7 +85,7 @@ pub struct EntityMovedDelta {
     pub movement_after: Option<EntityMovementSnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldDelta {
     pub tick: u64,
     pub moved_entities: Vec<EntityMovedDelta>,
@@ -97,7 +98,7 @@ pub enum WorldCommand {
     SetChunkLoaded { chunk: Vec3i, loaded: bool },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WorldUpdate {
     Snapshot(WorldSnapshot),
     Delta(WorldDelta),
