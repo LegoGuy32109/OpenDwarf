@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use bevy::render::RenderApp;
 use bevy::render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
 
+use crate::resources::game_mode::GameMode;
 use crate::resources::input_state::{InputState, update_input_state};
 use crate::resources::player_focus_state::PlayerFocusState;
 
@@ -42,6 +43,7 @@ impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(define_defaults())
             .insert_resource(bevy::time::Time::<bevy::time::Fixed>::from_hz(20.0))
+            .init_state::<GameMode>()
             .add_plugins(WorldSimulationPlugin {
                 settings: WorldSimSettings {
                     config: WorldConfig {
@@ -59,7 +61,7 @@ impl Plugin for OpenDwarfPlugins {
                 Update,
                 (
                     toggle_chunk_borders,
-                    queue_world_commands_from_input,
+                    queue_world_commands_from_input.run_if(in_state(GameMode::World)),
                     sync_render_world_from_snapshot,
                     stream_chunks_around_player,
                     project_world_to_tilemap,
@@ -74,7 +76,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(
                 Update,
                 (
-                    (escape_menu_input, options_menu_input, multiplayer_menu_input),
+                    (escape_menu_input.run_if(not(in_state(GameMode::Typing))), options_menu_input, multiplayer_menu_input),
                     (
                         menu_event_manager,
                         tick_multiplayer_clipboard_scan,

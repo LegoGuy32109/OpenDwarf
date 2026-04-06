@@ -1,6 +1,7 @@
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
 
+use crate::resources::game_mode::GameMode;
 use crate::resources::player_focus_state::PlayerFocusState;
 
 use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
@@ -13,14 +14,11 @@ pub fn escape_menu_input(
     mut commands: Commands,
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
+    mut next_state: ResMut<NextState<GameMode>>,
     maybe_escape_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
     button_query: Query<(Entity, &MenuAction), With<EscapeMenuButtonStyle>>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
-    if player_focus_state.typing {
-        return;
-    }
-
     let toggle_menu_pressed = input_state.just_pressed(&input_state.exit_menu);
 
     // if somehow multiple escape menus exist, delete all of them
@@ -91,7 +89,7 @@ pub fn escape_menu_input(
     } else if toggle_menu_pressed {
         let escape_menu = spawn_escape_menu(&mut commands);
         player_focus_state.push_new_menu(escape_menu);
-        player_focus_state.within_system_menu = true;
+        next_state.set(GameMode::InMenu);
     }
 }
 

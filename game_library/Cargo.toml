@@ -70,6 +70,7 @@ core = [
   "bevy/bevy_sprite_render",
   "bevy/bevy_text",
   "bevy/bevy_ui",
+  "bevy/bevy_state",
   "bevy/bevy_ui_render",
   "bevy/default_font",
   "bevy/multi_threaded",

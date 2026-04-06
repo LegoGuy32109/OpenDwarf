@@ -3,16 +3,10 @@ use bevy::ecs::resource::Resource;
 
 #[derive(Resource, Debug, Default)]
 pub struct PlayerFocusState {
-    pub within_system_menu: bool,
-    pub typing: bool,
     pub menu_stack: Vec<Entity>,
 }
 
 impl PlayerFocusState {
-    pub fn can_move_in_world(&self) -> bool {
-        !self.within_system_menu && !self.typing
-    }
-
     pub fn is_menu_focused(&self, menu: Entity) -> bool {
         self.current_menu_index() == self.get_menu_index(menu)
     }

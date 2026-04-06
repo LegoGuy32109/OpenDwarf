@@ -4,7 +4,7 @@ use bevy::math::CompassQuadrant;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
-use crate::resources::player_focus_state::PlayerFocusState;
+use crate::resources::game_mode::GameMode;
 
 pub type Keys = HashSet<KeyCode>;
 
@@ -242,7 +242,7 @@ impl Default for InputState {
 pub fn update_input_state(
     mut key_events: MessageReader<KeyboardInput>,
     mut input_state: ResMut<InputState>,
-    player_focus_state: Res<PlayerFocusState>,
+    game_mode: Res<State<GameMode>>,
 ) {
     let bindings = input_state.command_bindings.clone();
     let prev_pressed = input_state.pressed_keys.clone();
@@ -269,7 +269,7 @@ pub fn update_input_state(
 
         let mut suppress_event = false;
         for binding in &bindings {
-            if binding.matches(&event, &next_pressed, player_focus_state.typing) {
+            if binding.matches(&event, &next_pressed, *game_mode == GameMode::Typing) {
                 commands_triggered.insert(binding.command);
                 if binding.suppress_keycodes {
                     suppressed_keycodes.extend(binding.keys.iter().copied());

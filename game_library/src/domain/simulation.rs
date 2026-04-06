@@ -6,7 +6,6 @@ use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 
 use crate::components::map_coordinates::MapCoordinates;
 use crate::resources::input_state::InputState;
-use crate::resources::player_focus_state::PlayerFocusState;
 use world_sim::bevy_app::PrimarySimulationEntityId;
 use world_sim::bevy_app::WorldCommandQueue;
 use world_sim::bevy_app::WorldSimDiagnostics;
@@ -147,7 +146,6 @@ pub fn setup_simulation_state(mut commands: Commands) {
 
 pub fn queue_world_commands_from_input(
     input_state: Res<InputState>,
-    player_focus_state: Res<PlayerFocusState>,
     replay_mode: Res<ReplayMode>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
     render_world_state: Res<RenderWorldState>,
@@ -155,11 +153,6 @@ pub fn queue_world_commands_from_input(
     mut world_command_queue: ResMut<WorldCommandQueue>,
 ) {
     if replay_mode.active {
-        held_movement_state.was_moving_last_frame = false;
-        return;
-    }
-
-    if !player_focus_state.can_move_in_world() {
         held_movement_state.was_moving_last_frame = false;
         return;
     }

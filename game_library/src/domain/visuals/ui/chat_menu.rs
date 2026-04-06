@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy::text::{LineBreak, TextBounds, TextLayout, TextLayoutInfo};
 use bevy::ui::UiSystems;
 
+use crate::resources::game_mode::GameMode;
 use crate::resources::input_state::{InputCommand, InputState};
 use crate::resources::player_focus_state::PlayerFocusState;
 
@@ -19,7 +20,7 @@ impl Plugin for ChatMenuPlugin {
             Update,
             (
                 chat_menu_open_system,
-                chat_menu_input_system,
+                chat_menu_input_system.run_if(in_state(GameMode::Typing)),
                 chat_menu_cursor_system,
                 chat_menu_text_system,
             )
@@ -38,6 +39,7 @@ fn chat_menu_open_system(
     mut commands: Commands,
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
+    mut next_state: ResMut<NextState<GameMode>>,
     mut menu_query: Query<(Entity, &mut Visibility), With<ChatMenu>>,
     text_query: Query<&ChatBuffer, With<ChatMenuText>>,
     mut menu_events: MessageWriter<MenuEvent>,
@@ -76,20 +78,20 @@ fn chat_menu_open_system(
             {
                 chat_bubble_events.write(ChatBubbleEvent::from_chat_input(&buffer.0));
             }
-            player_focus_state.typing = false;
+            next_state.set(GameMode::World);
             menu_events.write(MenuEvent::CloseCurrentMenu);
         }
     } else if open_pressed && player_focus_state.menu_stack.is_empty() {
         let chat_menu = spawn_chat_menu(&mut commands);
         player_focus_state.push_new_menu(chat_menu);
-        player_focus_state.typing = true;
+        next_state.set(GameMode::Typing);
     }
 }
 
 /// Processes keyboard input into the chat buffer and menu actions.
 fn chat_menu_input_system(
     input_state: Res<InputState>,
-    mut player_focus_state: ResMut<PlayerFocusState>,
+    player_focus_state: Res<PlayerFocusState>,
     mut text_query: Query<&mut ChatBuffer, With<ChatMenuText>>,
     menu_query: Query<Entity, With<ChatMenu>>,
     mut menu_events: MessageWriter<MenuEvent>,
@@ -102,12 +104,7 @@ fn chat_menu_input_system(
     }
 
     if input_state.command_triggered(InputCommand::ClearAllMenus) {
-        player_focus_state.typing = false;
         menu_events.write(MenuEvent::ClearAllMenus);
-        return;
-    }
-
-    if !player_focus_state.typing {
         return;
     }
 
