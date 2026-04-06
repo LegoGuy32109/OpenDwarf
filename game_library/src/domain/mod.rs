@@ -22,14 +22,15 @@ use simulation::{
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
 use visuals::ui::chat_menu::ChatMenuPlugin;
-use visuals::ui::escape_menu::handle_escape_menu;
+use visuals::ui::escape_menu::{escape_menu_input, escape_menu_visuals};
 use visuals::ui::menu_events::{MenuEvent, menu_event_manager};
 #[cfg(not(target_arch = "wasm32"))]
 use visuals::ui::multiplayer_menu::drive_native_webrtc;
 use visuals::ui::multiplayer_menu::{
-    handle_multiplayer_menu, scan_multiplayer_clipboard_on_focus, tick_multiplayer_clipboard_scan,
+    multiplayer_menu_input, multiplayer_menu_visuals, scan_multiplayer_clipboard_on_focus,
+    tick_multiplayer_clipboard_scan,
 };
-use visuals::ui::options_menu::handle_options_menu;
+use visuals::ui::options_menu::{options_menu_input, options_menu_visuals};
 use visuals::{setup, update_tileset_image};
 use world_sim::bevy_app::{WorldSimSettings, WorldSimulationPlugin};
 use world_sim::world_api::Vec3u;
@@ -73,14 +74,16 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(
                 Update,
                 (
-                    handle_escape_menu,
-                    handle_options_menu,
-                    handle_multiplayer_menu,
-                    menu_event_manager,
-                    tick_multiplayer_clipboard_scan,
-                    scan_multiplayer_clipboard_on_focus,
+                    (escape_menu_input, options_menu_input, multiplayer_menu_input),
+                    (
+                        menu_event_manager,
+                        tick_multiplayer_clipboard_scan,
+                        scan_multiplayer_clipboard_on_focus,
+                    ),
                     ApplyDeferred,
-                ),
+                    (escape_menu_visuals, options_menu_visuals, multiplayer_menu_visuals),
+                )
+                    .chain(),
             )
             .add_plugins(ChatMenuPlugin)
             .add_plugins(ChatBubblePlugin)

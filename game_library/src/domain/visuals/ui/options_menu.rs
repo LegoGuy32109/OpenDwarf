@@ -8,23 +8,17 @@ use super::super::visual_utils::{color_from_hex, color_from_hex_alpha};
 use super::menu_events::{MenuAction, MenuEvent};
 use super::ui_focus_map::UiFocusMap;
 
-pub fn handle_options_menu(
+pub fn options_menu_input(
     mut commands: Commands,
     input_state: Res<InputState>,
-    player_focus_state: ResMut<PlayerFocusState>,
-    maybe_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<OptionsMenu>>,
-    mut button_query: Query<(
-        Entity,
-        &MenuAction,
-        &OptionsMenuButton,
-        &mut BackgroundColor,
-        &mut BorderColor,
-    )>,
+    player_focus_state: Res<PlayerFocusState>,
+    maybe_menu: Query<(Entity, &mut UiFocusMap), With<OptionsMenu>>,
+    button_query: Query<(Entity, &MenuAction), With<OptionsMenuButton>>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
     let toggle_menu_pressed = input_state.just_pressed(&input_state.exit_menu);
 
-    let menu_entities: Vec<Entity> = maybe_menu.iter().map(|(entity, _, _)| entity).collect();
+    let menu_entities: Vec<Entity> = maybe_menu.iter().map(|(entity, _)| entity).collect();
     let num_options_menus = menu_entities.len();
     if num_options_menus > 1 {
         for entity in menu_entities {
@@ -33,22 +27,11 @@ pub fn handle_options_menu(
         return;
     }
 
-    if let Ok((escape_menu, mut ui_focus_map, mut visibility)) = maybe_menu.single_inner() {
-        let maybe_menu_index = player_focus_state.get_menu_index(escape_menu);
-
-        if let Some(escape_menu_index) = maybe_menu_index {
-            if player_focus_state.current_menu_index() != Some(escape_menu_index) {
-                *visibility = Visibility::Hidden;
-                ui_focus_map.focus_visible = false;
-                return;
-            }
-            *visibility = Visibility::Visible;
-            if ui_focus_map.current_focus.is_some() {
-                ui_focus_map.focus_visible = true;
-            }
-        } else {
-            *visibility = Visibility::Hidden;
-            ui_focus_map.focus_visible = false;
+    if let Ok((menu, mut ui_focus_map)) = maybe_menu.single_inner() {
+        let Some(menu_index) = player_focus_state.get_menu_index(menu) else {
+            return;
+        };
+        if player_focus_state.current_menu_index() != Some(menu_index) {
             return;
         }
 
@@ -57,58 +40,73 @@ pub fn handle_options_menu(
             return;
         }
 
-        process_options_menu(
-            input_state.as_ref(),
-            ui_focus_map.reborrow(),
-            button_query.reborrow(),
-            menu_events,
-        );
+        let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
+            Some(CompassOctant::North)
+        } else if input_state.just_pressed(&input_state.groups.system_down) {
+            Some(CompassOctant::South)
+        } else if input_state.just_pressed(&input_state.groups.system_left) {
+            Some(CompassOctant::West)
+        } else if input_state.just_pressed(&input_state.groups.system_right) {
+            Some(CompassOctant::East)
+        } else {
+            None
+        };
+
+        if let (Some(selected_direction), Some(focused_entity)) =
+            (ui_direction, ui_focus_map.current_focus)
+            && let Some(next_entity_to_focus) =
+                ui_focus_map.get_next_entity(focused_entity, selected_direction)
+        {
+            ui_focus_map.current_focus = Some(next_entity_to_focus);
+            ui_focus_map.focus_visible = true;
+        }
+
+        let confirm_pressed = input_state.just_pressed(&input_state.groups.ui_confirm);
+        let focused_entity = ui_focus_map.current_focus;
+        for (entity, action) in &button_query {
+            if confirm_pressed
+                && Some(entity) == focused_entity
+                && matches!(action, MenuAction::CloseCurrentMenu)
+            {
+                menu_events.write(MenuEvent::CloseCurrentMenu);
+            }
+        }
     }
 }
 
-fn process_options_menu(
-    input_state: &InputState,
-    mut ui_focus_map: Mut<UiFocusMap>,
+pub fn options_menu_visuals(
+    player_focus_state: Res<PlayerFocusState>,
+    maybe_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<OptionsMenu>>,
     mut button_query: Query<(
         Entity,
-        &MenuAction,
         &OptionsMenuButton,
         &mut BackgroundColor,
         &mut BorderColor,
     )>,
-    mut menu_events: MessageWriter<MenuEvent>,
 ) {
-    let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
-        Some(CompassOctant::North)
-    } else if input_state.just_pressed(&input_state.groups.system_down) {
-        Some(CompassOctant::South)
-    } else if input_state.just_pressed(&input_state.groups.system_left) {
-        Some(CompassOctant::West)
-    } else if input_state.just_pressed(&input_state.groups.system_right) {
-        Some(CompassOctant::East)
-    } else {
-        None
+    let Ok((menu, mut ui_focus_map, mut visibility)) = maybe_menu.single_inner() else {
+        return;
     };
 
-    if let (Some(selected_direction), Some(focused_entity)) =
-        (ui_direction, ui_focus_map.current_focus)
-        && let Some(next_entity_to_focus) =
-            ui_focus_map.get_next_entity(focused_entity, selected_direction)
-    {
-        ui_focus_map.current_focus = Some(next_entity_to_focus);
+    let Some(menu_index) = player_focus_state.get_menu_index(menu) else {
+        *visibility = Visibility::Hidden;
+        ui_focus_map.focus_visible = false;
+        return;
+    };
+
+    if player_focus_state.current_menu_index() != Some(menu_index) {
+        *visibility = Visibility::Hidden;
+        ui_focus_map.focus_visible = false;
+        return;
+    }
+
+    *visibility = Visibility::Visible;
+    if ui_focus_map.current_focus.is_some() {
         ui_focus_map.focus_visible = true;
     }
 
-    let confirm_pressed = input_state.just_pressed(&input_state.groups.ui_confirm);
     let focused_entity = ui_focus_map.current_focus;
-    for (entity, action, button, mut background_color, mut border_color) in &mut button_query {
-        if confirm_pressed
-            && Some(entity) == focused_entity
-            && matches!(action, MenuAction::CloseCurrentMenu)
-        {
-            menu_events.write(MenuEvent::CloseCurrentMenu);
-        }
-
+    for (entity, button, mut background_color, mut border_color) in &mut button_query {
         let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
             (button.focus_background, button.focus_border)
         } else {
@@ -144,6 +142,7 @@ fn make_options_menu() -> impl Bundle {
             ..default()
         },
         BackgroundColor(menu_background_color),
+        Visibility::Hidden,
     )
 }
 

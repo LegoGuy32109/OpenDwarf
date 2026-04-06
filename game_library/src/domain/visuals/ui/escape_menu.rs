@@ -9,23 +9,12 @@ use super::ui_focus_map::UiFocusMap;
 use crate::domain::messaging::webrtc::MultiplayerController;
 use crate::resources::input_state::InputState;
 
-pub fn handle_escape_menu(
+pub fn escape_menu_input(
     mut commands: Commands,
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
-    webrtc_state: NonSend<MultiplayerController>,
-    maybe_escape_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<EscapeMenu>>,
-    button_query: Query<(
-        Entity,
-        &MenuAction,
-        &EscapeMenuButtonStyle,
-        &mut BackgroundColor,
-        &mut BorderColor,
-    )>,
-    mut indicator_query: Query<
-        &mut Visibility,
-        (With<MultiplayerStatusIndicator>, Without<EscapeMenu>),
-    >,
+    maybe_escape_menu: Query<(Entity, &mut UiFocusMap), With<EscapeMenu>>,
+    button_query: Query<(Entity, &MenuAction), With<EscapeMenuButtonStyle>>,
     mut menu_events: MessageWriter<MenuEvent>,
 ) {
     if player_focus_state.typing {
@@ -37,7 +26,7 @@ pub fn handle_escape_menu(
     // if somehow multiple escape menus exist, delete all of them
     let escape_menu_entities: Vec<Entity> = maybe_escape_menu
         .iter()
-        .map(|(entity, _, _)| entity)
+        .map(|(entity, _)| entity)
         .collect();
     let num_escape_menus = escape_menu_entities.len();
     if num_escape_menus > 1 {
@@ -48,22 +37,11 @@ pub fn handle_escape_menu(
         return;
     }
 
-    if let Ok((menu, mut ui_focus_map, mut visibility)) = maybe_escape_menu.single_inner() {
-        let menu_index = player_focus_state.get_menu_index(menu);
-
-        if let Some(index) = menu_index {
-            if player_focus_state.current_menu_index() != Some(index) {
-                *visibility = Visibility::Hidden;
-                ui_focus_map.focus_visible = false;
-                return;
-            }
-            *visibility = Visibility::Visible;
-            if ui_focus_map.current_focus.is_some() {
-                ui_focus_map.focus_visible = true;
-            }
-        } else {
-            *visibility = Visibility::Hidden;
-            ui_focus_map.focus_visible = false;
+    if let Ok((menu, mut ui_focus_map)) = maybe_escape_menu.single_inner() {
+        let Some(index) = player_focus_state.get_menu_index(menu) else {
+            return;
+        };
+        if player_focus_state.current_menu_index() != Some(index) {
             return;
         }
 
@@ -72,21 +50,44 @@ pub fn handle_escape_menu(
             return;
         }
 
-        let indicator_visibility = if webrtc_state.is_enabled() {
-            Visibility::Visible
+        let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
+            Some(CompassOctant::North)
+        } else if input_state.just_pressed(&input_state.groups.system_down) {
+            Some(CompassOctant::South)
+        } else if input_state.just_pressed(&input_state.groups.system_left) {
+            Some(CompassOctant::West)
+        } else if input_state.just_pressed(&input_state.groups.system_right) {
+            Some(CompassOctant::East)
         } else {
-            Visibility::Hidden
+            None
         };
-        for mut visibility in &mut indicator_query {
-            *visibility = indicator_visibility;
+
+        if let (Some(selected_direction), Some(focused_entity)) =
+            (ui_direction, ui_focus_map.current_focus)
+            && let Some(next_entity_to_focus) =
+                ui_focus_map.get_next_entity(focused_entity, selected_direction)
+        {
+            ui_focus_map.current_focus = Some(next_entity_to_focus);
+            ui_focus_map.focus_visible = true;
         }
 
-        process_escape_menu(
-            input_state.as_ref(),
-            ui_focus_map.reborrow(),
-            button_query,
-            menu_events,
-        );
+        let confirm_pressed = input_state.just_pressed(&input_state.groups.ui_confirm);
+        let focused_entity = ui_focus_map.current_focus;
+        for (entity, action) in &button_query {
+            if confirm_pressed && Some(entity) == focused_entity {
+                match action {
+                    MenuAction::CloseCurrentMenu => {
+                        menu_events.write(MenuEvent::CloseCurrentMenu);
+                    }
+                    MenuAction::OpenOptions => {
+                        menu_events.write(MenuEvent::OpenOptionsMenu);
+                    }
+                    MenuAction::OpenMultiplayer => {
+                        menu_events.write(MenuEvent::OpenMultiplayerMenu);
+                    }
+                }
+            }
+        }
     } else if toggle_menu_pressed {
         let escape_menu = spawn_escape_menu(&mut commands);
         player_focus_state.push_new_menu(escape_menu);
@@ -94,61 +95,53 @@ pub fn handle_escape_menu(
     }
 }
 
-fn process_escape_menu(
-    input_state: &InputState,
-    mut ui_focus_map: Mut<UiFocusMap>,
+pub fn escape_menu_visuals(
+    player_focus_state: Res<PlayerFocusState>,
+    webrtc_state: NonSend<MultiplayerController>,
+    maybe_escape_menu: Query<(Entity, &mut UiFocusMap, &mut Visibility), With<EscapeMenu>>,
     mut button_query: Query<(
         Entity,
-        &MenuAction,
         &EscapeMenuButtonStyle,
         &mut BackgroundColor,
         &mut BorderColor,
     )>,
-    mut menu_events: MessageWriter<MenuEvent>,
+    mut indicator_query: Query<
+        &mut Visibility,
+        (With<MultiplayerStatusIndicator>, Without<EscapeMenu>),
+    >,
 ) {
-    // determine which direction the user is selecting
-    let ui_direction = if input_state.just_pressed(&input_state.groups.system_up) {
-        Some(CompassOctant::North)
-    } else if input_state.just_pressed(&input_state.groups.system_down) {
-        Some(CompassOctant::South)
-    } else if input_state.just_pressed(&input_state.groups.system_left) {
-        Some(CompassOctant::West)
-    } else if input_state.just_pressed(&input_state.groups.system_right) {
-        Some(CompassOctant::East)
-    } else {
-        None
+    let Ok((menu, mut ui_focus_map, mut visibility)) = maybe_escape_menu.single_inner() else {
+        return;
     };
 
-    // set next element to be focused
-    if let (Some(selected_direction), Some(focused_entity)) =
-        (ui_direction, ui_focus_map.current_focus)
-        && let Some(next_entity_to_focus) =
-            ui_focus_map.get_next_entity(focused_entity, selected_direction)
-    {
-        ui_focus_map.current_focus = Some(next_entity_to_focus);
-        // after the first movement make the focused button visible
+    let Some(index) = player_focus_state.get_menu_index(menu) else {
+        *visibility = Visibility::Hidden;
+        ui_focus_map.focus_visible = false;
+        return;
+    };
+
+    if player_focus_state.current_menu_index() != Some(index) {
+        *visibility = Visibility::Hidden;
+        ui_focus_map.focus_visible = false;
+        return;
+    }
+
+    *visibility = Visibility::Visible;
+    if ui_focus_map.current_focus.is_some() {
         ui_focus_map.focus_visible = true;
     }
 
-    let confirm_pressed = input_state.just_pressed(&input_state.groups.ui_confirm);
-    let focused_entity = ui_focus_map.current_focus;
-    for (entity, action, button, mut background_color, mut border_color) in &mut button_query {
-        // trigger action from selected element
-        if confirm_pressed && Some(entity) == focused_entity {
-            match action {
-                MenuAction::CloseCurrentMenu => {
-                    menu_events.write(MenuEvent::CloseCurrentMenu);
-                }
-                MenuAction::OpenOptions => {
-                    menu_events.write(MenuEvent::OpenOptionsMenu);
-                }
-                MenuAction::OpenMultiplayer => {
-                    menu_events.write(MenuEvent::OpenMultiplayerMenu);
-                }
-            }
-        }
+    let indicator_visibility = if webrtc_state.is_enabled() {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    for mut vis in &mut indicator_query {
+        *vis = indicator_visibility;
+    }
 
-        // change style of buttons if they are focused
+    let focused_entity = ui_focus_map.current_focus;
+    for (entity, button, mut background_color, mut border_color) in &mut button_query {
         let (bg, bd) = if ui_focus_map.focus_visible && Some(entity) == focused_entity {
             (button.focus_background, button.focus_border)
         } else {
@@ -184,6 +177,7 @@ fn make_escape_menu() -> impl Bundle {
             ..default()
         },
         BackgroundColor(menu_background_color),
+        Visibility::Hidden,
     )
 }
 
