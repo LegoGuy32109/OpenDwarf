@@ -15,7 +15,8 @@ const TILE_MAP_PATH: &str = "sprites/StackedTextures.png";
 const NUM_TILES_IN_MAP: u16 = 31;
 
 const SHADOW_ATLAS_PATH: &str = "atlases/ShadowAtlas.png";
-const SHADOW_ATLAS_FRAMES: u32 = 16;
+// WARN: CANNOT BE A MULTIPLE OF 6 (Bevy constraint for 2D array reinterpretation)
+const SHADOW_ATLAS_FRAMES: u32 = 17;
 
 #[derive(Component)]
 pub struct Player;

@@ -120,6 +120,9 @@ pub struct DepthTintChunk {
     pub z_offset: i32,
 }
 
+#[derive(Component)]
+pub struct DepthDebugLabel;
+
 impl RenderWorldState {
     fn mark_all_dirty(&mut self) {
         self.terrain_dirty = true;
@@ -433,7 +436,7 @@ pub fn project_world_to_tilemap(
                     },
                     TilemapChunk {
                         chunk_size: UVec2::splat(chunk_edge),
-                        tile_display_size: tilemap_assets.tile_display_size,
+                        tile_display_size: UVec2::splat(64),  // Shadow atlas is scaled to 64px display size
                         tileset: shadow_atlas.atlas.clone(),
                         alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
                     },
@@ -507,6 +510,8 @@ pub fn update_depth_tints(
     mut commands: Commands,
     view_z: Res<ViewZLevel>,
     render_world_state: Res<RenderWorldState>,
+    replay_mode: Res<ReplayMode>,
+    chunk_streaming_state: Option<Res<ChunkStreamingState>>,
     mut depth_tint_query: Query<(Entity, &DepthTintChunk, &mut Transform, &mut Sprite)>,
 ) {
     if !render_world_state.terrain_dirty {
@@ -523,17 +528,27 @@ pub fn update_depth_tints(
         .map(|offset| view_z.0 - offset)
         .collect();
 
-    // Get active chunks from render world state
-    let active_chunks_xy: HashSet<IVec2> = render_world_state
-        .entities
-        .values()
-        .map(|e| {
-            let pos = e.position;
-            let chunk_coord_x = pos.x / (chunk_edge as i32);
-            let chunk_coord_y = pos.y / (chunk_edge as i32);
-            IVec2::new(chunk_coord_x, chunk_coord_y)
-        })
-        .collect();
+    // Get active chunks using the same logic as project_world_to_tilemap
+    let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
+        all_world_chunk_coords(render_world_state.world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
+    } else if let Some(streaming) = chunk_streaming_state {
+        if streaming.loaded_chunks.is_empty() {
+            all_world_chunk_coords(render_world_state.world_chunks)
+                .into_iter()
+                .map(|c| IVec2::new(c.x, c.y))
+                .collect()
+        } else {
+            streaming.loaded_chunks.iter().map(|c| IVec2::new(c.x, c.y)).collect()
+        }
+    } else {
+        all_world_chunk_coords(render_world_state.world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
+    };
 
     // For now, despawn all old tints and respawn new ones
     for (entity, _tint, _, _) in &mut depth_tint_query {
@@ -565,6 +580,115 @@ pub fn update_depth_tints(
                     ViewVisibility::default(),
                     DepthTintChunk { chunk_xy, z_offset },
                 ));
+            }
+        }
+    }
+}
+
+pub fn draw_depth_labels(
+    mut commands: Commands,
+    chunk_border_debug_state: Res<ChunkBorderDebugState>,
+    view_z: Res<ViewZLevel>,
+    render_world_state: Res<RenderWorldState>,
+    replay_mode: Res<ReplayMode>,
+    chunk_streaming_state: Option<Res<ChunkStreamingState>>,
+    existing_labels: Query<Entity, With<DepthDebugLabel>>,
+) {
+    // Return early if debug labels are disabled
+    if !chunk_border_debug_state.visible {
+        // Despawn any existing labels
+        for entity in &existing_labels {
+            commands.entity(entity).despawn();
+        }
+        return;
+    }
+
+    // Only rebuild if something changed
+    if !render_world_state.terrain_dirty && !view_z.is_changed() && !chunk_border_debug_state.is_changed() {
+        return;
+    }
+
+    let chunk_edge = render_world_state.chunk_edge;
+    let tile_size = f32::from(TILE_SIZE_IN_PX);
+
+    // Despawn all existing labels
+    for entity in &existing_labels {
+        commands.entity(entity).despawn();
+    }
+
+    // Determine z-levels to render (same as tints)
+    let z_levels_to_render: Vec<i32> = (0..=5)
+        .map(|offset| view_z.0 - offset)
+        .collect();
+
+    // Get active chunks using the same logic as project_world_to_tilemap
+    let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
+        all_world_chunk_coords(render_world_state.world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
+    } else if let Some(streaming) = chunk_streaming_state {
+        if streaming.loaded_chunks.is_empty() {
+            all_world_chunk_coords(render_world_state.world_chunks)
+                .into_iter()
+                .map(|c| IVec2::new(c.x, c.y))
+                .collect()
+        } else {
+            streaming.loaded_chunks.iter().map(|c| IVec2::new(c.x, c.y)).collect()
+        }
+    } else {
+        all_world_chunk_coords(render_world_state.world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
+    };
+
+    // For each chunk and each visible z-level, spawn shadow mask labels on air tiles
+    for &chunk_xy in &active_chunks_xy {
+        let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
+        for &world_z in &z_levels_to_render {
+            for local_y in 0..chunk_edge {
+                for local_x in 0..chunk_edge {
+                    let world_position =
+                        world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
+
+                    // Only label air tiles that have shadows
+                    if matches!(
+                        block_at_world_position(
+                            &render_world_state.blocks,
+                            render_world_state.world_chunks,
+                            chunk_edge,
+                            world_position
+                        ),
+                        Some(BlockType::Air) | None
+                    ) {
+                        let mask = compute_shadow_mask_for_air(
+                            world_position.x,
+                            world_position.y,
+                            world_position.z,
+                            &render_world_state.blocks,
+                            render_world_state.world_chunks,
+                            chunk_edge,
+                        );
+
+                        // Only spawn label if there's a shadow
+                        if mask != 0 {
+                            let mask_text = mask.to_string();
+                            let text_position = world_to_pixel_translation(world_position, tile_size);
+
+                            commands.spawn((
+                                Text2d::new(mask_text),
+                                TextFont {
+                                    font_size: 12.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgba(1.0, 1.0, 0.0, 0.95)),
+                                Transform::from_translation(text_position + Vec3::new(0.0, 0.0, 2.0)),
+                                DepthDebugLabel,
+                            ));
+                        }
+                    }
+                }
             }
         }
     }
@@ -1127,11 +1251,12 @@ fn build_shadow_tile_data(
                 })
                 .expect("chunk-local tile index overflowed");
 
+            // Only place shadows on AIR tiles that border solid neighbors
             if matches!(
                 block_at_world_position(blocks, world_chunks, chunk_edge, world_position),
-                Some(BlockType::SolidStone)
+                Some(BlockType::Air) | None
             ) {
-                let mask = compute_exposure_mask(
+                let mask = compute_shadow_mask_for_air(
                     world_position.x,
                     world_position.y,
                     world_position.z,
@@ -1140,7 +1265,7 @@ fn build_shadow_tile_data(
                     chunk_edge,
                 );
                 if mask != 0 {
-                    tile_data[index_in_slice] = Some(TileData::from_tileset_index(mask as u16));
+                    tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
                 }
             }
         }
@@ -1337,7 +1462,10 @@ fn world_pos_to_chunk_coord(
 
 /// Compute which cardinal edges of a tile are exposed (adjacent to air).
 /// Returns a 4-bit mask: bit 0 (N), bit 1 (E), bit 2 (S), bit 3 (W)
-fn compute_exposure_mask(
+/// Compute shadow mask for an AIR tile by checking which cardinal neighbors are SOLID.
+/// Returns a 4-bit mask: bit 0 (N), bit 1 (E), bit 2 (S), bit 3 (W).
+/// Shadows appear on the edges of air tiles that face solid neighbors.
+fn compute_shadow_mask_for_air(
     x: i32,
     y: i32,
     z: i32,
@@ -1347,34 +1475,34 @@ fn compute_exposure_mask(
 ) -> u8 {
     let mut mask = 0u8;
 
-    // North (y+1)
+    // North (y+1): solid neighbor → shadow on top edge of this air tile
     if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x, y + 1, z))
-        .map(|b| b == BlockType::Air)
-        .unwrap_or(true)
+        .map(|b| b == BlockType::SolidStone)
+        .unwrap_or(false)
     {
         mask |= 1;
     }
 
-    // East (x+1)
+    // East (x+1): solid neighbor → shadow on right edge
     if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x + 1, y, z))
-        .map(|b| b == BlockType::Air)
-        .unwrap_or(true)
+        .map(|b| b == BlockType::SolidStone)
+        .unwrap_or(false)
     {
         mask |= 2;
     }
 
-    // South (y-1)
+    // South (y-1): solid neighbor → shadow on bottom edge
     if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x, y - 1, z))
-        .map(|b| b == BlockType::Air)
-        .unwrap_or(true)
+        .map(|b| b == BlockType::SolidStone)
+        .unwrap_or(false)
     {
         mask |= 4;
     }
 
-    // West (x-1)
+    // West (x-1): solid neighbor → shadow on left edge
     if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x - 1, y, z))
-        .map(|b| b == BlockType::Air)
-        .unwrap_or(true)
+        .map(|b| b == BlockType::SolidStone)
+        .unwrap_or(false)
     {
         mask |= 8;
     }

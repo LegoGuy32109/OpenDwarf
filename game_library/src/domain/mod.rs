@@ -16,7 +16,7 @@ use crate::domain::messaging::webrtc::MultiplayerController;
 #[cfg(not(target_arch = "wasm32"))]
 use simulation::drive_replay_playback;
 use simulation::{
-    draw_chunk_borders, draw_entity_occupancy_boxes, follow_player_camera, update_view_z_level,
+    draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera, update_view_z_level,
     project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
     setup_simulation_state, smooth_player_render_transform, stream_chunks_around_player,
     sync_render_world_from_snapshot, toggle_chunk_borders, update_depth_tints,
@@ -68,6 +68,7 @@ impl Plugin for OpenDwarfPlugins {
                     stream_chunks_around_player,
                     project_world_to_tilemap,
                     update_depth_tints,
+                    draw_depth_labels,
                     draw_chunk_borders,
                     draw_entity_occupancy_boxes,
                     project_world_entities_to_sprites,

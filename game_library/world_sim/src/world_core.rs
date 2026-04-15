@@ -600,26 +600,46 @@ fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize)
         .checked_mul(world_size_y)
         .expect("world layer size overflowed");
 
-    // Generate 6 floors at z = -1 through z = -6
-    for floor_num in 0..6 {
-        let floor_z = -1 - floor_num;
-        let floor_local_z = floor_z - min_z;
-        if floor_local_z < 0 || u32::try_from(floor_local_z).expect("floor z negative") >= world_size.z {
-            continue;
-        }
+    // Generate terrain with 2D sin wave pattern to create mountains
+    // Base floor at z = -1, with variation based on both x and y coordinates
+    let chunk_edge_f = chunk_edge as f32;
+    for y in 0..world_size_y {
+        for x in 0..world_size_x {
+            // Create sin waves in both directions
+            let x_normalized = (x as f32) / chunk_edge_f;
+            let y_normalized = (y as f32) / chunk_edge_f;
+            let sin_x = (x_normalized * std::f32::consts::PI * 2.0).sin();
+            let sin_y = (y_normalized * std::f32::consts::PI * 2.0).sin();
 
-        let floor_local_z =
-            usize::try_from(floor_local_z).expect("floor local z does not fit in usize");
-        let layer_offset = floor_local_z
-            .checked_mul(layer_size)
-            .expect("world layer offset overflowed");
-        for y in 0..world_size_y {
-            for x in 0..world_size_x {
-                let index = layer_offset
-                    .checked_add(y.checked_mul(world_size_x).expect("floor y overflowed"))
-                    .and_then(|offset| offset.checked_add(x))
-                    .expect("floor index overflowed");
-                blocks[index] = BlockType::SolidStone;
+            // Combine both waves to create peaks and valleys
+            let combined = sin_x * sin_y;
+            let amplitude = 3.0;
+            let variation = (combined * amplitude) as i32;
+
+            // Base floor is at z = -1, sin wave pushes it deeper or shallower
+            let surface_z = -1 - variation;
+
+            // Fill from the surface down to z = -6
+            for floor_num in 0..6 {
+                let floor_z = -1 - floor_num;
+
+                // Only place stone if we're at or below the surface height for this x position
+                if floor_z <= surface_z {
+                    let floor_local_z = floor_z - min_z;
+                    if floor_local_z < 0 || u32::try_from(floor_local_z).expect("floor z negative") >= world_size.z {
+                        continue;
+                    }
+
+                    let floor_local_z = usize::try_from(floor_local_z).expect("floor local z does not fit in usize");
+                    let layer_offset = floor_local_z
+                        .checked_mul(layer_size)
+                        .expect("world layer offset overflowed");
+                    let index = layer_offset
+                        .checked_add(y.checked_mul(world_size_x).expect("floor y overflowed"))
+                        .and_then(|offset| offset.checked_add(x))
+                        .expect("floor index overflowed");
+                    blocks[index] = BlockType::SolidStone;
+                }
             }
         }
     }
