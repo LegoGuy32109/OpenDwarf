@@ -6,6 +6,7 @@ use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 
 use crate::components::map_coordinates::MapCoordinates;
 use crate::resources::input_state::InputState;
+use crate::resources::view_z_level::ViewZLevel;
 use world_sim::bevy_app::PrimarySimulationEntityId;
 use world_sim::bevy_app::WorldCommandQueue;
 use world_sim::bevy_app::WorldSimDiagnostics;
@@ -18,7 +19,6 @@ use world_sim::world_api::{
 
 use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets};
 
-const FLOOR_Z: i32 = -1;
 const CHUNK_STREAM_RADIUS_XY: i32 = 2;
 const CHUNK_STREAM_RADIUS_Z: i32 = 0;
 #[cfg(not(target_arch = "wasm32"))]
@@ -99,9 +99,25 @@ pub struct TilemapRenderMetrics {
     pub rebuild_count: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TileLayer {
+    Floor,
+    ShadowOverlay,
+}
+
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorldTileChunk {
-    pub coord: Vec3i,
+    pub chunk_xy: IVec2,
+    pub world_z: i32,
+    pub layer: TileLayer,
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct DepthTintChunk {
+    #[allow(dead_code)]
+    pub chunk_xy: IVec2,
+    #[allow(dead_code)]
+    pub z_offset: i32,
 }
 
 impl RenderWorldState {
@@ -305,7 +321,9 @@ pub fn project_world_to_tilemap(
     mut commands: Commands,
     replay_mode: Res<ReplayMode>,
     chunk_streaming_state: Option<Res<ChunkStreamingState>>,
+    view_z: Res<ViewZLevel>,
     tilemap_assets: Res<TilemapAssets>,
+    shadow_atlas: Res<super::visuals::ShadowAtlasAsset>,
     mut render_world_state: ResMut<RenderWorldState>,
     mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
     mut chunk_query: Query<(
@@ -327,72 +345,146 @@ pub fn project_world_to_tilemap(
         return;
     }
 
-    let active_chunks: HashSet<Vec3i> = if replay_mode.active {
+    let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
         all_world_chunk_coords(render_world_state.world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
     } else if let Some(streaming) = chunk_streaming_state {
         if streaming.loaded_chunks.is_empty() {
             all_world_chunk_coords(render_world_state.world_chunks)
+                .into_iter()
+                .map(|c| IVec2::new(c.x, c.y))
+                .collect()
         } else {
-            streaming.loaded_chunks.clone()
+            streaming.loaded_chunks.iter().map(|c| IVec2::new(c.x, c.y)).collect()
         }
     } else {
         all_world_chunk_coords(render_world_state.world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
     };
 
-    let existing_chunks: HashSet<Vec3i> = chunk_query
-        .iter()
-        .map(|(_, chunk, _, _, _)| chunk.coord)
+    // Determine which z-levels to render: current level + up to 5 levels below
+    let z_levels_to_render: Vec<i32> = (0..=5)
+        .map(|offset| view_z.0 - offset)
         .collect();
 
-    for chunk_coord in active_chunks.difference(&existing_chunks) {
-        let tile_data = build_chunk_tile_data(
-            *chunk_coord,
-            chunk_edge,
-            &render_world_state.blocks,
-            render_world_state.world_chunks,
-        );
+    // Collect existing chunk keys (chunk_xy, z, layer)
+    let existing_chunks: HashSet<(IVec2, i32, TileLayer)> = chunk_query
+        .iter()
+        .map(|(_, chunk, _, _, _)| (chunk.chunk_xy, chunk.world_z, chunk.layer))
+        .collect();
 
-        commands.spawn((
-            WorldTileChunk {
-                coord: *chunk_coord,
-            },
-            TilemapChunk {
-                chunk_size: UVec2::splat(chunk_edge),
-                tile_display_size: tilemap_assets.tile_display_size,
-                tileset: tilemap_assets.tileset.clone(),
-                alpha_mode: bevy::sprite_render::AlphaMode2d::Opaque,
-            },
-            TilemapChunkTileData(tile_data),
-            Transform::from_translation(chunk_world_translation(*chunk_coord, chunk_edge)),
-            GlobalTransform::default(),
-            Visibility::default(),
-            InheritedVisibility::default(),
-            ViewVisibility::default(),
-        ));
+    // Spawn new chunks and update existing ones
+    for &chunk_xy in &active_chunks_xy {
+        for &world_z in &z_levels_to_render {
+            // Spawn floor layer
+            let chunk_key = (chunk_xy, world_z, TileLayer::Floor);
+            if !existing_chunks.contains(&chunk_key) {
+                let tile_data = build_chunk_tile_data(
+                    chunk_xy,
+                    world_z,
+                    chunk_edge,
+                    &render_world_state.blocks,
+                    render_world_state.world_chunks,
+                );
+
+                let sprite_z = calculate_sprite_z(world_z - view_z.0, TileLayer::Floor);
+                commands.spawn((
+                    WorldTileChunk {
+                        chunk_xy,
+                        world_z,
+                        layer: TileLayer::Floor,
+                    },
+                    TilemapChunk {
+                        chunk_size: UVec2::splat(chunk_edge),
+                        tile_display_size: tilemap_assets.tile_display_size,
+                        tileset: tilemap_assets.tileset.clone(),
+                        alpha_mode: bevy::sprite_render::AlphaMode2d::Opaque,
+                    },
+                    TilemapChunkTileData(tile_data),
+                    Transform::from_translation(chunk_world_translation_xy(chunk_xy, chunk_edge, sprite_z)),
+                    GlobalTransform::default(),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                ));
+            }
+
+            // Spawn shadow overlay layer
+            let shadow_key = (chunk_xy, world_z, TileLayer::ShadowOverlay);
+            if !existing_chunks.contains(&shadow_key) {
+                let shadow_data = build_shadow_tile_data(
+                    chunk_xy,
+                    world_z,
+                    chunk_edge,
+                    &render_world_state.blocks,
+                    render_world_state.world_chunks,
+                );
+
+                let shadow_sprite_z = calculate_sprite_z(world_z - view_z.0, TileLayer::ShadowOverlay);
+                commands.spawn((
+                    WorldTileChunk {
+                        chunk_xy,
+                        world_z,
+                        layer: TileLayer::ShadowOverlay,
+                    },
+                    TilemapChunk {
+                        chunk_size: UVec2::splat(chunk_edge),
+                        tile_display_size: tilemap_assets.tile_display_size,
+                        tileset: shadow_atlas.atlas.clone(),
+                        alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
+                    },
+                    TilemapChunkTileData(shadow_data),
+                    Transform::from_translation(chunk_world_translation_xy(chunk_xy, chunk_edge, shadow_sprite_z)),
+                    GlobalTransform::default(),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                ));
+            }
+        }
     }
 
+    // Despawn chunks that are no longer active
     for (entity, world_chunk, _, _, _) in &mut chunk_query {
-        if !active_chunks.contains(&world_chunk.coord) {
+        let should_keep = active_chunks_xy.contains(&world_chunk.chunk_xy)
+            && z_levels_to_render.contains(&world_chunk.world_z);
+        if !should_keep {
             commands.entity(entity).despawn();
         }
     }
 
+    // Update existing chunks
     let mut non_empty_tile_count = 0usize;
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
-        *transform =
-            Transform::from_translation(chunk_world_translation(world_chunk.coord, chunk_edge));
-        let tile_data = build_chunk_tile_data(
-            world_chunk.coord,
-            chunk_edge,
-            &render_world_state.blocks,
-            render_world_state.world_chunks,
-        );
+        let sprite_z = calculate_sprite_z(world_chunk.world_z - view_z.0, world_chunk.layer);
+        *transform = Transform::from_translation(chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z));
+
+        let tile_data = match world_chunk.layer {
+            TileLayer::Floor => build_chunk_tile_data(
+                world_chunk.chunk_xy,
+                world_chunk.world_z,
+                chunk_edge,
+                &render_world_state.blocks,
+                render_world_state.world_chunks,
+            ),
+            TileLayer::ShadowOverlay => build_shadow_tile_data(
+                world_chunk.chunk_xy,
+                world_chunk.world_z,
+                chunk_edge,
+                &render_world_state.blocks,
+                render_world_state.world_chunks,
+            ),
+        };
         non_empty_tile_count = non_empty_tile_count
             .saturating_add(tile_data.iter().filter(|tile| tile.is_some()).count());
         chunk_data.0 = tile_data;
     }
 
-    tilemap_render_metrics.chunk_count = active_chunks.len();
+    tilemap_render_metrics.chunk_count = active_chunks_xy.len() * z_levels_to_render.len() * 2; // xy chunks * z levels * 2 layers
     tilemap_render_metrics.non_empty_tile_count = non_empty_tile_count;
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -409,6 +501,73 @@ pub fn project_world_to_tilemap(
         }
     }
     render_world_state.terrain_dirty = false;
+}
+
+pub fn update_depth_tints(
+    mut commands: Commands,
+    view_z: Res<ViewZLevel>,
+    render_world_state: Res<RenderWorldState>,
+    mut depth_tint_query: Query<(Entity, &DepthTintChunk, &mut Transform, &mut Sprite)>,
+) {
+    if !render_world_state.terrain_dirty {
+        // Also check if view_z changed
+        if !view_z.is_changed() {
+            return;
+        }
+    }
+
+    let chunk_edge = render_world_state.chunk_edge;
+
+    // Determine z-levels to render
+    let z_levels_to_render: Vec<i32> = (0..=5)
+        .map(|offset| view_z.0 - offset)
+        .collect();
+
+    // Get active chunks from render world state
+    let active_chunks_xy: HashSet<IVec2> = render_world_state
+        .entities
+        .values()
+        .map(|e| {
+            let pos = e.position;
+            let chunk_coord_x = pos.x / (chunk_edge as i32);
+            let chunk_coord_y = pos.y / (chunk_edge as i32);
+            IVec2::new(chunk_coord_x, chunk_coord_y)
+        })
+        .collect();
+
+    // For now, despawn all old tints and respawn new ones
+    for (entity, _tint, _, _) in &mut depth_tint_query {
+        commands.entity(entity).despawn();
+    }
+
+    // Spawn new tints for current view configuration
+    for &chunk_xy in &active_chunks_xy {
+        for &world_z in &z_levels_to_render {
+            if world_z < view_z.0 {
+                let z_offset = world_z - view_z.0;
+                let (color, tint_sprite_z) = get_depth_tint_color(z_offset);
+                let chunk_pixel_size = (chunk_edge as f32) * f32::from(TILE_SIZE_IN_PX);
+
+                commands.spawn((
+                    Sprite {
+                        color,
+                        custom_size: Some(Vec2::splat(chunk_pixel_size)),
+                        ..default()
+                    },
+                    Transform::from_translation(chunk_world_translation_xy(
+                        chunk_xy,
+                        chunk_edge,
+                        tint_sprite_z,
+                    )),
+                    GlobalTransform::default(),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                    DepthTintChunk { chunk_xy, z_offset },
+                ));
+            }
+        }
+    }
 }
 
 pub fn toggle_chunk_borders(
@@ -658,6 +817,29 @@ pub fn follow_player_camera(
     }
 }
 
+pub fn update_view_z_level(
+    input_state: Res<InputState>,
+    world_view: Res<WorldView>,
+    mut view_z: ResMut<ViewZLevel>,
+    mut render_world_state: ResMut<RenderWorldState>,
+) {
+    let world_snapshot = &world_view.snapshot();
+    let world_min_z = -(world_snapshot.chunk_edge as i32);
+    let world_max_z = (world_snapshot.chunk_edge as i32) * (world_snapshot.world_chunks.z as i32) - 1;
+
+    let z_up_pressed = input_state.just_pressed(&input_state.z_level_up);
+    let z_down_pressed = input_state.just_pressed(&input_state.z_level_down);
+
+    if z_up_pressed {
+        view_z.0 = (view_z.0 + 1).min(world_max_z);
+        render_world_state.terrain_dirty = true;
+    }
+    if z_down_pressed {
+        view_z.0 = (view_z.0 - 1).max(world_min_z);
+        render_world_state.terrain_dirty = true;
+    }
+}
+
 fn movement_direction_from_keys(
     input_state: &InputState,
     first: Option<KeyCode>,
@@ -868,7 +1050,8 @@ fn stone_tile_index(world_position: Vec3i) -> u16 {
 }
 
 fn build_chunk_tile_data(
-    chunk_coord: Vec3i,
+    chunk_xy: IVec2,
+    world_z: i32,
     chunk_edge: u32,
     blocks: &[BlockType],
     world_chunks: Vec3u,
@@ -878,10 +1061,13 @@ fn build_chunk_tile_data(
         .expect("chunk tile count overflowed");
     let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
 
+    // For compatibility with existing code that expects Vec3i chunk coords
+    let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
+
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
             let world_position =
-                world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, FLOOR_Z);
+                world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             let index_in_slice = usize::try_from(local_y)
                 .expect("local_y does not fit in usize")
                 .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
@@ -913,13 +1099,92 @@ fn build_chunk_tile_data(
     tile_data
 }
 
-fn chunk_world_translation(chunk_coord: Vec3i, chunk_edge: u32) -> Vec3 {
+fn build_shadow_tile_data(
+    chunk_xy: IVec2,
+    world_z: i32,
+    chunk_edge: u32,
+    blocks: &[BlockType],
+    world_chunks: Vec3u,
+) -> Vec<Option<TileData>> {
+    let tile_count = chunk_edge
+        .checked_mul(chunk_edge)
+        .expect("chunk tile count overflowed");
+    let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
+
+    let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
+
+    for local_y in 0..chunk_edge {
+        for local_x in 0..chunk_edge {
+            let world_position =
+                world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
+            let index_in_slice = usize::try_from(local_y)
+                .expect("local_y does not fit in usize")
+                .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
+                .and_then(|offset| {
+                    offset.checked_add(
+                        usize::try_from(local_x).expect("local_x does not fit in usize"),
+                    )
+                })
+                .expect("chunk-local tile index overflowed");
+
+            if matches!(
+                block_at_world_position(blocks, world_chunks, chunk_edge, world_position),
+                Some(BlockType::SolidStone)
+            ) {
+                let mask = compute_exposure_mask(
+                    world_position.x,
+                    world_position.y,
+                    world_position.z,
+                    blocks,
+                    world_chunks,
+                    chunk_edge,
+                );
+                if mask != 0 {
+                    tile_data[index_in_slice] = Some(TileData::from_tileset_index(mask as u16));
+                }
+            }
+        }
+    }
+
+    tile_data
+}
+
+fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
+    let base = match z_offset {
+        0 => 0.0,
+        -1 => -2.0,
+        -2 => -4.0,
+        -3 => -6.0,
+        -4 => -8.0,
+        -5 => -10.0,
+        _ => -10.0, // Clamp to deepest level
+    };
+
+    match layer {
+        TileLayer::Floor => base,
+        TileLayer::ShadowOverlay => base + 0.5,
+    }
+}
+
+fn get_depth_tint_color(z_offset: i32) -> (Color, f32) {
+    // z_offset is negative (e.g., -1, -2, etc.)
+    match z_offset {
+        -1 => (Color::srgba(0.0, 0.0, 0.0, 0.25), -1.0), // 25% black
+        -2 => (Color::srgba(0.05, 0.08, 0.18, 0.45), -3.0), // blue-gray 45%
+        -3 => (Color::srgba(0.05, 0.08, 0.18, 0.60), -5.0), // blue-gray 60%
+        -4 => (Color::srgba(0.05, 0.08, 0.18, 0.72), -7.0), // blue-gray 72%
+        -5 => (Color::srgba(0.05, 0.08, 0.18, 0.82), -9.0), // blue-gray 82%
+        _ => (Color::srgba(0.05, 0.08, 0.18, 0.82), -9.0), // Default to deepest
+    }
+}
+
+fn chunk_world_translation_xy(chunk_xy: IVec2, chunk_edge: u32, sprite_z: f32) -> Vec3 {
     let edge = chunk_edge as f32;
     let tile_size = f32::from(TILE_SIZE_IN_PX);
     Vec3::new(
-        (chunk_coord.x as f32) * edge * tile_size,
-        (chunk_coord.y as f32) * edge * tile_size,
-        0.0,
+        (chunk_xy.x as f32) * edge * tile_size,
+        (chunk_xy.y as f32) * edge * tile_size,
+        sprite_z,
     )
 }
 
@@ -1068,6 +1333,53 @@ fn world_pos_to_chunk_coord(
         i32::try_from(chunk_local_y).ok()? - center_y,
         i32::try_from(chunk_local_z).ok()? - center_z,
     ))
+}
+
+/// Compute which cardinal edges of a tile are exposed (adjacent to air).
+/// Returns a 4-bit mask: bit 0 (N), bit 1 (E), bit 2 (S), bit 3 (W)
+fn compute_exposure_mask(
+    x: i32,
+    y: i32,
+    z: i32,
+    blocks: &[BlockType],
+    world_chunks: Vec3u,
+    chunk_edge: u32,
+) -> u8 {
+    let mut mask = 0u8;
+
+    // North (y+1)
+    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x, y + 1, z))
+        .map(|b| b == BlockType::Air)
+        .unwrap_or(true)
+    {
+        mask |= 1;
+    }
+
+    // East (x+1)
+    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x + 1, y, z))
+        .map(|b| b == BlockType::Air)
+        .unwrap_or(true)
+    {
+        mask |= 2;
+    }
+
+    // South (y-1)
+    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x, y - 1, z))
+        .map(|b| b == BlockType::Air)
+        .unwrap_or(true)
+    {
+        mask |= 4;
+    }
+
+    // West (x-1)
+    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x - 1, y, z))
+        .map(|b| b == BlockType::Air)
+        .unwrap_or(true)
+    {
+        mask |= 8;
+    }
+
+    mask
 }
 
 fn block_at_world_position(

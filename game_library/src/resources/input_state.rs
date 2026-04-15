@@ -41,6 +41,8 @@ pub struct InputState {
     pub debug_menu: Keys,
     pub preform_action: Keys,
     pub chat_cancel: Keys,
+    pub z_level_up: Keys,
+    pub z_level_down: Keys,
     pub groups: InputStateGroups,
     command_bindings: Vec<CommandBinding>,
     just_pressed_keys: HashSet<KeyCode>,
@@ -206,6 +208,8 @@ impl Default for InputState {
             debug_menu: HashSet::from([KeyCode::F1]),
             preform_action: HashSet::from([KeyCode::Space]),
             chat_cancel: HashSet::from([KeyCode::Escape]),
+            z_level_up: HashSet::from([KeyCode::Period]),
+            z_level_down: HashSet::from([KeyCode::Comma]),
             groups: InputStateGroups::default(),
             command_bindings: vec![
                 CommandBinding {

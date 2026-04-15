@@ -6,6 +6,7 @@ use bevy::render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreproc
 use crate::resources::game_mode::GameMode;
 use crate::resources::input_state::{InputState, update_input_state};
 use crate::resources::player_focus_state::PlayerFocusState;
+use crate::resources::view_z_level::ViewZLevel;
 
 pub mod messaging;
 pub mod simulation;
@@ -15,10 +16,10 @@ use crate::domain::messaging::webrtc::MultiplayerController;
 #[cfg(not(target_arch = "wasm32"))]
 use simulation::drive_replay_playback;
 use simulation::{
-    draw_chunk_borders, draw_entity_occupancy_boxes, follow_player_camera,
+    draw_chunk_borders, draw_entity_occupancy_boxes, follow_player_camera, update_view_z_level,
     project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
     setup_simulation_state, smooth_player_render_transform, stream_chunks_around_player,
-    sync_render_world_from_snapshot, toggle_chunk_borders,
+    sync_render_world_from_snapshot, toggle_chunk_borders, update_depth_tints,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -32,7 +33,7 @@ use visuals::ui::multiplayer_menu::{
     tick_multiplayer_clipboard_scan,
 };
 use visuals::ui::options_menu::{options_menu_input, options_menu_visuals};
-use visuals::{setup, update_tileset_image};
+use visuals::{setup, update_tileset_image, update_shadow_atlas_image};
 use world_sim::bevy_app::{WorldSimSettings, WorldSimulationPlugin};
 use world_sim::world_api::Vec3u;
 use world_sim::world_core::WorldConfig;
@@ -56,15 +57,17 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
-            .add_systems(Update, update_tileset_image)
+            .add_systems(Update, (update_tileset_image, update_shadow_atlas_image))
             .add_systems(
                 Update,
                 (
                     toggle_chunk_borders,
                     queue_world_commands_from_input.run_if(in_state(GameMode::World)),
+                    update_view_z_level,
                     sync_render_world_from_snapshot,
                     stream_chunks_around_player,
                     project_world_to_tilemap,
+                    update_depth_tints,
                     draw_chunk_borders,
                     draw_entity_occupancy_boxes,
                     project_world_entities_to_sprites,
@@ -92,6 +95,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_message::<MenuEvent>()
             .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()
+            .init_resource::<ViewZLevel>()
             .insert_non_send_resource(MultiplayerController::default())
             // debug systems
             .add_systems(Update, (debug_menu, replay_debug_overlay))
