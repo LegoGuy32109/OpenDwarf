@@ -195,6 +195,59 @@ impl WorldState {
         Ok(candidate)
     }
 
+    fn block_at(&self, pos: Vec3i) -> Option<BlockType> {
+        let edge = self.chunk_edge;
+        let wc = self.world_chunks;
+        let world_size_x = wc.x.checked_mul(edge)? as i32;
+        let world_size_y = wc.y.checked_mul(edge)? as i32;
+        let world_size_z = wc.z.checked_mul(edge)? as i32;
+        let lx = pos.x + world_size_x / 2;
+        let ly = pos.y + world_size_y / 2;
+        let lz = pos.z + world_size_z / 2;
+        if lx < 0 || ly < 0 || lz < 0
+            || lx >= world_size_x || ly >= world_size_y || lz >= world_size_z {
+            return None;
+        }
+        let ix = lx as usize;
+        let iy = ly as usize;
+        let iz = lz as usize;
+        let sx = world_size_x as usize;
+        let sy = world_size_y as usize;
+        self.blocks.get(iz * sx * sy + iy * sx + ix).copied()
+    }
+
+    fn resolve_movement_direction(&self, entity_pos: Vec3i, dx: i32, dy: i32) -> Option<Vec3i> {
+        let p = entity_pos;
+        let flat = Vec3i::new(p.x + dx, p.y + dy, p.z);
+        let floor = Vec3i::new(p.x + dx, p.y + dy, p.z - 1);
+
+        let flat_block = self.block_at(flat);
+        let is_solid = |b: Option<BlockType>| matches!(b, Some(BlockType::SolidStone));
+
+        // Flat walk: target is air and floor below is solid
+        if !is_solid(flat_block) && is_solid(self.block_at(floor)) {
+            return Some(Vec3i::new(dx, dy, 0));
+        }
+
+        // Step up: target is solid, space above target is air, headroom above player is air
+        let step_dest = Vec3i::new(p.x + dx, p.y + dy, p.z + 1);
+        let headroom = Vec3i::new(p.x, p.y, p.z + 1);
+        if is_solid(flat_block)
+            && !is_solid(self.block_at(step_dest))
+            && !is_solid(self.block_at(headroom))
+        {
+            return Some(Vec3i::new(dx, dy, 1));
+        }
+
+        // Step down: target is air, no floor below, but floor two below is solid
+        let new_floor = Vec3i::new(p.x + dx, p.y + dy, p.z - 2);
+        if !is_solid(flat_block) && !is_solid(self.block_at(floor)) && is_solid(self.block_at(new_floor)) {
+            return Some(Vec3i::new(dx, dy, -1));
+        }
+
+        None  // blocked
+    }
+
     pub fn start_entity_move_with_reason(
         &mut self,
         id: u64,
@@ -207,6 +260,18 @@ impl WorldState {
             .entities
             .get(&id)
             .ok_or(MoveEntityError::UnknownEntity)?;
+
+        // Resolve movement direction using terrain (step up/down/flat)
+        let direction = if direction.z == 0 {
+            let resolved = self.resolve_movement_direction(current.position, direction.x, direction.y);
+            match resolved {
+                Some(d) => d,
+                None => return Err(MoveEntityError::Blocked),
+            }
+        } else {
+            direction  // explicit z (future use)
+        };
+
         let target_position = current.position.add(direction);
 
         if !self.contains_position(target_position) {
@@ -526,6 +591,7 @@ pub enum MoveEntityError {
         to: Vec3i,
         chunk: Vec3i,
     },
+    Blocked,
 }
 
 fn is_adjacent_direction(direction: Vec3i) -> bool {

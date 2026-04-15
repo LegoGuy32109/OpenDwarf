@@ -9,6 +9,7 @@ fn diagnostics_count_chunk_not_loaded_rejections() {
             config: WorldConfig {
                 chunk_edge: 16,
                 world_chunks: Vec3u::new(4, 1, 1),
+                movement_ticks_per_tile: 10,
             },
             spawn_default_player: true,
         },

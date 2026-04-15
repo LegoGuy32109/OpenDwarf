@@ -911,6 +911,19 @@ pub fn stream_chunks_around_player(
     }
 }
 
+pub fn sync_camera_z_to_player(
+    mut view_z: ResMut<ViewZLevel>,
+    render_world_state: Res<RenderWorldState>,
+    primary_entity: Option<Res<PrimarySimulationEntityId>>,
+) {
+    let Some(primary_res) = primary_entity else { return; };
+    let Some(primary_id) = primary_res.0 else { return; };
+    let Some(entity) = render_world_state.entities.get(&primary_id) else { return; };
+    if entity.position.z != view_z.0 {
+        view_z.0 = entity.position.z;
+    }
+}
+
 pub fn follow_player_camera(
     input_state: Res<InputState>,
     player_query: Query<&Transform, With<Player>>,

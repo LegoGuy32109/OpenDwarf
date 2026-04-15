@@ -82,6 +82,7 @@ fn scenario_chunk_boundary_transition_requires_loaded_target_chunk() {
         .world_config(WorldConfig {
             chunk_edge: 16,
             world_chunks: Vec3u::new(4, 1, 1),
+            movement_ticks_per_tile: 10,
         })
         .set_chunk_loaded(Vec3i::new(1, 0, 0), false);
     for _ in 0..16 {
@@ -108,6 +109,7 @@ fn scenario_chunk_streaming_replay_is_deterministic() {
         WorldConfig {
             chunk_edge: 16,
             world_chunks: Vec3u::new(4, 4, 1),
+            movement_ticks_per_tile: 10,
         },
     );
     builder = builder

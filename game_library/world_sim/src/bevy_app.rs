@@ -227,6 +227,9 @@ fn run_simulation_tick(
                             chunk.z,
                         );
                     }
+                    Err(MoveEntityError::Blocked) => {
+                        eprintln!("World command rejected: terrain collision (wall or cliff) id={id}");
+                    }
                 }
             }
             WorldCommand::AdvanceTicks { count } => {
