@@ -204,8 +204,13 @@ impl WorldState {
         let lx = pos.x + world_size_x / 2;
         let ly = pos.y + world_size_y / 2;
         let lz = pos.z + world_size_z / 2;
-        if lx < 0 || ly < 0 || lz < 0
-            || lx >= world_size_x || ly >= world_size_y || lz >= world_size_z {
+        if lx < 0
+            || ly < 0
+            || lz < 0
+            || lx >= world_size_x
+            || ly >= world_size_y
+            || lz >= world_size_z
+        {
             return None;
         }
         let ix = lx as usize;
@@ -241,11 +246,14 @@ impl WorldState {
 
         // Step down: target is air, no floor below, but floor two below is solid
         let new_floor = Vec3i::new(p.x + dx, p.y + dy, p.z - 2);
-        if !is_solid(flat_block) && !is_solid(self.block_at(floor)) && is_solid(self.block_at(new_floor)) {
+        if !is_solid(flat_block)
+            && !is_solid(self.block_at(floor))
+            && is_solid(self.block_at(new_floor))
+        {
             return Some(Vec3i::new(dx, dy, -1));
         }
 
-        None  // blocked
+        None // blocked
     }
 
     pub fn start_entity_move_with_reason(
@@ -263,13 +271,14 @@ impl WorldState {
 
         // Resolve movement direction using terrain (step up/down/flat)
         let direction = if direction.z == 0 {
-            let resolved = self.resolve_movement_direction(current.position, direction.x, direction.y);
+            let resolved =
+                self.resolve_movement_direction(current.position, direction.x, direction.y);
             match resolved {
                 Some(d) => d,
                 None => return Err(MoveEntityError::Blocked),
             }
         } else {
-            direction  // explicit z (future use)
+            direction // explicit z (future use)
         };
 
         let target_position = current.position.add(direction);
@@ -669,34 +678,40 @@ fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize)
     // Generate terrain with 2D sin wave pattern to create mountains
     // Base floor at z = -1, with variation based on both x and y coordinates
     let chunk_edge_f = chunk_edge as f32;
+    let phase = 1.5;
+    let amplitude = 8.0;
+    let pi = std::f32::consts::PI;
+
     for y in 0..world_size_y {
         for x in 0..world_size_x {
             // Create sin waves in both directions
             let x_normalized = (x as f32) / chunk_edge_f;
             let y_normalized = (y as f32) / chunk_edge_f;
-            let sin_x = (x_normalized * std::f32::consts::PI * 2.0).sin();
-            let sin_y = (y_normalized * std::f32::consts::PI * 2.0).sin();
+            let sin_x = (x_normalized * pi * phase).cos();
+            let sin_y = (y_normalized * pi * phase).sin();
 
             // Combine both waves to create peaks and valleys
             let combined = sin_x * sin_y;
-            let amplitude = 3.0;
             let variation = (combined * amplitude) as i32;
 
             // Base floor is at z = -1, sin wave pushes it deeper or shallower
             let surface_z = -1 - variation;
 
             // Fill from the surface down to z = -6
-            for floor_num in 0..6 {
+            for floor_num in 0..16 {
                 let floor_z = -1 - floor_num;
 
                 // Only place stone if we're at or below the surface height for this x position
                 if floor_z <= surface_z {
                     let floor_local_z = floor_z - min_z;
-                    if floor_local_z < 0 || u32::try_from(floor_local_z).expect("floor z negative") >= world_size.z {
+                    if floor_local_z < 0
+                        || u32::try_from(floor_local_z).expect("floor z negative") >= world_size.z
+                    {
                         continue;
                     }
 
-                    let floor_local_z = usize::try_from(floor_local_z).expect("floor local z does not fit in usize");
+                    let floor_local_z = usize::try_from(floor_local_z)
+                        .expect("floor local z does not fit in usize");
                     let layer_offset = floor_local_z
                         .checked_mul(layer_size)
                         .expect("world layer offset overflowed");

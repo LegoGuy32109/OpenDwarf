@@ -357,7 +357,11 @@ pub fn project_world_to_tilemap(
                 .map(|c| IVec2::new(c.x, c.y))
                 .collect()
         } else {
-            streaming.loaded_chunks.iter().map(|c| IVec2::new(c.x, c.y)).collect()
+            streaming
+                .loaded_chunks
+                .iter()
+                .map(|c| IVec2::new(c.x, c.y))
+                .collect()
         }
     } else {
         all_world_chunk_coords(render_world_state.world_chunks)
@@ -367,9 +371,7 @@ pub fn project_world_to_tilemap(
     };
 
     // Determine which z-levels to render: current level + up to 5 levels below
-    let z_levels_to_render: Vec<i32> = (0..=5)
-        .map(|offset| view_z.0 - offset)
-        .collect();
+    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.0 - offset).collect();
 
     // Collect existing chunk keys (chunk_xy, z, layer)
     let existing_chunks: HashSet<(IVec2, i32, TileLayer)> = chunk_query
@@ -407,7 +409,9 @@ pub fn project_world_to_tilemap(
                         alpha_mode: bevy::sprite_render::AlphaMode2d::Opaque,
                     },
                     TilemapChunkTileData(tile_data),
-                    Transform::from_translation(chunk_world_translation_xy(chunk_xy, chunk_edge, sprite_z)),
+                    Transform::from_translation(chunk_world_translation_xy(
+                        chunk_xy, chunk_edge, sprite_z,
+                    )),
                     GlobalTransform::default(),
                     Visibility::default(),
                     InheritedVisibility::default(),
@@ -437,12 +441,16 @@ pub fn project_world_to_tilemap(
                     },
                     TilemapChunk {
                         chunk_size: UVec2::splat(chunk_edge),
-                        tile_display_size: UVec2::splat(64),  // Shadow atlas is scaled to 64px display size
+                        tile_display_size: UVec2::splat(64), // Shadow atlas is scaled to 64px display size
                         tileset: shadow_atlas.atlas.clone(),
                         alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
                     },
                     TilemapChunkTileData(shadow_data),
-                    Transform::from_translation(chunk_world_translation_xy(chunk_xy, chunk_edge, shadow_sprite_z)),
+                    Transform::from_translation(chunk_world_translation_xy(
+                        chunk_xy,
+                        chunk_edge,
+                        shadow_sprite_z,
+                    )),
                     GlobalTransform::default(),
                     Visibility::default(),
                     InheritedVisibility::default(),
@@ -466,7 +474,11 @@ pub fn project_world_to_tilemap(
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
         let z_off = world_chunk.world_z - view_z.0;
         let sprite_z = calculate_sprite_z(z_off, world_chunk.layer);
-        *transform = Transform::from_translation(chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z));
+        *transform = Transform::from_translation(chunk_world_translation_xy(
+            world_chunk.chunk_xy,
+            chunk_edge,
+            sprite_z,
+        ));
 
         let tile_data = match world_chunk.layer {
             TileLayer::Floor => build_chunk_tile_data(
@@ -529,7 +541,10 @@ pub fn draw_depth_labels(
     }
 
     // Only rebuild if something changed
-    if !render_world_state.terrain_dirty && !view_z.is_changed() && !chunk_border_debug_state.is_changed() {
+    if !render_world_state.terrain_dirty
+        && !view_z.is_changed()
+        && !chunk_border_debug_state.is_changed()
+    {
         return;
     }
 
@@ -542,9 +557,7 @@ pub fn draw_depth_labels(
     }
 
     // Determine z-levels to render (same as tints)
-    let z_levels_to_render: Vec<i32> = (0..=5)
-        .map(|offset| view_z.0 - offset)
-        .collect();
+    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.0 - offset).collect();
 
     // Get active chunks using the same logic as project_world_to_tilemap
     let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
@@ -559,7 +572,11 @@ pub fn draw_depth_labels(
                 .map(|c| IVec2::new(c.x, c.y))
                 .collect()
         } else {
-            streaming.loaded_chunks.iter().map(|c| IVec2::new(c.x, c.y)).collect()
+            streaming
+                .loaded_chunks
+                .iter()
+                .map(|c| IVec2::new(c.x, c.y))
+                .collect()
         }
     } else {
         all_world_chunk_coords(render_world_state.world_chunks)
@@ -599,7 +616,8 @@ pub fn draw_depth_labels(
                         // Only spawn label if there's a shadow
                         if mask != 0 {
                             let mask_text = mask.to_string();
-                            let text_position = world_to_pixel_translation(world_position, tile_size);
+                            let text_position =
+                                world_to_pixel_translation(world_position, tile_size);
 
                             commands.spawn((
                                 Text2d::new(mask_text),
@@ -608,7 +626,9 @@ pub fn draw_depth_labels(
                                     ..default()
                                 },
                                 TextColor(Color::srgba(1.0, 1.0, 0.0, 0.95)),
-                                Transform::from_translation(text_position + Vec3::new(0.0, 0.0, 2.0)),
+                                Transform::from_translation(
+                                    text_position + Vec3::new(0.0, 0.0, 2.0),
+                                ),
                                 DepthDebugLabel,
                             ));
                         }
@@ -855,9 +875,15 @@ pub fn sync_camera_z_to_player(
     render_world_state: Res<RenderWorldState>,
     primary_entity: Option<Res<PrimarySimulationEntityId>>,
 ) {
-    let Some(primary_res) = primary_entity else { return; };
-    let Some(primary_id) = primary_res.0 else { return; };
-    let Some(entity) = render_world_state.entities.get(&primary_id) else { return; };
+    let Some(primary_res) = primary_entity else {
+        return;
+    };
+    let Some(primary_id) = primary_res.0 else {
+        return;
+    };
+    let Some(entity) = render_world_state.entities.get(&primary_id) else {
+        return;
+    };
     if entity.position.z != view_z.0 {
         view_z.0 = entity.position.z;
     }
@@ -901,7 +927,8 @@ pub fn update_view_z_level(
 ) {
     let world_snapshot = &world_view.snapshot();
     let world_min_z = -(world_snapshot.chunk_edge as i32);
-    let world_max_z = (world_snapshot.chunk_edge as i32) * (world_snapshot.world_chunks.z as i32) - 1;
+    let world_max_z =
+        (world_snapshot.chunk_edge as i32) * (world_snapshot.world_chunks.z as i32) - 1;
 
     let z_up_pressed = input_state.just_pressed(&input_state.z_level_up);
     let z_down_pressed = input_state.just_pressed(&input_state.z_level_down);
@@ -1264,12 +1291,12 @@ fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
 fn get_depth_tint_tile_color(z_offset: i32) -> Color {
     match z_offset {
         0 => Color::WHITE,
-        -1 => Color::srgb(0.75, 0.75, 0.75),           // 25% black overlay
-        -2 => Color::srgb(0.57, 0.59, 0.63),            // blue-gray 45%
-        -3 => Color::srgb(0.43, 0.45, 0.51),            // blue-gray 60%
-        -4 => Color::srgb(0.32, 0.34, 0.41),            // blue-gray 72%
-        -5 => Color::srgb(0.22, 0.25, 0.33),            // blue-gray 82%
-        _ => Color::srgb(0.22, 0.25, 0.33),
+        -1 => Color::srgb(0.75, 0.75, 0.75), // 25% black overlay
+        -2 => Color::srgb(0.47, 0.49, 0.49), // blue-gray 45%
+        -3 => Color::srgb(0.33, 0.35, 0.61), // blue-gray 60%
+        -4 => Color::srgb(0.22, 0.24, 0.61), // blue-gray 72%
+        -5 => Color::srgb(0.12, 0.15, 0.43), // blue-gray 82%
+        _ => Color::srgb(0.02, 0.05, 0.43),
     }
 }
 
