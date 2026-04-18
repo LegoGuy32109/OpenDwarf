@@ -1,6 +1,8 @@
 # Vision Implementation Plan
 
-Goal: make the game world render like the provided reference image, with readable depth, unknown terrain, layered shadows, and observer-dependent visibility.
+Goal: make the game world render like the provided reference image, with
+readable depth, unknown terrain, layered shadows, and observer-dependent
+visibility.
 
 ## 1. Separate the concepts
 
@@ -8,17 +10,23 @@ Keep these as distinct data concepts:
 
 - `block state`: what the world physically contains.
 - `exploration state`: whether the player has ever uncovered a tile.
-- `visibility state`: whether a tile or entity is visible to a given observer right now.
-- `exposure mask`: which edges, corners, or diagonals of a tile are exposed and should receive a shadow overlay.
-- `depth band`: whether a tile/entity is on the current layer, below it, or deeper.
+- `visibility state`: whether a tile or entity is visible to a given observer
+  right now.
+- `exposure mask`: which edges, corners, or diagonals of a tile are exposed and
+  should receive a shadow overlay.
+- `depth band`: whether a tile/entity is on the current layer, below it, or
+  deeper.
 
-Do not encode shadow orientation into a single enum. Orientation is geometry, not gameplay state.
+Do not encode shadow orientation into a single enum. Orientation is geometry,
+not gameplay state.
 
 ## 2. Expand `world_sim` with visibility data
 
-The authoritative sim should own visibility rules, because AI and replay need the same answers the player sees.
+The authoritative sim should own visibility rules, because AI and replay need
+the same answers the player sees.
 
-Add a visibility payload to the world snapshot or a parallel visibility snapshot:
+Add a visibility payload to the world snapshot or a parallel visibility
+snapshot:
 
 - `explored: bool`
 - `visible: bool`
@@ -32,7 +40,8 @@ Update the snapshot path in:
 - `game_library/world_sim/src/world_api.rs`
 - `game_library/world_sim/src/world_core.rs`
 
-Keep the block grid separate from exploration and visibility. Unknown terrain is not a different block type.
+Keep the block grid separate from exploration and visibility. Unknown terrain is
+not a different block type.
 
 ## 3. Compute FOV with shadow casting
 
@@ -51,7 +60,9 @@ This should support:
 - patrol NPC vision
 - entity-vs-entity detection
 
-If an entity moves in and out of a field of view between ticks, accept tick granularity unless the entity is important enough to need a higher-priority update.
+If an entity moves in and out of a field of view between ticks, accept tick
+granularity unless the entity is important enough to need a higher-priority
+update.
 
 ## 4. Use a dirty/invalidation model
 
@@ -72,7 +83,8 @@ Useful scheduling tiers:
 
 ## 5. Render with layered tile passes
 
-The visual system in `game_library/src/domain/simulation.rs` should become a layered renderer instead of a single flat floor pass.
+The visual system in `game_library/src/domain/simulation.rs` should become a
+layered renderer instead of a single flat floor pass.
 
 Current code paths to extend:
 
@@ -84,13 +96,16 @@ Render layers:
 
 - base surface: normal sprite coloring
 - unknown tiles: fill with `#383137`
-- below-current-layer tiles: tint with black at 25 percent opacity, or blue-gray plus black as needed
-- edge shadows: overlay a mask tile or second pass with 50 percent black followed by 25 percent black
+- below-current-layer tiles: tint with black at 25 percent opacity, or blue-gray
+  plus black as needed
+- edge shadows: overlay a mask tile or second pass with 50 percent black
+  followed by 25 percent black
 - deeper layers: repeat the same pattern with stronger depth tint
 
 ## 6. Build a shadow mask atlas
 
-Because Bevy tilemap chunks do not support per-tile rotation or mirroring, the atlas should contain pre-baked variants.
+Because Bevy tilemap chunks do not support per-tile rotation or mirroring, the
+atlas should contain pre-baked variants.
 
 The atlas should be:
 
@@ -103,7 +118,8 @@ The atlas should be:
   - full fill
 - optionally duplicated in rotated or mirrored versions if symmetry is needed
 
-The runtime chooses the correct atlas tile by mask index. The atlas does not store color; color comes from the renderer.
+The runtime chooses the correct atlas tile by mask index. The atlas does not
+store color; color comes from the renderer.
 
 ## 7. Add exposure masks for terrain edges
 
@@ -118,11 +134,13 @@ Possible inputs:
 
 Use that mask to choose which shadow sprite to draw.
 
-This is what makes the silhouette read like the reference image instead of looking like a flat grid.
+This is what makes the silhouette read like the reference image instead of
+looking like a flat grid.
 
 ## 8. Support depth below the current layer
 
-The current config already supports a 16-voxel vertical span when `world_chunks.z == 1`, but deeper worlds require more z chunks.
+The current config already supports a 16-voxel vertical span when
+`world_chunks.z == 1`, but deeper worlds require more z chunks.
 
 Update the vertical world model as needed:
 
@@ -138,12 +156,14 @@ When a hole opens into a lower layer:
 
 ## 9. Make entity visibility observer-dependent
 
-Entities should use the same visibility map, but they only need a binary result for rendering:
+Entities should use the same visibility map, but they only need a binary result
+for rendering:
 
 - visible
 - hidden
 
-Do not try to render half-visible entities unless that is a deliberate gameplay rule.
+Do not try to render half-visible entities unless that is a deliberate gameplay
+rule.
 
 For the player view:
 
@@ -153,7 +173,8 @@ For the player view:
 
 ## 10. Implement in this order
 
-1. Add `explored`, `visible`, and `exposure_mask` data structures in `world_sim`.
+1. Add `explored`, `visible`, and `exposure_mask` data structures in
+   `world_sim`.
 2. Wire shadow-cast FOV for the player only.
 3. Extend the render snapshot to carry visibility.
 4. Add the mask atlas and a shadow overlay pass.
@@ -171,4 +192,3 @@ The implementation is correct when:
 - fully shadowed entities disappear
 - nearby patrolling entities react on the next sim tick
 - the player can read floor depth and cavities at a glance
-

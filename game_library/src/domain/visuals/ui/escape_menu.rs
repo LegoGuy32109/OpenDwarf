@@ -22,10 +22,8 @@ pub fn escape_menu_input(
     let toggle_menu_pressed = input_state.just_pressed(&input_state.exit_menu);
 
     // if somehow multiple escape menus exist, delete all of them
-    let escape_menu_entities: Vec<Entity> = maybe_escape_menu
-        .iter()
-        .map(|(entity, _)| entity)
-        .collect();
+    let escape_menu_entities: Vec<Entity> =
+        maybe_escape_menu.iter().map(|(entity, _)| entity).collect();
     let num_escape_menus = escape_menu_entities.len();
     if num_escape_menus > 1 {
         warn!("{num_escape_menus} escape menus found, deleting all");

@@ -79,7 +79,9 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     // Load shadow atlas for z-level depth visualization
     let shadow_atlas: Handle<Image> = asset_server.load(SHADOW_ATLAS_PATH);
-    commands.insert_resource(ShadowAtlasAsset { atlas: shadow_atlas });
+    commands.insert_resource(ShadowAtlasAsset {
+        atlas: shadow_atlas,
+    });
 
     // Load a sprite for the player; you must have an image at "assets/Dwarf.png"
     let dwarf_texture = asset_server.load("sprites/Dwarf.png");

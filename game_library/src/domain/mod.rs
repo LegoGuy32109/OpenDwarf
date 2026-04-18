@@ -16,10 +16,11 @@ use crate::domain::messaging::webrtc::MultiplayerController;
 #[cfg(not(target_arch = "wasm32"))]
 use simulation::drive_replay_playback;
 use simulation::{
-    draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera, update_view_z_level,
+    draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera,
     project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
     setup_simulation_state, smooth_player_render_transform, stream_chunks_around_player,
-    sync_render_world_from_snapshot, sync_camera_z_to_player, toggle_chunk_borders,
+    sync_camera_z_to_player, sync_render_world_from_snapshot, toggle_chunk_borders,
+    update_view_z_level,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -33,7 +34,7 @@ use visuals::ui::multiplayer_menu::{
     tick_multiplayer_clipboard_scan,
 };
 use visuals::ui::options_menu::{options_menu_input, options_menu_visuals};
-use visuals::{setup, update_tileset_image, update_shadow_atlas_image};
+use visuals::{setup, update_shadow_atlas_image, update_tileset_image};
 use world_sim::bevy_app::{WorldSimSettings, WorldSimulationPlugin};
 use world_sim::world_api::Vec3u;
 use world_sim::world_core::WorldConfig;
@@ -80,14 +81,22 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(
                 Update,
                 (
-                    (escape_menu_input.run_if(not(in_state(GameMode::Typing))), options_menu_input, multiplayer_menu_input),
+                    (
+                        escape_menu_input.run_if(not(in_state(GameMode::Typing))),
+                        options_menu_input,
+                        multiplayer_menu_input,
+                    ),
                     (
                         menu_event_manager,
                         tick_multiplayer_clipboard_scan,
                         scan_multiplayer_clipboard_on_focus,
                     ),
                     ApplyDeferred,
-                    (escape_menu_visuals, options_menu_visuals, multiplayer_menu_visuals),
+                    (
+                        escape_menu_visuals,
+                        options_menu_visuals,
+                        multiplayer_menu_visuals,
+                    ),
                 )
                     .chain(),
             )
