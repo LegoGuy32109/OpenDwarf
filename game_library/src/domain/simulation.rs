@@ -112,14 +112,6 @@ pub struct WorldTileChunk {
     pub layer: TileLayer,
 }
 
-#[derive(Component, Debug, Clone, Copy)]
-pub struct DepthTintChunk {
-    #[allow(dead_code)]
-    pub chunk_xy: IVec2,
-    #[allow(dead_code)]
-    pub z_offset: i32,
-}
-
 #[derive(Component)]
 pub struct DepthDebugLabel;
 
@@ -243,7 +235,6 @@ pub fn sync_render_world_from_snapshot(
     if render_world_state.tick == snapshot.tick
         && render_world_state.chunk_edge == snapshot.chunk_edge
         && render_world_state.world_chunks == snapshot.world_chunks
-        && render_world_state.entities.len() == snapshot.entities.len()
     {
         return;
     }
@@ -339,6 +330,12 @@ pub fn project_world_to_tilemap(
 ) {
     #[cfg(not(target_arch = "wasm32"))]
     let start = std::time::Instant::now();
+
+    // Z-level changes require tile data rebuild for depth tinting
+    if view_z.is_changed() {
+        render_world_state.terrain_dirty = true;
+    }
+
     if !render_world_state.terrain_dirty {
         return;
     }
@@ -386,15 +383,17 @@ pub fn project_world_to_tilemap(
             // Spawn floor layer
             let chunk_key = (chunk_xy, world_z, TileLayer::Floor);
             if !existing_chunks.contains(&chunk_key) {
+                let z_offset = world_z - view_z.0;
                 let tile_data = build_chunk_tile_data(
                     chunk_xy,
                     world_z,
                     chunk_edge,
                     &render_world_state.blocks,
                     render_world_state.world_chunks,
+                    z_offset,
                 );
 
-                let sprite_z = calculate_sprite_z(world_z - view_z.0, TileLayer::Floor);
+                let sprite_z = calculate_sprite_z(z_offset, TileLayer::Floor);
                 commands.spawn((
                     WorldTileChunk {
                         chunk_xy,
@@ -419,15 +418,17 @@ pub fn project_world_to_tilemap(
             // Spawn shadow overlay layer
             let shadow_key = (chunk_xy, world_z, TileLayer::ShadowOverlay);
             if !existing_chunks.contains(&shadow_key) {
+                let shadow_z_offset = world_z - view_z.0;
                 let shadow_data = build_shadow_tile_data(
                     chunk_xy,
                     world_z,
                     chunk_edge,
                     &render_world_state.blocks,
                     render_world_state.world_chunks,
+                    shadow_z_offset,
                 );
 
-                let shadow_sprite_z = calculate_sprite_z(world_z - view_z.0, TileLayer::ShadowOverlay);
+                let shadow_sprite_z = calculate_sprite_z(shadow_z_offset, TileLayer::ShadowOverlay);
                 commands.spawn((
                     WorldTileChunk {
                         chunk_xy,
@@ -463,7 +464,8 @@ pub fn project_world_to_tilemap(
     // Update existing chunks
     let mut non_empty_tile_count = 0usize;
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
-        let sprite_z = calculate_sprite_z(world_chunk.world_z - view_z.0, world_chunk.layer);
+        let z_off = world_chunk.world_z - view_z.0;
+        let sprite_z = calculate_sprite_z(z_off, world_chunk.layer);
         *transform = Transform::from_translation(chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z));
 
         let tile_data = match world_chunk.layer {
@@ -473,6 +475,7 @@ pub fn project_world_to_tilemap(
                 chunk_edge,
                 &render_world_state.blocks,
                 render_world_state.world_chunks,
+                z_off,
             ),
             TileLayer::ShadowOverlay => build_shadow_tile_data(
                 world_chunk.chunk_xy,
@@ -480,6 +483,7 @@ pub fn project_world_to_tilemap(
                 chunk_edge,
                 &render_world_state.blocks,
                 render_world_state.world_chunks,
+                z_off,
             ),
         };
         non_empty_tile_count = non_empty_tile_count
@@ -504,85 +508,6 @@ pub fn project_world_to_tilemap(
         }
     }
     render_world_state.terrain_dirty = false;
-}
-
-pub fn update_depth_tints(
-    mut commands: Commands,
-    view_z: Res<ViewZLevel>,
-    render_world_state: Res<RenderWorldState>,
-    replay_mode: Res<ReplayMode>,
-    chunk_streaming_state: Option<Res<ChunkStreamingState>>,
-    mut depth_tint_query: Query<(Entity, &DepthTintChunk, &mut Transform, &mut Sprite)>,
-) {
-    if !render_world_state.terrain_dirty {
-        // Also check if view_z changed
-        if !view_z.is_changed() {
-            return;
-        }
-    }
-
-    let chunk_edge = render_world_state.chunk_edge;
-
-    // Determine z-levels to render
-    let z_levels_to_render: Vec<i32> = (0..=5)
-        .map(|offset| view_z.0 - offset)
-        .collect();
-
-    // Get active chunks using the same logic as project_world_to_tilemap
-    let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
-        all_world_chunk_coords(render_world_state.world_chunks)
-            .into_iter()
-            .map(|c| IVec2::new(c.x, c.y))
-            .collect()
-    } else if let Some(streaming) = chunk_streaming_state {
-        if streaming.loaded_chunks.is_empty() {
-            all_world_chunk_coords(render_world_state.world_chunks)
-                .into_iter()
-                .map(|c| IVec2::new(c.x, c.y))
-                .collect()
-        } else {
-            streaming.loaded_chunks.iter().map(|c| IVec2::new(c.x, c.y)).collect()
-        }
-    } else {
-        all_world_chunk_coords(render_world_state.world_chunks)
-            .into_iter()
-            .map(|c| IVec2::new(c.x, c.y))
-            .collect()
-    };
-
-    // For now, despawn all old tints and respawn new ones
-    for (entity, _tint, _, _) in &mut depth_tint_query {
-        commands.entity(entity).despawn();
-    }
-
-    // Spawn new tints for current view configuration
-    for &chunk_xy in &active_chunks_xy {
-        for &world_z in &z_levels_to_render {
-            if world_z < view_z.0 {
-                let z_offset = world_z - view_z.0;
-                let (color, tint_sprite_z) = get_depth_tint_color(z_offset);
-                let chunk_pixel_size = (chunk_edge as f32) * f32::from(TILE_SIZE_IN_PX);
-
-                commands.spawn((
-                    Sprite {
-                        color,
-                        custom_size: Some(Vec2::splat(chunk_pixel_size)),
-                        ..default()
-                    },
-                    Transform::from_translation(chunk_world_translation_xy(
-                        chunk_xy,
-                        chunk_edge,
-                        tint_sprite_z,
-                    )),
-                    GlobalTransform::default(),
-                    Visibility::default(),
-                    InheritedVisibility::default(),
-                    ViewVisibility::default(),
-                    DepthTintChunk { chunk_xy, z_offset },
-                ));
-            }
-        }
-    }
 }
 
 pub fn draw_depth_labels(
@@ -900,8 +825,22 @@ pub fn stream_chunks_around_player(
     }
 
     let mut tracked_chunk_set_changed = false;
+
+    // Load new chunks that entered the window
     for chunk in desired.difference(&chunk_streaming_state.loaded_chunks) {
         world_command_queue.set_chunk_loaded(*chunk, true);
+        tracked_chunk_set_changed = true;
+    }
+
+    // Unload chunks that left the window
+    let to_unload: Vec<Vec3i> = chunk_streaming_state
+        .loaded_chunks
+        .difference(&desired)
+        .copied()
+        .collect();
+    for &chunk in &to_unload {
+        world_command_queue.set_chunk_loaded(chunk, false);
+        chunk_streaming_state.loaded_chunks.remove(&chunk);
         tracked_chunk_set_changed = true;
     }
 
@@ -1002,6 +941,10 @@ fn direction_contains(container: IVec3, direction: IVec3) -> bool {
 }
 
 fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnapshot) {
+    let terrain_changed = render_world_state.chunk_edge != snapshot.chunk_edge
+        || render_world_state.world_chunks != snapshot.world_chunks
+        || render_world_state.blocks != snapshot.blocks;
+
     render_world_state.tick = snapshot.tick;
     render_world_state.chunk_edge = snapshot.chunk_edge;
     render_world_state.world_chunks = snapshot.world_chunks;
@@ -1021,7 +964,11 @@ fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnap
             )
         })
         .collect();
-    render_world_state.mark_all_dirty();
+
+    if terrain_changed {
+        render_world_state.terrain_dirty = true;
+    }
+    render_world_state.entities_dirty = true;
 }
 
 fn apply_update(render_world_state: &mut RenderWorldState, update: WorldUpdate) {
@@ -1192,6 +1139,7 @@ fn build_chunk_tile_data(
     chunk_edge: u32,
     blocks: &[BlockType],
     world_chunks: Vec3u,
+    z_offset: i32,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
@@ -1228,7 +1176,9 @@ fn build_chunk_tile_data(
                 } else {
                     stone_tile_index(world_position)
                 };
-                tile_data[index_in_slice] = Some(TileData::from_tileset_index(tile_index));
+                let mut td = TileData::from_tileset_index(tile_index);
+                td.color = get_depth_tint_tile_color(z_offset);
+                tile_data[index_in_slice] = Some(td);
             }
         }
     }
@@ -1242,6 +1192,7 @@ fn build_shadow_tile_data(
     chunk_edge: u32,
     blocks: &[BlockType],
     world_chunks: Vec3u,
+    z_offset: i32,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
@@ -1278,7 +1229,9 @@ fn build_shadow_tile_data(
                     chunk_edge,
                 );
                 if mask != 0 {
-                    tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
+                    let mut td = TileData::from_tileset_index((mask - 1) as u16);
+                    td.color = get_depth_tint_tile_color(z_offset);
+                    tile_data[index_in_slice] = Some(td);
                 }
             }
         }
@@ -1304,15 +1257,19 @@ fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
     }
 }
 
-fn get_depth_tint_color(z_offset: i32) -> (Color, f32) {
-    // z_offset is negative (e.g., -1, -2, etc.)
+/// Multiplicative tint color for tiles at a given z-offset from the camera.
+/// Converts the old overlay-based depth tinting to per-tile color multiplication.
+/// Formula: for overlay srgba(r, g, b, a), the equivalent multiplicative color is
+/// srgb(1-a + a*r, 1-a + a*g, 1-a + a*b).
+fn get_depth_tint_tile_color(z_offset: i32) -> Color {
     match z_offset {
-        -1 => (Color::srgba(0.0, 0.0, 0.0, 0.25), -1.0), // 25% black
-        -2 => (Color::srgba(0.05, 0.08, 0.18, 0.45), -3.0), // blue-gray 45%
-        -3 => (Color::srgba(0.05, 0.08, 0.18, 0.60), -5.0), // blue-gray 60%
-        -4 => (Color::srgba(0.05, 0.08, 0.18, 0.72), -7.0), // blue-gray 72%
-        -5 => (Color::srgba(0.05, 0.08, 0.18, 0.82), -9.0), // blue-gray 82%
-        _ => (Color::srgba(0.05, 0.08, 0.18, 0.82), -9.0), // Default to deepest
+        0 => Color::WHITE,
+        -1 => Color::srgb(0.75, 0.75, 0.75),           // 25% black overlay
+        -2 => Color::srgb(0.57, 0.59, 0.63),            // blue-gray 45%
+        -3 => Color::srgb(0.43, 0.45, 0.51),            // blue-gray 60%
+        -4 => Color::srgb(0.32, 0.34, 0.41),            // blue-gray 72%
+        -5 => Color::srgb(0.22, 0.25, 0.33),            // blue-gray 82%
+        _ => Color::srgb(0.22, 0.25, 0.33),
     }
 }
 

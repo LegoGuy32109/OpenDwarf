@@ -19,7 +19,7 @@ use simulation::{
     draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera, update_view_z_level,
     project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
     setup_simulation_state, smooth_player_render_transform, stream_chunks_around_player,
-    sync_render_world_from_snapshot, sync_camera_z_to_player, toggle_chunk_borders, update_depth_tints,
+    sync_render_world_from_snapshot, sync_camera_z_to_player, toggle_chunk_borders,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -68,7 +68,6 @@ impl Plugin for OpenDwarfPlugins {
                     sync_camera_z_to_player,
                     stream_chunks_around_player,
                     project_world_to_tilemap,
-                    update_depth_tints,
                     draw_depth_labels,
                     draw_chunk_borders,
                     draw_entity_occupancy_boxes,
