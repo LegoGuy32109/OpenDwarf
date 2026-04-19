@@ -18,6 +18,11 @@ const SHADOW_ATLAS_PATH: &str = "atlases/ShadowAtlas.png";
 // WARN: CANNOT BE A MULTIPLE OF 6 (Bevy constraint for 2D array reinterpretation)
 const SHADOW_ATLAS_FRAMES: u32 = 17;
 
+const OBSCURE_ATLAS_PATH: &str = "atlases/ObscureAtlas.png";
+// 15 frames for 4-bit dual-grid ceiling shadow (masks 1-15), indexed by mask-1
+// WARN: CANNOT BE A MULTIPLE OF 6
+const OBSCURE_ATLAS_FRAMES: u32 = 15;
+
 #[derive(Component)]
 pub struct Player;
 
@@ -32,6 +37,11 @@ pub struct TilemapAssets {
 
 #[derive(Resource, Clone)]
 pub struct ShadowAtlasAsset {
+    pub atlas: Handle<Image>,
+}
+
+#[derive(Resource, Clone)]
+pub struct ObscureAtlasAsset {
     pub atlas: Handle<Image>,
 }
 
@@ -65,6 +75,21 @@ pub fn update_shadow_atlas_image(
     }
 }
 
+pub fn update_obscure_atlas_image(
+    obscure_assets: Res<ObscureAtlasAsset>,
+    mut events: MessageReader<AssetEvent<Image>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let obscure_atlas_handle = &obscure_assets.atlas;
+    let image_asset_id = obscure_atlas_handle.id();
+    for event in events.read() {
+        if event.is_loaded_with_dependencies(image_asset_id) {
+            let image = images.get_mut(obscure_atlas_handle).unwrap();
+            let _ = image.reinterpret_stacked_2d_as_array(OBSCURE_ATLAS_FRAMES);
+        }
+    }
+}
+
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Camera
     commands.spawn((Camera2d, Camera::default()));
@@ -81,6 +106,12 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let shadow_atlas: Handle<Image> = asset_server.load(SHADOW_ATLAS_PATH);
     commands.insert_resource(ShadowAtlasAsset {
         atlas: shadow_atlas,
+    });
+
+    // Load obscure atlas for ceiling occlusion shadows (dual-grid, 15 frames)
+    let obscure_atlas: Handle<Image> = asset_server.load(OBSCURE_ATLAS_PATH);
+    commands.insert_resource(ObscureAtlasAsset {
+        atlas: obscure_atlas,
     });
 
     // Load a sprite for the player; you must have an image at "assets/Dwarf.png"

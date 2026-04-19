@@ -103,6 +103,8 @@ pub struct TilemapRenderMetrics {
 pub enum TileLayer {
     Floor,
     ShadowOverlay,
+    /// Dual-grid ceiling shadow: rendered half a tile offset, shows solid blocks at z+1 above.
+    CeilingShadow,
 }
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,6 +320,7 @@ pub fn project_world_to_tilemap(
     view_z: Res<ViewZLevel>,
     tilemap_assets: Res<TilemapAssets>,
     shadow_atlas: Res<super::visuals::ShadowAtlasAsset>,
+    obscure_atlas: Res<super::visuals::ObscureAtlasAsset>,
     mut render_world_state: ResMut<RenderWorldState>,
     mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
     mut chunk_query: Query<(
@@ -457,28 +460,71 @@ pub fn project_world_to_tilemap(
                     ViewVisibility::default(),
                 ));
             }
+
+            // Ceiling shadow (dual-grid) — only on the current z-level
+            let ceiling_key = (chunk_xy, world_z, TileLayer::CeilingShadow);
+            if world_z == view_z.0 && !existing_chunks.contains(&ceiling_key) {
+                let ceiling_data = build_ceiling_shadow_tile_data(
+                    chunk_xy,
+                    world_z,
+                    chunk_edge,
+                    &render_world_state.blocks,
+                    render_world_state.world_chunks,
+                );
+                let ceiling_sprite_z = calculate_sprite_z(0, TileLayer::CeilingShadow);
+                let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
+                commands.spawn((
+                    WorldTileChunk {
+                        chunk_xy,
+                        world_z,
+                        layer: TileLayer::CeilingShadow,
+                    },
+                    TilemapChunk {
+                        chunk_size: UVec2::splat(chunk_edge),
+                        tile_display_size: UVec2::splat(64),
+                        tileset: obscure_atlas.atlas.clone(),
+                        alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
+                    },
+                    TilemapChunkTileData(ceiling_data),
+                    Transform::from_translation(
+                        chunk_world_translation_xy(chunk_xy, chunk_edge, ceiling_sprite_z)
+                            + Vec3::new(half_tile, half_tile, 0.0),
+                    ),
+                    GlobalTransform::default(),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                ));
+            }
         }
     }
 
     // Despawn chunks that are no longer active
     for (entity, world_chunk, _, _, _) in &mut chunk_query {
-        let should_keep = active_chunks_xy.contains(&world_chunk.chunk_xy)
-            && z_levels_to_render.contains(&world_chunk.world_z);
-        if !should_keep {
+        let in_active_xy = active_chunks_xy.contains(&world_chunk.chunk_xy);
+        let in_z_range = z_levels_to_render.contains(&world_chunk.world_z);
+        // CeilingShadow chunks are only valid at the exact current z-level
+        let ceiling_ok = world_chunk.layer != TileLayer::CeilingShadow
+            || world_chunk.world_z == view_z.0;
+        if !in_active_xy || !in_z_range || !ceiling_ok {
             commands.entity(entity).despawn();
         }
     }
 
     // Update existing chunks
+    let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
     let mut non_empty_tile_count = 0usize;
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
         let z_off = world_chunk.world_z - view_z.0;
         let sprite_z = calculate_sprite_z(z_off, world_chunk.layer);
-        *transform = Transform::from_translation(chunk_world_translation_xy(
-            world_chunk.chunk_xy,
-            chunk_edge,
-            sprite_z,
-        ));
+        let base_translation = chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z);
+        *transform = Transform::from_translation(
+            if world_chunk.layer == TileLayer::CeilingShadow {
+                base_translation + Vec3::new(half_tile, half_tile, 0.0)
+            } else {
+                base_translation
+            },
+        );
 
         let tile_data = match world_chunk.layer {
             TileLayer::Floor => build_chunk_tile_data(
@@ -496,6 +542,13 @@ pub fn project_world_to_tilemap(
                 &render_world_state.blocks,
                 render_world_state.world_chunks,
                 z_off,
+            ),
+            TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
+                world_chunk.chunk_xy,
+                world_chunk.world_z,
+                chunk_edge,
+                &render_world_state.blocks,
+                render_world_state.world_chunks,
             ),
         };
         non_empty_tile_count = non_empty_tile_count
@@ -1267,6 +1320,72 @@ fn build_shadow_tile_data(
     tile_data
 }
 
+/// Builds the dual-grid ceiling shadow tile data for one chunk at `world_z`.
+///
+/// The resulting tilemap is rendered offset by half a tile (+tile_size/2 in x and y)
+/// relative to the regular floor chunks, so each shadow tile sits at the corner between
+/// four regular tiles. For shadow tile at chunk-local (lx, ly), the 4-bit mask samples
+/// whether the block ONE LEVEL ABOVE (world_z + 1) is solid at each of the four surrounding
+/// world positions:
+///
+///   C = (wx,   wy+1)  |  D = (wx+1, wy+1)     bit 2 | bit 3
+///   ──────────────────+──────────────────      ──────+──────
+///   A = (wx,   wy  )  |  B = (wx+1, wy  )     bit 0 | bit 1
+///
+/// Mask 0 → no ceiling tile. Masks 1–15 → atlas frame index (mask - 1).
+fn build_ceiling_shadow_tile_data(
+    chunk_xy: IVec2,
+    world_z: i32,
+    chunk_edge: u32,
+    blocks: &[BlockType],
+    world_chunks: Vec3u,
+) -> Vec<Option<TileData>> {
+    let tile_count = chunk_edge
+        .checked_mul(chunk_edge)
+        .expect("chunk tile count overflowed");
+    let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
+
+    let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
+
+    for local_y in 0..chunk_edge {
+        for local_x in 0..chunk_edge {
+            let index_in_slice = usize::try_from(local_y)
+                .expect("local_y does not fit in usize")
+                .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
+                .and_then(|offset| {
+                    offset.checked_add(
+                        usize::try_from(local_x).expect("local_x does not fit in usize"),
+                    )
+                })
+                .expect("chunk-local tile index overflowed");
+
+            // World position of the "anchor" (bottom-left) corner of this dual-grid cell
+            let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
+
+            let has_ceiling = |dx: i32, dy: i32| -> bool {
+                let above = Vec3i::new(wp.x + dx, wp.y + dy, world_z + 1);
+                matches!(
+                    block_at_world_position(blocks, world_chunks, chunk_edge, above),
+                    Some(BlockType::SolidStone)
+                )
+            };
+
+            let mut mask: u8 = 0;
+            if has_ceiling(0, 0) { mask |= 1; } // A: bottom-left
+            if has_ceiling(1, 0) { mask |= 2; } // B: bottom-right
+            if has_ceiling(0, 1) { mask |= 4; } // C: top-left
+            if has_ceiling(1, 1) { mask |= 8; } // D: top-right
+
+            if mask != 0 {
+                tile_data[index_in_slice] =
+                    Some(TileData::from_tileset_index((mask - 1) as u16));
+            }
+        }
+    }
+
+    tile_data
+}
+
 fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
     let base = match z_offset {
         0 => 0.0,
@@ -1281,6 +1400,7 @@ fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
     match layer {
         TileLayer::Floor => base,
         TileLayer::ShadowOverlay => base + 0.5,
+        TileLayer::CeilingShadow => base + 0.75, // above edge shadows, below entities
     }
 }
 

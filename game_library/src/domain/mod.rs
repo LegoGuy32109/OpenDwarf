@@ -34,7 +34,7 @@ use visuals::ui::multiplayer_menu::{
     tick_multiplayer_clipboard_scan,
 };
 use visuals::ui::options_menu::{options_menu_input, options_menu_visuals};
-use visuals::{setup, update_shadow_atlas_image, update_tileset_image};
+use visuals::{setup, update_obscure_atlas_image, update_shadow_atlas_image, update_tileset_image};
 use world_sim::bevy_app::{WorldSimSettings, WorldSimulationPlugin};
 use world_sim::world_api::Vec3u;
 use world_sim::world_core::WorldConfig;
@@ -58,7 +58,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
-            .add_systems(Update, (update_tileset_image, update_shadow_atlas_image))
+            .add_systems(Update, (update_tileset_image, update_shadow_atlas_image, update_obscure_atlas_image))
             .add_systems(
                 Update,
                 (
