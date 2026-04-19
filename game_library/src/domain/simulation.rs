@@ -504,8 +504,8 @@ pub fn project_world_to_tilemap(
         let in_active_xy = active_chunks_xy.contains(&world_chunk.chunk_xy);
         let in_z_range = z_levels_to_render.contains(&world_chunk.world_z);
         // CeilingShadow chunks are only valid at the exact current z-level
-        let ceiling_ok = world_chunk.layer != TileLayer::CeilingShadow
-            || world_chunk.world_z == view_z.0;
+        let ceiling_ok =
+            world_chunk.layer != TileLayer::CeilingShadow || world_chunk.world_z == view_z.0;
         if !in_active_xy || !in_z_range || !ceiling_ok {
             commands.entity(entity).despawn();
         }
@@ -517,9 +517,13 @@ pub fn project_world_to_tilemap(
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
         let z_off = world_chunk.world_z - view_z.0;
         let sprite_z = calculate_sprite_z(z_off, world_chunk.layer);
-        let base_translation = chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z);
+        let base_translation =
+            chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z);
         *transform = Transform::from_translation(
-            if matches!(world_chunk.layer, TileLayer::ShadowOverlay | TileLayer::CeilingShadow) {
+            if matches!(
+                world_chunk.layer,
+                TileLayer::ShadowOverlay | TileLayer::CeilingShadow
+            ) {
                 base_translation + Vec3::new(half_tile, half_tile, 0.0)
             } else {
                 base_translation
@@ -979,9 +983,13 @@ pub fn update_view_z_level(
     mut render_world_state: ResMut<RenderWorldState>,
 ) {
     let world_snapshot = &world_view.snapshot();
-    let world_min_z = -(world_snapshot.chunk_edge as i32);
+    let world_size_z = world_snapshot
+        .chunk_edge
+        .checked_mul(world_snapshot.world_chunks.z)
+        .expect("world z-size overflowed");
+    let world_min_z = -(i32::try_from(world_size_z).expect("world z-size does not fit in i32") / 2);
     let world_max_z =
-        (world_snapshot.chunk_edge as i32) * (world_snapshot.world_chunks.z as i32) - 1;
+        world_min_z + i32::try_from(world_size_z).expect("world z-size does not fit in i32") - 1;
 
     let z_up_pressed = input_state.just_pressed(&input_state.z_level_up);
     let z_down_pressed = input_state.just_pressed(&input_state.z_level_down);
@@ -1208,9 +1216,8 @@ fn world_pos_in_chunk(chunk_coord: Vec3i, chunk_edge: u32, x: u32, y: u32, z: i3
     )
 }
 
-fn stone_tile_index(world_position: Vec3i) -> u16 {
-    let pattern = (world_position.x + world_position.y).rem_euclid(6) + 1;
-    u16::try_from(pattern).expect("stone tile pattern index should fit in u16")
+fn stone_tile_index() -> u16 {
+    5
 }
 
 fn build_chunk_tile_data(
@@ -1247,16 +1254,7 @@ fn build_chunk_tile_data(
                 block_at_world_position(blocks, world_chunks, chunk_edge, world_position),
                 Some(BlockType::SolidStone)
             ) {
-                let is_perimeter = local_x == 0
-                    || local_y == 0
-                    || local_x == chunk_edge.saturating_sub(1)
-                    || local_y == chunk_edge.saturating_sub(1);
-                let tile_index = if is_perimeter {
-                    14
-                } else {
-                    stone_tile_index(world_position)
-                };
-                let mut td = TileData::from_tileset_index(tile_index);
+                let mut td = TileData::from_tileset_index(stone_tile_index());
                 td.color = get_depth_tint_tile_color(z_offset);
                 tile_data[index_in_slice] = Some(td);
             }
@@ -1313,10 +1311,18 @@ fn build_shadow_tile_data(
             };
 
             let mut mask: u8 = 0;
-            if is_solid(0, 0) { mask |= 1; } // A: bottom-left
-            if is_solid(1, 0) { mask |= 2; } // B: bottom-right
-            if is_solid(0, 1) { mask |= 4; } // C: top-left
-            if is_solid(1, 1) { mask |= 8; } // D: top-right
+            if is_solid(0, 0) {
+                mask |= 1;
+            } // A: bottom-left
+            if is_solid(1, 0) {
+                mask |= 2;
+            } // B: bottom-right
+            if is_solid(0, 1) {
+                mask |= 4;
+            } // C: top-left
+            if is_solid(1, 1) {
+                mask |= 8;
+            } // D: top-right
 
             // Skip all-air (no edge) and all-solid (interior, no visible edge)
             if mask > 0 && mask < 15 {
@@ -1381,14 +1387,21 @@ fn build_ceiling_shadow_tile_data(
             };
 
             let mut mask: u8 = 0;
-            if has_ceiling(0, 0) { mask |= 1; } // A: bottom-left
-            if has_ceiling(1, 0) { mask |= 2; } // B: bottom-right
-            if has_ceiling(0, 1) { mask |= 4; } // C: top-left
-            if has_ceiling(1, 1) { mask |= 8; } // D: top-right
+            if has_ceiling(0, 0) {
+                mask |= 1;
+            } // A: bottom-left
+            if has_ceiling(1, 0) {
+                mask |= 2;
+            } // B: bottom-right
+            if has_ceiling(0, 1) {
+                mask |= 4;
+            } // C: top-left
+            if has_ceiling(1, 1) {
+                mask |= 8;
+            } // D: top-right
 
             if mask != 0 {
-                tile_data[index_in_slice] =
-                    Some(TileData::from_tileset_index((mask - 1) as u16));
+                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
             }
         }
     }

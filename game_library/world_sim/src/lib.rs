@@ -22,5 +22,6 @@ pub mod prelude {
     pub use crate::world_api::WorldCommand;
     pub use crate::world_api::WorldSnapshot;
     pub use crate::world_api::WorldUpdate;
+    pub use crate::world_core::TerrainConfig;
     pub use crate::world_core::WorldConfig;
 }

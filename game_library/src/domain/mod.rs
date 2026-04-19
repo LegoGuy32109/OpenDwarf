@@ -49,7 +49,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_plugins(WorldSimulationPlugin {
                 settings: WorldSimSettings {
                     config: WorldConfig {
-                        world_chunks: Vec3u::new(16, 16, 1),
+                        world_chunks: Vec3u::new(16, 16, 4),
                         ..WorldConfig::default()
                     },
                     spawn_default_player: true,
@@ -58,7 +58,14 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
-            .add_systems(Update, (update_tileset_image, update_shadow_atlas_image, update_obscure_atlas_image))
+            .add_systems(
+                Update,
+                (
+                    update_tileset_image,
+                    update_shadow_atlas_image,
+                    update_obscure_atlas_image,
+                ),
+            )
             .add_systems(
                 Update,
                 (

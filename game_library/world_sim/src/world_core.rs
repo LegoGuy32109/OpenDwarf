@@ -13,10 +13,36 @@ pub const DEFAULT_WORLD_CHUNKS: Vec3u = Vec3u { x: 1, y: 1, z: 1 };
 pub const DEFAULT_MOVEMENT_TICKS_PER_TILE: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerrainConfig {
+    pub seed: String,
+    pub cave_frequency_xy: f64,
+    pub cave_frequency_z: f64,
+    pub cave_threshold: f64,
+    pub cave_octaves: u32,
+    pub cave_persistence: f64,
+    pub cave_lacunarity: f64,
+}
+
+impl Default for TerrainConfig {
+    fn default() -> Self {
+        Self {
+            seed: "opendwarf".to_string(),
+            cave_frequency_xy: 0.08,
+            cave_frequency_z: 0.03,
+            cave_threshold: 0.22,
+            cave_octaves: 3,
+            cave_persistence: 0.55,
+            cave_lacunarity: 2.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldConfig {
     pub chunk_edge: u32,
     pub world_chunks: Vec3u,
     pub movement_ticks_per_tile: u32,
+    pub terrain: TerrainConfig,
 }
 
 impl Default for WorldConfig {
@@ -25,6 +51,7 @@ impl Default for WorldConfig {
             chunk_edge: DEFAULT_CHUNK_EDGE,
             world_chunks: DEFAULT_WORLD_CHUNKS,
             movement_ticks_per_tile: DEFAULT_MOVEMENT_TICKS_PER_TILE,
+            terrain: TerrainConfig::default(),
         }
     }
 }
@@ -165,7 +192,12 @@ impl WorldState {
             chunk_edge: config.chunk_edge,
             world_chunks: config.world_chunks,
             movement_ticks_per_tile: config.movement_ticks_per_tile.max(1),
-            blocks: make_initial_blocks(config.chunk_edge, config.world_chunks, block_count),
+            blocks: make_initial_blocks(
+                config.chunk_edge,
+                config.world_chunks,
+                block_count,
+                &config.terrain,
+            ),
             entities: BTreeMap::new(),
             loaded_chunks: make_initial_loaded_chunks(config.world_chunks),
             next_entity_id: 1,
@@ -195,6 +227,36 @@ impl WorldState {
         Ok(candidate)
     }
 
+    #[must_use]
+    pub fn find_spawn_position(&self, preferred_xy: Vec3i) -> Option<Vec3i> {
+        let (min, max) = self.centered_bounds();
+        let start_x = preferred_xy.x.clamp(min.x, max.x);
+        let start_y = preferred_xy.y.clamp(min.y, max.y);
+        let max_radius = (max.x - min.x).max(max.y - min.y);
+
+        for radius in 0..=max_radius {
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    if dx.abs().max(dy.abs()) != radius {
+                        continue;
+                    }
+
+                    let x = start_x + dx;
+                    let y = start_y + dy;
+                    if x < min.x || x > max.x || y < min.y || y > max.y {
+                        continue;
+                    }
+
+                    if let Some(z) = self.highest_supported_z(x, y) {
+                        return Some(Vec3i::new(x, y, z));
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     fn block_at(&self, pos: Vec3i) -> Option<BlockType> {
         let edge = self.chunk_edge;
         let wc = self.world_chunks;
@@ -219,6 +281,26 @@ impl WorldState {
         let sx = world_size_x as usize;
         let sy = world_size_y as usize;
         self.blocks.get(iz * sx * sy + iy * sx + ix).copied()
+    }
+
+    fn highest_supported_z(&self, x: i32, y: i32) -> Option<i32> {
+        let (min, max) = self.centered_bounds();
+        if x < min.x || x > max.x || y < min.y || y > max.y {
+            return None;
+        }
+
+        let mut z = max.z;
+        while z > min.z {
+            let tile = Vec3i::new(x, y, z);
+            let below = Vec3i::new(x, y, z - 1);
+            if matches!(self.block_at(tile), Some(BlockType::Air))
+                && matches!(self.block_at(below), Some(BlockType::SolidStone))
+            {
+                return Some(z);
+            }
+            z -= 1;
+        }
+        None
     }
 
     fn resolve_movement_direction(&self, entity_pos: Vec3i, dx: i32, dy: i32) -> Option<Vec3i> {
@@ -268,6 +350,14 @@ impl WorldState {
             .entities
             .get(&id)
             .ok_or(MoveEntityError::UnknownEntity)?;
+
+        let raw_target_position = current.position.add(direction);
+        if !self.contains_position(raw_target_position) {
+            return Err(MoveEntityError::OutOfBounds {
+                from: current.position,
+                to: raw_target_position,
+            });
+        }
 
         // Resolve movement direction using terrain (step up/down/flat)
         let direction = if direction.z == 0 {
@@ -651,9 +741,12 @@ fn make_initial_loaded_chunks(world_chunks: Vec3u) -> HashSet<Vec3i> {
     loaded
 }
 
-fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize) -> Vec<BlockType> {
-    let mut blocks = vec![BlockType::Air; block_count];
-
+fn make_initial_blocks(
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+    block_count: usize,
+    terrain: &TerrainConfig,
+) -> Vec<BlockType> {
     let world_size = Vec3u::new(
         world_chunks
             .x
@@ -668,58 +761,24 @@ fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize)
             .checked_mul(chunk_edge)
             .expect("world z-size overflowed"),
     );
-    let min_z = -(i32::try_from(world_size.z).expect("world size z does not fit in i32") / 2);
+    let min = world_min_for_size(world_size);
     let world_size_x = usize::try_from(world_size.x).expect("world size x does not fit in usize");
     let world_size_y = usize::try_from(world_size.y).expect("world size y does not fit in usize");
-    let layer_size = world_size_x
-        .checked_mul(world_size_y)
-        .expect("world layer size overflowed");
+    let seed = seed_to_u64(&terrain.seed);
 
-    // Generate terrain with 2D sin wave pattern to create mountains
-    // Base floor at z = -1, with variation based on both x and y coordinates
-    let chunk_edge_f = chunk_edge as f32;
-    let phase = 1.5;
-    let amplitude = 8.0;
-    let pi = std::f32::consts::PI;
-
-    for y in 0..world_size_y {
-        for x in 0..world_size_x {
-            // Create sin waves in both directions
-            let x_normalized = (x as f32) / chunk_edge_f;
-            let y_normalized = (y as f32) / chunk_edge_f;
-            let sin_x = (x_normalized * pi * phase).cos();
-            let sin_y = (y_normalized * pi * phase).sin();
-
-            // Combine both waves to create peaks and valleys
-            let combined = sin_x * sin_y;
-            let variation = (combined * amplitude) as i32;
-
-            // Base floor is at z = -1, sin wave pushes it deeper or shallower
-            let surface_z = -1 - variation;
-
-            // Fill from the surface down to z = -6
-            for floor_num in 0..16 {
-                let floor_z = -1 - floor_num;
-
-                // Only place stone if we're at or below the surface height for this x position
-                if floor_z <= surface_z {
-                    let floor_local_z = floor_z - min_z;
-                    if floor_local_z < 0
-                        || u32::try_from(floor_local_z).expect("floor z negative") >= world_size.z
-                    {
-                        continue;
-                    }
-
-                    let floor_local_z = usize::try_from(floor_local_z)
-                        .expect("floor local z does not fit in usize");
-                    let layer_offset = floor_local_z
-                        .checked_mul(layer_size)
-                        .expect("world layer offset overflowed");
-                    let index = layer_offset
-                        .checked_add(y.checked_mul(world_size_x).expect("floor y overflowed"))
-                        .and_then(|offset| offset.checked_add(x))
-                        .expect("floor index overflowed");
-                    blocks[index] = BlockType::SolidStone;
+    let mut blocks = vec![BlockType::SolidStone; block_count];
+    for z in 0..world_size.z {
+        let world_z = min.z + i32::try_from(z).expect("z does not fit in i32");
+        for y in 0..world_size_y {
+            let world_y = min.y + i32::try_from(y).expect("y does not fit in i32");
+            for x in 0..world_size_x {
+                let world_x = min.x + i32::try_from(x).expect("x does not fit in i32");
+                let world_position = Vec3i::new(world_x, world_y, world_z);
+                let density = sample_cave_density(world_position, terrain, seed);
+                if density > terrain.cave_threshold {
+                    let index = world_position_to_index(world_position, world_size)
+                        .expect("world position should be in bounds");
+                    blocks[index] = BlockType::Air;
                 }
             }
         }
@@ -727,16 +786,283 @@ fn make_initial_blocks(chunk_edge: u32, world_chunks: Vec3u, block_count: usize)
     blocks
 }
 
+fn sample_cave_density(world_position: Vec3i, terrain: &TerrainConfig, seed: u64) -> f64 {
+    let mut frequency_xy = terrain.cave_frequency_xy;
+    let mut frequency_z = terrain.cave_frequency_z;
+    let mut amplitude = 1.0;
+    let mut total_amplitude = 0.0;
+    let mut total_density = 0.0;
+    let octaves = terrain.cave_octaves.max(1);
+    let x = world_position.x as f64;
+    let y = world_position.y as f64;
+    let z = world_position.z as f64;
+
+    for octave in 0..octaves {
+        let octave_seed = seed.wrapping_add(
+            u64::from(octave + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+        );
+        let noise = perlin_like_noise_3d(
+            octave_seed,
+            x * frequency_xy,
+            y * frequency_xy,
+            z * frequency_z,
+        );
+        total_density += noise * amplitude;
+        total_amplitude += amplitude;
+        amplitude *= terrain.cave_persistence;
+        frequency_xy *= terrain.cave_lacunarity;
+        frequency_z *= terrain.cave_lacunarity;
+    }
+
+    if total_amplitude == 0.0 {
+        0.0
+    } else {
+        total_density / total_amplitude
+    }
+}
+
+fn perlin_like_noise_3d(seed: u64, x: f64, y: f64, z: f64) -> f64 {
+    let x_floor = x.floor();
+    let y_floor = y.floor();
+    let z_floor = z.floor();
+
+    let x0 = x_floor as i64;
+    let y0 = y_floor as i64;
+    let z0 = z_floor as i64;
+    let x1 = x0 + 1;
+    let y1 = y0 + 1;
+    let z1 = z0 + 1;
+
+    let xf = x - x_floor;
+    let yf = y - y_floor;
+    let zf = z - z_floor;
+
+    let u = fade(xf);
+    let v = fade(yf);
+    let w = fade(zf);
+
+    let aaa = gradient_hash(seed, x0, y0, z0);
+    let aba = gradient_hash(seed, x0, y1, z0);
+    let aab = gradient_hash(seed, x0, y0, z1);
+    let abb = gradient_hash(seed, x0, y1, z1);
+    let baa = gradient_hash(seed, x1, y0, z0);
+    let bba = gradient_hash(seed, x1, y1, z0);
+    let bab = gradient_hash(seed, x1, y0, z1);
+    let bbb = gradient_hash(seed, x1, y1, z1);
+
+    let x_lerp1 = lerp(
+        u,
+        grad(aaa, xf, yf, zf),
+        grad(baa, xf - 1.0, yf, zf),
+    );
+    let x_lerp2 = lerp(
+        u,
+        grad(aba, xf, yf - 1.0, zf),
+        grad(bba, xf - 1.0, yf - 1.0, zf),
+    );
+    let y_lerp1 = lerp(v, x_lerp1, x_lerp2);
+
+    let x_lerp3 = lerp(
+        u,
+        grad(aab, xf, yf, zf - 1.0),
+        grad(bab, xf - 1.0, yf, zf - 1.0),
+    );
+    let x_lerp4 = lerp(
+        u,
+        grad(abb, xf, yf - 1.0, zf - 1.0),
+        grad(bbb, xf - 1.0, yf - 1.0, zf - 1.0),
+    );
+    let y_lerp2 = lerp(v, x_lerp3, x_lerp4);
+
+    lerp(w, y_lerp1, y_lerp2)
+}
+
+fn gradient_hash(seed: u64, x: i64, y: i64, z: i64) -> u64 {
+    let mut hash = seed ^ 0x9E37_79B9_7F4A_7C15;
+    hash ^= mix_u64(x as u64);
+    hash = hash.rotate_left(17) ^ mix_u64(y as u64);
+    hash = hash.rotate_left(17) ^ mix_u64(z as u64);
+    mix_u64(hash)
+}
+
+fn grad(hash: u64, x: f64, y: f64, z: f64) -> f64 {
+    match hash & 0xF {
+        0 => x + y,
+        1 => -x + y,
+        2 => x - y,
+        3 => -x - y,
+        4 => x + z,
+        5 => -x + z,
+        6 => x - z,
+        7 => -x - z,
+        8 => y + z,
+        9 => -y + z,
+        10 => y - z,
+        11 => -y - z,
+        12 => x + y,
+        13 => -x + y,
+        14 => -y + z,
+        _ => -x - z,
+    }
+}
+
+fn fade(t: f64) -> f64 {
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+fn lerp(t: f64, a: f64, b: f64) -> f64 {
+    a + t * (b - a)
+}
+
+fn mix_u64(mut value: u64) -> u64 {
+    value ^= value >> 30;
+    value = value.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value ^= value >> 27;
+    value = value.wrapping_mul(0x94D0_49BB_1331_11EB);
+    value ^ (value >> 31)
+}
+
+fn seed_to_u64(seed: &str) -> u64 {
+    let mut hash = 0xCBF2_9CE4_8422_2325_u64;
+    for byte in seed.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+    }
+    mix_u64(hash)
+}
+
+fn world_min_for_size(world_size: Vec3u) -> Vec3i {
+    Vec3i::new(
+        -(i32::try_from(world_size.x).expect("world size x does not fit in i32") / 2),
+        -(i32::try_from(world_size.y).expect("world size y does not fit in i32") / 2),
+        -(i32::try_from(world_size.z).expect("world size z does not fit in i32") / 2),
+    )
+}
+
+fn world_position_to_index(world_position: Vec3i, world_size: Vec3u) -> Option<usize> {
+    let min = world_min_for_size(world_size);
+    let local_x = world_position.x - min.x;
+    let local_y = world_position.y - min.y;
+    let local_z = world_position.z - min.z;
+    if local_x < 0 || local_y < 0 || local_z < 0 {
+        return None;
+    }
+
+    let local_x = usize::try_from(local_x).ok()?;
+    let local_y = usize::try_from(local_y).ok()?;
+    let local_z = usize::try_from(local_z).ok()?;
+    let world_size_x = usize::try_from(world_size.x).ok()?;
+    let world_size_y = usize::try_from(world_size.y).ok()?;
+    let world_size_z = usize::try_from(world_size.z).ok()?;
+    if local_x >= world_size_x || local_y >= world_size_y || local_z >= world_size_z {
+        return None;
+    }
+
+    let layer_size = world_size_x.checked_mul(world_size_y)?;
+    local_z
+        .checked_mul(layer_size)
+        .and_then(|offset| offset.checked_add(local_y.checked_mul(world_size_x)?))
+        .and_then(|offset| offset.checked_add(local_x))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{MoveEntityError, WorldConfig, WorldState};
-    use crate::world_api::{Vec3i, WorldCommand};
+    use super::{
+        BlockType, MoveEntityError, TerrainConfig, WorldConfig, WorldState, world_min_for_size,
+        world_position_to_index,
+    };
+    use crate::world_api::{Vec3i, Vec3u, WorldCommand};
 
     fn test_world() -> WorldState {
-        WorldState::new(WorldConfig {
+        let mut world = WorldState::new(WorldConfig {
             movement_ticks_per_tile: 4,
             ..WorldConfig::default()
+        });
+        let world_size = Vec3u::new(
+            world
+                .world_chunks
+                .x
+                .checked_mul(world.chunk_edge)
+                .expect("test world x-size overflowed"),
+            world
+                .world_chunks
+                .y
+                .checked_mul(world.chunk_edge)
+                .expect("test world y-size overflowed"),
+            world
+                .world_chunks
+                .z
+                .checked_mul(world.chunk_edge)
+                .expect("test world z-size overflowed"),
+        );
+        let (min, max) = {
+            let min = world_min_for_size(world_size);
+            let max = Vec3i::new(
+                min.x + i32::try_from(world_size.x).expect("x too large") - 1,
+                min.y + i32::try_from(world_size.y).expect("y too large") - 1,
+                min.z + i32::try_from(world_size.z).expect("z too large") - 1,
+            );
+            (min, max)
+        };
+
+        for z in min.z..=max.z {
+            for y in min.y..=max.y {
+                for x in min.x..=max.x {
+                    let index = world_position_to_index(Vec3i::new(x, y, z), world_size)
+                        .expect("flat test world position should be in bounds");
+                    world.blocks[index] = if z < 0 {
+                        BlockType::SolidStone
+                    } else {
+                        BlockType::Air
+                    };
+                }
+            }
+        }
+
+        world
+    }
+
+    fn cave_world(seed: &str) -> WorldState {
+        WorldState::new(WorldConfig {
+            chunk_edge: 16,
+            world_chunks: Vec3u::new(2, 2, 4),
+            movement_ticks_per_tile: 4,
+            terrain: TerrainConfig {
+                seed: seed.to_string(),
+                ..TerrainConfig::default()
+            },
         })
+    }
+
+    fn block_hash(blocks: &[BlockType]) -> u64 {
+        let mut hash = 0xCBF2_9CE4_8422_2325_u64;
+        for block in blocks {
+            let byte = match block {
+                BlockType::Air => 0_u8,
+                BlockType::SolidStone => 1_u8,
+            };
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+            hash ^= hash >> 32;
+        }
+        hash
+    }
+
+    fn slice_dump(world: &WorldState, z: i32) -> String {
+        let (min, max) = world.centered_bounds();
+        let mut output = String::new();
+        for y in min.y..=max.y {
+            for x in min.x..=max.x {
+                let tile = world.block_at(Vec3i::new(x, y, z));
+                output.push(match tile {
+                    Some(BlockType::Air) => '.',
+                    Some(BlockType::SolidStone) => '#',
+                    None => ' ',
+                });
+            }
+            output.push('\n');
+        }
+        output
     }
 
     #[test]
@@ -830,13 +1156,22 @@ mod tests {
         let _ = world
             .start_entity_move_with_reason(1, Vec3i::new(0, -1, 0))
             .expect("move should start");
-        for _ in 0..4 {
+        for _ in 0..8 {
             let _ = world.advance_active_movements_one_tick();
         }
         let _ = world
             .start_entity_move_with_reason(1, Vec3i::new(-1, 0, 0))
             .expect("move should start");
-        for _ in 0..4 {
+        for _ in 0..32 {
+            let snapshot = world.snapshot();
+            let entity = snapshot
+                .entities
+                .into_iter()
+                .find(|entity| entity.id == 1)
+                .expect("entity should exist");
+            if entity.movement.is_none() {
+                break;
+            }
             let _ = world.advance_active_movements_one_tick();
         }
         let snapshot = world.snapshot();
@@ -957,6 +1292,75 @@ mod tests {
             .find(|entity| entity.id == 1)
             .expect("entity should exist");
         assert_eq!(entity.position, Vec3i::new(1, 0, 0));
-        assert!(entity.movement.is_none());
+    }
+
+    #[test]
+    fn cave_generation_is_deterministic_and_seeded() {
+        let world_a = cave_world("opendwarf");
+        let world_b = cave_world("opendwarf");
+        let world_c = cave_world("josh");
+
+        let snapshot_a = world_a.snapshot();
+        let snapshot_b = world_b.snapshot();
+        let snapshot_c = world_c.snapshot();
+
+        assert_eq!(snapshot_a.blocks.len(), snapshot_b.blocks.len());
+        assert_eq!(snapshot_a.blocks.len(), snapshot_c.blocks.len());
+        assert_eq!(block_hash(&snapshot_a.blocks), block_hash(&snapshot_b.blocks));
+        assert_ne!(block_hash(&snapshot_a.blocks), block_hash(&snapshot_c.blocks));
+        assert_eq!(slice_dump(&world_a, 0), slice_dump(&world_b, 0));
+    }
+
+    #[test]
+    fn cave_generation_uses_full_volume_and_contains_air_and_stone() {
+        let world = cave_world("karly");
+        let snapshot = world.snapshot();
+        let expected_blocks = usize::try_from(snapshot.chunk_edge)
+            .expect("chunk edge should fit in usize")
+            .checked_mul(usize::try_from(snapshot.chunk_edge).expect("chunk edge should fit"))
+            .and_then(|n| {
+                n.checked_mul(usize::try_from(snapshot.chunk_edge).expect("chunk edge should fit"))
+            })
+            .and_then(|n| n.checked_mul(usize::try_from(snapshot.world_chunks.x).expect("x too large")))
+            .and_then(|n| n.checked_mul(usize::try_from(snapshot.world_chunks.y).expect("y too large")))
+            .and_then(|n| n.checked_mul(usize::try_from(snapshot.world_chunks.z).expect("z too large")))
+            .expect("block count should fit in usize");
+
+        assert_eq!(snapshot.blocks.len(), expected_blocks);
+        assert!(snapshot.blocks.iter().any(|block| *block == BlockType::Air));
+        assert!(snapshot
+            .blocks
+            .iter()
+            .any(|block| *block == BlockType::SolidStone));
+    }
+
+    #[test]
+    fn cave_spawn_finder_returns_supported_tile() {
+        let world = cave_world("opendwarf");
+        let spawn = world
+            .find_spawn_position(Vec3i::ZERO)
+            .expect("spawn position should exist");
+
+        assert!(matches!(world.block_at(spawn), Some(BlockType::Air)));
+        assert!(matches!(
+            world.block_at(Vec3i::new(spawn.x, spawn.y, spawn.z - 1)),
+            Some(BlockType::SolidStone)
+        ));
+
+        let mut highest_supported = spawn.z;
+        let (min, max) = world.centered_bounds();
+        for z in (min.z..=max.z).rev() {
+            if matches!(world.block_at(Vec3i::new(spawn.x, spawn.y, z)), Some(BlockType::Air))
+                && matches!(
+                    world.block_at(Vec3i::new(spawn.x, spawn.y, z - 1)),
+                    Some(BlockType::SolidStone)
+                )
+            {
+                highest_supported = z;
+                break;
+            }
+        }
+
+        assert_eq!(spawn.z, highest_supported);
     }
 }

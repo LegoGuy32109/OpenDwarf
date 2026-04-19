@@ -114,9 +114,12 @@ impl Plugin for WorldSimulationPlugin {
         let mut world = WorldState::new(self.settings.config.clone());
         let mut primary_entity = None;
         if self.settings.spawn_default_player {
+            let spawn_position = world
+                .find_spawn_position(Vec3i::ZERO)
+                .expect("default player should find a supported spawn position");
             primary_entity = Some(
                 world
-                    .spawn_entity_auto(Vec3i::ZERO)
+                    .spawn_entity_auto(spawn_position)
                     .expect("default player should spawn in bounds"),
             );
         }
