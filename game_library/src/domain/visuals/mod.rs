@@ -16,7 +16,7 @@ const NUM_TILES_IN_MAP: u16 = 31;
 
 const SHADOW_ATLAS_PATH: &str = "atlases/ShadowAtlas.png";
 // WARN: CANNOT BE A MULTIPLE OF 6 (Bevy constraint for 2D array reinterpretation)
-const SHADOW_ATLAS_FRAMES: u32 = 17;
+const SHADOW_ATLAS_FRAMES: u32 = 15;
 
 const OBSCURE_ATLAS_PATH: &str = "atlases/ObscureAtlas.png";
 // 15 frames for 4-bit dual-grid ceiling shadow (masks 1-15), indexed by mask-1

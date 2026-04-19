@@ -436,6 +436,7 @@ pub fn project_world_to_tilemap(
                 );
 
                 let shadow_sprite_z = calculate_sprite_z(shadow_z_offset, TileLayer::ShadowOverlay);
+                let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
                 commands.spawn((
                     WorldTileChunk {
                         chunk_xy,
@@ -444,16 +445,15 @@ pub fn project_world_to_tilemap(
                     },
                     TilemapChunk {
                         chunk_size: UVec2::splat(chunk_edge),
-                        tile_display_size: UVec2::splat(64), // Shadow atlas is scaled to 64px display size
+                        tile_display_size: UVec2::splat(64),
                         tileset: shadow_atlas.atlas.clone(),
                         alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
                     },
                     TilemapChunkTileData(shadow_data),
-                    Transform::from_translation(chunk_world_translation_xy(
-                        chunk_xy,
-                        chunk_edge,
-                        shadow_sprite_z,
-                    )),
+                    Transform::from_translation(
+                        chunk_world_translation_xy(chunk_xy, chunk_edge, shadow_sprite_z)
+                            + Vec3::new(half_tile, half_tile, 0.0),
+                    ),
                     GlobalTransform::default(),
                     Visibility::default(),
                     InheritedVisibility::default(),
@@ -519,7 +519,7 @@ pub fn project_world_to_tilemap(
         let sprite_z = calculate_sprite_z(z_off, world_chunk.layer);
         let base_translation = chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z);
         *transform = Transform::from_translation(
-            if world_chunk.layer == TileLayer::CeilingShadow {
+            if matches!(world_chunk.layer, TileLayer::ShadowOverlay | TileLayer::CeilingShadow) {
                 base_translation + Vec3::new(half_tile, half_tile, 0.0)
             } else {
                 base_translation
@@ -1266,6 +1266,16 @@ fn build_chunk_tile_data(
     tile_data
 }
 
+/// Dual-grid terrain edge shadow. Rendered offset by half a tile (+32, +32 px).
+/// For each dual-grid cell (lx, ly), samples whether each of the 4 surrounding
+/// world tiles at the same z is solid, building a 4-bit corner mask:
+///
+///   C = (wx,   wy+1)  |  D = (wx+1, wy+1)     bit 2 | bit 3
+///   ──────────────────+──────────────────      ──────+──────
+///   A = (wx,   wy  )  |  B = (wx+1, wy  )     bit 0 | bit 1
+///
+/// Mask 0 (all air) and mask 15 (all solid) produce no tile.
+/// Masks 1–14 → atlas frame index (mask - 1).
 fn build_shadow_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
@@ -1283,8 +1293,7 @@ fn build_shadow_tile_data(
 
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
-            let world_position =
-                world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
+            let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             let index_in_slice = usize::try_from(local_y)
                 .expect("local_y does not fit in usize")
                 .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
@@ -1295,24 +1304,25 @@ fn build_shadow_tile_data(
                 })
                 .expect("chunk-local tile index overflowed");
 
-            // Only place shadows on AIR tiles that border solid neighbors
-            if matches!(
-                block_at_world_position(blocks, world_chunks, chunk_edge, world_position),
-                Some(BlockType::Air) | None
-            ) {
-                let mask = compute_shadow_mask_for_air(
-                    world_position.x,
-                    world_position.y,
-                    world_position.z,
-                    blocks,
-                    world_chunks,
-                    chunk_edge,
-                );
-                if mask != 0 {
-                    let mut td = TileData::from_tileset_index((mask - 1) as u16);
-                    td.color = get_depth_tint_tile_color(z_offset);
-                    tile_data[index_in_slice] = Some(td);
-                }
+            let is_solid = |dx: i32, dy: i32| -> bool {
+                let pos = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
+                matches!(
+                    block_at_world_position(blocks, world_chunks, chunk_edge, pos),
+                    Some(BlockType::SolidStone)
+                )
+            };
+
+            let mut mask: u8 = 0;
+            if is_solid(0, 0) { mask |= 1; } // A: bottom-left
+            if is_solid(1, 0) { mask |= 2; } // B: bottom-right
+            if is_solid(0, 1) { mask |= 4; } // C: top-left
+            if is_solid(1, 1) { mask |= 8; } // D: top-right
+
+            // Skip all-air (no edge) and all-solid (interior, no visible edge)
+            if mask > 0 && mask < 15 {
+                let mut td = TileData::from_tileset_index((mask - 1) as u16);
+                td.color = get_depth_tint_tile_color(z_offset);
+                tile_data[index_in_slice] = Some(td);
             }
         }
     }
