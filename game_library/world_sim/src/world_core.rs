@@ -232,29 +232,34 @@ impl WorldState {
         let (min, max) = self.centered_bounds();
         let start_x = preferred_xy.x.clamp(min.x, max.x);
         let start_y = preferred_xy.y.clamp(min.y, max.y);
-        let max_radius = (max.x - min.x).max(max.y - min.y);
+        let mut best_spawn: Option<(i32, i32, i32, i32, Vec3i)> = None;
 
-        for radius in 0..=max_radius {
-            for dy in -radius..=radius {
-                for dx in -radius..=radius {
-                    if dx.abs().max(dy.abs()) != radius {
-                        continue;
-                    }
+        for y in min.y..=max.y {
+            for x in min.x..=max.x {
+                let Some(z) = self.highest_supported_z(x, y) else {
+                    continue;
+                };
+                let distance = (x - start_x).abs() + (y - start_y).abs();
+                let candidate = Vec3i::new(x, y, z);
 
-                    let x = start_x + dx;
-                    let y = start_y + dy;
-                    if x < min.x || x > max.x || y < min.y || y > max.y {
-                        continue;
+                let is_better = match best_spawn {
+                    None => true,
+                    Some((best_z, best_distance, best_x, best_y, _)) => {
+                        z > best_z
+                            || (z == best_z
+                                && (distance < best_distance
+                                    || (distance == best_distance
+                                        && (x, y) < (best_x, best_y))))
                     }
+                };
 
-                    if let Some(z) = self.highest_supported_z(x, y) {
-                        return Some(Vec3i::new(x, y, z));
-                    }
+                if is_better {
+                    best_spawn = Some((z, distance, x, y, candidate));
                 }
             }
         }
 
-        None
+        best_spawn.map(|(_, _, _, _, spawn)| spawn)
     }
 
     fn block_at(&self, pos: Vec3i) -> Option<BlockType> {
@@ -1362,5 +1367,58 @@ mod tests {
         }
 
         assert_eq!(spawn.z, highest_supported);
+    }
+
+    #[test]
+    fn cave_spawn_finder_prefers_highest_supported_tile() {
+        let mut world = WorldState::new(WorldConfig::default());
+        let world_size = Vec3u::new(
+            world
+                .world_chunks
+                .x
+                .checked_mul(world.chunk_edge)
+                .expect("test world x-size overflowed"),
+            world
+                .world_chunks
+                .y
+                .checked_mul(world.chunk_edge)
+                .expect("test world y-size overflowed"),
+            world
+                .world_chunks
+                .z
+                .checked_mul(world.chunk_edge)
+                .expect("test world z-size overflowed"),
+        );
+
+        for z in -8..=7 {
+            for y in -8..=7 {
+                for x in -8..=7 {
+                    let index = world_position_to_index(Vec3i::new(x, y, z), world_size)
+                        .expect("world position should be in bounds");
+                    world.blocks[index] = BlockType::Air;
+                }
+            }
+        }
+
+        let low_support = Vec3i::new(0, 0, -2);
+        let low_spawn = Vec3i::new(0, 0, -1);
+        let high_support = Vec3i::new(7, 7, 0);
+        let high_spawn = Vec3i::new(7, 7, 1);
+
+        for pos in [low_support, low_spawn, high_support, high_spawn] {
+            let index = world_position_to_index(pos, world_size)
+                .expect("spawn test position should be in bounds");
+            world.blocks[index] = if pos == low_support || pos == high_support {
+                BlockType::SolidStone
+            } else {
+                BlockType::Air
+            };
+        }
+
+        let spawn = world
+            .find_spawn_position(Vec3i::ZERO)
+            .expect("spawn position should exist");
+
+        assert_eq!(spawn, high_spawn);
     }
 }

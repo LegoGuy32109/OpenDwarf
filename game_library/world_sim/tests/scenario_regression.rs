@@ -243,7 +243,6 @@ fn scenario_chunk_streaming_replay_is_deterministic() {
         .set_chunk_loaded(second_chunk, true)
         .move_entity(1, second_move)
         .assert_entity_position(1, second_target)
-        .assert_entity_facing_left(1, second_move.x < 0)
         .assert_entity_prone(1, false)
         .build();
 

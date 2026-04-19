@@ -422,20 +422,17 @@ pub fn project_world_to_tilemap(
                 ));
             }
 
-            // Spawn shadow overlay layer
+            // Shadow overlay is rendered only on the focused z-slice to avoid stacking.
             let shadow_key = (chunk_xy, world_z, TileLayer::ShadowOverlay);
-            if !existing_chunks.contains(&shadow_key) {
-                let shadow_z_offset = world_z - view_z.current;
+            if world_z == view_z.current && !existing_chunks.contains(&shadow_key) {
                 let shadow_data = build_shadow_tile_data(
                     chunk_xy,
                     world_z,
                     chunk_edge,
                     &render_world_state.blocks,
                     render_world_state.world_chunks,
-                    shadow_z_offset,
                 );
-
-                let shadow_sprite_z = calculate_sprite_z(shadow_z_offset, TileLayer::ShadowOverlay);
+                let shadow_sprite_z = calculate_sprite_z(0, TileLayer::ShadowOverlay);
                 let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
                 commands.spawn((
                     WorldTileChunk {
@@ -506,7 +503,9 @@ pub fn project_world_to_tilemap(
         // CeilingShadow chunks are only valid at the exact current z-level
         let ceiling_ok =
             world_chunk.layer != TileLayer::CeilingShadow || world_chunk.world_z == view_z.current;
-        if !in_active_xy || !in_z_range || !ceiling_ok {
+        let shadow_ok =
+            world_chunk.layer != TileLayer::ShadowOverlay || world_chunk.world_z == view_z.current;
+        if !in_active_xy || !in_z_range || !ceiling_ok || !shadow_ok {
             commands.entity(entity).despawn();
         }
     }
@@ -545,7 +544,6 @@ pub fn project_world_to_tilemap(
                 chunk_edge,
                 &render_world_state.blocks,
                 render_world_state.world_chunks,
-                z_off,
             ),
             TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
                 world_chunk.chunk_xy,
@@ -560,7 +558,8 @@ pub fn project_world_to_tilemap(
         chunk_data.0 = tile_data;
     }
 
-    tilemap_render_metrics.chunk_count = active_chunks_xy.len() * z_levels_to_render.len() * 2; // xy chunks * z levels * 2 layers
+    tilemap_render_metrics.chunk_count =
+        active_chunks_xy.len() * z_levels_to_render.len() + active_chunks_xy.len() * 2;
     tilemap_render_metrics.non_empty_tile_count = non_empty_tile_count;
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -780,7 +779,12 @@ pub fn project_world_entities_to_sprites(
     view_z: Res<ViewZLevel>,
     tilemap_assets: Res<TilemapAssets>,
     mut player_query: Query<
-        (&mut MapCoordinates, &mut Sprite, &mut PlayerRenderTarget),
+        (
+            &mut MapCoordinates,
+            &mut Sprite,
+            &mut Visibility,
+            &mut PlayerRenderTarget,
+        ),
         With<Player>,
     >,
 ) {
@@ -796,7 +800,9 @@ pub fn project_world_entities_to_sprites(
         return;
     };
 
-    if let Ok((mut coordinates, mut sprite, mut render_target)) = player_query.single_mut() {
+    if let Ok((mut coordinates, mut sprite, mut visibility, mut render_target)) =
+        player_query.single_mut()
+    {
         let world_voxels_x = render_world_state
             .world_chunks
             .x
@@ -828,6 +834,11 @@ pub fn project_world_entities_to_sprites(
         sprite.flip_x = player_world_position.facing_left;
         sprite.color =
             get_depth_tint_sprite_color(player_world_position.position.z - view_z.current);
+        if player_world_position.position.z == view_z.current {
+            *visibility = Visibility::Visible;
+        } else {
+            *visibility = Visibility::Hidden;
+        }
     }
 
     render_world_state.entities_dirty = false;
@@ -1287,7 +1298,6 @@ fn build_shadow_tile_data(
     chunk_edge: u32,
     blocks: &[BlockType],
     world_chunks: Vec3u,
-    z_offset: i32,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
@@ -1331,11 +1341,8 @@ fn build_shadow_tile_data(
                 mask |= 8;
             } // D: top-right
 
-            // Skip all-air (no edge) and all-solid (interior, no visible edge)
             if mask > 0 && mask < 15 {
-                let mut td = TileData::from_tileset_index((mask - 1) as u16);
-                td.color = get_depth_tint_tile_color(z_offset);
-                tile_data[index_in_slice] = Some(td);
+                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
             }
         }
     }
