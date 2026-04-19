@@ -27,11 +27,11 @@ impl Default for TerrainConfig {
     fn default() -> Self {
         Self {
             seed: "opendwarf".to_string(),
-            cave_frequency_xy: 0.08,
-            cave_frequency_z: 0.03,
-            cave_threshold: 0.22,
-            cave_octaves: 3,
-            cave_persistence: 0.55,
+            cave_frequency_xy: 0.09,
+            cave_frequency_z: 0.022,
+            cave_threshold: 0.13,
+            cave_octaves: 4,
+            cave_persistence: 0.58,
             cave_lacunarity: 2.0,
         }
     }

@@ -70,10 +70,10 @@ impl Plugin for OpenDwarfPlugins {
                 Update,
                 (
                     toggle_chunk_borders,
-                    queue_world_commands_from_input.run_if(in_state(GameMode::World)),
-                    update_view_z_level,
                     sync_render_world_from_snapshot,
                     sync_camera_z_to_player,
+                    queue_world_commands_from_input.run_if(in_state(GameMode::World)),
+                    update_view_z_level,
                     stream_chunks_around_player,
                     project_world_to_tilemap,
                     draw_depth_labels,

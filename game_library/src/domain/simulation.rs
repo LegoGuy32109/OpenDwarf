@@ -20,7 +20,7 @@ use world_sim::world_api::{
 use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets};
 
 const CHUNK_STREAM_RADIUS_XY: i32 = 2;
-const CHUNK_STREAM_RADIUS_Z: i32 = 0;
+const CHUNK_STREAM_RADIUS_Z: i32 = 1;
 #[cfg(not(target_arch = "wasm32"))]
 const REPLAY_PATH_ENV: &str = "OPEN_DWARF_REPLAY_PATH";
 
@@ -374,7 +374,7 @@ pub fn project_world_to_tilemap(
     };
 
     // Determine which z-levels to render: current level + up to 5 levels below
-    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.0 - offset).collect();
+    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.current - offset).collect();
 
     // Collect existing chunk keys (chunk_xy, z, layer)
     let existing_chunks: HashSet<(IVec2, i32, TileLayer)> = chunk_query
@@ -388,7 +388,7 @@ pub fn project_world_to_tilemap(
             // Spawn floor layer
             let chunk_key = (chunk_xy, world_z, TileLayer::Floor);
             if !existing_chunks.contains(&chunk_key) {
-                let z_offset = world_z - view_z.0;
+                let z_offset = world_z - view_z.current;
                 let tile_data = build_chunk_tile_data(
                     chunk_xy,
                     world_z,
@@ -425,7 +425,7 @@ pub fn project_world_to_tilemap(
             // Spawn shadow overlay layer
             let shadow_key = (chunk_xy, world_z, TileLayer::ShadowOverlay);
             if !existing_chunks.contains(&shadow_key) {
-                let shadow_z_offset = world_z - view_z.0;
+                let shadow_z_offset = world_z - view_z.current;
                 let shadow_data = build_shadow_tile_data(
                     chunk_xy,
                     world_z,
@@ -463,7 +463,7 @@ pub fn project_world_to_tilemap(
 
             // Ceiling shadow (dual-grid) — only on the current z-level
             let ceiling_key = (chunk_xy, world_z, TileLayer::CeilingShadow);
-            if world_z == view_z.0 && !existing_chunks.contains(&ceiling_key) {
+            if world_z == view_z.current && !existing_chunks.contains(&ceiling_key) {
                 let ceiling_data = build_ceiling_shadow_tile_data(
                     chunk_xy,
                     world_z,
@@ -505,7 +505,7 @@ pub fn project_world_to_tilemap(
         let in_z_range = z_levels_to_render.contains(&world_chunk.world_z);
         // CeilingShadow chunks are only valid at the exact current z-level
         let ceiling_ok =
-            world_chunk.layer != TileLayer::CeilingShadow || world_chunk.world_z == view_z.0;
+            world_chunk.layer != TileLayer::CeilingShadow || world_chunk.world_z == view_z.current;
         if !in_active_xy || !in_z_range || !ceiling_ok {
             commands.entity(entity).despawn();
         }
@@ -515,7 +515,7 @@ pub fn project_world_to_tilemap(
     let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
     let mut non_empty_tile_count = 0usize;
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
-        let z_off = world_chunk.world_z - view_z.0;
+        let z_off = world_chunk.world_z - view_z.current;
         let sprite_z = calculate_sprite_z(z_off, world_chunk.layer);
         let base_translation =
             chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z);
@@ -614,7 +614,7 @@ pub fn draw_depth_labels(
     }
 
     // Determine z-levels to render (same as tints)
-    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.0 - offset).collect();
+    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.current - offset).collect();
 
     // Get active chunks using the same logic as project_world_to_tilemap
     let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
@@ -777,6 +777,7 @@ pub fn draw_entity_occupancy_boxes(
 pub fn project_world_entities_to_sprites(
     mut render_world_state: ResMut<RenderWorldState>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
+    view_z: Res<ViewZLevel>,
     tilemap_assets: Res<TilemapAssets>,
     mut player_query: Query<
         (&mut MapCoordinates, &mut Sprite, &mut PlayerRenderTarget),
@@ -825,6 +826,8 @@ pub fn project_world_entities_to_sprites(
         };
         render_target.0 = render_world_position;
         sprite.flip_x = player_world_position.facing_left;
+        sprite.color =
+            get_depth_tint_sprite_color(player_world_position.position.z - view_z.current);
     }
 
     render_world_state.entities_dirty = false;
@@ -929,7 +932,7 @@ pub fn stream_chunks_around_player(
 
 pub fn sync_camera_z_to_player(
     mut view_z: ResMut<ViewZLevel>,
-    render_world_state: Res<RenderWorldState>,
+    mut render_world_state: ResMut<RenderWorldState>,
     primary_entity: Option<Res<PrimarySimulationEntityId>>,
 ) {
     let Some(primary_res) = primary_entity else {
@@ -941,8 +944,10 @@ pub fn sync_camera_z_to_player(
     let Some(entity) = render_world_state.entities.get(&primary_id) else {
         return;
     };
-    if entity.position.z != view_z.0 {
-        view_z.0 = entity.position.z;
+    if !view_z.initialized {
+        view_z.current = entity.position.z;
+        view_z.initialized = true;
+        render_world_state.entities_dirty = true;
     }
 }
 
@@ -995,12 +1000,14 @@ pub fn update_view_z_level(
     let z_down_pressed = input_state.just_pressed(&input_state.z_level_down);
 
     if z_up_pressed {
-        view_z.0 = (view_z.0 + 1).min(world_max_z);
+        view_z.current = (view_z.current + 1).min(world_max_z);
         render_world_state.terrain_dirty = true;
+        render_world_state.entities_dirty = true;
     }
     if z_down_pressed {
-        view_z.0 = (view_z.0 - 1).max(world_min_z);
+        view_z.current = (view_z.current - 1).max(world_min_z);
         render_world_state.terrain_dirty = true;
+        render_world_state.entities_dirty = true;
     }
 }
 
@@ -1441,6 +1448,10 @@ fn get_depth_tint_tile_color(z_offset: i32) -> Color {
         -5 => Color::srgb(0.12, 0.15, 0.43), // blue-gray 82%
         _ => Color::srgb(0.02, 0.05, 0.43),
     }
+}
+
+fn get_depth_tint_sprite_color(z_offset: i32) -> Color {
+    get_depth_tint_tile_color(z_offset)
 }
 
 fn chunk_world_translation_xy(chunk_xy: IVec2, chunk_edge: u32, sprite_z: f32) -> Vec3 {
