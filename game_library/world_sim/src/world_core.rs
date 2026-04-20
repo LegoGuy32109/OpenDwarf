@@ -27,9 +27,9 @@ impl Default for TerrainConfig {
     fn default() -> Self {
         Self {
             seed: "opendwarf".to_string(),
-            cave_frequency_xy: 0.09,
-            cave_frequency_z: 0.022,
-            cave_threshold: 0.13,
+            cave_frequency_xy: 0.15,
+            cave_frequency_z: 0.01,
+            cave_threshold: 0.11,
             cave_octaves: 4,
             cave_persistence: 0.58,
             cave_lacunarity: 2.0,
@@ -802,20 +802,57 @@ fn make_initial_blocks(
 }
 
 fn sample_cave_density(world_position: Vec3i, terrain: &TerrainConfig, seed: u64) -> f64 {
+    let xy_density = sample_cave_density_xy(world_position, terrain, seed);
+    let vertical_detail = sample_cave_vertical_detail(world_position, terrain, seed);
+    xy_density * 0.76 + vertical_detail * 0.24
+}
+
+fn sample_cave_density_xy(world_position: Vec3i, terrain: &TerrainConfig, seed: u64) -> f64 {
     let mut frequency_xy = terrain.cave_frequency_xy;
-    let mut frequency_z = terrain.cave_frequency_z;
     let mut amplitude = 1.0;
     let mut total_amplitude = 0.0;
     let mut total_density = 0.0;
     let octaves = terrain.cave_octaves.max(1);
     let x = world_position.x as f64;
     let y = world_position.y as f64;
-    let z = world_position.z as f64;
 
     for octave in 0..octaves {
         let octave_seed = seed.wrapping_add(
             u64::from(octave + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15),
         );
+        let noise = perlin_like_noise_3d(octave_seed, x * frequency_xy, y * frequency_xy, 0.0);
+        total_density += noise * amplitude;
+        total_amplitude += amplitude;
+        amplitude *= terrain.cave_persistence;
+        frequency_xy *= terrain.cave_lacunarity;
+    }
+
+    if total_amplitude == 0.0 {
+        0.0
+    } else {
+        total_density / total_amplitude
+    }
+}
+
+fn sample_cave_vertical_detail(
+    world_position: Vec3i,
+    terrain: &TerrainConfig,
+    seed: u64,
+) -> f64 {
+    let mut frequency_xy = terrain.cave_frequency_xy * 0.55;
+    let mut frequency_z = terrain.cave_frequency_z * 0.9;
+    let mut amplitude = 1.0;
+    let mut total_amplitude = 0.0;
+    let mut total_density = 0.0;
+    let x = world_position.x as f64;
+    let y = world_position.y as f64;
+    let z = world_position.z as f64;
+    let octaves = 3_u32.max(terrain.cave_octaves / 2);
+
+    for octave in 0..octaves {
+        let octave_seed = seed
+            .wrapping_add(0xD1B5_4A32_D192_ED03)
+            .wrapping_add(u64::from(octave + 1).wrapping_mul(0x94D0_49BB_1331_11EB));
         let noise = perlin_like_noise_3d(
             octave_seed,
             x * frequency_xy,
@@ -824,9 +861,9 @@ fn sample_cave_density(world_position: Vec3i, terrain: &TerrainConfig, seed: u64
         );
         total_density += noise * amplitude;
         total_amplitude += amplitude;
-        amplitude *= terrain.cave_persistence;
-        frequency_xy *= terrain.cave_lacunarity;
-        frequency_z *= terrain.cave_lacunarity;
+        amplitude *= 0.5;
+        frequency_xy *= 2.1;
+        frequency_z *= 1.5;
     }
 
     if total_amplitude == 0.0 {
@@ -1049,6 +1086,18 @@ mod tests {
         })
     }
 
+    fn spawn_world(seed: &str) -> WorldState {
+        WorldState::new(WorldConfig {
+            chunk_edge: 16,
+            world_chunks: Vec3u::new(4, 4, 4),
+            movement_ticks_per_tile: 4,
+            terrain: TerrainConfig {
+                seed: seed.to_string(),
+                ..TerrainConfig::default()
+            },
+        })
+    }
+
     fn block_hash(blocks: &[BlockType]) -> u64 {
         let mut hash = 0xCBF2_9CE4_8422_2325_u64;
         for block in blocks {
@@ -1078,6 +1127,24 @@ mod tests {
             output.push('\n');
         }
         output
+    }
+
+    fn slice_difference_ratio(world: &WorldState, z_a: i32, z_b: i32) -> f64 {
+        let (min, max) = world.centered_bounds();
+        let mut different = 0usize;
+        let mut total = 0usize;
+        for y in min.y..=max.y {
+            for x in min.x..=max.x {
+                total += 1;
+                let a = world.block_at(Vec3i::new(x, y, z_a));
+                let b = world.block_at(Vec3i::new(x, y, z_b));
+                if a != b {
+                    different += 1;
+                }
+            }
+        }
+
+        different as f64 / total.max(1) as f64
     }
 
     #[test]
@@ -1365,8 +1432,21 @@ mod tests {
     }
 
     #[test]
+    fn cave_generation_prefers_horizontal_contours_over_z_tubes() {
+        let world = cave_world("josh");
+        let (min, max) = world.centered_bounds();
+        let mid_z = min.z + (max.z - min.z) / 2;
+        let adjacent_difference = slice_difference_ratio(&world, mid_z, mid_z + 1);
+
+        assert!(
+            adjacent_difference < 0.35,
+            "adjacent z slices differ too much: {adjacent_difference}"
+        );
+    }
+
+    #[test]
     fn cave_spawn_finder_returns_supported_tile() {
-        let world = cave_world("opendwarf");
+        let world = spawn_world("opendwarf");
         let spawn = world
             .find_spawn_position(Vec3i::ZERO)
             .expect("spawn position should exist");

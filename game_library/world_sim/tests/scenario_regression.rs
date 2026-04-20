@@ -54,7 +54,7 @@ fn scenario_world_config() -> WorldConfig {
         for cave_threshold in thresholds {
             let config = WorldConfig {
                 chunk_edge: 16,
-                world_chunks: Vec3u::new(2, 2, 1),
+                world_chunks: Vec3u::new(4, 4, 4),
                 movement_ticks_per_tile: 10,
                 terrain: TerrainConfig {
                     seed: seed.to_string(),
