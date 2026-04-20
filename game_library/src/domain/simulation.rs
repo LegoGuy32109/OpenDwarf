@@ -791,7 +791,7 @@ pub fn draw_entity_occupancy_boxes(
 
 pub fn project_world_entities_to_sprites(
     config: Res<TerrainConfig>,
-    _terrain: Res<TerrainData>,
+    terrain: Res<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
     view_z: Res<ViewZLevel>,
@@ -852,7 +852,30 @@ pub fn project_world_entities_to_sprites(
         sprite.flip_x = player_world_position.facing_left;
         let z_offset = player_world_position.position.z - view_z.current;
         sprite.color = get_depth_tint_sprite_color(z_offset);
-        if z_offset <= 0 && z_offset >= -Z_LEVELS_BELOW_RENDERED {
+
+        let in_z_range = z_offset <= 0 && z_offset >= -Z_LEVELS_BELOW_RENDERED;
+        let occluded = if in_z_range && z_offset < 0 {
+            // Check each z-level from player+1 up to camera for solid blocks
+            (player_world_position.position.z + 1..=view_z.current).any(|check_z| {
+                matches!(
+                    block_at_world_position(
+                        &terrain.blocks,
+                        config.world_chunks,
+                        config.chunk_edge,
+                        Vec3i::new(
+                            player_world_position.position.x,
+                            player_world_position.position.y,
+                            check_z,
+                        ),
+                    ),
+                    Some(BlockType::SolidStone)
+                )
+            })
+        } else {
+            false
+        };
+
+        if in_z_range && !occluded {
             *visibility = Visibility::Visible;
         } else {
             *visibility = Visibility::Hidden;
@@ -1435,7 +1458,15 @@ fn build_ceiling_shadow_tile_data(
             } // D: top-right
 
             if mask != 0 {
-                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
+                let mut td = TileData::from_tileset_index((mask - 1) as u16);
+                let floor_is_air = !matches!(
+                    block_at_world_position(blocks, world_chunks, chunk_edge, wp),
+                    Some(BlockType::SolidStone)
+                );
+                if floor_is_air {
+                    td.color = Color::srgba(1.0, 1.0, 1.0, 0.4);
+                }
+                tile_data[index_in_slice] = Some(td);
             }
         }
     }
