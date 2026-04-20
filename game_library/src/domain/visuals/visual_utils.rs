@@ -7,7 +7,7 @@ pub fn color_from_hex(hex: &str) -> Color {
     match hex.len() {
         6 => {
             // Parse RRGGBB, assume full alpha
-            let hex_bytes = u32::from_str_radix(hex, 16).unwrap();
+            let hex_bytes = u32::from_str_radix(hex, 16).expect("hex color literal should parse");
 
             let red_bytes = ((hex_bytes >> 16) & 0xFF) as u8;
             let green_bytes = ((hex_bytes >> 8) & 0xFF) as u8;
@@ -18,7 +18,7 @@ pub fn color_from_hex(hex: &str) -> Color {
         }
         8 => {
             // Parse RRGGBBAA
-            let hex_bytes = u32::from_str_radix(hex, 16).unwrap();
+            let hex_bytes = u32::from_str_radix(hex, 16).expect("hex color literal should parse");
 
             let red_bytes = ((hex_bytes >> 24) & 0xFF) as u8;
             let green_bytes = ((hex_bytes >> 16) & 0xFF) as u8;

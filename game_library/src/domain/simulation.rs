@@ -55,14 +55,22 @@ pub struct ReplayPlayback {
 }
 
 #[derive(Resource, Default)]
-pub struct RenderWorldState {
-    pub tick: u64,
+pub struct TerrainConfig {
     pub chunk_edge: u32,
     pub world_chunks: Vec3u,
+}
+
+#[derive(Resource, Default)]
+pub struct TerrainData {
     pub blocks: Vec<BlockType>,
+    pub dirty: bool,
+}
+
+#[derive(Resource, Default)]
+pub struct RenderEntityData {
+    pub tick: u64,
     pub entities: BTreeMap<u64, RenderEntityState>,
-    terrain_dirty: bool,
-    entities_dirty: bool,
+    pub dirty: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -118,22 +126,17 @@ pub struct WorldTileChunk {
 #[derive(Component)]
 pub struct DepthDebugLabel;
 
-impl RenderWorldState {
-    fn mark_all_dirty(&mut self) {
-        self.terrain_dirty = true;
-        self.entities_dirty = true;
-    }
-}
-
 pub fn setup_simulation_state(mut commands: Commands) {
     let mut replay_mode = ReplayMode::default();
-    let mut render_world_state = RenderWorldState::default();
+    let mut config = TerrainConfig::default();
+    let mut terrain = TerrainData::default();
+    let mut entities = RenderEntityData::default();
 
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(mut replay_playback) = try_load_replay_playback() {
         replay_mode.active = true;
         replay_playback.playing = false;
-        if !apply_first_checkpoint(&mut replay_playback, &mut render_world_state) {
+        if !apply_first_checkpoint(&mut replay_playback, &mut config, &mut terrain, &mut entities) {
             warn!("Replay did not contain any checkpoint/snapshot data");
         }
         commands.insert_resource(replay_playback);
@@ -144,7 +147,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
         playing: false,
         cursor: 0,
         total_events: 0,
-        tick: render_world_state.tick,
+        tick: entities.tick,
         show_all_events: false,
         event_labels: Vec::new(),
     };
@@ -152,7 +155,9 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(replay_mode);
     commands.insert_resource(replay_hud_state);
     commands.insert_resource(HeldMovementState::default());
-    commands.insert_resource(render_world_state);
+    commands.insert_resource(config);
+    commands.insert_resource(terrain);
+    commands.insert_resource(entities);
     commands.insert_resource(ChunkStreamingState::default());
     commands.insert_resource(ChunkBorderDebugState::default());
     commands.insert_resource(TilemapRenderMetrics::default());
@@ -162,7 +167,7 @@ pub fn queue_world_commands_from_input(
     input_state: Res<InputState>,
     replay_mode: Res<ReplayMode>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
-    render_world_state: Res<RenderWorldState>,
+    entity_data: Res<RenderEntityData>,
     mut held_movement_state: ResMut<HeldMovementState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
 ) {
@@ -187,7 +192,7 @@ pub fn queue_world_commands_from_input(
         return;
     };
 
-    let Some(entity) = render_world_state.entities.get(&entity_id) else {
+    let Some(entity) = entity_data.entities.get(&entity_id) else {
         held_movement_state.was_moving_last_frame = false;
         return;
     };
@@ -228,21 +233,23 @@ pub fn queue_world_commands_from_input(
 pub fn sync_render_world_from_snapshot(
     replay_mode: Res<ReplayMode>,
     world_view: Res<WorldView>,
-    mut render_world_state: ResMut<RenderWorldState>,
+    mut config: ResMut<TerrainConfig>,
+    mut terrain: ResMut<TerrainData>,
+    mut entity_data: ResMut<RenderEntityData>,
 ) {
     if replay_mode.active {
         return;
     }
 
     let snapshot = world_view.snapshot();
-    if render_world_state.tick == snapshot.tick
-        && render_world_state.chunk_edge == snapshot.chunk_edge
-        && render_world_state.world_chunks == snapshot.world_chunks
+    if entity_data.tick == snapshot.tick
+        && config.chunk_edge == snapshot.chunk_edge
+        && config.world_chunks == snapshot.world_chunks
     {
         return;
     }
 
-    apply_snapshot(&mut render_world_state, snapshot.clone());
+    apply_snapshot(&mut config, &mut terrain, &mut entity_data, snapshot.clone());
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -251,7 +258,9 @@ pub fn drive_replay_playback(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     replay_playback: Option<ResMut<ReplayPlayback>>,
     mut replay_hud_state: ResMut<ReplayHudState>,
-    mut render_world_state: ResMut<RenderWorldState>,
+    mut config: ResMut<TerrainConfig>,
+    mut terrain: ResMut<TerrainData>,
+    mut entity_data: ResMut<RenderEntityData>,
 ) {
     if !replay_mode.active {
         replay_hud_state.active = false;
@@ -279,18 +288,19 @@ pub fn drive_replay_playback(
 
     if keyboard_input.just_pressed(KeyCode::F8) {
         replay_playback.cursor = 0;
-        render_world_state.entities.clear();
-        render_world_state.blocks.clear();
-        render_world_state.chunk_edge = 0;
-        render_world_state.world_chunks = Vec3u::default();
-        render_world_state.tick = 0;
-        render_world_state.mark_all_dirty();
-        let _ = apply_first_checkpoint(&mut replay_playback, &mut render_world_state);
+        entity_data.entities.clear();
+        terrain.blocks.clear();
+        config.chunk_edge = 0;
+        config.world_chunks = Vec3u::default();
+        entity_data.tick = 0;
+        terrain.dirty = true;
+        entity_data.dirty = true;
+        let _ = apply_first_checkpoint(&mut replay_playback, &mut config, &mut terrain, &mut entity_data);
         info!("Replay reset to beginning");
     }
 
     if keyboard_input.just_pressed(KeyCode::F7) {
-        let _ = apply_next_replay_event(&mut replay_playback, &mut render_world_state);
+        let _ = apply_next_replay_event(&mut replay_playback, &mut config, &mut terrain, &mut entity_data);
     }
 
     if keyboard_input.just_pressed(KeyCode::F9) {
@@ -298,7 +308,7 @@ pub fn drive_replay_playback(
     }
 
     if replay_playback.playing
-        && !apply_next_replay_event(&mut replay_playback, &mut render_world_state)
+        && !apply_next_replay_event(&mut replay_playback, &mut config, &mut terrain, &mut entity_data)
     {
         replay_playback.playing = false;
         info!("Replay playback reached end");
@@ -306,12 +316,61 @@ pub fn drive_replay_playback(
 
     replay_hud_state.playing = replay_playback.playing;
     replay_hud_state.cursor = replay_playback.cursor;
-    replay_hud_state.tick = render_world_state.tick;
+    replay_hud_state.tick = entity_data.tick;
     replay_hud_state.event_labels = replay_playback
         .events
         .iter()
         .map(describe_replay_event)
         .collect();
+}
+
+fn active_chunks_xy(
+    replay_active: bool,
+    world_chunks: Vec3u,
+    chunk_streaming_state: Option<&ChunkStreamingState>,
+) -> HashSet<IVec2> {
+    if replay_active {
+        all_world_chunk_coords(world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
+    } else if let Some(streaming) = chunk_streaming_state {
+        if streaming.loaded_chunks.is_empty() {
+            all_world_chunk_coords(world_chunks)
+                .into_iter()
+                .map(|c| IVec2::new(c.x, c.y))
+                .collect()
+        } else {
+            streaming
+                .loaded_chunks
+                .iter()
+                .map(|c| IVec2::new(c.x, c.y))
+                .collect()
+        }
+    } else {
+        all_world_chunk_coords(world_chunks)
+            .into_iter()
+            .map(|c| IVec2::new(c.x, c.y))
+            .collect()
+    }
+}
+
+fn z_levels_to_render(view_z_current: i32) -> Vec<i32> {
+    (0..=Z_LEVELS_BELOW_RENDERED)
+        .map(|offset| view_z_current - offset)
+        .collect()
+}
+
+fn chunk_local_tile_index(local_x: u32, local_y: u32, chunk_edge: u32) -> usize {
+    usize::try_from(local_y)
+        .expect("local_y does not fit in usize")
+        .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
+        .and_then(|offset| {
+            offset.checked_add(
+                usize::try_from(local_x).expect("local_x does not fit in usize"),
+            )
+        })
+        .expect("chunk-local tile index overflowed")
 }
 
 pub fn project_world_to_tilemap(
@@ -322,7 +381,8 @@ pub fn project_world_to_tilemap(
     tilemap_assets: Res<TilemapAssets>,
     shadow_atlas: Res<super::visuals::ShadowAtlasAsset>,
     obscure_atlas: Res<super::visuals::ObscureAtlasAsset>,
-    mut render_world_state: ResMut<RenderWorldState>,
+    config: Res<TerrainConfig>,
+    mut terrain: ResMut<TerrainData>,
     mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
     mut chunk_query: Query<(
         Entity,
@@ -337,47 +397,22 @@ pub fn project_world_to_tilemap(
 
     // Z-level changes require tile data rebuild for depth tinting
     if view_z.is_changed() {
-        render_world_state.terrain_dirty = true;
+        terrain.dirty = true;
     }
 
-    if !render_world_state.terrain_dirty {
+    if !terrain.dirty {
         return;
     }
 
-    let chunk_edge = render_world_state.chunk_edge;
+    let chunk_edge = config.chunk_edge;
     if chunk_edge == 0 {
         return;
     }
 
-    let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
-        all_world_chunk_coords(render_world_state.world_chunks)
-            .into_iter()
-            .map(|c| IVec2::new(c.x, c.y))
-            .collect()
-    } else if let Some(streaming) = chunk_streaming_state {
-        if streaming.loaded_chunks.is_empty() {
-            all_world_chunk_coords(render_world_state.world_chunks)
-                .into_iter()
-                .map(|c| IVec2::new(c.x, c.y))
-                .collect()
-        } else {
-            streaming
-                .loaded_chunks
-                .iter()
-                .map(|c| IVec2::new(c.x, c.y))
-                .collect()
-        }
-    } else {
-        all_world_chunk_coords(render_world_state.world_chunks)
-            .into_iter()
-            .map(|c| IVec2::new(c.x, c.y))
-            .collect()
-    };
+    let active_chunks_xy = active_chunks_xy(replay_mode.active, config.world_chunks, chunk_streaming_state.as_deref());
 
     // Determine which z-levels to render: current level + up to 5 levels below
-    let z_levels_to_render: Vec<i32> = (0..=Z_LEVELS_BELOW_RENDERED)
-        .map(|offset| view_z.current - offset)
-        .collect();
+    let z_levels_to_render = z_levels_to_render(view_z.current);
 
     // Collect existing chunk keys (chunk_xy, z, layer)
     let existing_chunks: HashSet<(IVec2, i32, TileLayer)> = chunk_query
@@ -396,8 +431,8 @@ pub fn project_world_to_tilemap(
                     chunk_xy,
                     world_z,
                     chunk_edge,
-                    &render_world_state.blocks,
-                    render_world_state.world_chunks,
+                    &terrain.blocks,
+                    config.world_chunks,
                     z_offset,
                 );
 
@@ -432,8 +467,8 @@ pub fn project_world_to_tilemap(
                     chunk_xy,
                     world_z,
                     chunk_edge,
-                    &render_world_state.blocks,
-                    render_world_state.world_chunks,
+                    &terrain.blocks,
+                    config.world_chunks,
                 );
                 let shadow_sprite_z = calculate_sprite_z(0, TileLayer::ShadowOverlay);
                 let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
@@ -468,8 +503,8 @@ pub fn project_world_to_tilemap(
                     chunk_xy,
                     world_z,
                     chunk_edge,
-                    &render_world_state.blocks,
-                    render_world_state.world_chunks,
+                    &terrain.blocks,
+                    config.world_chunks,
                 );
                 let ceiling_sprite_z = calculate_sprite_z(0, TileLayer::CeilingShadow);
                 let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
@@ -537,23 +572,23 @@ pub fn project_world_to_tilemap(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
-                &render_world_state.blocks,
-                render_world_state.world_chunks,
+                &terrain.blocks,
+                config.world_chunks,
                 z_off,
             ),
             TileLayer::ShadowOverlay => build_shadow_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
-                &render_world_state.blocks,
-                render_world_state.world_chunks,
+                &terrain.blocks,
+                config.world_chunks,
             ),
             TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
-                &render_world_state.blocks,
-                render_world_state.world_chunks,
+                &terrain.blocks,
+                config.world_chunks,
             ),
         };
         non_empty_tile_count = non_empty_tile_count
@@ -578,14 +613,15 @@ pub fn project_world_to_tilemap(
             );
         }
     }
-    render_world_state.terrain_dirty = false;
+    terrain.dirty = false;
 }
 
 pub fn draw_depth_labels(
     mut commands: Commands,
     chunk_border_debug_state: Res<ChunkBorderDebugState>,
     view_z: Res<ViewZLevel>,
-    render_world_state: Res<RenderWorldState>,
+    config: Res<TerrainConfig>,
+    terrain: Res<TerrainData>,
     replay_mode: Res<ReplayMode>,
     chunk_streaming_state: Option<Res<ChunkStreamingState>>,
     existing_labels: Query<Entity, With<DepthDebugLabel>>,
@@ -600,14 +636,14 @@ pub fn draw_depth_labels(
     }
 
     // Only rebuild if something changed
-    if !render_world_state.terrain_dirty
+    if !terrain.dirty
         && !view_z.is_changed()
         && !chunk_border_debug_state.is_changed()
     {
         return;
     }
 
-    let chunk_edge = render_world_state.chunk_edge;
+    let chunk_edge = config.chunk_edge;
     let tile_size = f32::from(TILE_SIZE_IN_PX);
 
     // Despawn all existing labels
@@ -616,35 +652,10 @@ pub fn draw_depth_labels(
     }
 
     // Determine z-levels to render (same as tints)
-    let z_levels_to_render: Vec<i32> = (0..=Z_LEVELS_BELOW_RENDERED)
-        .map(|offset| view_z.current - offset)
-        .collect();
+    let z_levels_to_render = z_levels_to_render(view_z.current);
 
     // Get active chunks using the same logic as project_world_to_tilemap
-    let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
-        all_world_chunk_coords(render_world_state.world_chunks)
-            .into_iter()
-            .map(|c| IVec2::new(c.x, c.y))
-            .collect()
-    } else if let Some(streaming) = chunk_streaming_state {
-        if streaming.loaded_chunks.is_empty() {
-            all_world_chunk_coords(render_world_state.world_chunks)
-                .into_iter()
-                .map(|c| IVec2::new(c.x, c.y))
-                .collect()
-        } else {
-            streaming
-                .loaded_chunks
-                .iter()
-                .map(|c| IVec2::new(c.x, c.y))
-                .collect()
-        }
-    } else {
-        all_world_chunk_coords(render_world_state.world_chunks)
-            .into_iter()
-            .map(|c| IVec2::new(c.x, c.y))
-            .collect()
-    };
+    let active_chunks_xy = active_chunks_xy(replay_mode.active, config.world_chunks, chunk_streaming_state.as_deref());
 
     // For each chunk and each visible z-level, spawn shadow mask labels on air tiles
     for &chunk_xy in &active_chunks_xy {
@@ -658,8 +669,8 @@ pub fn draw_depth_labels(
                     // Only label air tiles that have shadows
                     if matches!(
                         block_at_world_position(
-                            &render_world_state.blocks,
-                            render_world_state.world_chunks,
+                            &terrain.blocks,
+                            config.world_chunks,
                             chunk_edge,
                             world_position
                         ),
@@ -669,8 +680,8 @@ pub fn draw_depth_labels(
                             world_position.x,
                             world_position.y,
                             world_position.z,
-                            &render_world_state.blocks,
-                            render_world_state.world_chunks,
+                            &terrain.blocks,
+                            config.world_chunks,
                             chunk_edge,
                         );
 
@@ -743,7 +754,7 @@ pub fn draw_chunk_borders(
 pub fn draw_entity_occupancy_boxes(
     chunk_border_debug_state: Res<ChunkBorderDebugState>,
     tilemap_assets: Res<TilemapAssets>,
-    render_world_state: Res<RenderWorldState>,
+    entity_data: Res<RenderEntityData>,
     mut gizmos: Gizmos,
 ) {
     if !chunk_border_debug_state.visible {
@@ -753,7 +764,7 @@ pub fn draw_entity_occupancy_boxes(
     let tile_size = tilemap_assets.tile_display_size.x as f32;
     let occupancy_color = Color::srgba(1.0, 0.72, 0.16, 0.95);
 
-    for entity in render_world_state.entities.values() {
+    for entity in entity_data.entities.values() {
         let mut occupied_tiles = Vec::new();
         if let Some(movement) = entity.movement {
             if movement.progress_percent < 75 {
@@ -779,7 +790,9 @@ pub fn draw_entity_occupancy_boxes(
 }
 
 pub fn project_world_entities_to_sprites(
-    mut render_world_state: ResMut<RenderWorldState>,
+    config: Res<TerrainConfig>,
+    _terrain: Res<TerrainData>,
+    mut entity_data: ResMut<RenderEntityData>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
     view_z: Res<ViewZLevel>,
     tilemap_assets: Res<TilemapAssets>,
@@ -793,7 +806,7 @@ pub fn project_world_entities_to_sprites(
         With<Player>,
     >,
 ) {
-    if !render_world_state.entities_dirty {
+    if !entity_data.dirty {
         return;
     }
 
@@ -801,22 +814,22 @@ pub fn project_world_entities_to_sprites(
         return;
     };
 
-    let Some(player_world_position) = render_world_state.entities.get(&entity_id).copied() else {
+    let Some(player_world_position) = entity_data.entities.get(&entity_id).copied() else {
         return;
     };
 
     if let Ok((mut coordinates, mut sprite, mut visibility, mut render_target)) =
         player_query.single_mut()
     {
-        let world_voxels_x = render_world_state
+        let world_voxels_x = config
             .world_chunks
             .x
-            .checked_mul(render_world_state.chunk_edge)
+            .checked_mul(config.chunk_edge)
             .expect("project_world_entities_to_sprites world x-size overflowed");
-        let world_voxels_y = render_world_state
+        let world_voxels_y = config
             .world_chunks
             .y
-            .checked_mul(render_world_state.chunk_edge)
+            .checked_mul(config.chunk_edge)
             .expect("project_world_entities_to_sprites world y-size overflowed");
         let map_size = uvec3(world_voxels_x, world_voxels_y, 1);
         *coordinates = MapCoordinates::new(
@@ -846,7 +859,7 @@ pub fn project_world_entities_to_sprites(
         }
     }
 
-    render_world_state.entities_dirty = false;
+    entity_data.dirty = false;
 }
 
 pub fn smooth_player_render_transform(
@@ -874,7 +887,9 @@ pub fn stream_chunks_around_player(
     replay_mode: Res<ReplayMode>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
     world_sim_diagnostics: Res<WorldSimDiagnostics>,
-    mut render_world_state: ResMut<RenderWorldState>,
+    config: Res<TerrainConfig>,
+    mut terrain: ResMut<TerrainData>,
+    entity_data: Res<RenderEntityData>,
     mut chunk_streaming_state: ResMut<ChunkStreamingState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
 ) {
@@ -885,21 +900,21 @@ pub fn stream_chunks_around_player(
     let Some(entity_id) = primary_entity_id.0 else {
         return;
     };
-    if render_world_state.chunk_edge == 0 {
+    if config.chunk_edge == 0 {
         return;
     }
-    let Some(entity) = render_world_state.entities.get(&entity_id) else {
+    let Some(entity) = entity_data.entities.get(&entity_id) else {
         return;
     };
     let Some(center_chunk) = world_pos_to_chunk_coord(
         entity.position,
-        render_world_state.chunk_edge,
-        render_world_state.world_chunks,
+        config.chunk_edge,
+        config.world_chunks,
     ) else {
         return;
     };
 
-    let desired = chunk_window(center_chunk, render_world_state.world_chunks);
+    let desired = chunk_window(center_chunk, config.world_chunks);
 
     if chunk_streaming_state.last_center_chunk != Some(center_chunk) {
         info!(
@@ -942,13 +957,14 @@ pub fn stream_chunks_around_player(
 
     chunk_streaming_state.loaded_chunks.extend(desired);
     if tracked_chunk_set_changed {
-        render_world_state.terrain_dirty = true;
+        terrain.dirty = true;
     }
 }
 
 pub fn sync_camera_z_to_player(
     mut view_z: ResMut<ViewZLevel>,
-    mut render_world_state: ResMut<RenderWorldState>,
+    entity_data: Res<RenderEntityData>,
+    mut terrain: ResMut<TerrainData>,
     primary_entity: Option<Res<PrimarySimulationEntityId>>,
 ) {
     let Some(primary_res) = primary_entity else {
@@ -957,23 +973,21 @@ pub fn sync_camera_z_to_player(
     let Some(primary_id) = primary_res.0 else {
         return;
     };
-    let Some(entity) = render_world_state.entities.get(&primary_id) else {
+    let Some(entity) = entity_data.entities.get(&primary_id) else {
         return;
     };
     if !view_z.initialized {
         view_z.current = entity.position.z;
         view_z.initialized = true;
         view_z.last_player_z = Some(entity.position.z);
-        render_world_state.entities_dirty = true;
-        render_world_state.terrain_dirty = true;
+        terrain.dirty = true;
         return;
     }
 
     if view_z.last_player_z != Some(entity.position.z) {
         view_z.current = entity.position.z;
         view_z.last_player_z = Some(entity.position.z);
-        render_world_state.entities_dirty = true;
-        render_world_state.terrain_dirty = true;
+        terrain.dirty = true;
     }
 }
 
@@ -1011,7 +1025,8 @@ pub fn update_view_z_level(
     input_state: Res<InputState>,
     world_view: Res<WorldView>,
     mut view_z: ResMut<ViewZLevel>,
-    mut render_world_state: ResMut<RenderWorldState>,
+    mut terrain: ResMut<TerrainData>,
+    mut entity_data: ResMut<RenderEntityData>,
 ) {
     let world_snapshot = &world_view.snapshot();
     let world_size_z = world_snapshot
@@ -1027,13 +1042,13 @@ pub fn update_view_z_level(
 
     if z_up_pressed {
         view_z.current = (view_z.current + 1).min(world_max_z);
-        render_world_state.terrain_dirty = true;
-        render_world_state.entities_dirty = true;
+        terrain.dirty = true;
+        entity_data.dirty = true;
     }
     if z_down_pressed {
         view_z.current = (view_z.current - 1).max(world_min_z);
-        render_world_state.terrain_dirty = true;
-        render_world_state.entities_dirty = true;
+        terrain.dirty = true;
+        entity_data.dirty = true;
     }
 }
 
@@ -1061,16 +1076,21 @@ fn direction_contains(container: IVec3, direction: IVec3) -> bool {
         && (direction.z == 0 || container.z.signum() == direction.z.signum())
 }
 
-fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnapshot) {
-    let terrain_changed = render_world_state.chunk_edge != snapshot.chunk_edge
-        || render_world_state.world_chunks != snapshot.world_chunks
-        || render_world_state.blocks != snapshot.blocks;
+fn apply_snapshot(
+    config: &mut TerrainConfig,
+    terrain: &mut TerrainData,
+    entities: &mut RenderEntityData,
+    snapshot: WorldSnapshot,
+) {
+    let terrain_changed = config.chunk_edge != snapshot.chunk_edge
+        || config.world_chunks != snapshot.world_chunks
+        || terrain.blocks != snapshot.blocks;
 
-    render_world_state.tick = snapshot.tick;
-    render_world_state.chunk_edge = snapshot.chunk_edge;
-    render_world_state.world_chunks = snapshot.world_chunks;
-    render_world_state.blocks = snapshot.blocks;
-    render_world_state.entities = snapshot
+    entities.tick = snapshot.tick;
+    config.chunk_edge = snapshot.chunk_edge;
+    config.world_chunks = snapshot.world_chunks;
+    terrain.blocks = snapshot.blocks;
+    entities.entities = snapshot
         .entities
         .into_iter()
         .map(|entity| {
@@ -1087,18 +1107,23 @@ fn apply_snapshot(render_world_state: &mut RenderWorldState, snapshot: WorldSnap
         .collect();
 
     if terrain_changed {
-        render_world_state.terrain_dirty = true;
+        terrain.dirty = true;
     }
-    render_world_state.entities_dirty = true;
+    entities.dirty = true;
 }
 
-fn apply_update(render_world_state: &mut RenderWorldState, update: WorldUpdate) {
+fn apply_update(
+    config: &mut TerrainConfig,
+    terrain: &mut TerrainData,
+    entities: &mut RenderEntityData,
+    update: WorldUpdate,
+) {
     match update {
-        WorldUpdate::Snapshot(snapshot) => apply_snapshot(render_world_state, snapshot),
+        WorldUpdate::Snapshot(snapshot) => apply_snapshot(config, terrain, entities, snapshot),
         WorldUpdate::Delta(delta) => {
-            render_world_state.tick = delta.tick;
+            entities.tick = delta.tick;
             for movement in delta.moved_entities {
-                render_world_state.entities.insert(
+                entities.entities.insert(
                     movement.id,
                     RenderEntityState {
                         position: movement.to,
@@ -1108,7 +1133,7 @@ fn apply_update(render_world_state: &mut RenderWorldState, update: WorldUpdate) 
                     },
                 );
             }
-            render_world_state.entities_dirty = true;
+            entities.dirty = true;
         }
     }
 }
@@ -1186,18 +1211,20 @@ fn try_load_replay_playback() -> Option<ReplayPlayback> {
 #[cfg(not(target_arch = "wasm32"))]
 fn apply_first_checkpoint(
     replay_playback: &mut ReplayPlayback,
-    render_world_state: &mut RenderWorldState,
+    config: &mut TerrainConfig,
+    terrain: &mut TerrainData,
+    entities: &mut RenderEntityData,
 ) -> bool {
     while replay_playback.cursor < replay_playback.events.len() {
         let event = replay_playback.events[replay_playback.cursor].clone();
         replay_playback.cursor += 1;
         match event {
             ReplayEvent::Checkpoint(snapshot) => {
-                apply_snapshot(render_world_state, snapshot);
+                apply_snapshot(config, terrain, entities, snapshot);
                 return true;
             }
             ReplayEvent::Update(update) => {
-                apply_update(render_world_state, update);
+                apply_update(config, terrain, entities, update);
                 return true;
             }
             ReplayEvent::Command { .. } => {}
@@ -1209,7 +1236,9 @@ fn apply_first_checkpoint(
 #[cfg(not(target_arch = "wasm32"))]
 fn apply_next_replay_event(
     replay_playback: &mut ReplayPlayback,
-    render_world_state: &mut RenderWorldState,
+    config: &mut TerrainConfig,
+    terrain: &mut TerrainData,
+    entities: &mut RenderEntityData,
 ) -> bool {
     while replay_playback.cursor < replay_playback.events.len() {
         let event = replay_playback.events[replay_playback.cursor].clone();
@@ -1217,11 +1246,11 @@ fn apply_next_replay_event(
         match event {
             ReplayEvent::Command { .. } => {}
             ReplayEvent::Update(update) => {
-                apply_update(render_world_state, update);
+                apply_update(config, terrain, entities, update);
                 return true;
             }
             ReplayEvent::Checkpoint(snapshot) => {
-                apply_snapshot(render_world_state, snapshot);
+                apply_snapshot(config, terrain, entities, snapshot);
                 return true;
             }
         }
@@ -1273,15 +1302,7 @@ fn build_chunk_tile_data(
         for local_x in 0..chunk_edge {
             let world_position =
                 world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
-            let index_in_slice = usize::try_from(local_y)
-                .expect("local_y does not fit in usize")
-                .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
-                .and_then(|offset| {
-                    offset.checked_add(
-                        usize::try_from(local_x).expect("local_x does not fit in usize"),
-                    )
-                })
-                .expect("chunk-local tile index overflowed");
+            let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
             if matches!(
                 block_at_world_position(blocks, world_chunks, chunk_edge, world_position),
@@ -1324,15 +1345,7 @@ fn build_shadow_tile_data(
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
-            let index_in_slice = usize::try_from(local_y)
-                .expect("local_y does not fit in usize")
-                .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
-                .and_then(|offset| {
-                    offset.checked_add(
-                        usize::try_from(local_x).expect("local_x does not fit in usize"),
-                    )
-                })
-                .expect("chunk-local tile index overflowed");
+            let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
             let is_solid = |dx: i32, dy: i32| -> bool {
                 let pos = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
@@ -1394,15 +1407,7 @@ fn build_ceiling_shadow_tile_data(
 
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
-            let index_in_slice = usize::try_from(local_y)
-                .expect("local_y does not fit in usize")
-                .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
-                .and_then(|offset| {
-                    offset.checked_add(
-                        usize::try_from(local_x).expect("local_x does not fit in usize"),
-                    )
-                })
-                .expect("chunk-local tile index overflowed");
+            let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
             // World position of the "anchor" (bottom-left) corner of this dual-grid cell
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
@@ -1439,15 +1444,7 @@ fn build_ceiling_shadow_tile_data(
 }
 
 fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
-    let base = match z_offset {
-        0 => 0.0,
-        -1 => -2.0,
-        -2 => -4.0,
-        -3 => -6.0,
-        -4 => -8.0,
-        -5 => -10.0,
-        _ => -10.0, // Clamp to deepest level
-    };
+    let base = (z_offset.clamp(-5, 0) * 2) as f32;
 
     match layer {
         TileLayer::Floor => base,

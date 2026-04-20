@@ -470,7 +470,7 @@ fn build_stun_queries(config: &RtcConfig, local_addr: SocketAddr) -> Vec<StunQue
                     server: server_addr,
                     url: url.clone(),
                     tx_id: TransactionId::new(),
-                    sent_at: Instant::now().checked_sub(STUN_RETRY_INTERVAL).unwrap(),
+                    sent_at: Instant::now().checked_sub(STUN_RETRY_INTERVAL).expect("STUN_RETRY_INTERVAL should be subtractable from now"),
                     attempts: 0,
                     done: false,
                 });

@@ -20,6 +20,7 @@
 - Prefer safe Rust; avoid `unsafe` unless explicitly required.
 - Do not add unused dependencies.
 - Keep code formatted according to `rustfmt`.
+- Never use `.unwrap()`. Always use `.expect("context message")` instead.
 
 ## Completion Check (IMPORTANT)
 
