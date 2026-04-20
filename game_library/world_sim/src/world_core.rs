@@ -11,6 +11,9 @@ use crate::world_api::{
 pub const DEFAULT_CHUNK_EDGE: u32 = 16;
 pub const DEFAULT_WORLD_CHUNKS: Vec3u = Vec3u { x: 1, y: 1, z: 1 };
 pub const DEFAULT_MOVEMENT_TICKS_PER_TILE: u32 = 10;
+const PLAYABLE_NOISE_BAND_HALF_THICKNESS: i32 = 1;
+const STARTER_ROOM_HALF_EXTENT: i32 = 3;
+const STARTER_ROOM_HALF_HEIGHT: i32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerrainConfig {
@@ -770,7 +773,6 @@ fn make_initial_blocks(
             .expect("world z-size overflowed"),
     );
     let min = world_min_for_size(world_size);
-    let max_z = min.z + i32::try_from(world_size.z).expect("world size z does not fit in i32") - 1;
     let world_size_x = usize::try_from(world_size.x).expect("world size x does not fit in usize");
     let world_size_y = usize::try_from(world_size.y).expect("world size y does not fit in usize");
     let seed = seed_to_u64(&terrain.seed);
@@ -783,16 +785,13 @@ fn make_initial_blocks(
             for x in 0..world_size_x {
                 let world_x = min.x + i32::try_from(x).expect("x does not fit in i32");
                 let world_position = Vec3i::new(world_x, world_y, world_z);
-                if world_z == max_z {
-                    let index = world_position_to_index(world_position, world_size)
-                        .expect("world position should be in bounds");
-                    blocks[index] = BlockType::Air;
-                    continue;
-                }
-                let density = sample_cave_density(world_position, terrain, seed);
-                if density > terrain.cave_threshold {
-                    let index = world_position_to_index(world_position, world_size)
-                        .expect("world position should be in bounds");
+                let index = world_position_to_index(world_position, world_size)
+                    .expect("world position should be in bounds");
+                if is_within_starter_room(world_position)
+                    || (is_within_playable_noise_band(world_position)
+                        && sample_cave_density(world_position, terrain, seed)
+                            > terrain.cave_threshold)
+                {
                     blocks[index] = BlockType::Air;
                 }
             }
@@ -802,9 +801,10 @@ fn make_initial_blocks(
 }
 
 fn sample_cave_density(world_position: Vec3i, terrain: &TerrainConfig, seed: u64) -> f64 {
-    let xy_density = sample_cave_density_xy(world_position, terrain, seed);
-    let vertical_detail = sample_cave_vertical_detail(world_position, terrain, seed);
-    xy_density * 0.76 + vertical_detail * 0.24
+    let slice_seed = seed.wrapping_add(
+        (world_position.z as i64 as u64).wrapping_mul(0xD1B5_4A32_D192_ED03),
+    );
+    sample_cave_density_xy(world_position, terrain, slice_seed)
 }
 
 fn sample_cave_density_xy(world_position: Vec3i, terrain: &TerrainConfig, seed: u64) -> f64 {
@@ -834,43 +834,14 @@ fn sample_cave_density_xy(world_position: Vec3i, terrain: &TerrainConfig, seed: 
     }
 }
 
-fn sample_cave_vertical_detail(
-    world_position: Vec3i,
-    terrain: &TerrainConfig,
-    seed: u64,
-) -> f64 {
-    let mut frequency_xy = terrain.cave_frequency_xy * 0.55;
-    let mut frequency_z = terrain.cave_frequency_z * 0.9;
-    let mut amplitude = 1.0;
-    let mut total_amplitude = 0.0;
-    let mut total_density = 0.0;
-    let x = world_position.x as f64;
-    let y = world_position.y as f64;
-    let z = world_position.z as f64;
-    let octaves = 3_u32.max(terrain.cave_octaves / 2);
+fn is_within_playable_noise_band(world_position: Vec3i) -> bool {
+    world_position.z.abs() <= PLAYABLE_NOISE_BAND_HALF_THICKNESS
+}
 
-    for octave in 0..octaves {
-        let octave_seed = seed
-            .wrapping_add(0xD1B5_4A32_D192_ED03)
-            .wrapping_add(u64::from(octave + 1).wrapping_mul(0x94D0_49BB_1331_11EB));
-        let noise = perlin_like_noise_3d(
-            octave_seed,
-            x * frequency_xy,
-            y * frequency_xy,
-            z * frequency_z,
-        );
-        total_density += noise * amplitude;
-        total_amplitude += amplitude;
-        amplitude *= 0.5;
-        frequency_xy *= 2.1;
-        frequency_z *= 1.5;
-    }
-
-    if total_amplitude == 0.0 {
-        0.0
-    } else {
-        total_density / total_amplitude
-    }
+fn is_within_starter_room(world_position: Vec3i) -> bool {
+    world_position.x.abs() <= STARTER_ROOM_HALF_EXTENT
+        && world_position.y.abs() <= STARTER_ROOM_HALF_EXTENT
+        && world_position.z.abs() <= STARTER_ROOM_HALF_HEIGHT
 }
 
 fn perlin_like_noise_3d(seed: u64, x: f64, y: f64, z: f64) -> f64 {
@@ -1020,8 +991,9 @@ fn world_position_to_index(world_position: Vec3i, world_size: Vec3u) -> Option<u
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockType, MoveEntityError, TerrainConfig, WorldConfig, WorldState, world_min_for_size,
-        world_position_to_index,
+        BlockType, MoveEntityError, PLAYABLE_NOISE_BAND_HALF_THICKNESS,
+        STARTER_ROOM_HALF_EXTENT, STARTER_ROOM_HALF_HEIGHT, TerrainConfig, WorldConfig,
+        WorldState, world_min_for_size, world_position_to_index,
     };
     use crate::world_api::{Vec3i, Vec3u, WorldCommand};
 
@@ -1417,31 +1389,47 @@ mod tests {
     }
 
     #[test]
-    fn cave_generation_leaves_top_slice_air() {
+    fn cave_generation_keeps_noise_within_the_playable_band() {
         let world = cave_world("opendwarf");
         let (min, max) = world.centered_bounds();
 
-        for y in min.y..=max.y {
-            for x in min.x..=max.x {
-                assert!(matches!(
-                    world.block_at(Vec3i::new(x, y, max.z)),
-                    Some(BlockType::Air)
-                ));
+        for z in min.z..=max.z {
+            if z.abs() <= PLAYABLE_NOISE_BAND_HALF_THICKNESS {
+                continue;
+            }
+            for y in min.y..=max.y {
+                for x in min.x..=max.x {
+                    assert!(matches!(
+                        world.block_at(Vec3i::new(x, y, z)),
+                        Some(BlockType::SolidStone)
+                    ));
+                }
             }
         }
+
+        let mut band_has_air = false;
+        let mut band_has_stone = false;
+        for z in -PLAYABLE_NOISE_BAND_HALF_THICKNESS..=PLAYABLE_NOISE_BAND_HALF_THICKNESS {
+            let dump = slice_dump(&world, z);
+            band_has_air |= dump.contains('.');
+            band_has_stone |= dump.contains('#');
+        }
+
+        assert!(band_has_air);
+        assert!(band_has_stone);
     }
 
     #[test]
-    fn cave_generation_prefers_horizontal_contours_over_z_tubes() {
+    fn cave_generation_keeps_the_band_varied_across_slices() {
         let world = cave_world("josh");
-        let (min, max) = world.centered_bounds();
-        let mid_z = min.z + (max.z - min.z) / 2;
-        let adjacent_difference = slice_difference_ratio(&world, mid_z, mid_z + 1);
+        let adjacent_difference = slice_difference_ratio(&world, -1, 0);
+        let opposite_difference = slice_difference_ratio(&world, 0, 1);
 
         assert!(
-            adjacent_difference < 0.35,
-            "adjacent z slices differ too much: {adjacent_difference}"
+            adjacent_difference > 0.02,
+            "adjacent slices should vary in the band: {adjacent_difference}"
         );
+        assert!(opposite_difference > 0.02);
     }
 
     #[test]
@@ -1526,5 +1514,31 @@ mod tests {
             .expect("spawn position should exist");
 
         assert_eq!(spawn, high_spawn);
+    }
+
+    #[test]
+    fn spawn_position_is_origin_for_the_experiment() {
+        let mut world = spawn_world("opendwarf");
+        let entity_id = world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("origin spawn should work");
+        let snapshot = world.snapshot();
+        let entity = snapshot
+            .entities
+            .into_iter()
+            .find(|entity| entity.id == entity_id)
+            .expect("entity should exist");
+
+        assert_eq!(entity.position, Vec3i::ZERO);
+        for z in -STARTER_ROOM_HALF_HEIGHT..=STARTER_ROOM_HALF_HEIGHT {
+            for y in -STARTER_ROOM_HALF_EXTENT..=STARTER_ROOM_HALF_EXTENT {
+                for x in -STARTER_ROOM_HALF_EXTENT..=STARTER_ROOM_HALF_EXTENT {
+                    assert!(matches!(
+                        world.block_at(Vec3i::new(x, y, z)),
+                        Some(BlockType::Air)
+                    ));
+                }
+            }
+        }
     }
 }
