@@ -71,19 +71,21 @@ impl Plugin for OpenDwarfPlugins {
                 (
                     toggle_chunk_borders,
                     sync_render_world_from_snapshot,
-                    sync_camera_z_to_player,
-                    queue_world_commands_from_input.run_if(in_state(GameMode::World)),
-                    update_view_z_level,
-                    stream_chunks_around_player,
-                    project_world_to_tilemap,
-                    draw_depth_labels,
-                    draw_chunk_borders,
-                    draw_entity_occupancy_boxes,
-                    project_world_entities_to_sprites,
-                    smooth_player_render_transform,
-                    follow_player_camera,
-                )
-                    .chain(),
+                    (
+                        sync_camera_z_to_player,
+                        queue_world_commands_from_input.run_if(in_state(GameMode::World)),
+                        draw_entity_occupancy_boxes,
+                    )
+                        .after(sync_render_world_from_snapshot),
+                    (update_view_z_level, project_world_entities_to_sprites)
+                        .after(sync_camera_z_to_player),
+                    (stream_chunks_around_player, project_world_to_tilemap)
+                        .after(update_view_z_level)
+                        .after(project_world_entities_to_sprites),
+                    (draw_depth_labels, draw_chunk_borders).after(project_world_to_tilemap),
+                    smooth_player_render_transform.after(project_world_entities_to_sprites),
+                    follow_player_camera.after(smooth_player_render_transform),
+                ),
             )
             .add_systems(
                 Update,
