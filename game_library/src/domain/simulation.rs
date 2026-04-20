@@ -21,6 +21,7 @@ use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets}
 
 const CHUNK_STREAM_RADIUS_XY: i32 = 2;
 const CHUNK_STREAM_RADIUS_Z: i32 = 1;
+const Z_LEVELS_BELOW_RENDERED: i32 = 5;
 #[cfg(not(target_arch = "wasm32"))]
 const REPLAY_PATH_ENV: &str = "OPEN_DWARF_REPLAY_PATH";
 
@@ -374,7 +375,9 @@ pub fn project_world_to_tilemap(
     };
 
     // Determine which z-levels to render: current level + up to 5 levels below
-    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.current - offset).collect();
+    let z_levels_to_render: Vec<i32> = (0..=Z_LEVELS_BELOW_RENDERED)
+        .map(|offset| view_z.current - offset)
+        .collect();
 
     // Collect existing chunk keys (chunk_xy, z, layer)
     let existing_chunks: HashSet<(IVec2, i32, TileLayer)> = chunk_query
@@ -613,7 +616,9 @@ pub fn draw_depth_labels(
     }
 
     // Determine z-levels to render (same as tints)
-    let z_levels_to_render: Vec<i32> = (0..=5).map(|offset| view_z.current - offset).collect();
+    let z_levels_to_render: Vec<i32> = (0..=Z_LEVELS_BELOW_RENDERED)
+        .map(|offset| view_z.current - offset)
+        .collect();
 
     // Get active chunks using the same logic as project_world_to_tilemap
     let active_chunks_xy: HashSet<IVec2> = if replay_mode.active {
@@ -832,9 +837,9 @@ pub fn project_world_entities_to_sprites(
         };
         render_target.0 = render_world_position;
         sprite.flip_x = player_world_position.facing_left;
-        sprite.color =
-            get_depth_tint_sprite_color(player_world_position.position.z - view_z.current);
-        if player_world_position.position.z == view_z.current {
+        let z_offset = player_world_position.position.z - view_z.current;
+        sprite.color = get_depth_tint_sprite_color(z_offset);
+        if z_offset <= 0 && z_offset >= -Z_LEVELS_BELOW_RENDERED {
             *visibility = Visibility::Visible;
         } else {
             *visibility = Visibility::Hidden;
@@ -958,7 +963,17 @@ pub fn sync_camera_z_to_player(
     if !view_z.initialized {
         view_z.current = entity.position.z;
         view_z.initialized = true;
+        view_z.last_player_z = Some(entity.position.z);
         render_world_state.entities_dirty = true;
+        render_world_state.terrain_dirty = true;
+        return;
+    }
+
+    if view_z.last_player_z != Some(entity.position.z) {
+        view_z.current = entity.position.z;
+        view_z.last_player_z = Some(entity.position.z);
+        render_world_state.entities_dirty = true;
+        render_world_state.terrain_dirty = true;
     }
 }
 

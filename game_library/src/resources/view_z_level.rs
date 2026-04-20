@@ -7,6 +7,7 @@ use bevy::prelude::Resource;
 pub struct ViewZLevel {
     pub current: i32,
     pub initialized: bool,
+    pub last_player_z: Option<i32>,
 }
 
 impl Default for ViewZLevel {
@@ -14,6 +15,7 @@ impl Default for ViewZLevel {
         Self {
             current: 0,
             initialized: false,
+            last_player_z: None,
         }
     }
 }

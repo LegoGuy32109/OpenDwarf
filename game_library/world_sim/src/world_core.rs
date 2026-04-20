@@ -239,6 +239,9 @@ impl WorldState {
                 let Some(z) = self.highest_supported_z(x, y) else {
                     continue;
                 };
+                if z >= max.z {
+                    continue;
+                }
                 let distance = (x - start_x).abs() + (y - start_y).abs();
                 let candidate = Vec3i::new(x, y, z);
 
@@ -767,6 +770,7 @@ fn make_initial_blocks(
             .expect("world z-size overflowed"),
     );
     let min = world_min_for_size(world_size);
+    let max_z = min.z + i32::try_from(world_size.z).expect("world size z does not fit in i32") - 1;
     let world_size_x = usize::try_from(world_size.x).expect("world size x does not fit in usize");
     let world_size_y = usize::try_from(world_size.y).expect("world size y does not fit in usize");
     let seed = seed_to_u64(&terrain.seed);
@@ -779,6 +783,12 @@ fn make_initial_blocks(
             for x in 0..world_size_x {
                 let world_x = min.x + i32::try_from(x).expect("x does not fit in i32");
                 let world_position = Vec3i::new(world_x, world_y, world_z);
+                if world_z == max_z {
+                    let index = world_position_to_index(world_position, world_size)
+                        .expect("world position should be in bounds");
+                    blocks[index] = BlockType::Air;
+                    continue;
+                }
                 let density = sample_cave_density(world_position, terrain, seed);
                 if density > terrain.cave_threshold {
                     let index = world_position_to_index(world_position, world_size)
@@ -1340,6 +1350,21 @@ mod tests {
     }
 
     #[test]
+    fn cave_generation_leaves_top_slice_air() {
+        let world = cave_world("opendwarf");
+        let (min, max) = world.centered_bounds();
+
+        for y in min.y..=max.y {
+            for x in min.x..=max.x {
+                assert!(matches!(
+                    world.block_at(Vec3i::new(x, y, max.z)),
+                    Some(BlockType::Air)
+                ));
+            }
+        }
+    }
+
+    #[test]
     fn cave_spawn_finder_returns_supported_tile() {
         let world = cave_world("opendwarf");
         let spawn = world
@@ -1347,6 +1372,7 @@ mod tests {
             .expect("spawn position should exist");
 
         assert!(matches!(world.block_at(spawn), Some(BlockType::Air)));
+        assert!(spawn.z < world.centered_bounds().1.z);
         assert!(matches!(
             world.block_at(Vec3i::new(spawn.x, spawn.y, spawn.z - 1)),
             Some(BlockType::SolidStone)
@@ -1354,7 +1380,7 @@ mod tests {
 
         let mut highest_supported = spawn.z;
         let (min, max) = world.centered_bounds();
-        for z in (min.z..=max.z).rev() {
+        for z in (min.z..max.z).rev() {
             if matches!(world.block_at(Vec3i::new(spawn.x, spawn.y, z)), Some(BlockType::Air))
                 && matches!(
                     world.block_at(Vec3i::new(spawn.x, spawn.y, z - 1)),
