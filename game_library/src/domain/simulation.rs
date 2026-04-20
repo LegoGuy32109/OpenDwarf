@@ -1497,14 +1497,26 @@ fn build_ceiling_shadow_tile_data(
             } // D: top-right
 
             if mask != 0 {
-                let floor_is_air = !matches!(
-                    block_at_world_position(blocks, world_chunks, chunk_edge, wp),
-                    Some(BlockType::SolidStone)
-                );
+                // Check if any of the 4 floor tiles covered by this offset shadow is solid.
+                // The shadow tile at grid (x, y) renders at screen offset (x*TILE_SIZE + 32, y*TILE_SIZE + 32),
+                // so it visually covers floor tiles at (x, y), (x+1, y), (x, y+1), (x+1, y+1).
+                let floor_has_solid = [
+                    Vec3i::new(wp.x, wp.y, world_z),
+                    Vec3i::new(wp.x + 1, wp.y, world_z),
+                    Vec3i::new(wp.x, wp.y + 1, world_z),
+                    Vec3i::new(wp.x + 1, wp.y + 1, world_z),
+                ]
+                .iter()
+                .any(|pos| {
+                    matches!(
+                        block_at_world_position(blocks, world_chunks, chunk_edge, *pos),
+                        Some(BlockType::SolidStone)
+                    )
+                });
 
-                // Only render ceiling shadow if there's solid floor below
-                // Absence of shadow over air indicates an open cavity
-                if !floor_is_air {
+                // Only render ceiling shadow if there's at least one solid floor tile below.
+                // Absence of shadow over air indicates an open cavity.
+                if floor_has_solid {
                     let td = TileData::from_tileset_index((mask - 1) as u16);
                     tile_data[index_in_slice] = Some(td);
                 }
