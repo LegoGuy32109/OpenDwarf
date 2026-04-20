@@ -54,7 +54,9 @@ pub fn update_tileset_image(
     let image_asset_id = tileset_image_handle.id();
     for event in events.read() {
         if event.is_loaded_with_dependencies(image_asset_id) {
-            let image = images.get_mut(tileset_image_handle).expect("tileset image handle should be valid");
+            let image = images
+                .get_mut(tileset_image_handle)
+                .expect("tileset image handle should be valid");
             let _ = image.reinterpret_stacked_2d_as_array(NUM_TILES_IN_MAP.into());
         }
     }
@@ -69,7 +71,9 @@ pub fn update_shadow_atlas_image(
     let image_asset_id = shadow_atlas_handle.id();
     for event in events.read() {
         if event.is_loaded_with_dependencies(image_asset_id) {
-            let image = images.get_mut(shadow_atlas_handle).expect("shadow atlas image handle should be valid");
+            let image = images
+                .get_mut(shadow_atlas_handle)
+                .expect("shadow atlas image handle should be valid");
             let _ = image.reinterpret_stacked_2d_as_array(SHADOW_ATLAS_FRAMES);
         }
     }
@@ -84,7 +88,9 @@ pub fn update_obscure_atlas_image(
     let image_asset_id = obscure_atlas_handle.id();
     for event in events.read() {
         if event.is_loaded_with_dependencies(image_asset_id) {
-            let image = images.get_mut(obscure_atlas_handle).expect("obscure atlas image handle should be valid");
+            let image = images
+                .get_mut(obscure_atlas_handle)
+                .expect("obscure atlas image handle should be valid");
             let _ = image.reinterpret_stacked_2d_as_array(OBSCURE_ATLAS_FRAMES);
         }
     }
