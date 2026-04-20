@@ -499,6 +499,7 @@ impl WorldState {
         Some(WorldDelta {
             tick: self.tick,
             moved_entities,
+            block_changes: vec![],
         })
     }
 
@@ -513,6 +514,7 @@ impl WorldState {
                 deltas.push(WorldDelta {
                     tick: self.tick,
                     moved_entities: vec![],
+                    block_changes: vec![],
                 });
             }
         }
@@ -584,6 +586,7 @@ impl WorldState {
                 Some(WorldDelta {
                     tick: self.tick,
                     moved_entities: vec![],
+                    block_changes: vec![],
                 })
             }
         }

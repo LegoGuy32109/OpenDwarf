@@ -71,6 +71,7 @@ mod tests {
         bus.publish(WorldUpdate::Delta(WorldDelta {
             tick: 1,
             moved_entities: vec![],
+            block_changes: vec![],
         }));
 
         let update = subscriber.recv().expect("subscriber should receive update");

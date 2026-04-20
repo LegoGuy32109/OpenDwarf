@@ -85,10 +85,18 @@ pub struct EntityMovedDelta {
     pub movement_after: Option<EntityMovementSnapshot>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockChange {
+    pub position: Vec3i,
+    pub from: BlockType,
+    pub to: BlockType,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldDelta {
     pub tick: u64,
     pub moved_entities: Vec<EntityMovedDelta>,
+    pub block_changes: Vec<BlockChange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
