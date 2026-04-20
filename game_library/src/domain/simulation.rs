@@ -1463,9 +1463,11 @@ fn build_ceiling_shadow_tile_data(
                     block_at_world_position(blocks, world_chunks, chunk_edge, wp),
                     Some(BlockType::SolidStone)
                 );
-                if floor_is_air {
-                    td.color = Color::srgba(1.0, 1.0, 1.0, 0.4);
-                }
+                td.color = if floor_is_air {
+                    Color::srgba(1.0, 1.0, 1.0, 0.4)
+                } else {
+                    Color::WHITE
+                };
                 tile_data[index_in_slice] = Some(td);
             }
         }
