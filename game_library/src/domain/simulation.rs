@@ -487,40 +487,61 @@ pub fn project_world_to_tilemap(
                 ));
             }
 
-            // Shadow overlay is rendered only on the focused z-slice to avoid stacking.
+            // Shadow overlay is rendered at all visible z-levels to show elevation edges.
+            // To avoid visual stacking of overlapping edges, only render if there's no edge above this level.
             let shadow_key = (chunk_xy, world_z, TileLayer::ShadowOverlay);
-            if world_z == view_z.current && !existing_chunks.contains(&shadow_key) {
-                let shadow_data = build_shadow_tile_data(
-                    chunk_xy,
-                    world_z,
-                    chunk_edge,
-                    &terrain.blocks,
-                    config.world_chunks,
-                );
-                let shadow_sprite_z = calculate_sprite_z(0, TileLayer::ShadowOverlay);
-                let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
-                commands.spawn((
-                    WorldTileChunk {
+            if z_levels_to_render.contains(&world_z) && !existing_chunks.contains(&shadow_key) {
+                // Check if the z-level above has an edge at the same location.
+                // If it does, skip rendering here (the edge above takes visual precedence).
+                let z_above = world_z + 1;
+                let has_edge_above = if z_levels_to_render.contains(&z_above) {
+                    // If the level above is also visible, check for edges there
+                    chunk_has_edge(
+                        chunk_xy,
+                        z_above,
+                        chunk_edge,
+                        &terrain.blocks,
+                        config.world_chunks,
+                    )
+                } else {
+                    // If above is outside the visible range, render edges at this level
+                    false
+                };
+
+                if !has_edge_above {
+                    let shadow_data = build_shadow_tile_data(
                         chunk_xy,
                         world_z,
-                        layer: TileLayer::ShadowOverlay,
-                    },
-                    TilemapChunk {
-                        chunk_size: UVec2::splat(chunk_edge),
-                        tile_display_size: UVec2::splat(64),
-                        tileset: shadow_atlas.atlas.clone(),
-                        alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
-                    },
-                    TilemapChunkTileData(shadow_data),
-                    Transform::from_translation(
-                        chunk_world_translation_xy(chunk_xy, chunk_edge, shadow_sprite_z)
-                            + Vec3::new(half_tile, half_tile, 0.0),
-                    ),
-                    GlobalTransform::default(),
-                    Visibility::default(),
-                    InheritedVisibility::default(),
-                    ViewVisibility::default(),
-                ));
+                        chunk_edge,
+                        &terrain.blocks,
+                        config.world_chunks,
+                    );
+                    let z_offset = world_z - view_z.current;
+                    let shadow_sprite_z = calculate_sprite_z(z_offset, TileLayer::ShadowOverlay);
+                    let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
+                    commands.spawn((
+                        WorldTileChunk {
+                            chunk_xy,
+                            world_z,
+                            layer: TileLayer::ShadowOverlay,
+                        },
+                        TilemapChunk {
+                            chunk_size: UVec2::splat(chunk_edge),
+                            tile_display_size: UVec2::splat(64),
+                            tileset: shadow_atlas.atlas.clone(),
+                            alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
+                        },
+                        TilemapChunkTileData(shadow_data),
+                        Transform::from_translation(
+                            chunk_world_translation_xy(chunk_xy, chunk_edge, shadow_sprite_z)
+                                + Vec3::new(half_tile, half_tile, 0.0),
+                        ),
+                        GlobalTransform::default(),
+                        Visibility::default(),
+                        InheritedVisibility::default(),
+                        ViewVisibility::default(),
+                    ));
+                }
             }
 
             // Ceiling shadow (dual-grid) — only on the current z-level
@@ -568,9 +589,9 @@ pub fn project_world_to_tilemap(
         // CeilingShadow chunks are only valid at the exact current z-level
         let ceiling_ok =
             world_chunk.layer != TileLayer::CeilingShadow || world_chunk.world_z == view_z.current;
-        let shadow_ok =
-            world_chunk.layer != TileLayer::ShadowOverlay || world_chunk.world_z == view_z.current;
-        if !in_active_xy || !in_z_range || !ceiling_ok || !shadow_ok {
+        // ShadowOverlay chunks are valid at any z-level in the visible range
+        // (spawn logic ensures no stacking by not spawning if edge above exists)
+        if !in_active_xy || !in_z_range || !ceiling_ok {
             commands.entity(entity).despawn();
         }
     }
@@ -1390,6 +1411,52 @@ fn build_chunk_tile_data(
 ///
 /// Mask 0 (all air) and mask 15 (all solid) produce no tile.
 /// Masks 1–14 → atlas frame index (mask - 1).
+/// Check if a chunk has any edge tiles (solid adjacent to empty).
+/// Used to determine if an elevation level above should suppress edge shadows below.
+fn chunk_has_edge(
+    chunk_xy: IVec2,
+    world_z: i32,
+    chunk_edge: u32,
+    blocks: &[BlockType],
+    world_chunks: Vec3u,
+) -> bool {
+    let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
+
+    for local_y in 0..chunk_edge {
+        for local_x in 0..chunk_edge {
+            let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
+
+            let is_solid = |dx: i32, dy: i32| -> bool {
+                let pos = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
+                matches!(
+                    block_at_world_position(blocks, world_chunks, chunk_edge, pos),
+                    Some(BlockType::SolidStone)
+                )
+            };
+
+            let mut mask: u8 = 0;
+            if is_solid(0, 0) {
+                mask |= 1;
+            }
+            if is_solid(1, 0) {
+                mask |= 2;
+            }
+            if is_solid(0, 1) {
+                mask |= 4;
+            }
+            if is_solid(1, 1) {
+                mask |= 8;
+            }
+
+            // If any tile has an edge (partial mask), this chunk has edges
+            if mask > 0 && mask < 15 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn build_shadow_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
