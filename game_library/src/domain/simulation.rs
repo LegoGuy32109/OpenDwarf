@@ -136,7 +136,12 @@ pub fn setup_simulation_state(mut commands: Commands) {
     if let Some(mut replay_playback) = try_load_replay_playback() {
         replay_mode.active = true;
         replay_playback.playing = false;
-        if !apply_first_checkpoint(&mut replay_playback, &mut config, &mut terrain, &mut entities) {
+        if !apply_first_checkpoint(
+            &mut replay_playback,
+            &mut config,
+            &mut terrain,
+            &mut entities,
+        ) {
             warn!("Replay did not contain any checkpoint/snapshot data");
         }
         commands.insert_resource(replay_playback);
@@ -249,7 +254,12 @@ pub fn sync_render_world_from_snapshot(
         return;
     }
 
-    apply_snapshot(&mut config, &mut terrain, &mut entity_data, snapshot.clone());
+    apply_snapshot(
+        &mut config,
+        &mut terrain,
+        &mut entity_data,
+        snapshot.clone(),
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -295,12 +305,22 @@ pub fn drive_replay_playback(
         entity_data.tick = 0;
         terrain.dirty = true;
         entity_data.dirty = true;
-        let _ = apply_first_checkpoint(&mut replay_playback, &mut config, &mut terrain, &mut entity_data);
+        let _ = apply_first_checkpoint(
+            &mut replay_playback,
+            &mut config,
+            &mut terrain,
+            &mut entity_data,
+        );
         info!("Replay reset to beginning");
     }
 
     if keyboard_input.just_pressed(KeyCode::F7) {
-        let _ = apply_next_replay_event(&mut replay_playback, &mut config, &mut terrain, &mut entity_data);
+        let _ = apply_next_replay_event(
+            &mut replay_playback,
+            &mut config,
+            &mut terrain,
+            &mut entity_data,
+        );
     }
 
     if keyboard_input.just_pressed(KeyCode::F9) {
@@ -308,7 +328,12 @@ pub fn drive_replay_playback(
     }
 
     if replay_playback.playing
-        && !apply_next_replay_event(&mut replay_playback, &mut config, &mut terrain, &mut entity_data)
+        && !apply_next_replay_event(
+            &mut replay_playback,
+            &mut config,
+            &mut terrain,
+            &mut entity_data,
+        )
     {
         replay_playback.playing = false;
         info!("Replay playback reached end");
@@ -366,9 +391,7 @@ fn chunk_local_tile_index(local_x: u32, local_y: u32, chunk_edge: u32) -> usize 
         .expect("local_y does not fit in usize")
         .checked_mul(usize::try_from(chunk_edge).expect("chunk edge does not fit in usize"))
         .and_then(|offset| {
-            offset.checked_add(
-                usize::try_from(local_x).expect("local_x does not fit in usize"),
-            )
+            offset.checked_add(usize::try_from(local_x).expect("local_x does not fit in usize"))
         })
         .expect("chunk-local tile index overflowed")
 }
@@ -409,7 +432,11 @@ pub fn project_world_to_tilemap(
         return;
     }
 
-    let active_chunks_xy = active_chunks_xy(replay_mode.active, config.world_chunks, chunk_streaming_state.as_deref());
+    let active_chunks_xy = active_chunks_xy(
+        replay_mode.active,
+        config.world_chunks,
+        chunk_streaming_state.as_deref(),
+    );
 
     // Determine which z-levels to render: current level + up to 5 levels below
     let z_levels_to_render = z_levels_to_render(view_z.current);
@@ -636,10 +663,7 @@ pub fn draw_depth_labels(
     }
 
     // Only rebuild if something changed
-    if !terrain.dirty
-        && !view_z.is_changed()
-        && !chunk_border_debug_state.is_changed()
-    {
+    if !terrain.dirty && !view_z.is_changed() && !chunk_border_debug_state.is_changed() {
         return;
     }
 
@@ -655,7 +679,11 @@ pub fn draw_depth_labels(
     let z_levels_to_render = z_levels_to_render(view_z.current);
 
     // Get active chunks using the same logic as project_world_to_tilemap
-    let active_chunks_xy = active_chunks_xy(replay_mode.active, config.world_chunks, chunk_streaming_state.as_deref());
+    let active_chunks_xy = active_chunks_xy(
+        replay_mode.active,
+        config.world_chunks,
+        chunk_streaming_state.as_deref(),
+    );
 
     // For each chunk and each visible z-level, spawn shadow mask labels on air tiles
     for &chunk_xy in &active_chunks_xy {
@@ -929,11 +957,9 @@ pub fn stream_chunks_around_player(
     let Some(entity) = entity_data.entities.get(&entity_id) else {
         return;
     };
-    let Some(center_chunk) = world_pos_to_chunk_coord(
-        entity.position,
-        config.chunk_edge,
-        config.world_chunks,
-    ) else {
+    let Some(center_chunk) =
+        world_pos_to_chunk_coord(entity.position, config.chunk_edge, config.world_chunks)
+    else {
         return;
     };
 
@@ -1157,6 +1183,19 @@ fn apply_update(
                 );
             }
             entities.dirty = true;
+
+            for change in delta.block_changes {
+                if let Some(index) = world_position_to_block_index(
+                    config.world_chunks,
+                    config.chunk_edge,
+                    change.position,
+                ) {
+                    if index < terrain.blocks.len() {
+                        terrain.blocks[index] = change.to;
+                        terrain.dirty = true;
+                    }
+                }
+            }
         }
     }
 }
@@ -1458,17 +1497,17 @@ fn build_ceiling_shadow_tile_data(
             } // D: top-right
 
             if mask != 0 {
-                let mut td = TileData::from_tileset_index((mask - 1) as u16);
                 let floor_is_air = !matches!(
                     block_at_world_position(blocks, world_chunks, chunk_edge, wp),
                     Some(BlockType::SolidStone)
                 );
-                td.color = if floor_is_air {
-                    Color::srgba(1.0, 1.0, 1.0, 0.4)
-                } else {
-                    Color::WHITE
-                };
-                tile_data[index_in_slice] = Some(td);
+
+                // Only render ceiling shadow if there's solid floor below
+                // Absence of shadow over air indicates an open cavity
+                if !floor_is_air {
+                    let td = TileData::from_tileset_index((mask - 1) as u16);
+                    tile_data[index_in_slice] = Some(td);
+                }
             }
         }
     }
@@ -1713,12 +1752,11 @@ fn compute_shadow_mask_for_air(
     mask
 }
 
-fn block_at_world_position(
-    blocks: &[BlockType],
+fn world_position_to_block_index(
     world_chunks: Vec3u,
     chunk_edge: u32,
     world_position: Vec3i,
-) -> Option<BlockType> {
+) -> Option<usize> {
     let world_size = Vec3u::new(
         world_chunks
             .x
@@ -1762,5 +1800,15 @@ fn block_at_world_position(
         .checked_mul(world_size_x.checked_mul(world_size_y)?)?
         .checked_add(local_y_u.checked_mul(world_size_x)?)?
         .checked_add(local_x_u)?;
+    Some(index)
+}
+
+fn block_at_world_position(
+    blocks: &[BlockType],
+    world_chunks: Vec3u,
+    chunk_edge: u32,
+    world_position: Vec3i,
+) -> Option<BlockType> {
+    let index = world_position_to_block_index(world_chunks, chunk_edge, world_position)?;
     blocks.get(index).copied()
 }
