@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use bevy::math::Isometry2d;
 use bevy::prelude::*;
@@ -6,6 +6,7 @@ use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 
 use crate::components::map_coordinates::MapCoordinates;
 use crate::resources::input_state::InputState;
+use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 use world_sim::bevy_app::PrimarySimulationEntityId;
 use world_sim::bevy_app::WorldCommandQueue;
@@ -14,7 +15,8 @@ use world_sim::bevy_app::WorldView;
 #[cfg(not(target_arch = "wasm32"))]
 use world_sim::replay::{ReplayEvent, load_replay};
 use world_sim::world_api::{
-    BlockType, EntityMovementSnapshot, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate,
+    BlockType, EntityMovementSnapshot, TileMemory, Vec3i, Vec3u, WorldCommand, WorldSnapshot,
+    WorldUpdate,
 };
 
 use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets};
@@ -90,6 +92,13 @@ pub struct RenderEntityMovementState {
 }
 
 #[derive(Resource, Default)]
+pub struct FogData {
+    pub visible: HashSet<Vec3i>,
+    pub memory: HashMap<Vec3i, TileMemory>,
+    pub dirty: bool,
+}
+
+#[derive(Resource, Default)]
 pub struct ChunkStreamingState {
     loaded_chunks: HashSet<Vec3i>,
     last_center_chunk: Option<Vec3i>,
@@ -114,6 +123,9 @@ pub enum TileLayer {
     EdgeShadow,
     /// Dual-grid ceiling shadow: rendered half a tile offset, shows solid blocks at z+1 above.
     CeilingShadow,
+    /// Three-state exploration fog: Visible (none), Remembered (gray), Unknown (dark).
+    /// Only rendered in ViewMode::Entity. Covers full tiles at the current z-level.
+    FogShadow,
 }
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +175,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(config);
     commands.insert_resource(terrain);
     commands.insert_resource(entities);
+    commands.insert_resource(FogData::default());
     commands.insert_resource(ChunkStreamingState::default());
     commands.insert_resource(ChunkBorderDebugState::default());
     commands.insert_resource(TilemapRenderMetrics::default());
@@ -241,6 +254,7 @@ pub fn sync_render_world_from_snapshot(
     mut config: ResMut<TerrainConfig>,
     mut terrain: ResMut<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
+    mut fog_data: ResMut<FogData>,
 ) {
     if replay_mode.active {
         return;
@@ -258,6 +272,7 @@ pub fn sync_render_world_from_snapshot(
         &mut config,
         &mut terrain,
         &mut entity_data,
+        &mut fog_data,
         snapshot.clone(),
     );
 }
@@ -401,11 +416,14 @@ pub fn project_world_to_tilemap(
     replay_mode: Res<ReplayMode>,
     chunk_streaming_state: Option<Res<ChunkStreamingState>>,
     view_z: Res<ViewZLevel>,
+    view_mode: Res<ViewMode>,
     tilemap_assets: Res<TilemapAssets>,
     shadow_atlas: Res<super::visuals::EdgeShadowAtlas>,
     obscure_atlas: Res<super::visuals::CeilingShadowAtlas>,
+    fog_atlas: Res<super::visuals::FogShadowAtlas>,
     config: Res<TerrainConfig>,
     mut terrain: ResMut<TerrainData>,
+    mut fog_data: ResMut<FogData>,
     mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
     mut chunk_query: Query<(
         Entity,
@@ -421,9 +439,16 @@ pub fn project_world_to_tilemap(
     // Z-level changes require tile data rebuild for depth tinting
     if view_z.is_changed() {
         terrain.dirty = true;
+        fog_data.dirty = true;
     }
 
-    if !terrain.dirty {
+    // ViewMode changes require fog layer to be rebuilt
+    if view_mode.is_changed() {
+        fog_data.dirty = true;
+        terrain.dirty = true;
+    }
+
+    if !terrain.dirty && !fog_data.dirty {
         return;
     }
 
@@ -580,6 +605,39 @@ pub fn project_world_to_tilemap(
                     ViewVisibility::default(),
                 ));
             }
+
+            // Fog shadow — only in Entity mode, only at current z-level
+            let fog_key = (chunk_xy, world_z, TileLayer::FogShadow);
+            if *view_mode == ViewMode::Entity
+                && world_z == view_z.current
+                && !existing_chunks.contains(&fog_key)
+            {
+                let fog_tile_data = build_fog_tile_data(chunk_xy, world_z, chunk_edge, &fog_data);
+                let fog_sprite_z = calculate_sprite_z(0, TileLayer::FogShadow);
+                commands.spawn((
+                    WorldTileChunk {
+                        chunk_xy,
+                        world_z,
+                        layer: TileLayer::FogShadow,
+                    },
+                    TilemapChunk {
+                        chunk_size: UVec2::splat(chunk_edge),
+                        tile_display_size: UVec2::splat(64),
+                        tileset: fog_atlas.atlas.clone(),
+                        alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
+                    },
+                    TilemapChunkTileData(fog_tile_data),
+                    Transform::from_translation(chunk_world_translation_xy(
+                        chunk_xy,
+                        chunk_edge,
+                        fog_sprite_z,
+                    )),
+                    GlobalTransform::default(),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                ));
+            }
         }
     }
 
@@ -587,12 +645,14 @@ pub fn project_world_to_tilemap(
     for (entity, world_chunk, _, _, _) in &mut chunk_query {
         let in_active_xy = active_chunks_xy.contains(&world_chunk.chunk_xy);
         let in_z_range = z_levels_to_render.contains(&world_chunk.world_z);
-        // CeilingShadow chunks are only valid at the exact current z-level
-        let ceiling_ok =
-            world_chunk.layer != TileLayer::CeilingShadow || world_chunk.world_z == view_z.current;
-        // EdgeShadow chunks are valid at any z-level in the visible range
-        // (spawn logic ensures no stacking by not spawning if edge above exists)
-        if !in_active_xy || !in_z_range || !ceiling_ok {
+        // CeilingShadow and FogShadow chunks are only valid at the exact current z-level
+        let top_layer_ok = !matches!(
+            world_chunk.layer,
+            TileLayer::CeilingShadow | TileLayer::FogShadow
+        ) || world_chunk.world_z == view_z.current;
+        // FogShadow chunks are only valid in Entity mode
+        let fog_ok = world_chunk.layer != TileLayer::FogShadow || *view_mode == ViewMode::Entity;
+        if !in_active_xy || !in_z_range || !top_layer_ok || !fog_ok {
             commands.entity(entity).despawn();
         }
     }
@@ -639,6 +699,12 @@ pub fn project_world_to_tilemap(
                 &terrain.blocks,
                 config.world_chunks,
             ),
+            TileLayer::FogShadow => build_fog_tile_data(
+                world_chunk.chunk_xy,
+                world_chunk.world_z,
+                chunk_edge,
+                &fog_data,
+            ),
         };
         non_empty_tile_count = non_empty_tile_count
             .saturating_add(tile_data.iter().filter(|tile| tile.is_some()).count());
@@ -663,6 +729,7 @@ pub fn project_world_to_tilemap(
         }
     }
     terrain.dirty = false;
+    fog_data.dirty = false;
 }
 
 pub fn draw_depth_labels(
@@ -1095,6 +1162,9 @@ pub fn follow_player_camera(
 pub fn update_view_z_level(
     input_state: Res<InputState>,
     world_view: Res<WorldView>,
+    view_mode: Res<ViewMode>,
+    primary_entity_id: Res<PrimarySimulationEntityId>,
+    terrain_config: Res<TerrainConfig>,
     mut view_z: ResMut<ViewZLevel>,
     mut terrain: ResMut<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
@@ -1108,16 +1178,53 @@ pub fn update_view_z_level(
     let world_max_z =
         world_min_z + i32::try_from(world_size_z).expect("world z-size does not fit in i32") - 1;
 
+    // In Entity mode, clamp z range to what the player can see
+    let (effective_min_z, effective_max_z) = if *view_mode == ViewMode::Entity {
+        if let Some(entity_id) = primary_entity_id.0 {
+            if let Some(entity_state) = entity_data.entities.get(&entity_id) {
+                let player_pos = entity_state.position;
+                // Floor: player's own z level (can't look below where you stand)
+                let floor_z = player_pos.z;
+                // Ceiling: one below the first solid block above the player
+                let ceiling_z = (player_pos.z + 1..=world_max_z).find(|&z| {
+                    matches!(
+                        block_at_world_position(
+                            &terrain.blocks,
+                            terrain_config.world_chunks,
+                            terrain_config.chunk_edge,
+                            Vec3i::new(player_pos.x, player_pos.y, z),
+                        ),
+                        Some(BlockType::SolidStone)
+                    )
+                });
+                (floor_z, ceiling_z.map(|z| z - 1).unwrap_or(world_max_z))
+            } else {
+                (world_min_z, world_max_z)
+            }
+        } else {
+            (world_min_z, world_max_z)
+        }
+    } else {
+        (world_min_z, world_max_z)
+    };
+
     let z_up_pressed = input_state.just_pressed(&input_state.z_level_up);
     let z_down_pressed = input_state.just_pressed(&input_state.z_level_down);
 
     if z_up_pressed {
-        view_z.current = (view_z.current + 1).min(world_max_z);
+        view_z.current = (view_z.current + 1).min(effective_max_z);
         terrain.dirty = true;
         entity_data.dirty = true;
     }
     if z_down_pressed {
-        view_z.current = (view_z.current - 1).max(world_min_z);
+        view_z.current = (view_z.current - 1).max(effective_min_z);
+        terrain.dirty = true;
+        entity_data.dirty = true;
+    }
+    // Clamp current view z in case the entity moved to a different level
+    let clamped = view_z.current.clamp(effective_min_z, effective_max_z);
+    if clamped != view_z.current {
+        view_z.current = clamped;
         terrain.dirty = true;
         entity_data.dirty = true;
     }
@@ -1151,6 +1258,7 @@ fn apply_snapshot(
     config: &mut TerrainConfig,
     terrain: &mut TerrainData,
     entities: &mut RenderEntityData,
+    fog: &mut FogData,
     snapshot: WorldSnapshot,
 ) {
     let terrain_changed = config.chunk_edge != snapshot.chunk_edge
@@ -1177,6 +1285,12 @@ fn apply_snapshot(
         })
         .collect();
 
+    if let Some(vis) = snapshot.visibility {
+        fog.visible = vis.visible.into_iter().collect();
+        fog.memory = vis.memory;
+        fog.dirty = true;
+    }
+
     if terrain_changed {
         terrain.dirty = true;
     }
@@ -1187,10 +1301,11 @@ fn apply_update(
     config: &mut TerrainConfig,
     terrain: &mut TerrainData,
     entities: &mut RenderEntityData,
+    fog: &mut FogData,
     update: WorldUpdate,
 ) {
     match update {
-        WorldUpdate::Snapshot(snapshot) => apply_snapshot(config, terrain, entities, snapshot),
+        WorldUpdate::Snapshot(snapshot) => apply_snapshot(config, terrain, entities, fog, snapshot),
         WorldUpdate::Delta(delta) => {
             entities.tick = delta.tick;
             for movement in delta.moved_entities {
@@ -1299,16 +1414,18 @@ fn apply_first_checkpoint(
     terrain: &mut TerrainData,
     entities: &mut RenderEntityData,
 ) -> bool {
+    // Replay doesn't carry FOV data — use a throwaway FogData
+    let mut fog = FogData::default();
     while replay_playback.cursor < replay_playback.events.len() {
         let event = replay_playback.events[replay_playback.cursor].clone();
         replay_playback.cursor += 1;
         match event {
             ReplayEvent::Checkpoint(snapshot) => {
-                apply_snapshot(config, terrain, entities, snapshot);
+                apply_snapshot(config, terrain, entities, &mut fog, snapshot);
                 return true;
             }
             ReplayEvent::Update(update) => {
-                apply_update(config, terrain, entities, update);
+                apply_update(config, terrain, entities, &mut fog, update);
                 return true;
             }
             ReplayEvent::Command { .. } => {}
@@ -1324,17 +1441,18 @@ fn apply_next_replay_event(
     terrain: &mut TerrainData,
     entities: &mut RenderEntityData,
 ) -> bool {
+    let mut fog = FogData::default();
     while replay_playback.cursor < replay_playback.events.len() {
         let event = replay_playback.events[replay_playback.cursor].clone();
         replay_playback.cursor += 1;
         match event {
             ReplayEvent::Command { .. } => {}
             ReplayEvent::Update(update) => {
-                apply_update(config, terrain, entities, update);
+                apply_update(config, terrain, entities, &mut fog, update);
                 return true;
             }
             ReplayEvent::Checkpoint(snapshot) => {
-                apply_snapshot(config, terrain, entities, snapshot);
+                apply_snapshot(config, terrain, entities, &mut fog, snapshot);
                 return true;
             }
         }
@@ -1590,7 +1708,53 @@ fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
         TileLayer::Floor => base,
         TileLayer::EdgeShadow => base + 0.5,
         TileLayer::CeilingShadow => base + 0.75, // above edge shadows, below entities
+        TileLayer::FogShadow => base + 1.5,      // above entities, topmost layer
     }
+}
+
+fn build_fog_tile_data(
+    chunk_xy: IVec2,
+    world_z: i32,
+    chunk_edge: u32,
+    fog: &FogData,
+) -> Vec<Option<TileData>> {
+    let tile_count =
+        usize::try_from(chunk_edge * chunk_edge).expect("chunk tile count does not fit in usize");
+    let mut tile_data = vec![None; tile_count];
+
+    let edge_i = i32::try_from(chunk_edge).expect("chunk_edge does not fit in i32");
+    let half = edge_i / 2;
+
+    for local_y in 0..chunk_edge {
+        for local_x in 0..chunk_edge {
+            let wx = chunk_xy.x * edge_i
+                + i32::try_from(local_x).expect("local_x does not fit in i32")
+                - half;
+            let wy = chunk_xy.y * edge_i
+                + i32::try_from(local_y).expect("local_y does not fit in i32")
+                - half;
+            let world_pos = Vec3i::new(wx, wy, world_z);
+
+            let idx = chunk_local_tile_index(local_x, local_y, chunk_edge);
+
+            if fog.visible.contains(&world_pos) {
+                // Visible — no tile (transparent)
+                tile_data[idx] = None;
+            } else if fog.memory.contains_key(&world_pos) {
+                // Remembered — gray tint
+                let mut td = TileData::from_tileset_index(0);
+                td.color = Color::srgba(0.7, 0.7, 0.6, 0.1);
+                tile_data[idx] = Some(td);
+            } else {
+                // Unknown — opaque dark
+                let mut td = TileData::from_tileset_index(0);
+                td.color = Color::srgba(0.32, 0.20, 0.30, 0.8);
+                tile_data[idx] = Some(td);
+            }
+        }
+    }
+
+    tile_data
 }
 
 /// Multiplicative tint color for tiles at a given z-offset from the camera.

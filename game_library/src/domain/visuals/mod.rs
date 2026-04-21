@@ -1,4 +1,8 @@
+use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
+use bevy::render::render_resource::{
+    Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
+};
 
 use crate::components::map_coordinates::MapCoordinates;
 
@@ -42,6 +46,11 @@ pub struct EdgeShadowAtlas {
 
 #[derive(Resource, Clone)]
 pub struct CeilingShadowAtlas {
+    pub atlas: Handle<Image>,
+}
+
+#[derive(Resource, Clone)]
+pub struct FogShadowAtlas {
     pub atlas: Handle<Image>,
 }
 
@@ -96,7 +105,11 @@ pub fn update_ceiling_shadow_atlas_image(
     }
 }
 
-pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+) {
     // Camera
     commands.spawn((Camera2d, Camera::default()));
 
@@ -118,6 +131,31 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let obscure_atlas: Handle<Image> = asset_server.load(CEILING_SHADOW_ATLAS_PATH);
     commands.insert_resource(CeilingShadowAtlas {
         atlas: obscure_atlas,
+    });
+
+    // Create a programmatic white atlas for fog shadow tinting.
+    // 7 identical white frames (not a multiple of 6 — Bevy constraint).
+    // depth_or_array_layers is set directly so Bevy treats this as a D2Array
+    // texture from the start; texture_view_descriptor forces a D2Array view.
+    const FOG_ATLAS_FRAMES: u32 = 7;
+    let mut fog_image = Image::new(
+        Extent3d {
+            width: 64,
+            height: 64,
+            depth_or_array_layers: FOG_ATLAS_FRAMES,
+        },
+        TextureDimension::D2,
+        vec![255u8; 64 * 64 * 4 * FOG_ATLAS_FRAMES as usize],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    fog_image.texture_view_descriptor = Some(TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::D2Array),
+        ..default()
+    });
+    let fog_atlas_handle = images.add(fog_image);
+    commands.insert_resource(FogShadowAtlas {
+        atlas: fog_atlas_handle,
     });
 
     // Load a sprite for the player; you must have an image at "assets/Dwarf.png"

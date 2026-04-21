@@ -232,6 +232,7 @@ impl WorldState {
         }
         self.entities.insert(id, EntityState::new(position));
         self.next_entity_id = self.next_entity_id.max(id.saturating_add(1));
+        self.get_or_create_fov(id);
         Ok(())
     }
 
@@ -246,6 +247,7 @@ impl WorldState {
         }
         self.entities.insert(candidate, EntityState::new(position));
         self.next_entity_id = candidate.saturating_add(1);
+        self.get_or_create_fov(candidate);
         Ok(candidate)
     }
 

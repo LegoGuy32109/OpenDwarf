@@ -2,8 +2,8 @@ use bevy::prelude::*;
 
 #[derive(Component, Debug, Clone, Copy)]
 pub struct MapCoordinates {
-    origin: IVec3,
-    map_size: UVec3,
+    pub origin: IVec3,
+    pub map_size: UVec3,
 }
 
 impl MapCoordinates {
