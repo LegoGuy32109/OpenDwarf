@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::world_api::{
-    BlockType, EntityMovedDelta, EntityMovementSnapshot, EntitySnapshot, Vec3i, Vec3u,
+    BlockType, EntityMovedDelta, EntityMovementSnapshot, EntitySnapshot, TileMemory, Vec3i, Vec3u,
     WorldCommand, WorldDelta, WorldSnapshot,
 };
 
@@ -155,6 +154,14 @@ impl EntityState {
 }
 
 #[derive(Debug, Clone)]
+pub struct EntityFov {
+    pub entity_id: u64,
+    pub visible: HashSet<Vec3i>,
+    pub memory: HashMap<Vec3i, TileMemory>,
+    pub dirty: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct WorldState {
     tick: u64,
     chunk_edge: u32,
@@ -164,6 +171,7 @@ pub struct WorldState {
     entities: BTreeMap<u64, EntityState>,
     loaded_chunks: HashSet<Vec3i>,
     next_entity_id: u64,
+    entity_fov: HashMap<u64, EntityFov>,
 }
 
 impl WorldState {
@@ -204,6 +212,7 @@ impl WorldState {
             entities: BTreeMap::new(),
             loaded_chunks: make_initial_loaded_chunks(config.world_chunks),
             next_entity_id: 1,
+            entity_fov: HashMap::new(),
         }
     }
 
@@ -612,6 +621,7 @@ impl WorldState {
             world_chunks: self.world_chunks,
             blocks: self.blocks.clone(),
             entities,
+            visibility: None,
         }
     }
 

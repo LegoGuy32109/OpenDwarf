@@ -45,6 +45,28 @@ pub enum BlockType {
     SolidStone,
 }
 
+/// What a given observer last saw at a specific position.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TileMemory {
+    /// Block type at the time of observation.
+    pub block: BlockType,
+    /// Sim tick when this tile was last observed (for degradation).
+    pub tick_observed: u64,
+}
+
+/// Visibility snapshot for a single observer entity.
+/// Included in WorldSnapshot so the render layer can drive the fog overlay
+/// without recomputing FOV on the client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VisibilitySnapshot {
+    pub entity_id: u64,
+    /// All positions currently in FOV. Positions absent from this set
+    /// and absent from `memory` are Unknown.
+    pub visible: Vec<Vec3i>,
+    /// Remembered tiles (observed at least once, not currently visible).
+    pub memory: std::collections::HashMap<Vec3i, TileMemory>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EntityMovementSnapshot {
     pub origin: Vec3i,
@@ -71,6 +93,8 @@ pub struct WorldSnapshot {
     pub world_chunks: Vec3u,
     pub blocks: Vec<BlockType>,
     pub entities: Vec<EntitySnapshot>,
+    /// Present in entity mode, absent in master mode.
+    pub visibility: Option<VisibilitySnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
