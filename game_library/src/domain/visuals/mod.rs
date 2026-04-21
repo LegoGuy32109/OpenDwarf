@@ -14,14 +14,14 @@ const TILE_MAP_PATH: &str = "sprites/StackedTextures.png";
 // WARN: CANNOT BE A MULTIPLE OF 6
 const NUM_TILES_IN_MAP: u16 = 31;
 
-const SHADOW_ATLAS_PATH: &str = "atlases/ShadowAtlas.png";
+const EDGE_SHADOW_ATLAS_PATH: &str = "atlases/ShadowAtlas.png";
 // WARN: CANNOT BE A MULTIPLE OF 6 (Bevy constraint for 2D array reinterpretation)
-const SHADOW_ATLAS_FRAMES: u32 = 15;
+const EDGE_SHADOW_ATLAS_FRAMES: u32 = 15;
 
-const OBSCURE_ATLAS_PATH: &str = "atlases/ObscureAtlas.png";
+const CEILING_SHADOW_ATLAS_PATH: &str = "atlases/ObscureAtlas.png";
 // 15 frames for 4-bit dual-grid ceiling shadow (masks 1-15), indexed by mask-1
 // WARN: CANNOT BE A MULTIPLE OF 6
-const OBSCURE_ATLAS_FRAMES: u32 = 15;
+const CEILING_SHADOW_ATLAS_FRAMES: u32 = 15;
 
 #[derive(Component)]
 pub struct Player;
@@ -36,12 +36,12 @@ pub struct TilemapAssets {
 }
 
 #[derive(Resource, Clone)]
-pub struct ShadowAtlasAsset {
+pub struct EdgeShadowAtlas {
     pub atlas: Handle<Image>,
 }
 
 #[derive(Resource, Clone)]
-pub struct ObscureAtlasAsset {
+pub struct CeilingShadowAtlas {
     pub atlas: Handle<Image>,
 }
 
@@ -62,8 +62,8 @@ pub fn update_tileset_image(
     }
 }
 
-pub fn update_shadow_atlas_image(
-    shadow_assets: Res<ShadowAtlasAsset>,
+pub fn update_edge_shadow_atlas_image(
+    shadow_assets: Res<EdgeShadowAtlas>,
     mut events: MessageReader<AssetEvent<Image>>,
     mut images: ResMut<Assets<Image>>,
 ) {
@@ -74,13 +74,13 @@ pub fn update_shadow_atlas_image(
             let image = images
                 .get_mut(shadow_atlas_handle)
                 .expect("shadow atlas image handle should be valid");
-            let _ = image.reinterpret_stacked_2d_as_array(SHADOW_ATLAS_FRAMES);
+            let _ = image.reinterpret_stacked_2d_as_array(EDGE_SHADOW_ATLAS_FRAMES);
         }
     }
 }
 
-pub fn update_obscure_atlas_image(
-    obscure_assets: Res<ObscureAtlasAsset>,
+pub fn update_ceiling_shadow_atlas_image(
+    obscure_assets: Res<CeilingShadowAtlas>,
     mut events: MessageReader<AssetEvent<Image>>,
     mut images: ResMut<Assets<Image>>,
 ) {
@@ -91,7 +91,7 @@ pub fn update_obscure_atlas_image(
             let image = images
                 .get_mut(obscure_atlas_handle)
                 .expect("obscure atlas image handle should be valid");
-            let _ = image.reinterpret_stacked_2d_as_array(OBSCURE_ATLAS_FRAMES);
+            let _ = image.reinterpret_stacked_2d_as_array(CEILING_SHADOW_ATLAS_FRAMES);
         }
     }
 }
@@ -109,14 +109,14 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     });
 
     // Load shadow atlas for z-level depth visualization
-    let shadow_atlas: Handle<Image> = asset_server.load(SHADOW_ATLAS_PATH);
-    commands.insert_resource(ShadowAtlasAsset {
+    let shadow_atlas: Handle<Image> = asset_server.load(EDGE_SHADOW_ATLAS_PATH);
+    commands.insert_resource(EdgeShadowAtlas {
         atlas: shadow_atlas,
     });
 
     // Load obscure atlas for ceiling occlusion shadows (dual-grid, 15 frames)
-    let obscure_atlas: Handle<Image> = asset_server.load(OBSCURE_ATLAS_PATH);
-    commands.insert_resource(ObscureAtlasAsset {
+    let obscure_atlas: Handle<Image> = asset_server.load(CEILING_SHADOW_ATLAS_PATH);
+    commands.insert_resource(CeilingShadowAtlas {
         atlas: obscure_atlas,
     });
 

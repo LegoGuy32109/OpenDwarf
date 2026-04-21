@@ -111,7 +111,7 @@ pub struct TilemapRenderMetrics {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TileLayer {
     Floor,
-    ShadowOverlay,
+    EdgeShadow,
     /// Dual-grid ceiling shadow: rendered half a tile offset, shows solid blocks at z+1 above.
     CeilingShadow,
 }
@@ -402,8 +402,8 @@ pub fn project_world_to_tilemap(
     chunk_streaming_state: Option<Res<ChunkStreamingState>>,
     view_z: Res<ViewZLevel>,
     tilemap_assets: Res<TilemapAssets>,
-    shadow_atlas: Res<super::visuals::ShadowAtlasAsset>,
-    obscure_atlas: Res<super::visuals::ObscureAtlasAsset>,
+    shadow_atlas: Res<super::visuals::EdgeShadowAtlas>,
+    obscure_atlas: Res<super::visuals::CeilingShadowAtlas>,
     config: Res<TerrainConfig>,
     mut terrain: ResMut<TerrainData>,
     mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
@@ -489,8 +489,9 @@ pub fn project_world_to_tilemap(
 
             // Shadow overlay is rendered at all visible z-levels to show elevation edges.
             // To avoid visual stacking of overlapping edges, only render if there's no edge above this level.
-            let shadow_key = (chunk_xy, world_z, TileLayer::ShadowOverlay);
-            if z_levels_to_render.contains(&world_z) && !existing_chunks.contains(&shadow_key) {
+            let edge_shadow_key = (chunk_xy, world_z, TileLayer::EdgeShadow);
+            if z_levels_to_render.contains(&world_z) && !existing_chunks.contains(&edge_shadow_key)
+            {
                 // Check if the z-level above has an edge at the same location.
                 // If it does, skip rendering here (the edge above takes visual precedence).
                 let z_above = world_z + 1;
@@ -509,7 +510,7 @@ pub fn project_world_to_tilemap(
                 };
 
                 if !has_edge_above {
-                    let shadow_data = build_shadow_tile_data(
+                    let edge_shadow_data = build_edge_shadow_tile_data(
                         chunk_xy,
                         world_z,
                         chunk_edge,
@@ -517,13 +518,13 @@ pub fn project_world_to_tilemap(
                         config.world_chunks,
                     );
                     let z_offset = world_z - view_z.current;
-                    let shadow_sprite_z = calculate_sprite_z(z_offset, TileLayer::ShadowOverlay);
+                    let edge_shadow_sprite_z = calculate_sprite_z(z_offset, TileLayer::EdgeShadow);
                     let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
                     commands.spawn((
                         WorldTileChunk {
                             chunk_xy,
                             world_z,
-                            layer: TileLayer::ShadowOverlay,
+                            layer: TileLayer::EdgeShadow,
                         },
                         TilemapChunk {
                             chunk_size: UVec2::splat(chunk_edge),
@@ -531,9 +532,9 @@ pub fn project_world_to_tilemap(
                             tileset: shadow_atlas.atlas.clone(),
                             alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
                         },
-                        TilemapChunkTileData(shadow_data),
+                        TilemapChunkTileData(edge_shadow_data),
                         Transform::from_translation(
-                            chunk_world_translation_xy(chunk_xy, chunk_edge, shadow_sprite_z)
+                            chunk_world_translation_xy(chunk_xy, chunk_edge, edge_shadow_sprite_z)
                                 + Vec3::new(half_tile, half_tile, 0.0),
                         ),
                         GlobalTransform::default(),
@@ -589,7 +590,7 @@ pub fn project_world_to_tilemap(
         // CeilingShadow chunks are only valid at the exact current z-level
         let ceiling_ok =
             world_chunk.layer != TileLayer::CeilingShadow || world_chunk.world_z == view_z.current;
-        // ShadowOverlay chunks are valid at any z-level in the visible range
+        // EdgeShadow chunks are valid at any z-level in the visible range
         // (spawn logic ensures no stacking by not spawning if edge above exists)
         if !in_active_xy || !in_z_range || !ceiling_ok {
             commands.entity(entity).despawn();
@@ -607,7 +608,7 @@ pub fn project_world_to_tilemap(
         *transform = Transform::from_translation(
             if matches!(
                 world_chunk.layer,
-                TileLayer::ShadowOverlay | TileLayer::CeilingShadow
+                TileLayer::EdgeShadow | TileLayer::CeilingShadow
             ) {
                 base_translation + Vec3::new(half_tile, half_tile, 0.0)
             } else {
@@ -624,7 +625,7 @@ pub fn project_world_to_tilemap(
                 config.world_chunks,
                 z_off,
             ),
-            TileLayer::ShadowOverlay => build_shadow_tile_data(
+            TileLayer::EdgeShadow => build_edge_shadow_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
@@ -1457,7 +1458,7 @@ fn chunk_has_edge(
     false
 }
 
-fn build_shadow_tile_data(
+fn build_edge_shadow_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
     chunk_edge: u32,
@@ -1587,7 +1588,7 @@ fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
 
     match layer {
         TileLayer::Floor => base,
-        TileLayer::ShadowOverlay => base + 0.5,
+        TileLayer::EdgeShadow => base + 0.5,
         TileLayer::CeilingShadow => base + 0.75, // above edge shadows, below entities
     }
 }

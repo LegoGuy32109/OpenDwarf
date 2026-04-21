@@ -4,14 +4,14 @@
 
 Implement two distinct view modes:
 
-- **Master mode** — the current renderer, all tiles in a z level visible, can navigate all z-levels, no fog. Used for
-  development and "god view" navigation.
-- **Entity mode** — observer-dependent visibility with FOV, three-state tile rendering, and
-  spatial memory that persists across ticks. The player sees only what their entity can see or
-  has previously seen.
+- **Master mode** — the current renderer, all tiles in a z level visible, can
+  navigate all z-levels, no fog. Used for development and "god view" navigation.
+- **Entity mode** — observer-dependent visibility with FOV, three-state tile
+  rendering, and spatial memory that persists across ticks. The player sees only
+  what their entity can see or has previously seen.
 
-All visibility computation lives in `world_sim` so it is authoritative, replayed correctly,
-and can later be extended to NPCs and shared between clients.
+All visibility computation lives in `world_sim` so it is authoritative, replayed
+correctly, and can later be extended to NPCs and shared between clients.
 
 ---
 
@@ -19,22 +19,24 @@ and can later be extended to NPCs and shared between clients.
 
 **Commit: "Rename shadow layers to edge/ceiling/fog naming scheme"**
 
-Three distinct shadow concepts now have distinct names. Apply consistently everywhere in the
-codebase.
+Three distinct shadow concepts now have distinct names. Apply consistently
+everywhere in the codebase.
 
-| Old name | New name | What it renders |
-|---|---|---|
-| `TileLayer::ShadowOverlay` | `TileLayer::EdgeShadow` | depth-drop bands at tile elevation boundaries |
-| `TileLayer::CeilingShadow` | `TileLayer::CeilingShadow` | already correct — no change |
-| _(new)_ | `TileLayer::FogShadow` | three-state exploration overlay |
+| Old name                   | New name                   | What it renders                               |
+| -------------------------- | -------------------------- | --------------------------------------------- |
+| `TileLayer::ShadowOverlay` | `TileLayer::EdgeShadow`    | depth-drop bands at tile elevation boundaries |
+| `TileLayer::CeilingShadow` | `TileLayer::CeilingShadow` | already correct — no change                   |
+| _(new)_                    | `TileLayer::FogShadow`     | three-state exploration overlay               |
 
 ### Files to update
 
 **`game_library/src/domain/simulation.rs`**
 
-- `TileLayer::ShadowOverlay` → `TileLayer::EdgeShadow` (enum variant + all match arms)
+- `TileLayer::ShadowOverlay` → `TileLayer::EdgeShadow` (enum variant + all match
+  arms)
 - `build_shadow_tile_data` → `build_edge_shadow_tile_data`
-- All variable names `shadow_key`, `shadow_data`, `shadow_sprite_z` → prefix with `edge_`
+- All variable names `shadow_key`, `shadow_data`, `shadow_sprite_z` → prefix
+  with `edge_`
 - Comments referencing "shadow overlay" → "edge shadow"
 
 **`game_library/src/domain/visuals/mod.rs`**
@@ -127,22 +129,26 @@ pub struct EntityFov {
 }
 ```
 
-`EntityFov` is stored as a field inside `WorldState` (not a Bevy resource directly) so it is
-replayed correctly.
+`EntityFov` is stored as a field inside `WorldState` (not a Bevy resource
+directly) so it is replayed correctly.
 
 ### Memory degradation
 
-Memory grows as the player explores. To keep it bounded without a hard eviction rule:
+Memory grows as the player explores. To keep it bounded without a hard eviction
+rule:
 
-- When a chunk is **streamed out** of the active window, its tile memories are **pruned** from
-  the in-memory `HashMap` and can optionally be serialized alongside the chunk to disk.
-- On next visit the chunk is re-explored from scratch (tiles start as `Unknown` again until
-  the player's FOV sweeps them).
-- This means per-entity memory scales with the streaming window, not the full world size.
+- When a chunk is **streamed out** of the active window, its tile memories are
+  **pruned** from the in-memory `HashMap` and can optionally be serialized
+  alongside the chunk to disk.
+- On next visit the chunk is re-explored from scratch (tiles start as `Unknown`
+  again until the player's FOV sweeps them).
+- This means per-entity memory scales with the streaming window, not the full
+  world size.
 
-> Future: when cross-entity knowledge transfer is needed (e.g., a dwarf tells another about a
-> location), copy the relevant `TileMemory` entries into the target entity's map with the
-> original `tick_observed`. The receiver "knows" but with potentially stale data.
+> Future: when cross-entity knowledge transfer is needed (e.g., a dwarf tells
+> another about a location), copy the relevant `TileMemory` entries into the
+> target entity's map with the original `tick_observed`. The receiver "knows"
+> but with potentially stale data.
 
 ---
 
@@ -165,15 +171,15 @@ Tiles outside this cube are never visible regardless of terrain.
 
 Symmetric shadow casting (Albert Ford's algorithm) extended to 3D.
 
-The primary pass runs **per Z-slice**, iterating from `entity_z + 5` down to `entity_z - 5`.
-For each slice, a modified 2D symmetric shadow cast is run, but a candidate tile at `(x, y, z)`
-is only visible if the **vertical line of sight** from the entity up or down to that Z-level is also
-unobstructed.
+The primary pass runs **per Z-slice**, iterating from `entity_z + 5` down to
+`entity_z - 5`. For each slice, a modified 2D symmetric shadow cast is run, but
+a candidate tile at `(x, y, z)` is only visible if the **vertical line of
+sight** from the entity up or down to that Z-level is also unobstructed.
 
 **Step 1 — vertical access map**
 
-Before running per-slice shadow casting, compute which (x, y) columns are vertically reachable
-from the entity's position:
+Before running per-slice shadow casting, compute which (x, y) columns are
+vertically reachable from the entity's position:
 
 ```
 vertical_open(x, y, z_target):
@@ -182,30 +188,33 @@ vertical_open(x, y, z_target):
     return open
 ```
 
-This means looking down into a pit is only possible through continuous open air directly above
-the target tile, not around corners at the lower level.
+This means looking down into a pit is only possible through continuous open air
+directly above the target tile, not around corners at the lower level.
 
 **Step 2 — 2D shadow cast per slice**
 
-For each Z-slice, run symmetric shadow casting across the 21×21 region, treating tiles as
-opaque (`SolidStone`) or transparent (`Air`). A tile `(x, y, z_slice)` is visible only if:
+For each Z-slice, run symmetric shadow casting across the 21×21 region, treating
+tiles as opaque (`SolidStone`) or transparent (`Air`). A tile `(x, y, z_slice)`
+is visible only if:
 
 1. It passes the symmetric shadow cast in the 2D slice.
 2. `vertical_open(x, y, z_slice)` is true.
 
 **Diagonal occlusion rule**
 
-A ray cannot pass through a diagonal gap where both orthogonal neighbors are solid. This is
-the standard roguelike rule: to move from cell A to diagonal cell B, the two cells sharing an
-edge with both A and B must not both be solid.
+A ray cannot pass through a diagonal gap where both orthogonal neighbors are
+solid. This is the standard roguelike rule: to move from cell A to diagonal cell
+B, the two cells sharing an edge with both A and B must not both be solid.
 
-For 3D: the same rule applies to vertical diagonals. A ray cannot pass from `(x, y, z)` to
-`(x+1, y, z+1)` if both `(x+1, y, z)` and `(x, y, z+1)` are solid. This prevents vision
-up over ledge edges, matching the movement restriction (see Phase 3).
+For 3D: the same rule applies to vertical diagonals. A ray cannot pass from
+`(x, y, z)` to `(x+1, y, z+1)` if both `(x+1, y, z)` and `(x, y, z+1)` are
+solid. This prevents vision up over ledge edges, matching the movement
+restriction (see Phase 3).
 
 **Same-level pass**
 
-The entity's own z-level uses the standard 2D shadow cast without the vertical access check.
+The entity's own z-level uses the standard 2D shadow cast without the vertical
+access check.
 
 #### Public API
 
@@ -222,8 +231,8 @@ pub fn compute_fov(
 )
 ```
 
-After `compute_fov`, any position previously in `fov.visible` that is now absent gets its
-block type snapshotted into `fov.memory` with the current tick.
+After `compute_fov`, any position previously in `fov.visible` that is now absent
+gets its block type snapshotted into `fov.memory` with the current tick.
 
 #### Invalidation conditions
 
@@ -243,19 +252,20 @@ Use a dirty flag on `EntityFov`. Clear it after recomputation.
 
 ### File: `world_sim/src/world_core.rs`
 
-In the movement validation function (wherever `start_entity_move_with_reason` validates a
-proposed step), add a check for vertical diagonal moves:
+In the movement validation function (wherever `start_entity_move_with_reason`
+validates a proposed step), add a check for vertical diagonal moves:
 
 A move from position `from` to position `to` where two axis of movement is
-happening at the same time. For such a move, the two cells that "share edges" with both `from` and
-`to` must not both be `SolidStone`.
+happening at the same time. For such a move, the two cells that "share edges"
+with both `from` and `to` must not both be `SolidStone`.
 
 Example: moving from `(x, y, z)` to `(x+1, y, z+1)`:
 
 - Check `(x+1, y, z)` and `(x, y, z+1)`.
 - If both are solid → reject the move with reason `BlockedByDiagonal`.
 
-This mirrors the FOV rule and prevents the player clipping through ledge geometry.
+This mirrors the FOV rule and prevents the player clipping through ledge
+geometry.
 
 ---
 
@@ -276,19 +286,25 @@ pub enum ViewMode {
 
 ### Wire chat commands
 
-In the chat command handler (wherever `/` commands are parsed from the T-chat input), add:
+In the chat command handler (wherever `/` commands are parsed from the T-chat
+input), add:
 
-- `/master` → sets `ViewMode::Master`, keep camera view at current z but use the existing render technique
-- `/entity` → sets `ViewMode::Entity`, snaps view z to current entity, right now just the 'Player' represented by dwarf sprite
+- `/master` → sets `ViewMode::Master`, keep camera view at current z but use the
+  existing render technique
+- `/entity` → sets `ViewMode::Entity`, snaps view z to current entity, right now
+  just the 'Player' represented by dwarf sprite
 
 ### Z-level clamping in entity mode
 
-In `update_view_z_level` (or wherever R/V key input is processed), when `ViewMode::Entity`:
+In `update_view_z_level` (or wherever R/V key input is processed), when
+`ViewMode::Entity`:
 
 - Compute `entity_z` from `RenderEntityData`.
-- The view z floor is the lowest z-level where there is open vertical access the entity can see into
-- The view z ceiling is the highest z-level where there is open vertical access from the
-  entity's position (i.e., no solid floor directly between entity and that level).
+- The view z floor is the lowest z-level where there is open vertical access the
+  entity can see into
+- The view z ceiling is the highest z-level where there is open vertical access
+  from the entity's position (i.e., no solid floor directly between entity and
+  that level).
 - Clamp the player's requested z-level change within this dynamic range.
 
 Transition behavior:
@@ -306,30 +322,35 @@ Transition behavior:
 
 - Add `entity_fov: Option<EntityFov>` to `WorldState`.
 - After each tick that moves the primary entity, call `compute_fov(...)`.
-- In `snapshot()`, if `entity_fov` is present, populate `WorldSnapshot::visibility`.
-- In `apply_command` / `force_advance_ticks`, mark `entity_fov.dirty = true` when the
-  entity moves.
-- When block changes from a delta are applied (Phase 6d from prior work), if the changed
-  position is within the entity's visibility cube, mark `entity_fov.dirty = true`.
+- In `snapshot()`, if `entity_fov` is present, populate
+  `WorldSnapshot::visibility`.
+- In `apply_command` / `force_advance_ticks`, mark `entity_fov.dirty = true`
+  when the entity moves.
+- When block changes from a delta are applied (Phase 6d from prior work), if the
+  changed position is within the entity's visibility cube, mark
+  `entity_fov.dirty = true`.
 
 ### Snapshot path
 
-`VisibilitySnapshot::visible` is a `Vec<Vec3i>` of all currently lit positions. The render
-layer consults this to decide between the three tile states. The full `memory` map is only
-sent on the initial snapshot; subsequent deltas carry only changes to it.
+`VisibilitySnapshot::visible` is a `Vec<Vec3i>` of all currently lit positions.
+The render layer consults this to decide between the three tile states. The full
+`memory` map is only sent on the initial snapshot; subsequent deltas carry only
+changes to it.
 
-> Future: when multiplayer is extended, each connected player gets its own `EntityFov` keyed
-> by their entity id, and visibility is sent per-client.
+> Future: when multiplayer is extended, each connected player gets its own
+> `EntityFov` keyed by their entity id, and visibility is sent per-client.
 
 ---
 
 ## Phase 6 — Render: Three-State Fog Overlay
 
-**Commit: "Add FogShadow tile layer, three-state visibility rendering in entity mode"**
+**Commit: "Add FogShadow tile layer, three-state visibility rendering in entity
+mode"**
 
 ### New render data
 
-In `game_library/src/domain/simulation.rs`, add to `RenderEntityData` (or parallel resource):
+In `game_library/src/domain/simulation.rs`, add to `RenderEntityData` (or
+parallel resource):
 
 ```rust
 pub struct FogData {
@@ -343,17 +364,18 @@ Populated from `WorldSnapshot::visibility` in `apply_snapshot` / `apply_update`.
 
 ### `TileLayer::FogShadow`
 
-A new fourth layer rendered above the floor and edge shadow passes. The atlas for this layer
-is a solid white full-tile sprite (one frame). Color tinting drives all three states:
+A new fourth layer rendered above the floor and edge shadow passes. The atlas
+for this layer is a solid white full-tile sprite (one frame). Color tinting
+drives all three states:
 
-| State | Color |
-|---|---|
-| Visible | `Color::NONE` (transparent, no tile spawned) |
+| State      | Color                                                     |
+| ---------- | --------------------------------------------------------- |
+| Visible    | `Color::NONE` (transparent, no tile spawned)              |
 | Remembered | `Color::srgba(0.7, 0.7, 0.75, 0.55)` — grayish white tint |
-| Unknown | `Color::srgba(0.22, 0.20, 0.20, 1.0)` — flat #383137 |
+| Unknown    | `Color::srgba(0.22, 0.20, 0.20, 1.0)` — flat #383137      |
 
-Only spawn `FogShadow` tiles when `ViewMode::Entity`. In master mode, skip this layer
-entirely — no fog tiles are spawned or despawned.
+Only spawn `FogShadow` tiles when `ViewMode::Entity`. In master mode, skip this
+layer entirely — no fog tiles are spawned or despawned.
 
 ### `build_fog_tile_data`
 
@@ -366,14 +388,15 @@ fn build_fog_tile_data(
 ) -> Vec<Option<TileData>>
 ```
 
-For each tile position in the chunk: look up its world position in `fog.visible` and
-`fog.memory`. Return `None` for visible tiles (transparent), a gray tinted tile for
-remembered, and an opaque dark tile for unknown.
+For each tile position in the chunk: look up its world position in `fog.visible`
+and `fog.memory`. Return `None` for visible tiles (transparent), a gray tinted
+tile for remembered, and an opaque dark tile for unknown.
 
 ### Despawn behavior
 
-When `ViewMode` switches from `Entity → Master`, despawn all `FogShadow` chunk entities.
-When switching `Master → Entity`, mark `FogData.dirty = true` so they are rebuilt next tick.
+When `ViewMode` switches from `Entity → Master`, despawn all `FogShadow` chunk
+entities. When switching `Master → Entity`, mark `FogData.dirty = true` so they
+are rebuilt next tick.
 
 ---
 
@@ -395,9 +418,9 @@ max_visible_z(entity_pos, blocks, world_chunks, chunk_edge):
     return z
 ```
 
-This means the player can raise the camera above their head only if there is actually open
-air above them (a tall cave, a shaft). If they are under a solid ceiling they cannot raise
-the view at all.
+This means the player can raise the camera above their head only if there is
+actually open air above them (a tall cave, a shaft). If they are under a solid
+ceiling they cannot raise the view at all.
 
 Wire into `update_view_z_level` gated on `ViewMode::Entity`.
 
@@ -407,23 +430,25 @@ Wire into `update_view_z_level` gated on `ViewMode::Entity`.
 
 After all phases, the layer rendering order per z-slice (front to back):
 
-| Z position (sprite_z) | Layer | Description |
-|---|---|---|
-| base + 2.0 | `FogShadow` | exploration fog, gated on entity mode |
-| base + 0.75 | `CeilingShadow` | ceiling occlusion dual-grid |
-| base + 0.5 | `EdgeShadow` | depth drop dual-grid |
-| base + 0.0 | `Floor` | terrain tiles |
+| Z position (sprite_z) | Layer           | Description                           |
+| --------------------- | --------------- | ------------------------------------- |
+| base + 2.0            | `FogShadow`     | exploration fog, gated on entity mode |
+| base + 0.75           | `CeilingShadow` | ceiling occlusion dual-grid           |
+| base + 0.5            | `EdgeShadow`    | depth drop dual-grid                  |
+| base + 0.0            | `Floor`         | terrain tiles                         |
 
-Entity sprites sit between `EdgeShadow` and `CeilingShadow` per prior `calculate_sprite_z`
-logic.
+Entity sprites sit between `EdgeShadow` and `CeilingShadow` per prior
+`calculate_sprite_z` logic.
 
 ---
 
 ## Implementation Order
 
-1. **Phase 0** — rename shadow layers (pure refactor, no behavior change, run `cargo check`)
+1. **Phase 0** — rename shadow layers (pure refactor, no behavior change, run
+   `cargo check`)
 2. **Phase 1** — data structures in `world_sim` (types only, no logic yet)
-3. **Phase 3** — vertical diagonal movement blocking (isolated, testable independently)
+3. **Phase 3** — vertical diagonal movement blocking (isolated, testable
+   independently)
 4. **Phase 2** — 3D FOV algorithm in `fov.rs` with unit tests
 5. **Phase 4** — ViewMode resource and /master /entity commands
 6. **Phase 5** — wire FOV into WorldState tick and snapshot path
@@ -434,15 +459,15 @@ logic.
 
 ## Critical Files
 
-| File | Change |
-|---|---|
-| `world_sim/src/world_api.rs` | `TileMemory`, `TileVisibility`, `VisibilitySnapshot`, extend `WorldSnapshot` |
-| `world_sim/src/world_core.rs` | `EntityFov` in `WorldState`, FOV dirty wiring, vertical diagonal move block |
-| `world_sim/src/fov.rs` | _(new)_ 3D shadow casting implementation |
-| `game_library/src/domain/simulation.rs` | Shadow rename, `FogData`, `build_fog_tile_data`, fog layer spawn/despawn, z clamp |
-| `game_library/src/domain/visuals/mod.rs` | Atlas asset renames |
-| `game_library/src/domain/mod.rs` | Import renames, register `ViewMode` resource |
-| `game_library/src/resources/view_mode.rs` | _(new)_ `ViewMode` enum |
+| File                                      | Change                                                                            |
+| ----------------------------------------- | --------------------------------------------------------------------------------- |
+| `world_sim/src/world_api.rs`              | `TileMemory`, `TileVisibility`, `VisibilitySnapshot`, extend `WorldSnapshot`      |
+| `world_sim/src/world_core.rs`             | `EntityFov` in `WorldState`, FOV dirty wiring, vertical diagonal move block       |
+| `world_sim/src/fov.rs`                    | _(new)_ 3D shadow casting implementation                                          |
+| `game_library/src/domain/simulation.rs`   | Shadow rename, `FogData`, `build_fog_tile_data`, fog layer spawn/despawn, z clamp |
+| `game_library/src/domain/visuals/mod.rs`  | Atlas asset renames                                                               |
+| `game_library/src/domain/mod.rs`          | Import renames, register `ViewMode` resource                                      |
+| `game_library/src/resources/view_mode.rs` | _(new)_ `ViewMode` enum                                                           |
 
 ---
 
@@ -454,7 +479,8 @@ logic.
 - [ ] Solid blocks occlude sight; diagonal gaps do not allow diagonal vision
 - [ ] Vertical diagonal solid pairs block sight over ledges
 - [ ] Vertical diagonal movement through solid pairs is rejected
-- [ ] Camera z-level in entity mode is clamped to the entity's open vertical range
+- [ ] Camera z-level in entity mode is clamped to the entity's open vertical
+      range
 - [ ] `/master` shows all tiles at all z-levels with no fog
 - [ ] `/entity` activates fog and z-level restriction
 - [ ] Memory is pruned when chunks are streamed out
