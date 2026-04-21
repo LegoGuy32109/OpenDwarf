@@ -6,6 +6,7 @@ use bevy::render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreproc
 use crate::resources::game_mode::GameMode;
 use crate::resources::input_state::{InputState, update_input_state};
 use crate::resources::player_focus_state::PlayerFocusState;
+use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 
 pub mod messaging;
@@ -116,6 +117,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_message::<MenuEvent>()
             .init_resource::<InputState>()
             .init_resource::<PlayerFocusState>()
+            .init_resource::<ViewMode>()
             .init_resource::<ViewZLevel>()
             .insert_non_send_resource(MultiplayerController::default())
             // debug systems

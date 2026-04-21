@@ -7,6 +7,7 @@ use bevy::ui::UiSystems;
 use crate::resources::game_mode::GameMode;
 use crate::resources::input_state::{InputCommand, InputState};
 use crate::resources::player_focus_state::PlayerFocusState;
+use crate::resources::view_mode::ViewMode;
 
 use super::super::chat_bubbles::ChatBubbleEvent;
 use super::super::visual_utils::color_from_hex_alpha;
@@ -40,6 +41,7 @@ fn chat_menu_open_system(
     input_state: Res<InputState>,
     mut player_focus_state: ResMut<PlayerFocusState>,
     mut next_state: ResMut<NextState<GameMode>>,
+    mut view_mode: ResMut<ViewMode>,
     mut menu_query: Query<(Entity, &mut Visibility), With<ChatMenu>>,
     text_query: Query<&ChatBuffer, With<ChatMenuText>>,
     mut menu_events: MessageWriter<MenuEvent>,
@@ -76,7 +78,13 @@ fn chat_menu_open_system(
                 && let Ok(buffer) = text_query.single()
                 && !buffer.0.is_empty()
             {
-                chat_bubble_events.write(ChatBubbleEvent::from_chat_input(&buffer.0));
+                let input = buffer.0.trim();
+                // Check if this is a command (starts with /)
+                if input.starts_with('/') {
+                    handle_chat_command(input, &mut view_mode);
+                } else {
+                    chat_bubble_events.write(ChatBubbleEvent::from_chat_input(input));
+                }
             }
             next_state.set(GameMode::World);
             menu_events.write(MenuEvent::CloseCurrentMenu);
@@ -341,6 +349,23 @@ fn delete_last_word(buffer: &mut String) {
         }
         None => {
             buffer.clear();
+        }
+    }
+}
+
+/// Handle chat commands (commands starting with /).
+fn handle_chat_command(input: &str, view_mode: &mut ViewMode) {
+    let command = input.trim_start_matches('/').to_lowercase();
+
+    match command.as_str() {
+        "master" => {
+            *view_mode = ViewMode::Master;
+        }
+        "entity" => {
+            *view_mode = ViewMode::Entity;
+        }
+        _ => {
+            // Unknown command, silently ignore
         }
     }
 }
