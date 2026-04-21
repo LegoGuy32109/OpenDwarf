@@ -826,12 +826,10 @@ fn is_diagonal_move_blocked(
         return false;
     }
 
-    // Check the two orthogonal neighbors that share edges with both from and to
-    let mut is_blocked = true;
+    // Check each diagonal plane independently (not cascading conditions)
 
-    // Check depending on which axes are moving
-    if dx != 0 && dy != 0 {
-        // Moving in x-y plane (horizontal diagonal)
+    // Check x-y plane if moving diagonally in x-y
+    if dx != 0 && dy != 0 && dz == 0 {
         let neighbor1 = Vec3i::new(to.x, from.y, to.z);
         let neighbor2 = Vec3i::new(from.x, to.y, to.z);
 
@@ -842,11 +840,11 @@ fn is_diagonal_move_blocked(
             .map(|b| matches!(b, BlockType::SolidStone))
             .unwrap_or(false);
 
-        is_blocked = neighbor1_solid && neighbor2_solid;
+        return neighbor1_solid && neighbor2_solid;
     }
 
-    if !is_blocked && dx != 0 && dz != 0 {
-        // Moving in x-z plane (vertical-x diagonal)
+    // Check x-z plane if moving diagonally in x-z
+    if dx != 0 && dz != 0 && dy == 0 {
         let neighbor1 = Vec3i::new(to.x, from.y, from.z);
         let neighbor2 = Vec3i::new(from.x, from.y, to.z);
 
@@ -857,11 +855,11 @@ fn is_diagonal_move_blocked(
             .map(|b| matches!(b, BlockType::SolidStone))
             .unwrap_or(false);
 
-        is_blocked = neighbor1_solid && neighbor2_solid;
+        return neighbor1_solid && neighbor2_solid;
     }
 
-    if !is_blocked && dy != 0 && dz != 0 {
-        // Moving in y-z plane (vertical-y diagonal)
+    // Check y-z plane if moving diagonally in y-z
+    if dy != 0 && dz != 0 && dx == 0 {
         let neighbor1 = Vec3i::new(from.x, to.y, from.z);
         let neighbor2 = Vec3i::new(from.x, from.y, to.z);
 
@@ -872,10 +870,53 @@ fn is_diagonal_move_blocked(
             .map(|b| matches!(b, BlockType::SolidStone))
             .unwrap_or(false);
 
-        is_blocked = neighbor1_solid && neighbor2_solid;
+        return neighbor1_solid && neighbor2_solid;
     }
 
-    is_blocked
+    // Check 3D diagonal (all three axes moving) - need to verify all three planes
+    if dx != 0 && dy != 0 && dz != 0 {
+        // x-y plane
+        let xy1 = Vec3i::new(to.x, from.y, from.z);
+        let xy2 = Vec3i::new(from.x, to.y, from.z);
+        let xy1_solid = block_at(xy1, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+        let xy2_solid = block_at(xy2, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+
+        if xy1_solid && xy2_solid {
+            return true;
+        }
+
+        // x-z plane
+        let xz1 = Vec3i::new(to.x, from.y, from.z);
+        let xz2 = Vec3i::new(from.x, from.y, to.z);
+        let xz1_solid = block_at(xz1, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+        let xz2_solid = block_at(xz2, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+
+        if xz1_solid && xz2_solid {
+            return true;
+        }
+
+        // y-z plane
+        let yz1 = Vec3i::new(from.x, to.y, from.z);
+        let yz2 = Vec3i::new(from.x, from.y, to.z);
+        let yz1_solid = block_at(yz1, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+        let yz2_solid = block_at(yz2, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+
+        return yz1_solid && yz2_solid;
+    }
+
+    false
 }
 
 /// Get block at world position, accounting for bounds.
