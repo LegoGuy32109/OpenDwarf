@@ -1,4 +1,5 @@
 pub mod bevy_app;
+pub mod fov;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod replay;
 #[cfg(not(target_arch = "wasm32"))]
