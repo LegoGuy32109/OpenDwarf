@@ -222,26 +222,22 @@ fn scan_quadrant(
         }
 
         shadows.extend(new_shadows);
-
-        if shadows.iter().all(|(n, d, _, _)| n * 2 >= *d) {
-            break;
-        }
     }
 }
 
+/// A tile at (col, row) occupies the angular range [col/row, (col+1)/row].
+/// It is in shadow if that range overlaps any shadow interval [start_num/start_denom, end_num/end_denom].
 fn is_in_shadow(shadows: &[(i32, i32, i32, i32)], col: i32, row: i32) -> bool {
     if row == 0 {
         return false;
     }
+    let tile_left = col as f64 / row as f64;
+    let tile_right = (col + 1) as f64 / row as f64;
 
-    for &(shadow_start_num, shadow_start_denom, shadow_end_num, shadow_end_denom) in shadows {
-        let left_fov = (col * shadow_start_denom) as f64 / row as f64;
-        let right_fov = ((col + 1) * shadow_start_denom) as f64 / row as f64;
-
-        let shadow_start = (shadow_start_num as f64) / (shadow_start_denom as f64);
-        let shadow_end = (shadow_end_num as f64) / (shadow_end_denom as f64);
-
-        if left_fov < shadow_end && right_fov > shadow_start {
+    for &(start_num, start_denom, end_num, end_denom) in shadows {
+        let shadow_start = start_num as f64 / start_denom as f64;
+        let shadow_end = end_num as f64 / end_denom as f64;
+        if tile_left < shadow_end && tile_right > shadow_start {
             return true;
         }
     }
