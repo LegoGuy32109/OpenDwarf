@@ -399,6 +399,18 @@ impl WorldState {
                 to: target_position,
             });
         }
+
+        // Check diagonal movement blocking
+        if is_diagonal_move_blocked(
+            current.position,
+            target_position,
+            &self.blocks,
+            self.world_chunks,
+            self.chunk_edge,
+        ) {
+            return Err(MoveEntityError::Blocked);
+        }
+
         let Some(target_chunk) = self.world_position_to_chunk_coord(target_position) else {
             return Err(MoveEntityError::OutOfBounds {
                 from: current.position,
@@ -740,6 +752,118 @@ fn movement_distance_between(from: [f32; 3], to: Vec3i) -> f32 {
     let y = to[1] - from[1];
     let z = to[2] - from[2];
     (x * x + y * y + z * z).sqrt()
+}
+
+/// Check if a diagonal move from `from` to `to` is blocked by solid orthogonal neighbors.
+/// A diagonal move moves along 2+ axes. The two cells that share edges with both
+/// positions must not both be solid for the move to be valid.
+fn is_diagonal_move_blocked(
+    from: Vec3i,
+    to: Vec3i,
+    blocks: &[BlockType],
+    world_chunks: Vec3u,
+    chunk_edge: u32,
+) -> bool {
+    let dx = (to.x - from.x).signum();
+    let dy = (to.y - from.y).signum();
+    let dz = (to.z - from.z).signum();
+
+    // Count how many axes are moving
+    let axes_moving = (dx != 0 as i32) as u32 + (dy != 0 as i32) as u32 + (dz != 0 as i32) as u32;
+
+    // Only check if moving on 2+ axes (diagonal move)
+    if axes_moving < 2 {
+        return false;
+    }
+
+    // Check the two orthogonal neighbors that share edges with both from and to
+    let mut is_blocked = true;
+
+    // Check depending on which axes are moving
+    if dx != 0 && dy != 0 {
+        // Moving in x-y plane (horizontal diagonal)
+        let neighbor1 = Vec3i::new(to.x, from.y, to.z);
+        let neighbor2 = Vec3i::new(from.x, to.y, to.z);
+
+        let neighbor1_solid = block_at(neighbor1, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+        let neighbor2_solid = block_at(neighbor2, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+
+        is_blocked = neighbor1_solid && neighbor2_solid;
+    }
+
+    if !is_blocked && dx != 0 && dz != 0 {
+        // Moving in x-z plane (vertical-x diagonal)
+        let neighbor1 = Vec3i::new(to.x, from.y, from.z);
+        let neighbor2 = Vec3i::new(from.x, from.y, to.z);
+
+        let neighbor1_solid = block_at(neighbor1, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+        let neighbor2_solid = block_at(neighbor2, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+
+        is_blocked = neighbor1_solid && neighbor2_solid;
+    }
+
+    if !is_blocked && dy != 0 && dz != 0 {
+        // Moving in y-z plane (vertical-y diagonal)
+        let neighbor1 = Vec3i::new(from.x, to.y, from.z);
+        let neighbor2 = Vec3i::new(from.x, from.y, to.z);
+
+        let neighbor1_solid = block_at(neighbor1, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+        let neighbor2_solid = block_at(neighbor2, blocks, world_chunks, chunk_edge)
+            .map(|b| matches!(b, BlockType::SolidStone))
+            .unwrap_or(false);
+
+        is_blocked = neighbor1_solid && neighbor2_solid;
+    }
+
+    is_blocked
+}
+
+/// Get block at world position, accounting for bounds.
+fn block_at(
+    pos: Vec3i,
+    blocks: &[BlockType],
+    world_chunks: Vec3u,
+    chunk_edge: u32,
+) -> Option<BlockType> {
+    let chunk_edge = chunk_edge as i32;
+    let chunks_x = world_chunks.x as i32;
+    let chunks_y = world_chunks.y as i32;
+    let chunks_z = world_chunks.z as i32;
+
+    if pos.x < 0
+        || pos.y < 0
+        || pos.z < 0
+        || pos.x >= chunks_x * chunk_edge
+        || pos.y >= chunks_y * chunk_edge
+        || pos.z >= chunks_z * chunk_edge
+    {
+        return None;
+    }
+
+    let chunk_x = pos.x / chunk_edge;
+    let chunk_y = pos.y / chunk_edge;
+    let chunk_z = pos.z / chunk_edge;
+
+    let local_x = pos.x % chunk_edge;
+    let local_y = pos.y % chunk_edge;
+    let local_z = pos.z % chunk_edge;
+
+    let chunk_index = (chunk_z * chunks_y * chunks_x + chunk_y * chunks_x + chunk_x) as usize;
+    let local_index =
+        (local_z * chunk_edge * chunk_edge + local_y * chunk_edge + local_x) as usize;
+    let total_index = chunk_index * (chunk_edge * chunk_edge * chunk_edge) as usize + local_index;
+
+    blocks.get(total_index).copied()
 }
 
 fn vec3i_to_f32(position: Vec3i) -> [f32; 3] {
