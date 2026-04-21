@@ -129,7 +129,7 @@ impl Plugin for WorldSimulationPlugin {
             .init_resource::<WorldUpdateBuffer>()
             .add_systems(FixedUpdate, run_simulation_tick);
 
-        let initial_snapshot = app.world().resource::<WorldSimState>().world.snapshot();
+        let initial_snapshot = app.world_mut().resource_mut::<WorldSimState>().world.snapshot();
         app.insert_resource(WorldView(initial_snapshot.clone()));
         let loaded_chunk_count = app
             .world()

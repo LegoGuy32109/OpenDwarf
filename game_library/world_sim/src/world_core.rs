@@ -216,6 +216,16 @@ impl WorldState {
         }
     }
 
+    /// Get or create FOV state for an entity.
+    pub fn get_or_create_fov(&mut self, entity_id: u64) -> &mut EntityFov {
+        self.entity_fov.entry(entity_id).or_insert_with(|| EntityFov {
+            entity_id,
+            visible: HashSet::new(),
+            memory: HashMap::new(),
+            dirty: true,
+        })
+    }
+
     pub fn spawn_entity(&mut self, id: u64, position: Vec3i) -> Result<(), String> {
         if !self.contains_position(position) {
             return Err(format!("spawn position is out of bounds: {position:?}"));
@@ -517,6 +527,18 @@ impl WorldState {
             }
         }
 
+        // Mark FOV as dirty for the primary observer if they moved
+        if !moved_entities.is_empty() {
+            // Assume entity 1 is the primary observer
+            if let Some(moved) = moved_entities.iter().find(|m| m.id == 1) {
+                if moved.from != moved.to {
+                    if let Some(fov) = self.entity_fov.get_mut(&1) {
+                        fov.dirty = true;
+                    }
+                }
+            }
+        }
+
         Some(WorldDelta {
             tick: self.tick,
             moved_entities,
@@ -614,7 +636,25 @@ impl WorldState {
     }
 
     #[must_use]
-    pub fn snapshot(&self) -> WorldSnapshot {
+    pub fn snapshot(&mut self) -> WorldSnapshot {
+        // Recompute FOV for primary observer if dirty
+        if let Some(fov) = self.entity_fov.get_mut(&1) {
+            if fov.dirty {
+                // Get the observer's current position
+                if let Some(observer) = self.entities.get(&1) {
+                    let position = observer.position;
+                    super::fov::compute_fov(
+                        fov,
+                        position,
+                        &self.blocks,
+                        self.world_chunks,
+                        self.chunk_edge,
+                        self.tick,
+                    );
+                }
+            }
+        }
+
         let entities = self
             .entities
             .iter()
@@ -627,13 +667,23 @@ impl WorldState {
             })
             .collect();
 
+        // Build visibility snapshot for entity mode
+        let visibility = self.entity_fov.get(&1).map(|fov| {
+            use crate::world_api::VisibilitySnapshot;
+            VisibilitySnapshot {
+                entity_id: 1,
+                visible: fov.visible.iter().copied().collect(),
+                memory: fov.memory.clone(),
+            }
+        });
+
         WorldSnapshot {
             tick: self.tick,
             chunk_edge: self.chunk_edge,
             world_chunks: self.world_chunks,
             blocks: self.blocks.clone(),
             entities,
-            visibility: None,
+            visibility,
         }
     }
 
@@ -1487,9 +1537,9 @@ mod tests {
 
     #[test]
     fn cave_generation_is_deterministic_and_seeded() {
-        let world_a = cave_world("opendwarf");
-        let world_b = cave_world("opendwarf");
-        let world_c = cave_world("josh");
+        let mut world_a = cave_world("opendwarf");
+        let mut world_b = cave_world("opendwarf");
+        let mut world_c = cave_world("josh");
 
         let snapshot_a = world_a.snapshot();
         let snapshot_b = world_b.snapshot();
@@ -1504,7 +1554,7 @@ mod tests {
 
     #[test]
     fn cave_generation_uses_full_volume_and_contains_air_and_stone() {
-        let world = cave_world("karly");
+        let mut world = cave_world("karly");
         let snapshot = world.snapshot();
         let expected_blocks = usize::try_from(snapshot.chunk_edge)
             .expect("chunk edge should fit in usize")
@@ -1527,7 +1577,7 @@ mod tests {
 
     #[test]
     fn cave_generation_keeps_noise_within_the_playable_band() {
-        let world = cave_world("opendwarf");
+        let mut world = cave_world("opendwarf");
         let (min, max) = world.centered_bounds();
 
         for z in min.z..=max.z {
@@ -1558,7 +1608,7 @@ mod tests {
 
     #[test]
     fn cave_generation_keeps_the_band_varied_across_slices() {
-        let world = cave_world("josh");
+        let mut world = cave_world("josh");
         let adjacent_difference = slice_difference_ratio(&world, -1, 0);
         let opposite_difference = slice_difference_ratio(&world, 0, 1);
 
