@@ -28,6 +28,7 @@ pub fn compute_fov(
                 fov,
                 position.x,
                 position.y,
+                entity_z,
                 z,
                 blocks,
                 world_chunks,
@@ -47,6 +48,7 @@ pub fn compute_fov(
                 fov,
                 position.x,
                 position.y,
+                entity_z,
                 z,
                 blocks,
                 world_chunks,
@@ -101,6 +103,7 @@ fn compute_2d_fov(
     fov: &mut super::world_core::EntityFov,
     entity_x: i32,
     entity_y: i32,
+    entity_z: i32,
     z: i32,
     blocks: &[BlockType],
     world_chunks: Vec3u,
@@ -119,6 +122,7 @@ fn compute_2d_fov(
                 fov,
                 entity_x,
                 entity_y,
+                entity_z,
                 z,
                 dx,
                 dy,
@@ -132,6 +136,7 @@ fn compute_2d_fov(
                 fov,
                 entity_x,
                 entity_y,
+                entity_z,
                 z,
                 dx,
                 dy,
@@ -152,6 +157,7 @@ fn scan_quadrant(
     fov: &mut super::world_core::EntityFov,
     entity_x: i32,
     entity_y: i32,
+    entity_z: i32,
     z: i32,
     dx: i32,
     dy: i32,
@@ -179,7 +185,7 @@ fn scan_quadrant(
                 let pos = Vec3i::new(x, y, z);
 
                 let visible = if vertical_check {
-                    is_vertically_open(entity_x, entity_y, z, z, blocks, world_chunks, chunk_edge)
+                    is_vertically_open(x, y, entity_z, z, blocks, world_chunks, chunk_edge)
                         && !is_diagonally_blocked(
                             x,
                             y,

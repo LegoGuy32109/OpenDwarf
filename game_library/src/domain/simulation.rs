@@ -1748,7 +1748,7 @@ fn build_fog_tile_data(
             } else {
                 // Unknown — opaque dark
                 let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgba(0.012, 0.00, 0.01, 1.0);
+                td.color = Color::srgb_u8(0x34, 0x2f, 0x37);
                 tile_data[idx] = Some(td);
             }
         }
