@@ -1,11 +1,9 @@
 use crate::world_api::{BlockType, TileMemory, Vec3i, Vec3u};
 
-const FOV_RADIUS_XY: i32 = 4;
-const FOV_RADIUS_UP: i32 = 4;
-const FOV_RADIUS_DOWN: i32 = 4;
+const FOV_RADIUS: i32 = 5;
 
-/// Recomputes `fov.visible` for the given entity position.
-/// Call once per sim tick when the entity has moved or nearby terrain changed.
+/// Recomputes `fov.visible` for the given entity position using 3D DDA ray casting.
+/// Every tile within a spherical radius is tested with a ray from the entity center.
 pub fn compute_fov(
     fov: &mut super::world_core::EntityFov,
     position: Vec3i,
@@ -14,51 +12,40 @@ pub fn compute_fov(
     chunk_edge: u32,
     current_tick: u64,
 ) {
-    // Snapshot current visible set for memory update
     let previously_visible = std::mem::take(&mut fov.visible);
     fov.dirty = false;
 
-    let entity_z = position.z;
+    let r_sq = FOV_RADIUS * FOV_RADIUS;
 
-    // Iterate through z-slices
-    for z in (entity_z - FOV_RADIUS_DOWN)..=(entity_z + FOV_RADIUS_UP) {
-        if z == entity_z {
-            // Same level: standard 2D symmetric shadow cast
-            compute_2d_fov(
-                fov,
-                position.x,
-                position.y,
-                entity_z,
-                z,
-                blocks,
-                world_chunks,
-                chunk_edge,
-                false,
-            );
-        } else if is_vertically_open(
-            position.x,
-            position.y,
-            entity_z,
-            z,
-            blocks,
-            world_chunks,
-            chunk_edge,
-        ) {
-            compute_2d_fov(
-                fov,
-                position.x,
-                position.y,
-                entity_z,
-                z,
-                blocks,
-                world_chunks,
-                chunk_edge,
-                true,
-            );
+    for dz in -FOV_RADIUS..=FOV_RADIUS {
+        for dy in -FOV_RADIUS..=FOV_RADIUS {
+            for dx in -FOV_RADIUS..=FOV_RADIUS {
+                if dx * dx + dy * dy + dz * dz > r_sq {
+                    continue;
+                }
+                let candidate =
+                    Vec3i::new(position.x + dx, position.y + dy, position.z + dz);
+                if has_los(position, candidate, blocks, world_chunks, chunk_edge) {
+                    fov.visible.insert(candidate);
+                }
+            }
         }
     }
 
-    // Update memory: tiles that were visible but are no longer visible get recorded
+    // For every visible tile at or below the entity's z-level, also reveal the tile
+    // directly underneath. This fills in the floor at the base of walls when looking
+    // horizontally or downward, without affecting upward ledge occlusion.
+    let lower_half: Vec<Vec3i> = fov
+        .visible
+        .iter()
+        .filter(|p| p.z <= position.z)
+        .copied()
+        .collect();
+    for pos in lower_half {
+        fov.visible.insert(Vec3i::new(pos.x, pos.y, pos.z - 1));
+    }
+
+    // Tiles that were visible but are no longer visible become memory entries.
     for pos in previously_visible {
         if !fov.visible.contains(&pos) {
             if let Some(block) = block_at(pos, blocks, world_chunks, chunk_edge) {
@@ -74,250 +61,84 @@ pub fn compute_fov(
     }
 }
 
-/// Check if there is vertical line of sight from (x, y, entity_z) to (x, y, target_z).
-fn is_vertically_open(
-    x: i32,
-    y: i32,
-    entity_z: i32,
-    target_z: i32,
+/// Returns true if there is an unobstructed line of sight from `from` to `to`.
+/// Uses a 3D DDA ray march. Intermediate voxels that are SolidStone block LOS;
+/// the source and target voxels themselves are never checked for blocking.
+fn has_los(
+    from: Vec3i,
+    to: Vec3i,
     blocks: &[BlockType],
     world_chunks: Vec3u,
     chunk_edge: u32,
 ) -> bool {
-    let start = entity_z.min(target_z);
-    let end = entity_z.max(target_z);
+    if from == to {
+        return true;
+    }
 
-    for z in (start + 1)..end {
+    // Ray from center of `from` to center of `to`
+    let fx = from.x as f32 + 0.5;
+    let fy = from.y as f32 + 0.5;
+    let fz = from.z as f32 + 0.5;
+
+    let dir_x = to.x as f32 + 0.5 - fx;
+    let dir_y = to.y as f32 + 0.5 - fy;
+    let dir_z = to.z as f32 + 0.5 - fz;
+
+    let step_x: i32 = if dir_x >= 0.0 { 1 } else { -1 };
+    let step_y: i32 = if dir_y >= 0.0 { 1 } else { -1 };
+    let step_z: i32 = if dir_z >= 0.0 { 1 } else { -1 };
+
+    // t_delta: how much the ray parameter increases per unit step on each axis.
+    let t_delta_x = if dir_x == 0.0 { f32::INFINITY } else { (1.0 / dir_x).abs() };
+    let t_delta_y = if dir_y == 0.0 { f32::INFINITY } else { (1.0 / dir_y).abs() };
+    let t_delta_z = if dir_z == 0.0 { f32::INFINITY } else { (1.0 / dir_z).abs() };
+
+    // t_max: parameter value at first axis crossing from entity center.
+    // Starting at tile center (offset 0.5 within the voxel), the first crossing
+    // is always 0.5 voxel-units away along that axis.
+    let mut t_max_x = if dir_x == 0.0 { f32::INFINITY } else { 0.5 / dir_x.abs() };
+    let mut t_max_y = if dir_y == 0.0 { f32::INFINITY } else { 0.5 / dir_y.abs() };
+    let mut t_max_z = if dir_z == 0.0 { f32::INFINITY } else { 0.5 / dir_z.abs() };
+
+    let mut cx = from.x;
+    let mut cy = from.y;
+    let mut cz = from.z;
+
+    // Worst-case steps: Manhattan distance plus a small buffer.
+    let max_steps = (from.x - to.x).abs()
+        + (from.y - to.y).abs()
+        + (from.z - to.z).abs()
+        + 1;
+
+    for _ in 0..max_steps {
+        // Advance to the next voxel boundary.
+        if t_max_x <= t_max_y && t_max_x <= t_max_z {
+            cx += step_x;
+            t_max_x += t_delta_x;
+        } else if t_max_y <= t_max_z {
+            cy += step_y;
+            t_max_y += t_delta_y;
+        } else {
+            cz += step_z;
+            t_max_z += t_delta_z;
+        }
+
+        if cx == to.x && cy == to.y && cz == to.z {
+            return true;
+        }
+
+        let pos = Vec3i::new(cx, cy, cz);
         if matches!(
-            block_at(Vec3i::new(x, y, z), blocks, world_chunks, chunk_edge),
+            block_at(pos, blocks, world_chunks, chunk_edge),
             Some(BlockType::SolidStone)
         ) {
             return false;
         }
     }
+
     true
 }
 
-/// Compute 2D symmetric shadow cast for a single z-level using all 8 octants.
-fn compute_2d_fov(
-    fov: &mut super::world_core::EntityFov,
-    entity_x: i32,
-    entity_y: i32,
-    entity_z: i32,
-    z: i32,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
-    chunk_edge: u32,
-    vertical_check: bool,
-) {
-    // The entity's own position is always visible
-    fov.visible.insert(Vec3i::new(entity_x, entity_y, z));
-
-    // Run symmetric shadow casting in all 8 octants.
-    // swap_axes=false: row advances in dy direction, col sweeps in dx (y-dominant octants)
-    // swap_axes=true:  row advances in dx direction, col sweeps in dy (x-dominant octants)
-    for dx in [-1i32, 1] {
-        for dy in [-1i32, 1] {
-            scan_quadrant(
-                fov,
-                entity_x,
-                entity_y,
-                entity_z,
-                z,
-                dx,
-                dy,
-                false,
-                blocks,
-                world_chunks,
-                chunk_edge,
-                vertical_check,
-            );
-            scan_quadrant(
-                fov,
-                entity_x,
-                entity_y,
-                entity_z,
-                z,
-                dx,
-                dy,
-                true,
-                blocks,
-                world_chunks,
-                chunk_edge,
-                vertical_check,
-            );
-        }
-    }
-}
-
-/// Process one octant of the FOV using symmetric shadow casting.
-/// swap_axes=false: row is the primary axis (dy direction), col sweeps in dx direction
-/// swap_axes=true:  row is the primary axis (dx direction), col sweeps in dy direction
-fn scan_quadrant(
-    fov: &mut super::world_core::EntityFov,
-    entity_x: i32,
-    entity_y: i32,
-    entity_z: i32,
-    z: i32,
-    dx: i32,
-    dy: i32,
-    swap_axes: bool,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
-    chunk_edge: u32,
-    vertical_check: bool,
-) {
-    let mut shadows: Vec<(i32, i32, i32, i32)> = Vec::new();
-
-    for row in 1..=FOV_RADIUS_XY {
-        let mut new_shadows = Vec::new();
-
-        for col in 0..=row {
-            let (x, y) = if swap_axes {
-                (entity_x + dx * row, entity_y + dy * col)
-            } else {
-                (entity_x + dx * col, entity_y + dy * row)
-            };
-
-            if is_in_shadow(&shadows, col, row) {
-                new_shadows.push(compute_shadow(col, row));
-            } else {
-                let pos = Vec3i::new(x, y, z);
-
-                let visible = if vertical_check {
-                    is_vertically_open(x, y, entity_z, z, blocks, world_chunks, chunk_edge)
-                        && !is_diagonally_blocked(
-                            x,
-                            y,
-                            z,
-                            dx,
-                            dy,
-                            col,
-                            row,
-                            swap_axes,
-                            blocks,
-                            world_chunks,
-                            chunk_edge,
-                        )
-                } else {
-                    !is_horizontally_diagonally_blocked(
-                        x,
-                        y,
-                        z,
-                        dx,
-                        dy,
-                        col,
-                        row,
-                        blocks,
-                        world_chunks,
-                        chunk_edge,
-                    )
-                };
-
-                if visible {
-                    fov.visible.insert(pos);
-                }
-
-                if matches!(
-                    block_at(pos, blocks, world_chunks, chunk_edge),
-                    Some(BlockType::SolidStone)
-                ) {
-                    new_shadows.push(compute_shadow(col, row));
-                }
-            }
-        }
-
-        shadows.extend(new_shadows);
-    }
-}
-
-/// A tile at (col, row) occupies the angular range [col/row, (col+1)/row].
-/// It is in shadow if that range overlaps any shadow interval [start_num/start_denom, end_num/end_denom].
-fn is_in_shadow(shadows: &[(i32, i32, i32, i32)], col: i32, row: i32) -> bool {
-    if row == 0 {
-        return false;
-    }
-    let tile_left = col as f64 / row as f64;
-    let tile_right = (col + 1) as f64 / row as f64;
-
-    for &(start_num, start_denom, end_num, end_denom) in shadows {
-        let shadow_start = start_num as f64 / start_denom as f64;
-        let shadow_end = end_num as f64 / end_denom as f64;
-        if tile_left < shadow_end && tile_right > shadow_start {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn compute_shadow(col: i32, row: i32) -> (i32, i32, i32, i32) {
-    (col, row + 1, col + 1, row)
-}
-
-/// Diagonal occlusion on the same z-level: blocked if both orthogonal neighbors are solid.
-fn is_horizontally_diagonally_blocked(
-    x: i32,
-    y: i32,
-    z: i32,
-    dx: i32,
-    dy: i32,
-    col: i32,
-    row: i32,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
-    chunk_edge: u32,
-) -> bool {
-    if col == 0 || row == 0 {
-        return false;
-    }
-
-    let ortho1 = Vec3i::new(x - dx, y, z);
-    let ortho2 = Vec3i::new(x, y - dy, z);
-
-    matches!(
-        block_at(ortho1, blocks, world_chunks, chunk_edge),
-        Some(BlockType::SolidStone)
-    ) && matches!(
-        block_at(ortho2, blocks, world_chunks, chunk_edge),
-        Some(BlockType::SolidStone)
-    )
-}
-
-fn is_diagonally_blocked(
-    x: i32,
-    y: i32,
-    z: i32,
-    dx: i32,
-    dy: i32,
-    col: i32,
-    row: i32,
-    swap_axes: bool,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
-    chunk_edge: u32,
-) -> bool {
-    if col == 0 || row == 0 {
-        return false;
-    }
-
-    // In swapped octants the primary sweep direction reverses meaning of dx/dy for neighbors
-    let (check_x, check_y) = if swap_axes {
-        (Vec3i::new(x - dx, y, z), Vec3i::new(x, y - dy, z))
-    } else {
-        (Vec3i::new(x - dx, y, z), Vec3i::new(x, y - dy, z))
-    };
-
-    matches!(
-        block_at(check_x, blocks, world_chunks, chunk_edge),
-        Some(BlockType::SolidStone)
-    ) && matches!(
-        block_at(check_y, blocks, world_chunks, chunk_edge),
-        Some(BlockType::SolidStone)
-    )
-}
-
-/// Get block at world position using the same centered coordinate system as WorldState::block_at.
 fn block_at(
     pos: Vec3i,
     blocks: &[BlockType],
@@ -328,7 +149,6 @@ fn block_at(
     let sy = (world_chunks.y * chunk_edge) as i32;
     let sz = (world_chunks.z * chunk_edge) as i32;
 
-    // Shift from centered coords to array indices
     let ix = pos.x + sx / 2;
     let iy = pos.y + sy / 2;
     let iz = pos.z + sz / 2;

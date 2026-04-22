@@ -91,7 +91,9 @@ pub struct WorldSnapshot {
     pub tick: u64,
     pub chunk_edge: u32,
     pub world_chunks: Vec3u,
-    pub blocks: Vec<BlockType>,
+    /// Only the blocks the observer can currently see or has previously seen.
+    /// Unknown positions are absent and treated as opaque by the renderer.
+    pub visible_blocks: std::collections::HashMap<Vec3i, BlockType>,
     pub entities: Vec<EntitySnapshot>,
     /// Present in entity mode, absent in master mode.
     pub visibility: Option<VisibilitySnapshot>,

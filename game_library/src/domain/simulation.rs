@@ -64,7 +64,7 @@ pub struct TerrainConfig {
 
 #[derive(Resource, Default)]
 pub struct TerrainData {
-    pub blocks: Vec<BlockType>,
+    pub blocks: HashMap<Vec3i, BlockType>,
     pub dirty: bool,
 }
 
@@ -484,7 +484,6 @@ pub fn project_world_to_tilemap(
                     world_z,
                     chunk_edge,
                     &terrain.blocks,
-                    config.world_chunks,
                     z_offset,
                 );
 
@@ -527,7 +526,6 @@ pub fn project_world_to_tilemap(
                         z_above,
                         chunk_edge,
                         &terrain.blocks,
-                        config.world_chunks,
                     )
                 } else {
                     // If above is outside the visible range, render edges at this level
@@ -540,7 +538,6 @@ pub fn project_world_to_tilemap(
                         world_z,
                         chunk_edge,
                         &terrain.blocks,
-                        config.world_chunks,
                     );
                     let z_offset = world_z - view_z.current;
                     let edge_shadow_sprite_z = calculate_sprite_z(z_offset, TileLayer::EdgeShadow);
@@ -578,7 +575,6 @@ pub fn project_world_to_tilemap(
                     world_z,
                     chunk_edge,
                     &terrain.blocks,
-                    config.world_chunks,
                 );
                 let ceiling_sprite_z = calculate_sprite_z(0, TileLayer::CeilingShadow);
                 let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
@@ -682,7 +678,6 @@ pub fn project_world_to_tilemap(
                 world_chunk.world_z,
                 chunk_edge,
                 &terrain.blocks,
-                config.world_chunks,
                 z_off,
             ),
             TileLayer::EdgeShadow => build_edge_shadow_tile_data(
@@ -690,14 +685,12 @@ pub fn project_world_to_tilemap(
                 world_chunk.world_z,
                 chunk_edge,
                 &terrain.blocks,
-                config.world_chunks,
             ),
             TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
                 &terrain.blocks,
-                config.world_chunks,
             ),
             TileLayer::FogShadow => build_fog_tile_data(
                 world_chunk.chunk_xy,
@@ -784,22 +777,12 @@ pub fn draw_depth_labels(
                         world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
 
                     // Only label air tiles that have shadows
-                    if matches!(
-                        block_at_world_position(
-                            &terrain.blocks,
-                            config.world_chunks,
-                            chunk_edge,
-                            world_position
-                        ),
-                        Some(BlockType::Air) | None
-                    ) {
+                    if terrain_block(world_position, &terrain.blocks) == BlockType::Air {
                         let mask = compute_shadow_mask_for_air(
                             world_position.x,
                             world_position.y,
                             world_position.z,
                             &terrain.blocks,
-                            config.world_chunks,
-                            chunk_edge,
                         );
 
                         // Only spawn label if there's a shadow
@@ -972,21 +955,17 @@ pub fn project_world_entities_to_sprites(
 
         let in_z_range = z_offset <= 0 && z_offset >= -Z_LEVELS_BELOW_RENDERED;
         let occluded = if in_z_range && z_offset < 0 {
-            // Check each z-level from player+1 up to camera for solid blocks
+            // Check each z-level from player+1 up to camera for solid blocks.
+            // Unknown blocks are treated as solid (conservative occlusion).
             (player_world_position.position.z + 1..=view_z.current).any(|check_z| {
-                matches!(
-                    block_at_world_position(
-                        &terrain.blocks,
-                        config.world_chunks,
-                        config.chunk_edge,
-                        Vec3i::new(
-                            player_world_position.position.x,
-                            player_world_position.position.y,
-                            check_z,
-                        ),
+                terrain_block_opaque(
+                    Vec3i::new(
+                        player_world_position.position.x,
+                        player_world_position.position.y,
+                        check_z,
                     ),
-                    Some(BlockType::SolidStone)
-                )
+                    &terrain.blocks,
+                ) == BlockType::SolidStone
             })
         } else {
             false
@@ -1164,7 +1143,7 @@ pub fn update_view_z_level(
     world_view: Res<WorldView>,
     view_mode: Res<ViewMode>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
-    terrain_config: Res<TerrainConfig>,
+    _terrain_config: Res<TerrainConfig>,
     mut view_z: ResMut<ViewZLevel>,
     mut terrain: ResMut<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
@@ -1187,15 +1166,10 @@ pub fn update_view_z_level(
                 let floor_z = player_pos.z;
                 // Ceiling: one below the first solid block above the player
                 let ceiling_z = (player_pos.z + 1..=world_max_z).find(|&z| {
-                    matches!(
-                        block_at_world_position(
-                            &terrain.blocks,
-                            terrain_config.world_chunks,
-                            terrain_config.chunk_edge,
-                            Vec3i::new(player_pos.x, player_pos.y, z),
-                        ),
-                        Some(BlockType::SolidStone)
-                    )
+                    terrain_block(
+                        Vec3i::new(player_pos.x, player_pos.y, z),
+                        &terrain.blocks,
+                    ) == BlockType::SolidStone
                 });
                 (floor_z, ceiling_z.map(|z| z - 1).unwrap_or(world_max_z))
             } else {
@@ -1263,12 +1237,12 @@ fn apply_snapshot(
 ) {
     let terrain_changed = config.chunk_edge != snapshot.chunk_edge
         || config.world_chunks != snapshot.world_chunks
-        || terrain.blocks != snapshot.blocks;
+        || terrain.blocks != snapshot.visible_blocks;
 
     entities.tick = snapshot.tick;
     config.chunk_edge = snapshot.chunk_edge;
     config.world_chunks = snapshot.world_chunks;
-    terrain.blocks = snapshot.blocks;
+    terrain.blocks = snapshot.visible_blocks;
     entities.entities = snapshot
         .entities
         .into_iter()
@@ -1322,15 +1296,9 @@ fn apply_update(
             entities.dirty = true;
 
             for change in delta.block_changes {
-                if let Some(index) = world_position_to_block_index(
-                    config.world_chunks,
-                    config.chunk_edge,
-                    change.position,
-                ) {
-                    if index < terrain.blocks.len() {
-                        terrain.blocks[index] = change.to;
-                        terrain.dirty = true;
-                    }
+                if terrain.blocks.contains_key(&change.position) {
+                    terrain.blocks.insert(change.position, change.to);
+                    terrain.dirty = true;
                 }
             }
         }
@@ -1488,8 +1456,7 @@ fn build_chunk_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
     chunk_edge: u32,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
+    blocks: &HashMap<Vec3i, BlockType>,
     z_offset: i32,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
@@ -1497,7 +1464,6 @@ fn build_chunk_tile_data(
         .expect("chunk tile count overflowed");
     let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
 
-    // For compatibility with existing code that expects Vec3i chunk coords
     let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
 
     for local_y in 0..chunk_edge {
@@ -1506,10 +1472,7 @@ fn build_chunk_tile_data(
                 world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
-            if matches!(
-                block_at_world_position(blocks, world_chunks, chunk_edge, world_position),
-                Some(BlockType::SolidStone)
-            ) {
+            if terrain_block(world_position, blocks) == BlockType::SolidStone {
                 let mut td = TileData::from_tileset_index(stone_tile_index());
                 td.color = get_depth_tint_tile_color(z_offset);
                 tile_data[index_in_slice] = Some(td);
@@ -1536,8 +1499,7 @@ fn chunk_has_edge(
     chunk_xy: IVec2,
     world_z: i32,
     chunk_edge: u32,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
+    blocks: &HashMap<Vec3i, BlockType>,
 ) -> bool {
     let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
 
@@ -1546,28 +1508,16 @@ fn chunk_has_edge(
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
 
             let is_solid = |dx: i32, dy: i32| -> bool {
-                let pos = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
-                matches!(
-                    block_at_world_position(blocks, world_chunks, chunk_edge, pos),
-                    Some(BlockType::SolidStone)
-                )
+                terrain_block_opaque(Vec3i::new(wp.x + dx, wp.y + dy, world_z), blocks)
+                    == BlockType::SolidStone
             };
 
             let mut mask: u8 = 0;
-            if is_solid(0, 0) {
-                mask |= 1;
-            }
-            if is_solid(1, 0) {
-                mask |= 2;
-            }
-            if is_solid(0, 1) {
-                mask |= 4;
-            }
-            if is_solid(1, 1) {
-                mask |= 8;
-            }
+            if is_solid(0, 0) { mask |= 1; }
+            if is_solid(1, 0) { mask |= 2; }
+            if is_solid(0, 1) { mask |= 4; }
+            if is_solid(1, 1) { mask |= 8; }
 
-            // If any tile has an edge (partial mask), this chunk has edges
             if mask > 0 && mask < 15 {
                 return true;
             }
@@ -1580,8 +1530,7 @@ fn build_edge_shadow_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
     chunk_edge: u32,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
+    blocks: &HashMap<Vec3i, BlockType>,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
@@ -1595,27 +1544,17 @@ fn build_edge_shadow_tile_data(
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
+            // Unknown neighbors are treated as solid so FOV boundaries get clean edges.
             let is_solid = |dx: i32, dy: i32| -> bool {
-                let pos = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
-                matches!(
-                    block_at_world_position(blocks, world_chunks, chunk_edge, pos),
-                    Some(BlockType::SolidStone)
-                )
+                terrain_block_opaque(Vec3i::new(wp.x + dx, wp.y + dy, world_z), blocks)
+                    == BlockType::SolidStone
             };
 
             let mut mask: u8 = 0;
-            if is_solid(0, 0) {
-                mask |= 1;
-            } // A: bottom-left
-            if is_solid(1, 0) {
-                mask |= 2;
-            } // B: bottom-right
-            if is_solid(0, 1) {
-                mask |= 4;
-            } // C: top-left
-            if is_solid(1, 1) {
-                mask |= 8;
-            } // D: top-right
+            if is_solid(0, 0) { mask |= 1; } // A: bottom-left
+            if is_solid(1, 0) { mask |= 2; } // B: bottom-right
+            if is_solid(0, 1) { mask |= 4; } // C: top-left
+            if is_solid(1, 1) { mask |= 8; } // D: top-right
 
             if mask > 0 && mask < 15 {
                 tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
@@ -1643,8 +1582,7 @@ fn build_ceiling_shadow_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
     chunk_edge: u32,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
+    blocks: &HashMap<Vec3i, BlockType>,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
@@ -1656,44 +1594,25 @@ fn build_ceiling_shadow_tile_data(
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
             let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
-
-            // World position of the "anchor" (bottom-left) corner of this dual-grid cell
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
 
             let mut mask: u8 = 0;
 
-            // For each corner, check both ceiling AND floor at that corner position.
-            // Only include this corner in the shadow mask if both exist.
+            // Unknown neighbors treated as solid so ceiling shadows appear at FOV boundaries.
             let check_corner = |dx: i32, dy: i32| -> bool {
                 let above = Vec3i::new(wp.x + dx, wp.y + dy, world_z + 1);
                 let below = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
-                let has_ceiling = matches!(
-                    block_at_world_position(blocks, world_chunks, chunk_edge, above),
-                    Some(BlockType::SolidStone)
-                );
-                let has_floor = matches!(
-                    block_at_world_position(blocks, world_chunks, chunk_edge, below),
-                    Some(BlockType::SolidStone)
-                );
-                has_ceiling && has_floor
+                terrain_block_opaque(above, blocks) == BlockType::SolidStone
+                    && terrain_block_opaque(below, blocks) == BlockType::SolidStone
             };
 
-            if check_corner(0, 0) {
-                mask |= 1;
-            } // A: bottom-left
-            if check_corner(1, 0) {
-                mask |= 2;
-            } // B: bottom-right
-            if check_corner(0, 1) {
-                mask |= 4;
-            } // C: top-left
-            if check_corner(1, 1) {
-                mask |= 8;
-            } // D: top-right
+            if check_corner(0, 0) { mask |= 1; } // A: bottom-left
+            if check_corner(1, 0) { mask |= 2; } // B: bottom-right
+            if check_corner(0, 1) { mask |= 4; } // C: top-left
+            if check_corner(1, 1) { mask |= 8; } // D: top-right
 
             if mask != 0 {
-                let td = TileData::from_tileset_index((mask - 1) as u16);
-                tile_data[index_in_slice] = Some(td);
+                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
             }
         }
     }
@@ -1748,7 +1667,10 @@ fn build_fog_tile_data(
             } else {
                 // Unknown — opaque dark
                 let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgb_u8(0x34, 0x2f, 0x37);
+                // Linear values computed from target sRGB #342f37: linear = (sRGB/255)^2.2
+                // The TilemapChunk renderer passes color floats directly to GPU without
+                // sRGB→linear conversion, so we supply linear values here.
+                td.color = Color::linear_rgb(0.034, 0.028, 0.038);
                 tile_data[idx] = Some(td);
             }
         }
@@ -1943,104 +1865,27 @@ fn compute_shadow_mask_for_air(
     x: i32,
     y: i32,
     z: i32,
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
-    chunk_edge: u32,
+    blocks: &HashMap<Vec3i, BlockType>,
 ) -> u8 {
     let mut mask = 0u8;
+    let solid = |pos: Vec3i| terrain_block_opaque(pos, blocks) == BlockType::SolidStone;
 
-    // North (y+1): solid neighbor → shadow on top edge of this air tile
-    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x, y + 1, z))
-        .map(|b| b == BlockType::SolidStone)
-        .unwrap_or(false)
-    {
-        mask |= 1;
-    }
-
-    // East (x+1): solid neighbor → shadow on right edge
-    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x + 1, y, z))
-        .map(|b| b == BlockType::SolidStone)
-        .unwrap_or(false)
-    {
-        mask |= 2;
-    }
-
-    // South (y-1): solid neighbor → shadow on bottom edge
-    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x, y - 1, z))
-        .map(|b| b == BlockType::SolidStone)
-        .unwrap_or(false)
-    {
-        mask |= 4;
-    }
-
-    // West (x-1): solid neighbor → shadow on left edge
-    if block_at_world_position(blocks, world_chunks, chunk_edge, Vec3i::new(x - 1, y, z))
-        .map(|b| b == BlockType::SolidStone)
-        .unwrap_or(false)
-    {
-        mask |= 8;
-    }
+    if solid(Vec3i::new(x, y + 1, z)) { mask |= 1; } // North
+    if solid(Vec3i::new(x + 1, y, z)) { mask |= 2; } // East
+    if solid(Vec3i::new(x, y - 1, z)) { mask |= 4; } // South
+    if solid(Vec3i::new(x - 1, y, z)) { mask |= 8; } // West
 
     mask
 }
 
-fn world_position_to_block_index(
-    world_chunks: Vec3u,
-    chunk_edge: u32,
-    world_position: Vec3i,
-) -> Option<usize> {
-    let world_size = Vec3u::new(
-        world_chunks
-            .x
-            .checked_mul(chunk_edge)
-            .expect("world x-size overflowed"),
-        world_chunks
-            .y
-            .checked_mul(chunk_edge)
-            .expect("world y-size overflowed"),
-        world_chunks
-            .z
-            .checked_mul(chunk_edge)
-            .expect("world z-size overflowed"),
-    );
-    let min = Vec3i::new(
-        -(i32::try_from(world_size.x).expect("world size x too large") / 2),
-        -(i32::try_from(world_size.y).expect("world size y too large") / 2),
-        -(i32::try_from(world_size.z).expect("world size z too large") / 2),
-    );
-
-    let local_x = world_position.x - min.x;
-    let local_y = world_position.y - min.y;
-    let local_z = world_position.z - min.z;
-
-    if local_x < 0
-        || local_y < 0
-        || local_z < 0
-        || u32::try_from(local_x).ok()? >= world_size.x
-        || u32::try_from(local_y).ok()? >= world_size.y
-        || u32::try_from(local_z).ok()? >= world_size.z
-    {
-        return None;
-    }
-
-    let local_x_u = usize::try_from(local_x).ok()?;
-    let local_y_u = usize::try_from(local_y).ok()?;
-    let local_z_u = usize::try_from(local_z).ok()?;
-    let world_size_x = usize::try_from(world_size.x).ok()?;
-    let world_size_y = usize::try_from(world_size.y).ok()?;
-    let index = local_z_u
-        .checked_mul(world_size_x.checked_mul(world_size_y)?)?
-        .checked_add(local_y_u.checked_mul(world_size_x)?)?
-        .checked_add(local_x_u)?;
-    Some(index)
+/// Returns the block at `pos`, defaulting to `Air` for positions not in the sparse map.
+fn terrain_block(pos: Vec3i, blocks: &HashMap<Vec3i, BlockType>) -> BlockType {
+    blocks.get(&pos).copied().unwrap_or(BlockType::Air)
 }
 
-fn block_at_world_position(
-    blocks: &[BlockType],
-    world_chunks: Vec3u,
-    chunk_edge: u32,
-    world_position: Vec3i,
-) -> Option<BlockType> {
-    let index = world_position_to_block_index(world_chunks, chunk_edge, world_position)?;
-    blocks.get(index).copied()
+/// Returns the block at `pos`, defaulting to `SolidStone` for unknown positions.
+/// Used for edge/ceiling shadow calculations so FOV boundaries render as solid walls.
+fn terrain_block_opaque(pos: Vec3i, blocks: &HashMap<Vec3i, BlockType>) -> BlockType {
+    blocks.get(&pos).copied().unwrap_or(BlockType::SolidStone)
 }
+

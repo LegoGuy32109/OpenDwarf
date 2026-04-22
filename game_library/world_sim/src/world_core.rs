@@ -667,21 +667,33 @@ impl WorldState {
             })
             .collect();
 
-        // Build visibility snapshot for entity mode
-        let visibility = self.entity_fov.get(&1).map(|fov| {
+        // Build visibility snapshot and sparse visible_blocks for entity mode
+        let (visibility, visible_blocks) = if let Some(fov) = self.entity_fov.get(&1) {
             use crate::world_api::VisibilitySnapshot;
-            VisibilitySnapshot {
+            let vis = VisibilitySnapshot {
                 entity_id: 1,
                 visible: fov.visible.iter().copied().collect(),
                 memory: fov.memory.clone(),
+            };
+            let mut map = HashMap::new();
+            for &pos in &fov.visible {
+                if let Some(bt) = self.block_at(pos) {
+                    map.insert(pos, bt);
+                }
             }
-        });
+            for (&pos, mem) in &fov.memory {
+                map.entry(pos).or_insert(mem.block);
+            }
+            (Some(vis), map)
+        } else {
+            (None, HashMap::new())
+        };
 
         WorldSnapshot {
             tick: self.tick,
             chunk_edge: self.chunk_edge,
             world_chunks: self.world_chunks,
-            blocks: self.blocks.clone(),
+            visible_blocks,
             entities,
             visibility,
         }
