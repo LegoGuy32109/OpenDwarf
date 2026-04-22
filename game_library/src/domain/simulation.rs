@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use bevy::math::Isometry2d;
 use bevy::prelude::*;
@@ -65,7 +66,7 @@ pub struct TerrainConfig {
 
 #[derive(Resource, Default)]
 pub struct TerrainData {
-    pub source_blocks: HashMap<Vec3i, BlockType>,
+    pub source_blocks: Arc<HashMap<Vec3i, BlockType>>,
     pub blocks: HashMap<Vec3i, BlockType>,
     pub dirty: bool,
 }
@@ -132,10 +133,10 @@ impl Default for TileLayerDebugState {
     fn default() -> Self {
         Self {
             show_floor: true,
-            show_edge_shadow: false,
-            show_ceiling_shadow: false,
+            show_edge_shadow: true,
+            show_ceiling_shadow: true,
             show_fog_shadow: true,
-            show_depth_stack: false,
+            show_depth_stack: true,
         }
     }
 }
@@ -338,7 +339,7 @@ pub fn sync_render_world_from_snapshot(
         &mut terrain,
         &mut entity_data,
         &mut fog_data,
-        snapshot.clone(),
+        snapshot,
     );
 }
 
@@ -379,7 +380,7 @@ pub fn drive_replay_playback(
     if keyboard_input.just_pressed(KeyCode::F8) {
         replay_playback.cursor = 0;
         entity_data.entities.clear();
-        terrain.source_blocks.clear();
+        terrain.source_blocks = Arc::default();
         terrain.blocks.clear();
         config.chunk_edge = 0;
         config.world_chunks = Vec3u::default();
@@ -539,6 +540,11 @@ pub fn project_world_to_tilemap(
     );
 
     let entity_mode = *view_mode == ViewMode::Entity;
+    let render_blocks = if entity_mode {
+        &terrain.blocks
+    } else {
+        terrain.source_blocks.as_ref()
+    };
 
     let render_floor = tile_layer_debug_state.show_floor;
     let render_edge_shadow = tile_layer_debug_state.show_edge_shadow;
@@ -573,7 +579,7 @@ pub fn project_world_to_tilemap(
                             chunk_xy,
                             world_z,
                             chunk_edge,
-                            &terrain.blocks,
+                            render_blocks,
                             z_offset,
                             render_depth_stack,
                         );
@@ -615,7 +621,13 @@ pub fn project_world_to_tilemap(
                         let z_above = world_z + 1;
                         let has_edge_above = if rendered_z_levels.contains(&z_above) {
                             // If the level above is also visible, check for edges there
-                            chunk_has_edge(chunk_xy, z_above, chunk_edge, &terrain.blocks)
+                            chunk_has_edge(
+                                chunk_xy,
+                                z_above,
+                                chunk_edge,
+                                render_blocks,
+                                entity_mode,
+                            )
                         } else {
                             // If above is outside the visible range, render edges at this level
                             false
@@ -626,7 +638,8 @@ pub fn project_world_to_tilemap(
                                 chunk_xy,
                                 world_z,
                                 chunk_edge,
-                                &terrain.blocks,
+                                render_blocks,
+                                entity_mode,
                             );
                             let z_offset = world_z - view_z.current;
                             let edge_shadow_sprite_z =
@@ -667,7 +680,8 @@ pub fn project_world_to_tilemap(
                             chunk_xy,
                             world_z,
                             chunk_edge,
-                            &terrain.blocks,
+                            render_blocks,
+                            entity_mode,
                         );
                         let ceiling_sprite_z = calculate_sprite_z(0, TileLayer::CeilingShadow);
                         let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
@@ -707,7 +721,7 @@ pub fn project_world_to_tilemap(
                         world_z,
                         view_z.current,
                         chunk_edge,
-                        &terrain.blocks,
+                        render_blocks,
                         &fog_data,
                     );
                     let fog_sprite_z =
@@ -804,7 +818,7 @@ pub fn project_world_to_tilemap(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
-                &terrain.blocks,
+                render_blocks,
                 z_off,
                 render_depth_stack,
             ),
@@ -812,20 +826,22 @@ pub fn project_world_to_tilemap(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
-                &terrain.blocks,
+                render_blocks,
+                entity_mode,
             ),
             TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 chunk_edge,
-                &terrain.blocks,
+                render_blocks,
+                entity_mode,
             ),
             TileLayer::FogShadow => build_fog_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
                 view_z.current,
                 chunk_edge,
-                &terrain.blocks,
+                render_blocks,
                 &fog_data,
             ),
         };
@@ -886,6 +902,7 @@ pub fn draw_depth_labels(
     mut commands: Commands,
     chunk_border_debug_state: Res<ChunkBorderDebugState>,
     view_z: Res<ViewZLevel>,
+    view_mode: Res<ViewMode>,
     config: Res<TerrainConfig>,
     terrain: Res<TerrainData>,
     replay_mode: Res<ReplayMode>,
@@ -916,6 +933,12 @@ pub fn draw_depth_labels(
 
     // Determine z-levels to render (same as tints)
     let z_levels_to_render = z_levels_to_render(view_z.current);
+    let entity_mode = *view_mode == ViewMode::Entity;
+    let render_blocks = if entity_mode {
+        &terrain.blocks
+    } else {
+        terrain.source_blocks.as_ref()
+    };
 
     // Get active chunks using the same logic as project_world_to_tilemap
     let active_chunks_xy = active_chunks_xy(
@@ -934,12 +957,12 @@ pub fn draw_depth_labels(
                         world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
 
                     // Only label air tiles that have shadows
-                    if terrain_block(world_position, &terrain.blocks) == BlockType::Air {
+                    if terrain_block(world_position, render_blocks) == BlockType::Air {
                         let mask = compute_shadow_mask_for_air(
                             world_position.x,
                             world_position.y,
                             world_position.z,
-                            &terrain.blocks,
+                            render_blocks,
                         );
 
                         // Only spawn label if there's a shadow
@@ -1050,6 +1073,7 @@ pub fn project_world_entities_to_sprites(
     terrain: Res<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
+    view_mode: Res<ViewMode>,
     view_z: Res<ViewZLevel>,
     tilemap_assets: Res<TilemapAssets>,
     mut player_query: Query<(&mut Sprite, &mut Visibility, &mut PlayerRenderTarget), With<Player>>,
@@ -1064,6 +1088,12 @@ pub fn project_world_entities_to_sprites(
 
     let Some(player_world_position) = entity_data.entities.get(&entity_id).copied() else {
         return;
+    };
+    let entity_mode = *view_mode == ViewMode::Entity;
+    let render_blocks = if entity_mode {
+        &terrain.blocks
+    } else {
+        terrain.source_blocks.as_ref()
     };
 
     if let Ok((mut sprite, mut visibility, mut render_target)) = player_query.single_mut() {
@@ -1082,16 +1112,15 @@ pub fn project_world_entities_to_sprites(
 
         let in_z_range = z_offset <= 0 && z_offset >= -Z_LEVELS_BELOW_RENDERED;
         let occluded = if in_z_range && z_offset < 0 {
-            // Check each z-level from player+1 up to camera for solid blocks.
-            // Unknown blocks are treated as solid (conservative occlusion).
             (player_world_position.position.z + 1..=view_z.current).any(|check_z| {
-                terrain_block_opaque(
+                terrain_block_for_shadow(
                     Vec3i::new(
                         player_world_position.position.x,
                         player_world_position.position.y,
                         check_z,
                     ),
-                    &terrain.blocks,
+                    render_blocks,
+                    entity_mode,
                 ) == BlockType::SolidStone
             })
         } else {
@@ -1367,59 +1396,47 @@ fn direction_contains(container: IVec3, direction: IVec3) -> bool {
 fn build_render_terrain_blocks(
     source_blocks: &HashMap<Vec3i, BlockType>,
     visibility: Option<&world_sim::world_api::VisibilitySnapshot>,
-    view_mode: ViewMode,
-    current_z: i32,
 ) -> HashMap<Vec3i, BlockType> {
-    match view_mode {
-        ViewMode::Master => source_blocks
-            .iter()
-            .filter(|(pos, _)| {
-                pos.z >= current_z - Z_LEVELS_BELOW_RENDERED && pos.z <= current_z + 1
-            })
-            .map(|(pos, block)| (*pos, *block))
-            .collect(),
-        ViewMode::Entity => {
-            let Some(visibility) = visibility else {
-                return HashMap::new();
-            };
+    let Some(visibility) = visibility else {
+        return HashMap::new();
+    };
 
-            let mut blocks =
-                HashMap::with_capacity(visibility.visible.len() + visibility.memory.len());
+    let mut blocks = HashMap::with_capacity(visibility.visible.len() + visibility.memory.len());
 
-            for &pos in &visibility.visible {
-                let block = source_blocks.get(&pos).copied().unwrap_or(BlockType::Air);
-                blocks.insert(pos, block);
-            }
-
-            for (&pos, memory) in &visibility.memory {
-                blocks.entry(pos).or_insert(memory.block);
-            }
-
-            blocks
-        }
+    for &pos in &visibility.visible {
+        let block = source_blocks.get(&pos).copied().unwrap_or(BlockType::Air);
+        blocks.insert(pos, block);
     }
+
+    for (&pos, memory) in &visibility.memory {
+        blocks.entry(pos).or_insert(memory.block);
+    }
+
+    blocks
 }
 
 fn apply_snapshot(
     view_mode: ViewMode,
-    view_z: ViewZLevel,
+    _view_z: ViewZLevel,
     config: &mut TerrainConfig,
     terrain: &mut TerrainData,
     entities: &mut RenderEntityData,
     fog: &mut FogData,
-    snapshot: WorldSnapshot,
+    snapshot: &WorldSnapshot,
 ) {
     let terrain_changed = config.chunk_edge != snapshot.chunk_edge
         || config.world_chunks != snapshot.world_chunks
-        || terrain.source_blocks.is_empty();
+        || !Arc::ptr_eq(&terrain.source_blocks, &snapshot.terrain_blocks);
 
     entities.tick = snapshot.tick;
     config.chunk_edge = snapshot.chunk_edge;
     config.world_chunks = snapshot.world_chunks;
-    terrain.source_blocks = (*snapshot.terrain_blocks).clone();
+    if terrain_changed {
+        terrain.source_blocks = snapshot.terrain_blocks.clone();
+    }
     entities.entities = snapshot
         .entities
-        .into_iter()
+        .iter()
         .map(|entity| {
             (
                 entity.id,
@@ -1427,16 +1444,17 @@ fn apply_snapshot(
                     position: entity.position,
                     facing_left: entity.facing_left,
                     is_prone: entity.is_prone,
-                    movement: entity.movement.map(render_movement_state),
+                    movement: entity.movement.clone().map(render_movement_state),
                 },
             )
         })
         .collect();
 
-    let visibility_snapshot = snapshot.visibility;
-    if let Some(vis) = visibility_snapshot.as_ref() {
+    let visibility_snapshot = snapshot.visibility.as_ref();
+    let mut visibility_changed = false;
+    if let Some(vis) = visibility_snapshot {
         let new_visible: HashSet<Vec3i> = vis.visible.iter().copied().collect();
-        let visibility_changed = fog.visible != new_visible || fog.memory != vis.memory;
+        visibility_changed = fog.visible != new_visible || fog.memory != vis.memory;
         if visibility_changed {
             fog.visible = new_visible;
             fog.memory = vis.memory.clone();
@@ -1444,18 +1462,11 @@ fn apply_snapshot(
         }
     }
 
-    let filtered_blocks = build_render_terrain_blocks(
-        &terrain.source_blocks,
-        visibility_snapshot.as_ref(),
-        view_mode,
-        view_z.current,
-    );
-    let filtered_changed = terrain.blocks != filtered_blocks;
-    if filtered_changed {
-        terrain.blocks = filtered_blocks;
+    if view_mode == ViewMode::Entity && (terrain_changed || visibility_changed) {
+        terrain.blocks =
+            build_render_terrain_blocks(terrain.source_blocks.as_ref(), visibility_snapshot);
         terrain.dirty = true;
-    }
-    if terrain_changed {
+    } else if terrain_changed {
         terrain.dirty = true;
     }
     entities.dirty = true;
@@ -1472,7 +1483,7 @@ fn apply_update(
 ) {
     match update {
         WorldUpdate::Snapshot(snapshot) => {
-            apply_snapshot(view_mode, view_z, config, terrain, entities, fog, snapshot)
+            apply_snapshot(view_mode, view_z, config, terrain, entities, fog, &snapshot)
         }
         WorldUpdate::Delta(delta) => {
             entities.tick = delta.tick;
@@ -1492,13 +1503,14 @@ fn apply_update(
             for change in delta.block_changes {
                 match change.to {
                     BlockType::SolidStone => {
-                        terrain.source_blocks.insert(change.position, change.to);
+                        Arc::make_mut(&mut terrain.source_blocks)
+                            .insert(change.position, change.to);
                         if terrain.blocks.contains_key(&change.position) {
                             terrain.blocks.insert(change.position, change.to);
                         }
                     }
                     BlockType::Air => {
-                        terrain.source_blocks.remove(&change.position);
+                        Arc::make_mut(&mut terrain.source_blocks).remove(&change.position);
                         terrain.blocks.remove(&change.position);
                     }
                 }
@@ -1599,7 +1611,7 @@ fn apply_first_checkpoint(
                     terrain,
                     entities,
                     &mut fog,
-                    snapshot,
+                    &snapshot,
                 );
                 return true;
             }
@@ -1654,7 +1666,7 @@ fn apply_next_replay_event(
                     terrain,
                     entities,
                     &mut fog,
-                    snapshot,
+                    &snapshot,
                 );
                 return true;
             }
@@ -1740,6 +1752,7 @@ fn chunk_has_edge(
     world_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
+    unknown_is_solid: bool,
 ) -> bool {
     let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
 
@@ -1748,8 +1761,11 @@ fn chunk_has_edge(
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
 
             let is_solid = |dx: i32, dy: i32| -> bool {
-                terrain_block_opaque(Vec3i::new(wp.x + dx, wp.y + dy, world_z), blocks)
-                    == BlockType::SolidStone
+                terrain_block_for_shadow(
+                    Vec3i::new(wp.x + dx, wp.y + dy, world_z),
+                    blocks,
+                    unknown_is_solid,
+                ) == BlockType::SolidStone
             };
 
             let mut mask: u8 = 0;
@@ -1779,6 +1795,7 @@ fn build_edge_shadow_tile_data(
     world_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
+    unknown_is_solid: bool,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
@@ -1792,10 +1809,12 @@ fn build_edge_shadow_tile_data(
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
-            // Unknown neighbors are treated as solid so FOV boundaries get clean edges.
             let is_solid = |dx: i32, dy: i32| -> bool {
-                terrain_block_opaque(Vec3i::new(wp.x + dx, wp.y + dy, world_z), blocks)
-                    == BlockType::SolidStone
+                terrain_block_for_shadow(
+                    Vec3i::new(wp.x + dx, wp.y + dy, world_z),
+                    blocks,
+                    unknown_is_solid,
+                ) == BlockType::SolidStone
             };
 
             let mut mask: u8 = 0;
@@ -1839,6 +1858,7 @@ fn build_ceiling_shadow_tile_data(
     world_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
+    unknown_is_solid: bool,
 ) -> Vec<Option<TileData>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
@@ -1854,12 +1874,12 @@ fn build_ceiling_shadow_tile_data(
 
             let mut mask: u8 = 0;
 
-            // Unknown neighbors treated as solid so ceiling shadows appear at FOV boundaries.
             let check_corner = |dx: i32, dy: i32| -> bool {
                 let above = Vec3i::new(wp.x + dx, wp.y + dy, world_z + 1);
                 let below = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
-                terrain_block_opaque(above, blocks) == BlockType::SolidStone
-                    && terrain_block_opaque(below, blocks) == BlockType::SolidStone
+                terrain_block_for_shadow(above, blocks, unknown_is_solid) == BlockType::SolidStone
+                    && terrain_block_for_shadow(below, blocks, unknown_is_solid)
+                        == BlockType::SolidStone
             };
 
             if check_corner(0, 0) {
@@ -2140,7 +2160,7 @@ fn world_pos_to_chunk_coord(
 /// Shadows appear on the edges of air tiles that face solid neighbors.
 fn compute_shadow_mask_for_air(x: i32, y: i32, z: i32, blocks: &HashMap<Vec3i, BlockType>) -> u8 {
     let mut mask = 0u8;
-    let solid = |pos: Vec3i| terrain_block_opaque(pos, blocks) == BlockType::SolidStone;
+    let solid = |pos: Vec3i| terrain_block_for_shadow(pos, blocks, false) == BlockType::SolidStone;
 
     if solid(Vec3i::new(x, y + 1, z)) {
         mask |= 1;
@@ -2163,8 +2183,14 @@ fn terrain_block(pos: Vec3i, blocks: &HashMap<Vec3i, BlockType>) -> BlockType {
     blocks.get(&pos).copied().unwrap_or(BlockType::Air)
 }
 
-/// Returns the block at `pos`, defaulting to `SolidStone` for unknown positions.
-/// Used for edge/ceiling shadow calculations so FOV boundaries render as solid walls.
-fn terrain_block_opaque(pos: Vec3i, blocks: &HashMap<Vec3i, BlockType>) -> BlockType {
-    blocks.get(&pos).copied().unwrap_or(BlockType::SolidStone)
+fn terrain_block_for_shadow(
+    pos: Vec3i,
+    blocks: &HashMap<Vec3i, BlockType>,
+    unknown_is_solid: bool,
+) -> BlockType {
+    blocks.get(&pos).copied().unwrap_or(if unknown_is_solid {
+        BlockType::SolidStone
+    } else {
+        BlockType::Air
+    })
 }
