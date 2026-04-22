@@ -1743,12 +1743,12 @@ fn build_fog_tile_data(
             } else if fog.memory.contains_key(&world_pos) {
                 // Remembered — gray tint
                 let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgba(0.7, 0.7, 0.6, 0.1);
+                td.color = Color::srgba(0.7, 0.7, 0.2, 0.05);
                 tile_data[idx] = Some(td);
             } else {
                 // Unknown — opaque dark
                 let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgba(0.32, 0.20, 0.30, 0.8);
+                td.color = Color::srgba(0.012, 0.00, 0.01, 1.0);
                 tile_data[idx] = Some(td);
             }
         }
