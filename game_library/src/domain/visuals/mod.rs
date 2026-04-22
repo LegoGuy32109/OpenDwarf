@@ -4,8 +4,6 @@ use bevy::render::render_resource::{
     Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
 };
 
-use crate::components::map_coordinates::MapCoordinates;
-
 pub mod chat_bubbles;
 pub mod debug_menu;
 pub mod rock_tiles;
@@ -160,7 +158,6 @@ pub fn setup(
 
     // Load a sprite for the player; you must have an image at "assets/Dwarf.png"
     let dwarf_texture = asset_server.load("sprites/Dwarf.png");
-    let dwarf_coordinates = MapCoordinates::new(IVec3::ZERO, uvec3(16, 16, 1));
     let dwarf_transform = Transform::from_translation(Vec3::new(
         f32::from(TILE_SIZE_IN_PX) * 0.5,
         f32::from(TILE_SIZE_IN_PX) * 0.5,
@@ -177,6 +174,5 @@ pub fn setup(
         dwarf_transform,
         Player,
         PlayerRenderTarget(dwarf_transform.translation),
-        dwarf_coordinates,
     ));
 }

@@ -7,4 +7,4 @@ edition = "2024"
 bevy_app = "0.18"
 bevy_ecs = "0.18"
 bincode = { version = "2.0.1", features = ["serde"] }
-serde = { version = "1.0.219", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive", "rc"] }

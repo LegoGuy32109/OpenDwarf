@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Vec3i {
@@ -91,11 +92,11 @@ pub struct WorldSnapshot {
     pub tick: u64,
     pub chunk_edge: u32,
     pub world_chunks: Vec3u,
-    /// Only the blocks the observer can currently see or has previously seen.
-    /// Unknown positions are absent and treated as opaque by the renderer.
-    pub visible_blocks: std::collections::HashMap<Vec3i, BlockType>,
+    /// Full terrain blocks for the renderable world state.
+    #[serde(alias = "visible_blocks")]
+    pub terrain_blocks: Arc<std::collections::HashMap<Vec3i, BlockType>>,
     pub entities: Vec<EntitySnapshot>,
-    /// Present in entity mode, absent in master mode.
+    /// Observer visibility data used by entity mode fog rendering.
     pub visibility: Option<VisibilitySnapshot>,
 }
 

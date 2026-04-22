@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use world_sim::bevy_app::WorldSimDiagnostics;
 
 use crate::domain::simulation::ReplayHudState;
+use crate::domain::simulation::TileLayerDebugState;
 use crate::domain::simulation::TilemapRenderMetrics;
 use crate::resources::input_state::InputState;
 
@@ -21,6 +22,7 @@ pub fn debug_menu(
     input_state: Res<InputState>,
     world_sim_diagnostics: Option<Res<WorldSimDiagnostics>>,
     tilemap_render_metrics: Option<Res<TilemapRenderMetrics>>,
+    tile_layer_debug_state: Option<Res<TileLayerDebugState>>,
     debug_text_query: Query<(Entity, &mut Text), With<DebugText>>,
 ) {
     // toggle debug text component
@@ -99,6 +101,36 @@ pub fn debug_menu(
                 tilemap_render_metrics.non_empty_tile_count,
                 tilemap_render_metrics.last_rebuild_micros,
                 tilemap_render_metrics.rebuild_count,
+            ));
+        }
+        if let Some(tile_layer_debug_state) = tile_layer_debug_state {
+            lines.push(format!(
+                "Layer Toggles: 6 floor={} 7 edge={} 8 ceiling={} 9 fog={} 0 depth_stack={}",
+                if tile_layer_debug_state.show_floor {
+                    "on"
+                } else {
+                    "off"
+                },
+                if tile_layer_debug_state.show_edge_shadow {
+                    "on"
+                } else {
+                    "off"
+                },
+                if tile_layer_debug_state.show_ceiling_shadow {
+                    "on"
+                } else {
+                    "off"
+                },
+                if tile_layer_debug_state.show_fog_shadow {
+                    "on"
+                } else {
+                    "off"
+                },
+                if tile_layer_debug_state.show_depth_stack {
+                    "on"
+                } else {
+                    "off"
+                },
             ));
         }
         text.0 = lines.join("\n");

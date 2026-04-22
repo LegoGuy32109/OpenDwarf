@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -168,6 +169,7 @@ pub struct WorldState {
     world_chunks: Vec3u,
     movement_ticks_per_tile: u32,
     blocks: Vec<BlockType>,
+    terrain_blocks: Arc<HashMap<Vec3i, BlockType>>,
     entities: BTreeMap<u64, EntityState>,
     loaded_chunks: HashSet<Vec3i>,
     next_entity_id: u64,
@@ -197,18 +199,25 @@ impl WorldState {
                 )
             })
             .expect("world block count overflowed");
+        let blocks = make_initial_blocks(
+            config.chunk_edge,
+            config.world_chunks,
+            block_count,
+            &config.terrain,
+        );
+        let terrain_blocks = Arc::new(build_terrain_blocks_cache(
+            &blocks,
+            config.chunk_edge,
+            config.world_chunks,
+        ));
 
         Self {
             tick: 0,
             chunk_edge: config.chunk_edge,
             world_chunks: config.world_chunks,
             movement_ticks_per_tile: config.movement_ticks_per_tile.max(1),
-            blocks: make_initial_blocks(
-                config.chunk_edge,
-                config.world_chunks,
-                block_count,
-                &config.terrain,
-            ),
+            blocks,
+            terrain_blocks,
             entities: BTreeMap::new(),
             loaded_chunks: make_initial_loaded_chunks(config.world_chunks),
             next_entity_id: 1,
@@ -667,33 +676,23 @@ impl WorldState {
             })
             .collect();
 
-        // Build visibility snapshot and sparse visible_blocks for entity mode
-        let (visibility, visible_blocks) = if let Some(fov) = self.entity_fov.get(&1) {
+        // Build visibility snapshot for entity mode overlay.
+        let visibility = if let Some(fov) = self.entity_fov.get(&1) {
             use crate::world_api::VisibilitySnapshot;
-            let vis = VisibilitySnapshot {
+            Some(VisibilitySnapshot {
                 entity_id: 1,
                 visible: fov.visible.iter().copied().collect(),
                 memory: fov.memory.clone(),
-            };
-            let mut map = HashMap::new();
-            for &pos in &fov.visible {
-                if let Some(bt) = self.block_at(pos) {
-                    map.insert(pos, bt);
-                }
-            }
-            for (&pos, mem) in &fov.memory {
-                map.entry(pos).or_insert(mem.block);
-            }
-            (Some(vis), map)
+            })
         } else {
-            (None, HashMap::new())
+            None
         };
 
         WorldSnapshot {
             tick: self.tick,
             chunk_edge: self.chunk_edge,
             world_chunks: self.world_chunks,
-            visible_blocks,
+            terrain_blocks: self.terrain_blocks.clone(),
             entities,
             visibility,
         }
@@ -1141,6 +1140,59 @@ fn world_position_to_index(world_position: Vec3i, world_size: Vec3u) -> Option<u
         .checked_mul(layer_size)
         .and_then(|offset| offset.checked_add(local_y.checked_mul(world_size_x)?))
         .and_then(|offset| offset.checked_add(local_x))
+}
+
+fn build_terrain_blocks_cache(
+    blocks: &[BlockType],
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+) -> HashMap<Vec3i, BlockType> {
+    let world_size = Vec3u::new(
+        world_chunks
+            .x
+            .checked_mul(chunk_edge)
+            .expect("world x-size overflowed"),
+        world_chunks
+            .y
+            .checked_mul(chunk_edge)
+            .expect("world y-size overflowed"),
+        world_chunks
+            .z
+            .checked_mul(chunk_edge)
+            .expect("world z-size overflowed"),
+    );
+    let min = world_min_for_size(world_size);
+
+    let mut map = HashMap::with_capacity(blocks.len());
+    let world_size_x = usize::try_from(world_size.x).expect("world size x does not fit in usize");
+    let world_size_y = usize::try_from(world_size.y).expect("world size y does not fit in usize");
+    let layer_size = world_size_x
+        .checked_mul(world_size_y)
+        .expect("world layer size overflowed");
+
+    for z in 0..world_size.z {
+        let z_offset = usize::try_from(z).expect("z does not fit in usize") * layer_size;
+        for y in 0..world_size.y {
+            let y_offset = z_offset
+                + usize::try_from(y).expect("y does not fit in usize") * world_size_x;
+            for x in 0..world_size.x {
+                let index = y_offset + usize::try_from(x).expect("x does not fit in usize");
+                let block = blocks[index];
+                if block == BlockType::SolidStone {
+                    map.insert(
+                        Vec3i::new(
+                            min.x + i32::try_from(x).expect("x does not fit in i32"),
+                            min.y + i32::try_from(y).expect("y does not fit in i32"),
+                            min.z + i32::try_from(z).expect("z does not fit in i32"),
+                        ),
+                        block,
+                    );
+                }
+            }
+        }
+    }
+
+    map
 }
 
 #[cfg(test)]
