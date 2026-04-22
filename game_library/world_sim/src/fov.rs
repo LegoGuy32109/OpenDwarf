@@ -32,13 +32,19 @@ pub fn compute_fov(
         }
     }
 
-    // For every visible tile at or below the entity's z-level, also reveal the tile
+    // For every visible AIR tile at or below the entity's z-level, also reveal the tile
     // directly underneath. This fills in the floor at the base of walls when looking
-    // horizontally or downward, without affecting upward ledge occlusion.
+    // horizontally or downward. Solid tiles are excluded so we don't punch through floors.
     let lower_half: Vec<Vec3i> = fov
         .visible
         .iter()
         .filter(|p| p.z <= position.z)
+        .filter(|p| {
+            !matches!(
+                block_at(**p, blocks, world_chunks, chunk_edge),
+                Some(BlockType::SolidStone)
+            )
+        })
         .copied()
         .collect();
     for pos in lower_half {

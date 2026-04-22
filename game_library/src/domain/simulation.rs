@@ -1157,23 +1157,16 @@ pub fn update_view_z_level(
     let world_max_z =
         world_min_z + i32::try_from(world_size_z).expect("world z-size does not fit in i32") - 1;
 
-    // In Entity mode, clamp z range to what the player can see
+    // In Entity mode, allow scrolling through every z-level the entity has ever seen
+    // (visible + memory), plus one level below the lowest so the floor is reachable.
     let (effective_min_z, effective_max_z) = if *view_mode == ViewMode::Entity {
-        if let Some(entity_id) = primary_entity_id.0 {
-            if let Some(entity_state) = entity_data.entities.get(&entity_id) {
-                let player_pos = entity_state.position;
-                // Floor: player's own z level (can't look below where you stand)
-                let floor_z = player_pos.z;
-                // Ceiling: one below the first solid block above the player
-                let ceiling_z = (player_pos.z + 1..=world_max_z).find(|&z| {
-                    terrain_block(
-                        Vec3i::new(player_pos.x, player_pos.y, z),
-                        &terrain.blocks,
-                    ) == BlockType::SolidStone
-                });
-                (floor_z, ceiling_z.map(|z| z - 1).unwrap_or(world_max_z))
-            } else {
+        if primary_entity_id.0.is_some() {
+            if terrain.blocks.is_empty() {
                 (world_min_z, world_max_z)
+            } else {
+                let known_min = terrain.blocks.keys().map(|p| p.z).min().unwrap_or(world_min_z);
+                let known_max = terrain.blocks.keys().map(|p| p.z).max().unwrap_or(world_max_z);
+                (known_min.max(world_min_z), known_max.min(world_max_z))
             }
         } else {
             (world_min_z, world_max_z)
