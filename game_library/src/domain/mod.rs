@@ -11,6 +11,7 @@ use crate::resources::view_z_level::ViewZLevel;
 
 pub mod messaging;
 pub mod runtime_bridge;
+pub mod runtime_cache;
 pub mod runtime_telemetry;
 pub mod simulation;
 pub mod visuals;

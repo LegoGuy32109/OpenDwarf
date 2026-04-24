@@ -1,13 +1,9 @@
 use bevy::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
-use world_runtime::{
-    SessionStatus, TelemetryFrame, TelemetrySession, build_long_report, build_short_report,
-};
+use world_runtime::{SessionStatus, TelemetrySession, build_long_report, build_short_report};
 
 use crate::domain::messaging::clipboard;
-use crate::domain::simulation::{TileLayerDebugState, TilemapRenderMetrics};
-use world_sim::bevy_app::WorldSimDiagnostics;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
@@ -163,55 +159,6 @@ impl RuntimeTelemetryClipboard {
             });
         }
     }
-}
-
-pub fn collect_runtime_telemetry(
-    time: Res<Time>,
-    world_sim_diagnostics: Option<Res<WorldSimDiagnostics>>,
-    tilemap_render_metrics: Option<Res<TilemapRenderMetrics>>,
-    tile_layer_debug_state: Option<Res<TileLayerDebugState>>,
-    mut telemetry: ResMut<RuntimeTelemetryState>,
-) {
-    let frame_ms = (time.delta_secs_f64() * 1000.0) as u64;
-    let worker_sim_ms = world_sim_diagnostics
-        .as_ref()
-        .map_or(0, |diagnostics| diagnostics.commands_processed);
-    let patch_build_ms = tilemap_render_metrics
-        .as_ref()
-        .map_or(0, |metrics| (metrics.last_rebuild_micros / 1_000) as u64);
-    let hot_chunks = world_sim_diagnostics
-        .as_ref()
-        .map_or(0, |diagnostics| diagnostics.loaded_chunk_count as u32);
-    let warm_chunks = 0;
-    let cold_chunks = 0;
-    let stale_chunks = if tile_layer_debug_state
-        .as_ref()
-        .map_or(true, |state| !state.show_depth_stack)
-    {
-        1
-    } else {
-        0
-    };
-    let snapshot_progress_percent = 100;
-
-    telemetry.session.record_frame(TelemetryFrame {
-        frame_ms,
-        worker_sim_ms,
-        fov_ms: 0,
-        patch_build_ms,
-        serialization_ms: 0,
-        patch_apply_ms: 0,
-        queue_depth: 0,
-        hot_chunks,
-        warm_chunks,
-        cold_chunks,
-        stale_chunks,
-        dropped_superseded_patches: 0,
-        coalesced_patches: 0,
-        snapshot_progress_percent,
-    });
-    telemetry.session.set_status(SessionStatus::Running, None);
-    telemetry.refresh_reports();
 }
 
 pub(crate) fn build_session_id() -> String {

@@ -5,6 +5,7 @@ use bevy::math::Isometry2d;
 use bevy::prelude::*;
 use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 
+use crate::domain::runtime_cache::RuntimeInputQueue;
 use crate::resources::input_state::InputState;
 use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
@@ -248,6 +249,7 @@ pub fn queue_world_commands_from_input(
     entity_data: Res<RenderEntityData>,
     mut held_movement_state: ResMut<HeldMovementState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
+    mut runtime_input_queue: ResMut<RuntimeInputQueue>,
 ) {
     if replay_mode.active {
         held_movement_state.was_moving_last_frame = false;
@@ -296,12 +298,18 @@ pub fn queue_world_commands_from_input(
             entity_id,
             Vec3i::new(chosen_direction.x, chosen_direction.y, chosen_direction.z),
         );
+        runtime_input_queue.move_entity(
+            entity_id,
+            Vec3i::new(chosen_direction.x, chosen_direction.y, chosen_direction.z),
+        );
     } else if is_moving
         && direction != IVec3::ZERO
         && active_direction != Some(direction)
         && !active_direction_is_held
     {
         world_command_queue
+            .move_entity(entity_id, Vec3i::new(direction.x, direction.y, direction.z));
+        runtime_input_queue
             .move_entity(entity_id, Vec3i::new(direction.x, direction.y, direction.z));
     }
 
