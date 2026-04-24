@@ -7,7 +7,7 @@ pub fn build_short_report(session: &TelemetrySession) -> String {
     let worker_stats = metric_stats(session, |frame| frame.worker_sim_ms);
     let patch_apply_stats = metric_stats(session, |frame| frame.patch_apply_ms);
     format!(
-        "session={} status={:?} mode={} transport={} elapsed_ms={} frame_ms(p50/p95/max)={}/{}/{} worker_ms(p50/p95/max)={}/{}/{} patch_apply_ms(last/p95/max)={}/{}/{} stale_chunks={} queue_depth={} dropped={} coalesced={} snapshot_progress={}%",
+        "session={} status={:?} mode={} transport={} elapsed_ms={} frame_ms(p50/p95/max)={}/{}/{} worker_ms(p50/p95/max)={}/{}/{} patch_apply_ms(last/p95/max)={}/{}/{} stale_chunks={} queue_depth={} active_layers={} dropped={} coalesced={} snapshot_progress={}%",
         session.session_id,
         session.status,
         session.mode,
@@ -24,6 +24,7 @@ pub fn build_short_report(session: &TelemetrySession) -> String {
         patch_apply_stats.2,
         last_frame.stale_chunks,
         last_frame.queue_depth,
+        last_frame.active_layers,
         last_frame.dropped_superseded_patches,
         last_frame.coalesced_patches,
         last_frame.snapshot_progress_percent,
@@ -58,8 +59,13 @@ pub fn build_long_report(session: &TelemetrySession) -> String {
             last.patch_apply_ms
         ));
         lines.push(format!(
-            "  queue_depth={} hot={} warm={} cold={} stale={}",
-            last.queue_depth, last.hot_chunks, last.warm_chunks, last.cold_chunks, last.stale_chunks
+            "  queue_depth={} active_layers={} hot={} warm={} cold={} stale={}",
+            last.queue_depth,
+            last.active_layers,
+            last.hot_chunks,
+            last.warm_chunks,
+            last.cold_chunks,
+            last.stale_chunks
         ));
         lines.push(format!(
             "  dropped_superseded_patches={} coalesced_patches={} snapshot_progress={}%",

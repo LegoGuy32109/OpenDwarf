@@ -267,10 +267,14 @@ fn drive_runtime_bridge_inner(
                 );
             }
             world_runtime::RuntimeEvent::InitialSnapshotEntities(_)
-            | world_runtime::RuntimeEvent::InitialSnapshotComplete
             | world_runtime::RuntimeEvent::EntityPatchBatch(_)
             | world_runtime::RuntimeEvent::ResyncEntities(_)
-            | world_runtime::RuntimeEvent::ResyncComplete => {}
+            | world_runtime::RuntimeEvent::ResyncComplete => {
+                chunk_cache_state.snapshot_progress_percent = 100;
+            }
+            world_runtime::RuntimeEvent::InitialSnapshotComplete => {
+                chunk_cache_state.snapshot_progress_percent = 100;
+            }
             world_runtime::RuntimeEvent::LayerSnapshotStarted { .. } => {
                 chunk_cache_state.snapshot_progress_percent = 0;
             }

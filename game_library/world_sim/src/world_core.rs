@@ -646,20 +646,27 @@ impl WorldState {
 
     #[must_use]
     pub fn snapshot(&mut self) -> WorldSnapshot {
+        self.snapshot_with_visibility(true)
+    }
+
+    #[must_use]
+    pub fn snapshot_with_visibility(&mut self, include_visibility: bool) -> WorldSnapshot {
         // Recompute FOV for primary observer if dirty
-        if let Some(fov) = self.entity_fov.get_mut(&1) {
-            if fov.dirty {
-                // Get the observer's current position
-                if let Some(observer) = self.entities.get(&1) {
-                    let position = observer.position;
-                    super::fov::compute_fov(
-                        fov,
-                        position,
-                        &self.blocks,
-                        self.world_chunks,
-                        self.chunk_edge,
-                        self.tick,
-                    );
+        if include_visibility {
+            if let Some(fov) = self.entity_fov.get_mut(&1) {
+                if fov.dirty {
+                    // Get the observer's current position
+                    if let Some(observer) = self.entities.get(&1) {
+                        let position = observer.position;
+                        super::fov::compute_fov(
+                            fov,
+                            position,
+                            &self.blocks,
+                            self.world_chunks,
+                            self.chunk_edge,
+                            self.tick,
+                        );
+                    }
                 }
             }
         }
@@ -677,13 +684,17 @@ impl WorldState {
             .collect();
 
         // Build visibility snapshot for entity mode overlay.
-        let visibility = if let Some(fov) = self.entity_fov.get(&1) {
-            use crate::world_api::VisibilitySnapshot;
-            Some(VisibilitySnapshot {
-                entity_id: 1,
-                visible: fov.visible.iter().copied().collect(),
-                memory: fov.memory.clone(),
-            })
+        let visibility = if include_visibility {
+            if let Some(fov) = self.entity_fov.get(&1) {
+                use crate::world_api::VisibilitySnapshot;
+                Some(VisibilitySnapshot {
+                    entity_id: 1,
+                    visible: fov.visible.iter().copied().collect(),
+                    memory: fov.memory.clone(),
+                })
+            } else {
+                None
+            }
         } else {
             None
         };

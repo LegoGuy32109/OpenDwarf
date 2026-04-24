@@ -15,11 +15,11 @@ export interface InitOutput {
     readonly runtime_worker_main: () => void;
     readonly set_runtime_worker_script_url: (a: number, b: number) => void;
     readonly __wasm_bindgen_func_elem_523: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_74570: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_71186: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_65988: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_74574: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_71190: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_65992: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_524: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_1860: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_1867: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -1,7 +1,7 @@
 use crate::protocol::{
-    ChunkLayerPatch, ChunkKey, EntityPatchBatch, InputBatch, LayerId, RuntimeConfig,
-    RuntimeControl, RuntimeEvent, SnapshotKind, Vec3i, ViewMode, ViewportIntent, WorldCommand,
-    WorldSnapshot, WorldUpdate,
+    ChunkLayerPatch, ChunkKey, EntityPatchBatch, InputBatch, LayerId, LayerMask, RuntimeConfig,
+    RuntimeControl, RuntimeEvent, SnapshotKind, Vec3i, ViewportIntent, WorldCommand, WorldSnapshot,
+    WorldUpdate,
 };
 #[cfg(target_arch = "wasm32")]
 use crate::protocol::{RuntimeMessage, RuntimeResponse};
@@ -51,6 +51,9 @@ struct RuntimeCore {
     config: RuntimeConfig,
     pending_commands: Vec<WorldCommand>,
     pending_viewport: Option<ViewportIntent>,
+    current_viewport: Option<ViewportIntent>,
+    pending_layer_snapshots: VecDeque<LayerId>,
+    pending_initial_snapshot: bool,
     session: TelemetrySession,
     shared_session: Arc<Mutex<TelemetrySession>>,
     next_tick_at_ms: u128,
@@ -68,6 +71,7 @@ impl RuntimeCore {
                 .spawn_entity_auto(Vec3i::ZERO)
                 .expect("default player should spawn in bounds");
         }
+        let initial_viewport = config.initial_viewport;
 
         let session = TelemetrySession::new(
             config.session_id.clone(),
@@ -81,9 +85,12 @@ impl RuntimeCore {
             config,
             pending_commands: Vec::new(),
             pending_viewport: None,
+            current_viewport: initial_viewport,
+            pending_layer_snapshots: VecDeque::new(),
+            pending_initial_snapshot: initial_viewport.is_some(),
             session,
             shared_session,
-            next_tick_at_ms: now_millis() + 50,
+            next_tick_at_ms: now_millis(),
             worker_frame_id: 0,
             active: true,
             initial_snapshot_sent: false,
@@ -97,10 +104,6 @@ impl RuntimeCore {
             transport: core.config.transport,
         });
         core.events.push_back(RuntimeEvent::RuntimeReady);
-        if let Some(viewport) = core.config.initial_viewport {
-            core.pending_viewport = Some(viewport);
-        }
-        core.emit_initial_snapshot();
         core.sync_shared_session();
         core
     }
@@ -113,34 +116,6 @@ impl RuntimeCore {
         *shared_session = self.session.clone();
     }
 
-    fn emit_initial_snapshot(&mut self) {
-        if self.initial_snapshot_sent {
-            return;
-        }
-        self.initial_snapshot_sent = true;
-        self.events.push_back(RuntimeEvent::InitialSnapshotStarted);
-        let snapshot = self.world.snapshot();
-        self.events.push_back(RuntimeEvent::InitialSnapshotProgress {
-            completed_chunks: 1,
-            total_chunks: 1,
-        });
-        self.events
-            .push_back(RuntimeEvent::InitialSnapshotChunkLayer(
-                self.snapshot_to_patch(
-                    &snapshot,
-                    ChunkKey::new(0, 0, 0),
-                    LayerId::Floor,
-                    SnapshotKind::Initial,
-                ),
-            ));
-        self.events
-            .push_back(RuntimeEvent::InitialSnapshotEntities(EntityPatchBatch {
-                worker_frame_id: self.worker_frame_id,
-                updates: vec![WorldUpdate::Snapshot(snapshot)],
-            }));
-        self.events.push_back(RuntimeEvent::InitialSnapshotComplete);
-    }
-
     fn snapshot_to_patch(
         &self,
         snapshot: &WorldSnapshot,
@@ -148,7 +123,10 @@ impl RuntimeCore {
         layer: LayerId,
         kind: SnapshotKind,
     ) -> ChunkLayerPatch {
-        let full_chunk = matches!(kind, SnapshotKind::Initial | SnapshotKind::Resync);
+        let full_chunk = matches!(
+            kind,
+            SnapshotKind::Initial | SnapshotKind::LayerToggle { .. } | SnapshotKind::Resync
+        );
         let payload = bincode::serde::encode_to_vec(snapshot, bincode::config::standard())
             .expect("snapshot should serialize for patch payload");
         ChunkLayerPatch {
@@ -166,21 +144,37 @@ impl RuntimeCore {
     }
 
     fn queue_viewport(&mut self, viewport: ViewportIntent) {
+        let previous_layers = self
+            .current_viewport
+            .map(|viewport| viewport.active_layers)
+            .unwrap_or_else(LayerMask::empty);
+        let newly_enabled_layers = LayerMask(viewport.active_layers.0 & !previous_layers.0);
+        if self.current_viewport.is_none() {
+            self.pending_initial_snapshot = true;
+        } else {
+            for layer in active_layers_in_order(newly_enabled_layers) {
+                self.pending_layer_snapshots.push_back(layer);
+            }
+        }
         self.pending_viewport = Some(viewport);
     }
 
-    fn request_resync(&mut self, reason: String) {
+    fn request_resync(&mut self, reason: String, viewport: ViewportIntent) {
         self.events.push_back(RuntimeEvent::ResyncStarted {
             reason: reason.clone(),
         });
-        let snapshot = self.world.snapshot();
-        self.events
-            .push_back(RuntimeEvent::ResyncChunkLayer(self.snapshot_to_patch(
-                &snapshot,
-                ChunkKey::new(0, 0, 0),
-                LayerId::Floor,
-                SnapshotKind::Resync,
-            )));
+        let snapshot = self
+            .world
+            .snapshot_with_visibility(viewport.active_layers.contains(LayerId::Fog));
+        for layer in active_layers_in_order(viewport.active_layers) {
+            self.events
+                .push_back(RuntimeEvent::ResyncChunkLayer(self.snapshot_to_patch(
+                    &snapshot,
+                    ChunkKey::new(0, 0, 0),
+                    layer,
+                    SnapshotKind::Resync,
+                )));
+        }
         self.events
             .push_back(RuntimeEvent::ResyncEntities(EntityPatchBatch {
                 worker_frame_id: self.worker_frame_id,
@@ -192,6 +186,75 @@ impl RuntimeCore {
         self.sync_shared_session();
     }
 
+    fn emit_initial_snapshot(&mut self, viewport: &ViewportIntent) -> u64 {
+        if self.initial_snapshot_sent {
+            return 0;
+        }
+
+        self.initial_snapshot_sent = true;
+        self.events.push_back(RuntimeEvent::InitialSnapshotStarted);
+
+        let active_layers = active_layers_in_order(viewport.active_layers);
+        let total_layers = u32::try_from(active_layers.len()).expect("layer count should fit u32");
+        let snapshot_start_ms = now_millis();
+        let snapshot = self
+            .world
+            .snapshot_with_visibility(viewport.active_layers.contains(LayerId::Fog));
+        let snapshot_ms = now_millis().saturating_sub(snapshot_start_ms) as u64;
+
+        if total_layers == 0 {
+            self.events.push_back(RuntimeEvent::InitialSnapshotProgress {
+                completed_chunks: 0,
+                total_chunks: 0,
+            });
+        }
+
+        for (index, layer) in active_layers.iter().enumerate() {
+            let completed = u32::try_from(index + 1).expect("initial snapshot progress should fit");
+            self.events.push_back(RuntimeEvent::InitialSnapshotProgress {
+                completed_chunks: completed,
+                total_chunks: total_layers,
+            });
+            self.events
+                .push_back(RuntimeEvent::InitialSnapshotChunkLayer(
+                    self.snapshot_to_patch(&snapshot, ChunkKey::new(0, 0, 0), *layer, SnapshotKind::Initial),
+                ));
+        }
+
+        self.events
+            .push_back(RuntimeEvent::InitialSnapshotEntities(EntityPatchBatch {
+                worker_frame_id: self.worker_frame_id,
+                updates: vec![WorldUpdate::Snapshot(snapshot)],
+            }));
+        self.events.push_back(RuntimeEvent::InitialSnapshotComplete);
+        snapshot_ms
+    }
+
+    fn emit_layer_snapshot(&mut self, viewport: &ViewportIntent, layer: LayerId) -> u64 {
+        self.events.push_back(RuntimeEvent::LayerSnapshotStarted { layer });
+        self.events.push_back(RuntimeEvent::LayerSnapshotProgress {
+            layer,
+            completed_chunks: 1,
+            total_chunks: 1,
+        });
+        let snapshot_start_ms = now_millis();
+        let snapshot = self
+            .world
+            .snapshot_with_visibility(viewport.active_layers.contains(LayerId::Fog));
+        let snapshot_ms = now_millis().saturating_sub(snapshot_start_ms) as u64;
+        self.events.push_back(RuntimeEvent::ChunkLayerPatch(
+            self.snapshot_to_patch(
+                &snapshot,
+                ChunkKey::new(0, 0, 0),
+                layer,
+                SnapshotKind::LayerToggle { layer },
+            ),
+        ));
+        self.events
+            .push_back(RuntimeEvent::LayerSnapshotComplete { layer });
+        snapshot_ms
+    }
+
     fn step(&mut self) {
         if !self.active {
             return;
@@ -199,67 +262,81 @@ impl RuntimeCore {
 
         self.worker_frame_id = self.worker_frame_id.saturating_add(1);
         let frame_start_ms = now_millis();
-        let fov_ms = 0;
+        let mut emitted_snapshot = false;
+        let mut fov_ms = 0;
+        let patch_apply_ms = 0;
+        let mut active_layers_count = 0u32;
 
         if let Some(viewport) = self.pending_viewport.take() {
-            let layer = match viewport.view_mode {
-                ViewMode::Master => LayerId::Floor,
-                ViewMode::Entity => LayerId::Fog,
-            };
-            self.events.push_back(RuntimeEvent::LayerSnapshotStarted {
-                layer,
-            });
-            self.events.push_back(RuntimeEvent::LayerSnapshotProgress {
-                layer,
-                completed_chunks: 1,
-                total_chunks: 1,
-            });
-            self.events
-                .push_back(RuntimeEvent::LayerSnapshotComplete { layer });
+            self.current_viewport = Some(viewport);
+        }
+
+        if let Some(viewport) = self.current_viewport {
+            active_layers_count = viewport.active_layers.0.count_ones();
+            if self.pending_initial_snapshot && !self.initial_snapshot_sent {
+                fov_ms = fov_ms.max(self.emit_initial_snapshot(&viewport));
+                self.pending_initial_snapshot = false;
+                emitted_snapshot = true;
+            }
+
+            while let Some(layer) = self.pending_layer_snapshots.pop_front() {
+                fov_ms = fov_ms.max(self.emit_layer_snapshot(&viewport, layer));
+                emitted_snapshot = true;
+            }
         }
 
         let mut updates = Vec::new();
-        let sim_start_ms = now_millis();
-        for command in self.pending_commands.drain(..) {
-            if let Some(update) = self.world.apply_command(command) {
+        let mut worker_sim_ms = 0;
+        let mut patch_build_ms = 0;
+        let mut serialization_ms = 0;
+
+        if !emitted_snapshot {
+            let sim_start_ms = now_millis();
+            for command in self.pending_commands.drain(..) {
+                if let Some(update) = self.world.apply_command(command) {
+                    updates.push(WorldUpdate::Delta(update));
+                }
+            }
+            if let Some(update) = self.world.advance_active_movements_one_tick() {
                 updates.push(WorldUpdate::Delta(update));
             }
-        }
-        if let Some(update) = self.world.advance_active_movements_one_tick() {
-            updates.push(WorldUpdate::Delta(update));
-        }
-        if !updates.is_empty() {
-            self.events
-                .push_back(RuntimeEvent::EntityPatchBatch(EntityPatchBatch {
-                    worker_frame_id: self.worker_frame_id,
-                    updates,
-                }));
-        }
-        let worker_sim_ms = now_millis().saturating_sub(sim_start_ms) as u64;
+            if !updates.is_empty() {
+                self.events
+                    .push_back(RuntimeEvent::EntityPatchBatch(EntityPatchBatch {
+                        worker_frame_id: self.worker_frame_id,
+                        updates,
+                    }));
+            }
+            worker_sim_ms = now_millis().saturating_sub(sim_start_ms) as u64;
 
-        let patch_start_ms = now_millis();
-        let snapshot = self.world.snapshot();
-        let patch = self.snapshot_to_patch(
-            &snapshot,
-            ChunkKey::new(0, 0, 0),
-            LayerId::Floor,
-            SnapshotKind::Initial,
-        );
-        self.events.push_back(RuntimeEvent::ChunkLayerPatch(patch));
-        let patch_build_ms = now_millis().saturating_sub(patch_start_ms) as u64;
+            let patch_start_ms = now_millis();
+            if let Some(viewport) = self.current_viewport {
+                let include_visibility = viewport.active_layers.contains(LayerId::Fog);
+                let snapshot_start_ms = now_millis();
+                let snapshot = self.world.snapshot_with_visibility(include_visibility);
+                if include_visibility {
+                    fov_ms = now_millis().saturating_sub(snapshot_start_ms) as u64;
+                }
+                active_layers_count = viewport.active_layers.0.count_ones();
+                let active_layers = active_layers_in_order(viewport.active_layers);
+                for layer in active_layers {
+                    self.events.push_back(RuntimeEvent::ChunkLayerPatch(
+                        self.snapshot_to_patch(
+                            &snapshot,
+                            ChunkKey::new(0, 0, 0),
+                            layer,
+                            SnapshotKind::Incremental,
+                        ),
+                    ));
+                }
+                patch_build_ms = now_millis().saturating_sub(patch_start_ms) as u64;
 
-        let ser_start_ms = now_millis();
-        let _serialized =
-            bincode::serde::encode_to_vec(&snapshot, bincode::config::standard())
-                .expect("snapshot should serialize");
-        let serialization_ms = now_millis().saturating_sub(ser_start_ms) as u64;
-        let patch_apply_ms = 0;
-
-        let snapshot_progress_percent = if self.initial_snapshot_sent {
-            100
-        } else {
-            0
-        };
+                let ser_start_ms = now_millis();
+                let _serialized = bincode::serde::encode_to_vec(&snapshot, bincode::config::standard())
+                    .expect("snapshot should serialize");
+                serialization_ms = now_millis().saturating_sub(ser_start_ms) as u64;
+            }
+        }
 
         let frame_ms = now_millis().saturating_sub(frame_start_ms) as u64;
         let telemetry = TelemetryFrame {
@@ -270,13 +347,20 @@ impl RuntimeCore {
             serialization_ms,
             patch_apply_ms,
             queue_depth: self.pending_commands.len() as u32,
+            active_layers: active_layers_count,
             hot_chunks: 1,
             warm_chunks: 0,
             cold_chunks: 0,
             stale_chunks: 0,
             dropped_superseded_patches: 0,
             coalesced_patches: 0,
-            snapshot_progress_percent,
+            snapshot_progress_percent: if self.initial_snapshot_sent && emitted_snapshot {
+                100
+            } else if self.pending_viewport.is_some() || self.current_viewport.is_some() {
+                100
+            } else {
+                0
+            },
         };
         self.session.record_frame(telemetry.clone());
         self.events.push_back(RuntimeEvent::TelemetryFrame(telemetry));
@@ -292,7 +376,11 @@ impl RuntimeCore {
     }
 
     fn drain_events(&mut self) -> Vec<RuntimeEvent> {
-        if self.initial_snapshot_sent {
+        if self.pending_viewport.is_some()
+            || self.pending_initial_snapshot
+            || self.initial_snapshot_sent
+            || !self.pending_layer_snapshots.is_empty()
+        {
             while now_millis() >= self.next_tick_at_ms {
                 self.step();
                 if self.next_tick_at_ms <= now_millis() {
@@ -309,6 +397,23 @@ impl RuntimeCore {
         self.events.push_back(RuntimeEvent::SessionEnded(status));
         self.sync_shared_session();
     }
+}
+
+fn active_layers_in_order(mask: LayerMask) -> Vec<LayerId> {
+    let mut layers = Vec::new();
+    if mask.contains(LayerId::Floor) {
+        layers.push(LayerId::Floor);
+    }
+    if mask.contains(LayerId::EdgeShadow) {
+        layers.push(LayerId::EdgeShadow);
+    }
+    if mask.contains(LayerId::CeilingShadow) {
+        layers.push(LayerId::CeilingShadow);
+    }
+    if mask.contains(LayerId::Fog) {
+        layers.push(LayerId::Fog);
+    }
+    layers
 }
 
 fn now_millis() -> u128 {
@@ -506,7 +611,7 @@ impl RuntimeWorkerState {
                         }
                         RuntimeControl::RequestResync { reason, viewport } => {
                             core.queue_viewport(viewport);
-                            core.request_resync(reason);
+                            core.request_resync(reason, viewport);
                             self.flush();
                         }
                     }
@@ -642,7 +747,7 @@ impl RuntimeHandle {
                                 viewport,
                             }) => {
                                 core.queue_viewport(viewport);
-                                core.request_resync(reason);
+                                core.request_resync(reason, viewport);
                             }
                         }
                     }
@@ -728,7 +833,7 @@ impl RuntimeHandle {
                     .lock()
                     .expect("runtime core lock should be available");
                 core.queue_viewport(viewport);
-                core.request_resync(reason);
+                core.request_resync(reason, viewport);
                 Ok(())
             }
         }

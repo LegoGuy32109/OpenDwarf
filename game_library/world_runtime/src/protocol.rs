@@ -126,6 +126,7 @@ impl InputBatch {
 pub enum SnapshotKind {
     Initial,
     LayerToggle { layer: LayerId },
+    Incremental,
     Resync,
 }
 

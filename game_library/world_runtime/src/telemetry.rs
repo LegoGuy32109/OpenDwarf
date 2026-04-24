@@ -31,6 +31,7 @@ pub struct TelemetryFrame {
     pub serialization_ms: u64,
     pub patch_apply_ms: u64,
     pub queue_depth: u32,
+    pub active_layers: u32,
     pub hot_chunks: u32,
     pub warm_chunks: u32,
     pub cold_chunks: u32,
