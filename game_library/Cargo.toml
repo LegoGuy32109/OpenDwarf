@@ -51,6 +51,7 @@ web-sys = { version = "0.3.76", features = [
   "console",
 ] }
 world_sim = { path = "world_sim" }
+world_tiles = { path = "world_tiles" }
 world_runtime = { path = "world_runtime" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

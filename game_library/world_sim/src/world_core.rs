@@ -174,6 +174,12 @@ pub struct WorldState {
     loaded_chunks: HashSet<Vec3i>,
     next_entity_id: u64,
     entity_fov: HashMap<u64, EntityFov>,
+    #[doc(hidden)]
+    pub terrain_dirty_chunks: HashSet<Vec3i>,
+    #[doc(hidden)]
+    pub entity_dirty_chunks: HashSet<Vec3i>,
+    #[doc(hidden)]
+    pub visibility_dirty_chunks: HashSet<Vec3i>,
 }
 
 impl WorldState {
@@ -222,6 +228,9 @@ impl WorldState {
             loaded_chunks: make_initial_loaded_chunks(config.world_chunks),
             next_entity_id: 1,
             entity_fov: HashMap::new(),
+            terrain_dirty_chunks: HashSet::new(),
+            entity_dirty_chunks: HashSet::new(),
+            visibility_dirty_chunks: HashSet::new(),
         }
     }
 
@@ -779,6 +788,30 @@ impl WorldState {
             i32::try_from(chunk_local_y).ok()? - center_y,
             i32::try_from(chunk_local_z).ok()? - center_z,
         ))
+    }
+
+    pub fn chunk_edge(&self) -> u32 {
+        self.chunk_edge
+    }
+
+    pub fn world_chunks(&self) -> Vec3u {
+        self.world_chunks
+    }
+
+    pub fn terrain_blocks_map(&self) -> Arc<HashMap<Vec3i, BlockType>> {
+        Arc::clone(&self.terrain_blocks)
+    }
+
+    pub fn take_terrain_dirty_chunks(&mut self) -> HashSet<Vec3i> {
+        std::mem::take(&mut self.terrain_dirty_chunks)
+    }
+
+    pub fn take_entity_dirty_chunks(&mut self) -> HashSet<Vec3i> {
+        std::mem::take(&mut self.entity_dirty_chunks)
+    }
+
+    pub fn take_visibility_dirty_chunks(&mut self) -> HashSet<Vec3i> {
+        std::mem::take(&mut self.visibility_dirty_chunks)
     }
 }
 

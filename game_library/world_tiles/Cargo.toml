@@ -1,0 +1,8 @@
+[package]
+name = "world_tiles"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.18", features = ["bevy_sprite_render"] }
+world_sim = { path = "../world_sim" }
