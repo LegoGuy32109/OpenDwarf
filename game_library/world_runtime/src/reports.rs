@@ -6,8 +6,17 @@ pub fn build_short_report(session: &TelemetrySession) -> String {
     let frame_stats = frame_stats(session);
     let worker_stats = metric_stats(session, |frame| frame.worker_sim_ms);
     let patch_apply_stats = metric_stats(session, |frame| frame.patch_apply_ms);
+    let backpressure = session
+        .runtime_backpressure
+        .map(|stats| {
+            format!(
+                " overfetch={:.2} pressure={}",
+                stats.overfetch_factor, stats.pressure_level
+            )
+        })
+        .unwrap_or_default();
     format!(
-        "session={} status={:?} mode={} transport={} elapsed_ms={} frame_ms(p50/p95/max)={}/{}/{} worker_ms(p50/p95/max)={}/{}/{} patch_apply_ms(last/p95/max)={}/{}/{} stale_chunks={} queue_depth={} active_layers={} dropped={} coalesced={} snapshot_progress={}%",
+        "session={} status={:?} mode={} transport={} elapsed_ms={} frame_ms(p50/p95/max)={}/{}/{} worker_ms(p50/p95/max)={}/{}/{} patch_apply_ms(last/p95/max)={}/{}/{} stale_chunks={} queue_depth={} active_layers={} dropped={} coalesced={} snapshot_progress={}%{}",
         session.session_id,
         session.status,
         session.mode,
@@ -28,6 +37,7 @@ pub fn build_short_report(session: &TelemetrySession) -> String {
         last_frame.dropped_superseded_patches,
         last_frame.coalesced_patches,
         last_frame.snapshot_progress_percent,
+        backpressure,
     )
 }
 
@@ -104,6 +114,24 @@ pub fn build_long_report(session: &TelemetrySession) -> String {
         for fault in &session.faults {
             lines.push(format!("  - {}", fault));
         }
+    }
+
+    if let Some(stats) = session.runtime_backpressure.as_ref() {
+        lines.push(String::from("Runtime Backpressure:"));
+        lines.push(format!(
+            "  overfetch_factor={:.2} pressure_level={} target_radius_tiles={}",
+            stats.overfetch_factor, stats.pressure_level, stats.target_radius_tiles
+        ));
+        lines.push(format!(
+            "  dropped_superseded={} coalesced={} warm_evictions={}",
+            stats.dropped_superseded_patches,
+            stats.coalesced_patches,
+            stats.warm_budget_evictions
+        ));
+        lines.push(format!(
+            "  warm_budget_chunks={} warm_budget_payload_bytes={}",
+            stats.warm_budget_chunks, stats.warm_budget_payload_bytes
+        ));
     }
 
     if matches!(session.status, SessionStatus::DesyncedResync) {

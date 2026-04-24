@@ -2,14 +2,14 @@ use bevy::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
 use world_runtime::{
-    LayerMask, RuntimeConfig, RuntimeHandle, RuntimeMode, RuntimeTransport, Vec3i,
-    ViewMode as RuntimeViewMode, ViewportIntent,
+    LayerMask, RuntimeBackpressureStats, RuntimeConfig, RuntimeHandle, RuntimeMode,
+    RuntimeTransport, Vec3i, ViewMode as RuntimeViewMode, ViewportIntent,
 };
 use world_sim::bevy_app::{PrimarySimulationEntityId, WorldSimSettings, WorldView};
 
 use crate::domain::runtime_cache::{
-    ChunkCacheState, ChunkLayerCacheMap, RuntimeInputQueue, RuntimePatchApplyQueue,
-    RuntimeViewportIntentState, build_input_batch,
+    ChunkCacheState, ChunkLayerCacheMap, RuntimeBackpressureState, RuntimeInputQueue,
+    RuntimePatchApplyQueue, RuntimeViewportIntentState, build_input_batch,
 };
 use crate::domain::runtime_telemetry::RuntimeTelemetryState;
 use crate::domain::simulation::{RenderEntityData, TerrainConfig, TileLayerDebugState};
@@ -74,6 +74,7 @@ pub fn setup_runtime_bridge(
     commands.insert_resource(RuntimeViewportIntentState::default());
     commands.insert_resource(ChunkCacheState::default());
     commands.insert_resource(ChunkLayerCacheMap::default());
+    commands.insert_resource(RuntimeBackpressureState::default());
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -110,6 +111,7 @@ pub fn setup_runtime_bridge(
     commands.insert_resource(RuntimeViewportIntentState::default());
     commands.insert_resource(ChunkCacheState::default());
     commands.insert_resource(ChunkLayerCacheMap::default());
+    commands.insert_resource(RuntimeBackpressureState::default());
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -121,14 +123,15 @@ pub fn drive_runtime_bridge(
     terrain_config: Res<TerrainConfig>,
     entity_data: Res<RenderEntityData>,
     tile_layer_debug_state: Res<TileLayerDebugState>,
-    mut runtime_input_queue: ResMut<RuntimeInputQueue>,
-    mut patch_queue: ResMut<RuntimePatchApplyQueue>,
-    mut viewport_state: ResMut<RuntimeViewportIntentState>,
-    mut chunk_cache_state: ResMut<ChunkCacheState>,
-    mut chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
+    runtime_input_queue: ResMut<RuntimeInputQueue>,
+    patch_queue: ResMut<RuntimePatchApplyQueue>,
+    viewport_state: ResMut<RuntimeViewportIntentState>,
+    chunk_cache_state: ResMut<ChunkCacheState>,
+    chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
+    backpressure: ResMut<RuntimeBackpressureState>,
     camera_query: Query<&Projection, With<Camera2d>>,
     mut bridge: ResMut<RuntimeBridgeState>,
-    mut telemetry: ResMut<RuntimeTelemetryState>,
+    telemetry: ResMut<RuntimeTelemetryState>,
 ) {
     drive_runtime_bridge_inner(
         primary_entity_id,
@@ -143,6 +146,7 @@ pub fn drive_runtime_bridge(
         viewport_state,
         chunk_cache_state,
         chunk_layer_cache,
+        backpressure,
         camera_query,
         &mut *bridge,
         telemetry,
@@ -158,14 +162,15 @@ pub fn drive_runtime_bridge(
     terrain_config: Res<TerrainConfig>,
     entity_data: Res<RenderEntityData>,
     tile_layer_debug_state: Res<TileLayerDebugState>,
-    mut runtime_input_queue: ResMut<RuntimeInputQueue>,
-    mut patch_queue: ResMut<RuntimePatchApplyQueue>,
-    mut viewport_state: ResMut<RuntimeViewportIntentState>,
-    mut chunk_cache_state: ResMut<ChunkCacheState>,
-    mut chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
+    runtime_input_queue: ResMut<RuntimeInputQueue>,
+    patch_queue: ResMut<RuntimePatchApplyQueue>,
+    viewport_state: ResMut<RuntimeViewportIntentState>,
+    chunk_cache_state: ResMut<ChunkCacheState>,
+    chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
+    backpressure: ResMut<RuntimeBackpressureState>,
     camera_query: Query<&Projection, With<Camera2d>>,
     mut bridge: NonSendMut<RuntimeBridgeState>,
-    mut telemetry: ResMut<RuntimeTelemetryState>,
+    telemetry: ResMut<RuntimeTelemetryState>,
 ) {
     drive_runtime_bridge_inner(
         primary_entity_id,
@@ -180,6 +185,7 @@ pub fn drive_runtime_bridge(
         viewport_state,
         chunk_cache_state,
         chunk_layer_cache,
+        backpressure,
         camera_query,
         &mut *bridge,
         telemetry,
@@ -200,10 +206,15 @@ fn drive_runtime_bridge_inner(
     mut viewport_state: ResMut<RuntimeViewportIntentState>,
     mut chunk_cache_state: ResMut<ChunkCacheState>,
     mut chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
+    mut backpressure: ResMut<RuntimeBackpressureState>,
     camera_query: Query<&Projection, With<Camera2d>>,
     bridge: &mut RuntimeBridgeState,
     mut telemetry: ResMut<RuntimeTelemetryState>,
 ) {
+    if let Some(last_frame) = telemetry.session.frames.last() {
+        backpressure.update_from_frame_ms(last_frame.frame_ms);
+    }
+
     let Some(viewport_intent) = build_viewport_intent(
         &primary_entity_id,
         &world_view,
@@ -213,6 +224,7 @@ fn drive_runtime_bridge_inner(
         &entity_data,
         &tile_layer_debug_state,
         &camera_query,
+        &mut backpressure,
     ) else {
         return;
     };
@@ -238,7 +250,16 @@ fn drive_runtime_bridge_inner(
 
     let now = now_millis();
     let mut applied_event_count = 0usize;
-    for event in patch_queue.drain() {
+    let camera_chunk_center = viewport_state
+        .current
+        .map(|intent| IVec3::new(intent.camera_center.x, intent.camera_center.y, intent.camera_center.z));
+    let ordered_events = patch_queue.drain_ordered_by_camera(camera_chunk_center);
+    let (dropped, coalesced) = patch_queue.take_counters();
+    chunk_cache_state.dropped_superseded_patches = chunk_cache_state
+        .dropped_superseded_patches
+        .saturating_add(dropped);
+    chunk_cache_state.coalesced_patches = chunk_cache_state.coalesced_patches.saturating_add(coalesced);
+    for event in ordered_events {
         applied_event_count = applied_event_count.saturating_add(1);
         match event {
             world_runtime::RuntimeEvent::SessionStarted { .. } => {}
@@ -312,9 +333,23 @@ fn drive_runtime_bridge_inner(
     }
 
     telemetry.session = bridge.handle.session_snapshot();
-    telemetry.refresh_reports();
 
     chunk_layer_cache.mark_all_stale(now, chunk_cache_state.stale_grace_ms);
+    let pressure_scale = match backpressure.pressure_level {
+        0 => 1.0f32,
+        1 => 0.5,
+        _ => 0.25,
+    };
+    let max_entries = ((chunk_cache_state.max_warm_chunks as f32) * pressure_scale)
+        .round()
+        .max(1.0) as usize;
+    let max_bytes = ((chunk_cache_state.max_payload_bytes as f32) * pressure_scale)
+        .round()
+        .max(1.0) as usize;
+    let evicted = chunk_layer_cache.enforce_budgets(max_entries, max_bytes);
+    chunk_cache_state.warm_budget_evictions = chunk_cache_state
+        .warm_budget_evictions
+        .saturating_add(evicted);
     let (hot, warm, cold) = chunk_layer_cache.residency_counts();
     let (latest_worker_frame_id, full_chunk_entries, materialized_entries, dirty_entries) =
         chunk_layer_cache.entry_shape_counts();
@@ -331,6 +366,21 @@ fn drive_runtime_bridge_inner(
         .current
         .map(|intent| intent.active_layers.0.count_ones() as usize)
         .unwrap_or(0);
+    chunk_cache_state.overfetch_factor = backpressure.overfetch_factor;
+    chunk_cache_state.pressure_level = backpressure.pressure_level;
+    chunk_cache_state.target_radius_tiles = backpressure.target_radius_tiles;
+
+    telemetry.session.runtime_backpressure = Some(RuntimeBackpressureStats {
+        overfetch_factor: backpressure.overfetch_factor,
+        pressure_level: backpressure.pressure_level,
+        target_radius_tiles: backpressure.target_radius_tiles,
+        dropped_superseded_patches: chunk_cache_state.dropped_superseded_patches,
+        coalesced_patches: chunk_cache_state.coalesced_patches,
+        warm_budget_evictions: chunk_cache_state.warm_budget_evictions,
+        warm_budget_chunks: max_entries as u32,
+        warm_budget_payload_bytes: max_bytes as u64,
+    });
+    telemetry.refresh_reports();
 }
 
 fn build_viewport_intent(
@@ -342,6 +392,7 @@ fn build_viewport_intent(
     entity_data: &RenderEntityData,
     tile_layer_debug_state: &TileLayerDebugState,
     camera_query: &Query<&Projection, With<Camera2d>>,
+    backpressure: &mut RuntimeBackpressureState,
 ) -> Option<ViewportIntent> {
     let entity_id = primary_entity_id.0?;
     let entity = entity_data.entities.get(&entity_id)?;
@@ -350,9 +401,11 @@ fn build_viewport_intent(
     let center = entity.position;
     let zoom = camera_zoom(camera_query);
     let zoom_scale = (1.0 / zoom.max(0.25)).clamp(0.75, 4.0);
-    let radius_tiles = ((terrain_config.chunk_edge.max(1) as f32) * 2.0 * zoom_scale)
+    let base_radius_tiles = ((terrain_config.chunk_edge.max(1) as f32) * 2.0 * zoom_scale)
         .round()
         .clamp(chunk_edge as f32, (chunk_edge * 8) as f32) as i32;
+    let min_radius_tiles = chunk_edge;
+    let radius_tiles = backpressure.scaled_overfetch_radius(base_radius_tiles, min_radius_tiles);
     let desired_bounds_min = Vec3i::new(
         center.x - radius_tiles,
         center.y - radius_tiles,

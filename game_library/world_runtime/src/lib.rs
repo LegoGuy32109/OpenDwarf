@@ -10,7 +10,10 @@ pub use protocol::{
 };
 pub use reports::{build_long_report, build_short_report};
 pub use runtime_handle::RuntimeHandle;
-pub use telemetry::{SessionStatus, TelemetryFrame, TelemetrySession};
+pub use telemetry::{
+    RuntimeBackpressureStats, SessionLifecycleEvent, SessionStatus, TelemetryFrame,
+    TelemetrySession,
+};
 
 pub use world_sim::world_api::{
     BlockType, EntityMovementSnapshot, EntityMovedDelta, EntitySnapshot, TileMemory, Vec3i,

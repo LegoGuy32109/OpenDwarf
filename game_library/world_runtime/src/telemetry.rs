@@ -22,6 +22,33 @@ pub struct SessionLifecycleEvent {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeBackpressureStats {
+    pub overfetch_factor: f32,
+    pub pressure_level: u8,
+    pub target_radius_tiles: i32,
+    pub dropped_superseded_patches: u64,
+    pub coalesced_patches: u64,
+    pub warm_budget_evictions: u64,
+    pub warm_budget_chunks: u32,
+    pub warm_budget_payload_bytes: u64,
+}
+
+impl Default for RuntimeBackpressureStats {
+    fn default() -> Self {
+        Self {
+            overfetch_factor: 1.0,
+            pressure_level: 0,
+            target_radius_tiles: 0,
+            dropped_superseded_patches: 0,
+            coalesced_patches: 0,
+            warm_budget_evictions: 0,
+            warm_budget_chunks: 0,
+            warm_budget_payload_bytes: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TelemetryFrame {
     pub frame_ms: u64,
@@ -54,6 +81,8 @@ pub struct TelemetrySession {
     pub lifecycle_events: Vec<SessionLifecycleEvent>,
     pub warnings: Vec<String>,
     pub faults: Vec<String>,
+    #[serde(default)]
+    pub runtime_backpressure: Option<RuntimeBackpressureStats>,
 }
 
 impl TelemetrySession {
@@ -81,6 +110,7 @@ impl TelemetrySession {
             }],
             warnings: Vec::new(),
             faults: Vec::new(),
+            runtime_backpressure: None,
         }
     }
 
