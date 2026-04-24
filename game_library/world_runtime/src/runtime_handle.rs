@@ -5,8 +5,10 @@ use crate::protocol::{
 };
 use crate::telemetry::{SessionStatus, TelemetryFrame, TelemetrySession};
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
 use world_sim::world_core::WorldState;
 
 enum Backend {
@@ -14,6 +16,7 @@ enum Backend {
     Threaded {
         control_tx: std::sync::mpsc::Sender<ControlMessage>,
         event_rx: Mutex<std::sync::mpsc::Receiver<RuntimeEvent>>,
+        shared_session: Arc<Mutex<TelemetrySession>>,
     },
     #[allow(dead_code)]
     Inline {
@@ -33,7 +36,8 @@ struct RuntimeCore {
     pending_commands: Vec<WorldCommand>,
     pending_viewport: Option<ViewportIntent>,
     session: TelemetrySession,
-    next_tick_at: Instant,
+    shared_session: Arc<Mutex<TelemetrySession>>,
+    next_tick_at_ms: u128,
     worker_frame_id: u64,
     active: bool,
     initial_snapshot_sent: bool,
@@ -41,7 +45,7 @@ struct RuntimeCore {
 }
 
 impl RuntimeCore {
-    fn new(config: RuntimeConfig) -> Self {
+    fn new(config: RuntimeConfig, shared_session: Arc<Mutex<TelemetrySession>>) -> Self {
         let mut world = WorldState::new(config.world_config.clone());
         if config.spawn_default_player {
             world
@@ -62,26 +66,35 @@ impl RuntimeCore {
             pending_commands: Vec::new(),
             pending_viewport: None,
             session,
-            next_tick_at: Instant::now() + Duration::from_millis(50),
+            shared_session,
+            next_tick_at_ms: now_millis() + 50,
             worker_frame_id: 0,
             active: true,
             initial_snapshot_sent: false,
             events: VecDeque::new(),
         };
 
-        core.events
-            .push_back(RuntimeEvent::SessionStarted {
-                session_id: core.config.session_id.clone(),
-                build_id: core.config.build_id.clone(),
-                mode: core.config.mode,
-                transport: core.config.transport,
-            });
+        core.events.push_back(RuntimeEvent::SessionStarted {
+            session_id: core.config.session_id.clone(),
+            build_id: core.config.build_id.clone(),
+            mode: core.config.mode,
+            transport: core.config.transport,
+        });
         core.events.push_back(RuntimeEvent::RuntimeReady);
         if let Some(viewport) = core.config.initial_viewport {
             core.pending_viewport = Some(viewport);
         }
         core.emit_initial_snapshot();
+        core.sync_shared_session();
         core
+    }
+
+    fn sync_shared_session(&self) {
+        let mut shared_session = self
+            .shared_session
+            .lock()
+            .expect("runtime shared session lock should be available");
+        *shared_session = self.session.clone();
     }
 
     fn emit_initial_snapshot(&mut self) {
@@ -95,21 +108,21 @@ impl RuntimeCore {
             completed_chunks: 1,
             total_chunks: 1,
         });
-        self.events.push_back(RuntimeEvent::InitialSnapshotChunkLayer(
-            self.snapshot_to_patch(
-                &snapshot,
-                ChunkKey::new(0, 0, 0),
-                LayerId::Floor,
-                SnapshotKind::Initial,
-            ),
-        ));
+        self.events
+            .push_back(RuntimeEvent::InitialSnapshotChunkLayer(
+                self.snapshot_to_patch(
+                    &snapshot,
+                    ChunkKey::new(0, 0, 0),
+                    LayerId::Floor,
+                    SnapshotKind::Initial,
+                ),
+            ));
         self.events
             .push_back(RuntimeEvent::InitialSnapshotEntities(EntityPatchBatch {
                 worker_frame_id: self.worker_frame_id,
                 updates: vec![WorldUpdate::Snapshot(snapshot)],
             }));
-        self.events
-            .push_back(RuntimeEvent::InitialSnapshotComplete);
+        self.events.push_back(RuntimeEvent::InitialSnapshotComplete);
     }
 
     fn snapshot_to_patch(
@@ -158,7 +171,9 @@ impl RuntimeCore {
                 updates: vec![WorldUpdate::Snapshot(snapshot)],
             }));
         self.events.push_back(RuntimeEvent::ResyncComplete);
-        self.session.set_status(SessionStatus::DesyncedResync, Some(reason));
+        self.session
+            .set_status(SessionStatus::DesyncedResync, Some(reason));
+        self.sync_shared_session();
     }
 
     fn step(&mut self) {
@@ -167,7 +182,7 @@ impl RuntimeCore {
         }
 
         self.worker_frame_id = self.worker_frame_id.saturating_add(1);
-        let frame_start = Instant::now();
+        let frame_start_ms = now_millis();
         let fov_ms = 0;
 
         if let Some(viewport) = self.pending_viewport.take() {
@@ -188,7 +203,7 @@ impl RuntimeCore {
         }
 
         let mut updates = Vec::new();
-        let sim_start = Instant::now();
+        let sim_start_ms = now_millis();
         for command in self.pending_commands.drain(..) {
             if let Some(update) = self.world.apply_command(command) {
                 updates.push(WorldUpdate::Delta(update));
@@ -204,9 +219,9 @@ impl RuntimeCore {
                     updates,
                 }));
         }
-        let worker_sim_ms = sim_start.elapsed().as_millis() as u64;
+        let worker_sim_ms = now_millis().saturating_sub(sim_start_ms) as u64;
 
-        let patch_start = Instant::now();
+        let patch_start_ms = now_millis();
         let snapshot = self.world.snapshot();
         let patch = self.snapshot_to_patch(
             &snapshot,
@@ -214,15 +229,14 @@ impl RuntimeCore {
             LayerId::Floor,
             SnapshotKind::Initial,
         );
-        self.events
-            .push_back(RuntimeEvent::ChunkLayerPatch(patch));
-        let patch_build_ms = patch_start.elapsed().as_millis() as u64;
+        self.events.push_back(RuntimeEvent::ChunkLayerPatch(patch));
+        let patch_build_ms = now_millis().saturating_sub(patch_start_ms) as u64;
 
-        let ser_start = Instant::now();
+        let ser_start_ms = now_millis();
         let _serialized =
             bincode::serde::encode_to_vec(&snapshot, bincode::config::standard())
                 .expect("snapshot should serialize");
-        let serialization_ms = ser_start.elapsed().as_millis() as u64;
+        let serialization_ms = now_millis().saturating_sub(ser_start_ms) as u64;
         let patch_apply_ms = 0;
 
         let snapshot_progress_percent = if self.initial_snapshot_sent {
@@ -231,7 +245,7 @@ impl RuntimeCore {
             0
         };
 
-        let frame_ms = frame_start.elapsed().as_millis() as u64;
+        let frame_ms = now_millis().saturating_sub(frame_start_ms) as u64;
         let telemetry = TelemetryFrame {
             frame_ms,
             worker_sim_ms,
@@ -252,19 +266,20 @@ impl RuntimeCore {
         self.events.push_back(RuntimeEvent::TelemetryFrame(telemetry));
 
         self.session.set_status(SessionStatus::Running, None);
+        self.sync_shared_session();
 
         if frame_ms < 50 {
-            self.next_tick_at = Instant::now() + Duration::from_millis(50);
+            self.next_tick_at_ms = now_millis() + 50;
         } else {
-            self.next_tick_at = Instant::now();
+            self.next_tick_at_ms = now_millis();
         }
     }
 
     fn drain_events(&mut self) -> Vec<RuntimeEvent> {
         if self.initial_snapshot_sent {
-            while Instant::now() >= self.next_tick_at {
+            while now_millis() >= self.next_tick_at_ms {
                 self.step();
-                if self.next_tick_at <= Instant::now() {
+                if self.next_tick_at_ms <= now_millis() {
                     break;
                 }
             }
@@ -276,6 +291,24 @@ impl RuntimeCore {
         self.active = false;
         self.session.set_status(status, None);
         self.events.push_back(RuntimeEvent::SessionEnded(status));
+        self.sync_shared_session();
+    }
+}
+
+fn now_millis() -> u128 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        return js_sys::Date::now() as u128;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_millis()
     }
 }
 
@@ -288,9 +321,15 @@ impl RuntimeHandle {
     pub fn start(config: RuntimeConfig) -> Self {
         #[cfg(target_arch = "wasm32")]
         {
+            let shared_session = Arc::new(Mutex::new(TelemetrySession::new(
+                config.session_id.clone(),
+                config.build_id.clone(),
+                format!("{:?}", config.mode),
+                format!("{:?}", config.transport),
+            )));
             Self {
                 backend: Backend::Inline {
-                    core: Mutex::new(RuntimeCore::new(config)),
+                    core: Mutex::new(RuntimeCore::new(config, shared_session)),
                 },
             }
         }
@@ -299,8 +338,15 @@ impl RuntimeHandle {
         {
             let (control_tx, control_rx) = std::sync::mpsc::channel::<ControlMessage>();
             let (event_tx, event_rx) = std::sync::mpsc::channel::<RuntimeEvent>();
+            let shared_session = Arc::new(Mutex::new(TelemetrySession::new(
+                config.session_id.clone(),
+                config.build_id.clone(),
+                format!("{:?}", config.mode),
+                format!("{:?}", config.transport),
+            )));
+            let worker_shared_session = Arc::clone(&shared_session);
             std::thread::spawn(move || {
-                let mut core = RuntimeCore::new(config);
+                let mut core = RuntimeCore::new(config, worker_shared_session);
                 core.events.drain(..).for_each(|event| {
                     let _ = event_tx.send(event);
                 });
@@ -340,6 +386,7 @@ impl RuntimeHandle {
                 backend: Backend::Threaded {
                     control_tx,
                     event_rx: Mutex::new(event_rx),
+                    shared_session,
                 },
             }
         }
@@ -436,53 +483,33 @@ impl RuntimeHandle {
     }
 
     #[must_use]
-    pub fn current_report_short(&self) -> String {
+    pub fn session_snapshot(&self) -> TelemetrySession {
         match &self.backend {
             #[cfg(not(target_arch = "wasm32"))]
-            Backend::Threaded { event_rx, .. } => {
-                let _ = event_rx;
-                String::from("runtime report unavailable until session state is bridged")
-            }
-            Backend::Inline { core } => {
-                let core = core
-                    .lock()
-                    .expect("runtime core lock should be available");
-                crate::reports::build_short_report(&core.session)
-            }
+            Backend::Threaded { shared_session, .. } => shared_session
+                .lock()
+                .expect("runtime shared session lock should be available")
+                .clone(),
+            Backend::Inline { core } => core
+                .lock()
+                .expect("runtime core lock should be available")
+                .session
+                .clone(),
         }
+    }
+
+    #[must_use]
+    pub fn current_report_short(&self) -> String {
+        crate::reports::build_short_report(&self.session_snapshot())
     }
 
     #[must_use]
     pub fn current_report_long(&self) -> String {
-        match &self.backend {
-            #[cfg(not(target_arch = "wasm32"))]
-            Backend::Threaded { event_rx, .. } => {
-                let _ = event_rx;
-                String::from("runtime report unavailable until session state is bridged")
-            }
-            Backend::Inline { core } => {
-                let core = core
-                    .lock()
-                    .expect("runtime core lock should be available");
-                crate::reports::build_long_report(&core.session)
-            }
-        }
+        crate::reports::build_long_report(&self.session_snapshot())
     }
 
     #[must_use]
     pub fn current_report_json(&self) -> String {
-        match &self.backend {
-            #[cfg(not(target_arch = "wasm32"))]
-            Backend::Threaded { event_rx, .. } => {
-                let _ = event_rx;
-                String::from("{}")
-            }
-            Backend::Inline { core } => {
-                let core = core
-                    .lock()
-                    .expect("runtime core lock should be available");
-                core.session.to_json_string()
-            }
-        }
+        self.session_snapshot().to_json_string()
     }
 }

@@ -10,12 +10,14 @@ use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 
 pub mod messaging;
+pub mod runtime_bridge;
 pub mod runtime_telemetry;
 pub mod simulation;
 pub mod visuals;
 
 use crate::domain::messaging::webrtc::MultiplayerController;
-use runtime_telemetry::{collect_runtime_telemetry, setup_runtime_telemetry};
+use runtime_bridge::{drive_runtime_bridge, setup_runtime_bridge};
+use runtime_telemetry::setup_runtime_telemetry;
 #[cfg(not(target_arch = "wasm32"))]
 use simulation::drive_replay_playback;
 use simulation::{
@@ -48,21 +50,27 @@ pub struct OpenDwarfPlugins;
 
 impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
+        let world_sim_settings = WorldSimSettings {
+            config: WorldConfig {
+                world_chunks: Vec3u::new(16, 16, 4),
+                ..WorldConfig::default()
+            },
+            spawn_default_player: true,
+        };
+
         app.add_plugins(define_defaults())
             .insert_resource(bevy::time::Time::<bevy::time::Fixed>::from_hz(20.0))
+            .insert_resource(world_sim_settings.clone())
             .init_state::<GameMode>()
             .add_plugins(WorldSimulationPlugin {
-                settings: WorldSimSettings {
-                    config: WorldConfig {
-                        world_chunks: Vec3u::new(16, 16, 4),
-                        ..WorldConfig::default()
-                    },
-                    spawn_default_player: true,
-                },
+                settings: world_sim_settings.clone(),
             })
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
-            .add_systems(Startup, setup_runtime_telemetry)
+            .add_systems(
+                Startup,
+                (setup_runtime_telemetry, setup_runtime_bridge).chain(),
+            )
             .add_systems(PreUpdate, update_input_state)
             .add_systems(
                 Update,
@@ -92,9 +100,9 @@ impl Plugin for OpenDwarfPlugins {
                     (draw_depth_labels, draw_chunk_borders).after(project_world_to_tilemap),
                     smooth_player_render_transform.after(project_world_entities_to_sprites),
                     follow_player_camera.after(smooth_player_render_transform),
+                    drive_runtime_bridge.after(follow_player_camera),
                 ),
             )
-            .add_systems(Update, collect_runtime_telemetry)
             .add_systems(
                 Update,
                 (
@@ -126,7 +134,10 @@ impl Plugin for OpenDwarfPlugins {
             .init_resource::<ViewZLevel>()
             .insert_non_send_resource(MultiplayerController::default())
             // debug systems
-            .add_systems(Update, (debug_menu, replay_debug_overlay))
+            .add_systems(
+                Update,
+                (debug_menu.after(drive_runtime_bridge), replay_debug_overlay),
+            )
             .sub_app_mut(RenderApp)
             .insert_resource(GpuPreprocessingSupport {
                 max_supported_mode: GpuPreprocessingMode::None,

@@ -214,7 +214,7 @@ pub fn collect_runtime_telemetry(
     telemetry.refresh_reports();
 }
 
-fn build_session_id() -> String {
+pub(crate) fn build_session_id() -> String {
     #[cfg(target_arch = "wasm32")]
     let millis = Date::now() as u128;
 

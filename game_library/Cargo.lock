@@ -5141,6 +5141,7 @@ dependencies = [
  "bacon",
  "base64",
  "bevy",
+ "bincode",
  "bytes",
  "flate2",
  "getrandom 0.3.4",
