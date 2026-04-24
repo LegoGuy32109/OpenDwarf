@@ -44,6 +44,7 @@ pub enum RuntimeMode {
 pub enum RuntimeTransport {
     Threaded,
     Inline,
+    Worker,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,9 +161,26 @@ pub struct RuntimeConfig {
     pub mode: RuntimeMode,
     pub transport: RuntimeTransport,
     pub perf_mode: bool,
+    pub worker_script_url: Option<String>,
     pub world_config: world_sim::world_core::WorldConfig,
     pub spawn_default_player: bool,
     pub initial_viewport: Option<ViewportIntent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RuntimeMessage {
+    Start(RuntimeConfig),
+    Input(InputBatch),
+    Viewport(ViewportIntent),
+    Control(RuntimeControl),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RuntimeResponse {
+    Batch {
+        events: Vec<RuntimeEvent>,
+        session: crate::telemetry::TelemetrySession,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

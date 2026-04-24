@@ -16,7 +16,13 @@ use crate::domain::simulation::{RenderEntityData, TerrainConfig, TileLayerDebugS
 use crate::resources::view_mode::ViewMode as GameViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 
-#[derive(Resource)]
+#[cfg(target_arch = "wasm32")]
+use std::sync::Mutex;
+
+#[cfg(target_arch = "wasm32")]
+static RUNTIME_WORKER_SCRIPT_URL: Mutex<Option<String>> = Mutex::new(None);
+
+#[cfg_attr(not(target_arch = "wasm32"), derive(Resource))]
 pub struct RuntimeBridgeState {
     pub handle: RuntimeHandle,
     last_viewport: Option<ViewportIntent>,
@@ -32,6 +38,7 @@ impl RuntimeBridgeState {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn setup_runtime_bridge(
     mut commands: Commands,
     world_sim_settings: Res<WorldSimSettings>,
@@ -39,7 +46,13 @@ pub fn setup_runtime_bridge(
 ) {
     let runtime_mode = detect_runtime_mode();
     let transport = if cfg!(target_arch = "wasm32") {
-        RuntimeTransport::Inline
+        if matches!(runtime_mode, RuntimeMode::Perf | RuntimeMode::Release)
+            && runtime_worker_script_url().is_some()
+        {
+            RuntimeTransport::Worker
+        } else {
+            RuntimeTransport::Inline
+        }
     } else {
         RuntimeTransport::Threaded
     };
@@ -49,6 +62,7 @@ pub fn setup_runtime_bridge(
         mode: runtime_mode,
         transport,
         perf_mode: matches!(runtime_mode, RuntimeMode::Perf),
+        worker_script_url: runtime_worker_script_url(),
         world_config: world_sim_settings.config.clone(),
         spawn_default_player: world_sim_settings.spawn_default_player,
         initial_viewport: None,
@@ -62,6 +76,43 @@ pub fn setup_runtime_bridge(
     commands.insert_resource(ChunkLayerCacheMap::default());
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn setup_runtime_bridge(
+    mut commands: Commands,
+    world_sim_settings: Res<WorldSimSettings>,
+    telemetry: Res<RuntimeTelemetryState>,
+) {
+    let runtime_mode = detect_runtime_mode();
+    let transport = if matches!(runtime_mode, RuntimeMode::Perf | RuntimeMode::Release)
+        && runtime_worker_script_url().is_some()
+    {
+        RuntimeTransport::Worker
+    } else {
+        RuntimeTransport::Inline
+    };
+    let config = RuntimeConfig {
+        build_id: telemetry.session.build_id.clone(),
+        session_id: telemetry.session.session_id.clone(),
+        mode: runtime_mode,
+        transport,
+        perf_mode: matches!(runtime_mode, RuntimeMode::Perf),
+        worker_script_url: runtime_worker_script_url(),
+        world_config: world_sim_settings.config.clone(),
+        spawn_default_player: world_sim_settings.spawn_default_player,
+        initial_viewport: None,
+    };
+
+    commands.queue(move |world: &mut World| {
+        world.insert_non_send_resource(RuntimeBridgeState::new(RuntimeHandle::start(config)));
+    });
+    commands.insert_resource(RuntimeInputQueue::default());
+    commands.insert_resource(RuntimePatchApplyQueue::default());
+    commands.insert_resource(RuntimeViewportIntentState::default());
+    commands.insert_resource(ChunkCacheState::default());
+    commands.insert_resource(ChunkLayerCacheMap::default());
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn drive_runtime_bridge(
     primary_entity_id: Res<PrimarySimulationEntityId>,
     world_view: Res<WorldView>,
@@ -77,6 +128,80 @@ pub fn drive_runtime_bridge(
     mut chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
     camera_query: Query<&Projection, With<Camera2d>>,
     mut bridge: ResMut<RuntimeBridgeState>,
+    mut telemetry: ResMut<RuntimeTelemetryState>,
+) {
+    drive_runtime_bridge_inner(
+        primary_entity_id,
+        world_view,
+        view_mode,
+        view_z,
+        terrain_config,
+        entity_data,
+        tile_layer_debug_state,
+        runtime_input_queue,
+        patch_queue,
+        viewport_state,
+        chunk_cache_state,
+        chunk_layer_cache,
+        camera_query,
+        &mut *bridge,
+        telemetry,
+    );
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn drive_runtime_bridge(
+    primary_entity_id: Res<PrimarySimulationEntityId>,
+    world_view: Res<WorldView>,
+    view_mode: Res<GameViewMode>,
+    view_z: Res<ViewZLevel>,
+    terrain_config: Res<TerrainConfig>,
+    entity_data: Res<RenderEntityData>,
+    tile_layer_debug_state: Res<TileLayerDebugState>,
+    mut runtime_input_queue: ResMut<RuntimeInputQueue>,
+    mut patch_queue: ResMut<RuntimePatchApplyQueue>,
+    mut viewport_state: ResMut<RuntimeViewportIntentState>,
+    mut chunk_cache_state: ResMut<ChunkCacheState>,
+    mut chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
+    camera_query: Query<&Projection, With<Camera2d>>,
+    mut bridge: NonSendMut<RuntimeBridgeState>,
+    mut telemetry: ResMut<RuntimeTelemetryState>,
+) {
+    drive_runtime_bridge_inner(
+        primary_entity_id,
+        world_view,
+        view_mode,
+        view_z,
+        terrain_config,
+        entity_data,
+        tile_layer_debug_state,
+        runtime_input_queue,
+        patch_queue,
+        viewport_state,
+        chunk_cache_state,
+        chunk_layer_cache,
+        camera_query,
+        &mut *bridge,
+        telemetry,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn drive_runtime_bridge_inner(
+    primary_entity_id: Res<PrimarySimulationEntityId>,
+    world_view: Res<WorldView>,
+    view_mode: Res<GameViewMode>,
+    view_z: Res<ViewZLevel>,
+    terrain_config: Res<TerrainConfig>,
+    entity_data: Res<RenderEntityData>,
+    tile_layer_debug_state: Res<TileLayerDebugState>,
+    mut runtime_input_queue: ResMut<RuntimeInputQueue>,
+    mut patch_queue: ResMut<RuntimePatchApplyQueue>,
+    mut viewport_state: ResMut<RuntimeViewportIntentState>,
+    mut chunk_cache_state: ResMut<ChunkCacheState>,
+    mut chunk_layer_cache: ResMut<ChunkLayerCacheMap>,
+    camera_query: Query<&Projection, With<Camera2d>>,
+    bridge: &mut RuntimeBridgeState,
     mut telemetry: ResMut<RuntimeTelemetryState>,
 ) {
     let Some(viewport_intent) = build_viewport_intent(
@@ -314,7 +439,7 @@ fn max_world_z(snapshot: &world_runtime::WorldSnapshot) -> i32 {
     min_z + span - 1
 }
 
-fn detect_runtime_mode() -> RuntimeMode {
+pub(crate) fn detect_runtime_mode() -> RuntimeMode {
     #[cfg(target_arch = "wasm32")]
     {
         let Some(window) = window() else {
@@ -336,6 +461,27 @@ fn detect_runtime_mode() -> RuntimeMode {
     {
         RuntimeMode::Release
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn set_runtime_worker_script_url(worker_script_url: String) {
+    let mut slot = RUNTIME_WORKER_SCRIPT_URL
+        .lock()
+        .expect("runtime worker script url lock should be available");
+    *slot = Some(worker_script_url);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn runtime_worker_script_url() -> Option<String> {
+    RUNTIME_WORKER_SCRIPT_URL
+        .lock()
+        .expect("runtime worker script url lock should be available")
+        .clone()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn runtime_worker_script_url() -> Option<String> {
+    None
 }
 
 fn now_millis() -> u128 {

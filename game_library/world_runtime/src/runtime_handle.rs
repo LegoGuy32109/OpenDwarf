@@ -3,10 +3,18 @@ use crate::protocol::{
     RuntimeControl, RuntimeEvent, SnapshotKind, Vec3i, ViewMode, ViewportIntent, WorldCommand,
     WorldSnapshot, WorldUpdate,
 };
+#[cfg(target_arch = "wasm32")]
+use crate::protocol::{RuntimeMessage, RuntimeResponse};
 use crate::telemetry::{SessionStatus, TelemetryFrame, TelemetrySession};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::Mutex;
+#[cfg(target_arch = "wasm32")]
+use std::cell::RefCell;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::closure::Closure;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::{JsCast, JsValue};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 use world_sim::world_core::WorldState;
@@ -18,12 +26,20 @@ enum Backend {
         event_rx: Mutex<std::sync::mpsc::Receiver<RuntimeEvent>>,
         shared_session: Arc<Mutex<TelemetrySession>>,
     },
+    #[cfg(target_arch = "wasm32")]
+    Worker {
+        worker: web_sys::Worker,
+        _message_closure: Closure<dyn FnMut(web_sys::MessageEvent)>,
+        shared_session: Arc<Mutex<TelemetrySession>>,
+        event_queue: Arc<Mutex<VecDeque<RuntimeEvent>>>,
+    },
     #[allow(dead_code)]
     Inline {
         core: Mutex<RuntimeCore>,
     },
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 enum ControlMessage {
     Input(InputBatch),
     Viewport(ViewportIntent),
@@ -312,6 +328,258 @@ fn now_millis() -> u128 {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn start_worker_backend(config: RuntimeConfig) -> Backend {
+    let shared_session = Arc::new(Mutex::new(TelemetrySession::new(
+        config.session_id.clone(),
+        config.build_id.clone(),
+        format!("{:?}", config.mode),
+        format!("{:?}", config.transport),
+    )));
+    let event_queue = Arc::new(Mutex::new(VecDeque::new()));
+    let worker_script_url = config
+        .worker_script_url
+        .as_ref()
+        .expect("worker transport requires a worker script url")
+        .clone();
+    let worker = spawn_runtime_worker(&worker_script_url);
+
+    let worker_event_queue = Arc::clone(&event_queue);
+    let worker_shared_session = Arc::clone(&shared_session);
+    let message_closure = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+        if let Some(response) = decode_worker_response(event.data()) {
+            let mut session = worker_shared_session
+                .lock()
+                .expect("runtime shared session lock should be available");
+            match response {
+                RuntimeResponse::Batch { events, session: snapshot } => {
+                    *session = snapshot;
+                    let mut queue = worker_event_queue
+                        .lock()
+                        .expect("runtime worker event queue should be available");
+                    for event in events {
+                        queue.push_back(event);
+                    }
+                }
+            }
+        }
+    }) as Box<dyn FnMut(web_sys::MessageEvent)>);
+    worker.set_onmessage(Some(message_closure.as_ref().unchecked_ref()));
+
+    if let Err(err) = post_worker_message(&worker, &RuntimeMessage::Start(config)) {
+        eprintln!("Failed to start runtime worker: {}", err);
+    }
+
+    Backend::Worker {
+        worker,
+        _message_closure: message_closure,
+        shared_session,
+        event_queue,
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn spawn_runtime_worker(worker_script_url: &str) -> web_sys::Worker {
+    use web_sys::{Worker, WorkerOptions, WorkerType};
+
+    let options = WorkerOptions::new();
+    options.set_type(WorkerType::Module);
+    Worker::new_with_options(worker_script_url, &options)
+        .expect("runtime worker should be created")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn post_worker_message(worker: &web_sys::Worker, message: &RuntimeMessage) -> Result<(), String> {
+    let bytes = bincode::serde::encode_to_vec(message, bincode::config::standard())
+        .expect("runtime message should serialize");
+    let payload = js_sys::Uint8Array::from(bytes.as_slice());
+    worker
+        .post_message(&JsValue::from(payload))
+        .map_err(|err| {
+            err.as_string()
+                .unwrap_or_else(|| String::from("worker postMessage failed"))
+        })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decode_worker_response(value: JsValue) -> Option<RuntimeResponse> {
+    let payload = js_sys::Uint8Array::new(&value);
+    if payload.length() == 0 {
+        return None;
+    }
+
+    let mut bytes = vec![0; payload.length() as usize];
+    payload.copy_to(&mut bytes);
+    bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+        .ok()
+        .map(|(message, _)| message)
+}
+
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static WORKER_RUNTIME_STATE: RefCell<Option<RuntimeWorkerState>> = const { RefCell::new(None) };
+}
+
+#[cfg(target_arch = "wasm32")]
+struct RuntimeWorkerState {
+    core: Option<RuntimeCore>,
+    shared_session: Option<Arc<Mutex<TelemetrySession>>>,
+    scope: web_sys::DedicatedWorkerGlobalScope,
+    _on_message: Closure<dyn FnMut(web_sys::MessageEvent)>,
+    _on_tick: Closure<dyn FnMut()>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl RuntimeWorkerState {
+    fn new() -> Self {
+        let scope: web_sys::DedicatedWorkerGlobalScope = js_sys::global().unchecked_into();
+        let on_message = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+            WORKER_RUNTIME_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                if let Some(runtime_state) = state.as_mut() {
+                    runtime_state.handle_message(event);
+                }
+            });
+        }) as Box<dyn FnMut(web_sys::MessageEvent)>);
+        scope.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+
+        let on_tick = Closure::wrap(Box::new(move || {
+            WORKER_RUNTIME_STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                if let Some(runtime_state) = state.as_mut() {
+                    runtime_state.tick();
+                }
+            });
+        }) as Box<dyn FnMut()>);
+        scope
+            .set_interval_with_callback_and_timeout_and_arguments_0(
+                on_tick.as_ref().unchecked_ref(),
+                16,
+            )
+            .expect("runtime worker interval should start");
+
+        Self {
+            core: None,
+            shared_session: None,
+            scope,
+            _on_message: on_message,
+            _on_tick: on_tick,
+        }
+    }
+
+    fn handle_message(&mut self, event: web_sys::MessageEvent) {
+        let Some(message) = decode_worker_message(event.data()) else {
+            eprintln!("runtime worker received an undecodable message");
+            return;
+        };
+
+        match message {
+            RuntimeMessage::Start(config) => {
+                let shared_session = Arc::new(Mutex::new(TelemetrySession::new(
+                    config.session_id.clone(),
+                    config.build_id.clone(),
+                    format!("{:?}", config.mode),
+                    format!("{:?}", config.transport),
+                )));
+                self.shared_session = Some(Arc::clone(&shared_session));
+                self.core = Some(RuntimeCore::new(config, shared_session));
+                self.flush();
+            }
+            RuntimeMessage::Input(input) => {
+                if let Some(core) = self.core.as_mut() {
+                    core.queue_input(input);
+                    self.flush();
+                }
+            }
+            RuntimeMessage::Viewport(viewport) => {
+                if let Some(core) = self.core.as_mut() {
+                    core.queue_viewport(viewport);
+                    self.flush();
+                }
+            }
+            RuntimeMessage::Control(control) => {
+                if let Some(core) = self.core.as_mut() {
+                    match control {
+                        RuntimeControl::Shutdown => {
+                            core.shutdown(SessionStatus::Completed);
+                            self.flush();
+                        }
+                        RuntimeControl::RequestResync { reason, viewport } => {
+                            core.queue_viewport(viewport);
+                            core.request_resync(reason);
+                            self.flush();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn tick(&mut self) {
+        if self.core.is_some() {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        let Some(core) = self.core.as_mut() else {
+            return;
+        };
+
+        let events = core.drain_events();
+        if events.is_empty() {
+            return;
+        }
+
+        self.push_response(events);
+    }
+
+    fn push_response(&self, events: Vec<RuntimeEvent>) {
+        let Some(shared_session) = self.shared_session.as_ref() else {
+            return;
+        };
+        let session = shared_session
+            .lock()
+            .expect("runtime worker session lock should be available")
+            .clone();
+        let response = RuntimeResponse::Batch {
+            events,
+            session,
+        };
+        let bytes = bincode::serde::encode_to_vec(&response, bincode::config::standard())
+            .expect("runtime response should serialize");
+        self.scope
+            .post_message(&JsValue::from(js_sys::Uint8Array::from(
+                bytes.as_slice(),
+            )))
+            .expect("runtime worker should post response");
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decode_worker_message(value: JsValue) -> Option<RuntimeMessage> {
+    let payload = js_sys::Uint8Array::new(&value);
+    if payload.length() == 0 {
+        return None;
+    }
+
+    let mut bytes = vec![0; payload.length() as usize];
+    payload.copy_to(&mut bytes);
+    bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+        .ok()
+        .map(|(message, _)| message)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn runtime_worker_main() {
+    WORKER_RUNTIME_STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if state.is_none() {
+            *state = Some(RuntimeWorkerState::new());
+        }
+    });
+}
+
 pub struct RuntimeHandle {
     backend: Backend,
 }
@@ -321,6 +589,12 @@ impl RuntimeHandle {
     pub fn start(config: RuntimeConfig) -> Self {
         #[cfg(target_arch = "wasm32")]
         {
+            if matches!(config.transport, crate::protocol::RuntimeTransport::Worker) {
+                return Self {
+                    backend: start_worker_backend(config),
+                };
+            }
+
             let shared_session = Arc::new(Mutex::new(TelemetrySession::new(
                 config.session_id.clone(),
                 config.build_id.clone(),
@@ -398,6 +672,8 @@ impl RuntimeHandle {
             Backend::Threaded { control_tx, .. } => control_tx
                 .send(ControlMessage::Input(input))
                 .map_err(|err| err.to_string()),
+            #[cfg(target_arch = "wasm32")]
+            Backend::Worker { worker, .. } => post_worker_message(worker, &RuntimeMessage::Input(input)),
             Backend::Inline { core } => {
                 core.lock()
                     .expect("runtime core lock should be available")
@@ -413,6 +689,10 @@ impl RuntimeHandle {
             Backend::Threaded { control_tx, .. } => control_tx
                 .send(ControlMessage::Viewport(viewport))
                 .map_err(|err| err.to_string()),
+            #[cfg(target_arch = "wasm32")]
+            Backend::Worker { worker, .. } => {
+                post_worker_message(worker, &RuntimeMessage::Viewport(viewport))
+            }
             Backend::Inline { core } => {
                 core.lock()
                     .expect("runtime core lock should be available")
@@ -435,6 +715,14 @@ impl RuntimeHandle {
                     viewport,
                 }))
                 .map_err(|err| err.to_string()),
+            #[cfg(target_arch = "wasm32")]
+            Backend::Worker { worker, .. } => post_worker_message(
+                worker,
+                &RuntimeMessage::Control(RuntimeControl::RequestResync {
+                    reason,
+                    viewport,
+                }),
+            ),
             Backend::Inline { core } => {
                 let mut core = core
                     .lock()
@@ -452,6 +740,10 @@ impl RuntimeHandle {
             Backend::Threaded { control_tx, .. } => control_tx
                 .send(ControlMessage::Control(RuntimeControl::Shutdown))
                 .map_err(|err| err.to_string()),
+            #[cfg(target_arch = "wasm32")]
+            Backend::Worker { worker, .. } => {
+                post_worker_message(worker, &RuntimeMessage::Control(RuntimeControl::Shutdown))
+            }
             Backend::Inline { core } => {
                 core.lock()
                     .expect("runtime core lock should be available")
@@ -475,6 +767,22 @@ impl RuntimeHandle {
                 }
                 events
             }
+            #[cfg(target_arch = "wasm32")]
+            Backend::Worker {
+                event_queue,
+                ..
+            } => {
+                let mut events = Vec::new();
+                {
+                    let mut queue = event_queue
+                        .lock()
+                        .expect("runtime worker event queue should be available");
+                    while let Some(event) = queue.pop_front() {
+                        events.push(event);
+                    }
+                }
+                events
+            }
             Backend::Inline { core } => core
                 .lock()
                 .expect("runtime core lock should be available")
@@ -487,6 +795,11 @@ impl RuntimeHandle {
         match &self.backend {
             #[cfg(not(target_arch = "wasm32"))]
             Backend::Threaded { shared_session, .. } => shared_session
+                .lock()
+                .expect("runtime shared session lock should be available")
+                .clone(),
+            #[cfg(target_arch = "wasm32")]
+            Backend::Worker { shared_session, .. } => shared_session
                 .lock()
                 .expect("runtime shared session lock should be available")
                 .clone(),

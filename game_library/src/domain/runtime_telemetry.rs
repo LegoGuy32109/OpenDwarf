@@ -1,14 +1,16 @@
 use bevy::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use js_sys::Date;
 use world_runtime::{SessionStatus, TelemetrySession, build_long_report, build_short_report};
 
 use crate::domain::messaging::clipboard;
 
+#[cfg(target_arch = "wasm32")]
+use js_sys::Date;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Resource)]
 pub struct RuntimeTelemetryState {
@@ -32,11 +34,7 @@ impl RuntimeTelemetryState {
             build_session_id(),
             env!("CARGO_PKG_VERSION").to_string(),
             String::from("runtime"),
-            if cfg!(target_arch = "wasm32") {
-                String::from("inline")
-            } else {
-                String::from("threaded")
-            },
+            runtime_transport_label(),
         );
         let short_report = build_short_report(&session);
         let long_report = build_long_report(&session);
@@ -166,16 +164,33 @@ pub(crate) fn build_session_id() -> String {
     let millis = Date::now() as u128;
 
     #[cfg(not(target_arch = "wasm32"))]
-    let millis = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
-            .as_millis()
-    };
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after unix epoch")
+        .as_millis();
 
     format!("session-{millis}")
+}
+
+fn runtime_transport_label() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use crate::domain::runtime_bridge::detect_runtime_mode;
+        use world_runtime::RuntimeMode;
+
+        if matches!(
+            detect_runtime_mode(),
+            RuntimeMode::Perf | RuntimeMode::Release
+        ) {
+            return String::from("worker");
+        }
+        return String::from("inline");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        String::from("threaded")
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

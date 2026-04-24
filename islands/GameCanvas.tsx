@@ -10,6 +10,20 @@ export default function GameCanvas(
   const gameWasm = wasmFile
     ? `${gameDir}${wasmFile}`
     : gameDir.replace(/\/$/, "");
+  const useRuntimeWorker = wasmFile === "";
+  const runtimeWorkerSource = useRuntimeWorker
+    ? `import init, { runtime_worker_main } from "${gameJs}";
+
+async function startRuntimeWorker() {
+  await init("${gameWasm}");
+  runtime_worker_main();
+}
+
+startRuntimeWorker().catch((error) =>
+  console.error("Failed to start OpenDwarf runtime worker", error)
+);
+`
+    : "";
 
   return (
     <>
@@ -42,10 +56,16 @@ export default function GameCanvas(
         // deno-lint-ignore react-no-danger
         dangerouslySetInnerHTML={{
           __html: `
-import init, { main } from "${gameJs}";
+import init, { main, set_runtime_worker_script_url } from "${gameJs}";
+
+const runtimeWorkerSource = ${JSON.stringify(runtimeWorkerSource)};
 
 async function startGame() {
   await init("${gameWasm}");
+  if (runtimeWorkerSource.length > 0) {
+    const workerBlob = new Blob([runtimeWorkerSource], { type: "text/javascript" });
+    set_runtime_worker_script_url(URL.createObjectURL(workerBlob));
+  }
   main();
 }
 

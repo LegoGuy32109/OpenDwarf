@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use js_sys::Date;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SessionStatus {
@@ -139,11 +141,14 @@ impl TelemetrySession {
 fn unix_ms_now() -> u128 {
     #[cfg(target_arch = "wasm32")]
     {
-        return Date::now() as u128;
+        Date::now() as u128
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after unix epoch")
         .as_millis()
+    }
 }
