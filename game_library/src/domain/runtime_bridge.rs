@@ -264,15 +264,23 @@ fn drive_runtime_bridge_inner(
 
     let now = now_millis();
     let mut applied_event_count = 0usize;
-    let camera_chunk_center = viewport_state
-        .current
-        .map(|intent| IVec3::new(intent.camera_center.x, intent.camera_center.y, intent.camera_center.z));
+    let mut applied_patch_count = 0usize;
+    let mut peak_patch_payload_bytes = 0usize;
+    let camera_chunk_center = viewport_state.current.map(|intent| {
+        IVec3::new(
+            intent.camera_center.x,
+            intent.camera_center.y,
+            intent.camera_center.z,
+        )
+    });
     let ordered_events = patch_queue.drain_ordered_by_camera(camera_chunk_center);
     let (dropped, coalesced) = patch_queue.take_counters();
     chunk_cache_state.dropped_superseded_patches = chunk_cache_state
         .dropped_superseded_patches
         .saturating_add(dropped);
-    chunk_cache_state.coalesced_patches = chunk_cache_state.coalesced_patches.saturating_add(coalesced);
+    chunk_cache_state.coalesced_patches = chunk_cache_state
+        .coalesced_patches
+        .saturating_add(coalesced);
     for event in ordered_events {
         applied_event_count = applied_event_count.saturating_add(1);
         match event {
@@ -291,6 +299,8 @@ fn drive_runtime_bridge_inner(
             world_runtime::RuntimeEvent::InitialSnapshotChunkLayer(patch)
             | world_runtime::RuntimeEvent::ChunkLayerPatch(patch)
             | world_runtime::RuntimeEvent::ResyncChunkLayer(patch) => {
+                applied_patch_count = applied_patch_count.saturating_add(1);
+                peak_patch_payload_bytes = peak_patch_payload_bytes.max(patch.tile_data.len());
                 let _ = chunk_layer_cache.apply_patch(
                     patch.chunk,
                     patch.layer,
@@ -344,6 +354,12 @@ fn drive_runtime_bridge_inner(
                 telemetry.session.set_status(status, None);
             }
         }
+    }
+    if applied_patch_count > 0 {
+        debug!(
+            "Runtime patches applied: count={} peak_payload_bytes={}",
+            applied_patch_count, peak_patch_payload_bytes
+        );
     }
 
     telemetry.session = bridge.handle.session_snapshot();

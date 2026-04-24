@@ -1,7 +1,6 @@
 use bevy::prelude::*;
-use bevy::sprite_render::TileData;
 use std::collections::HashMap;
-use world_sim::world_api::{BlockType, Vec3i};
+use world_sim::world_api::{BlockType, TileMemory, Vec3i};
 
 pub use crate::tile_layer::TileLayer;
 
@@ -15,7 +14,6 @@ mod tile_layer {
     }
 }
 
-const REMEMBERED_FOG_RGBA: [f32; 4] = [0.7, 0.7, 0.2, 0.05];
 const STONE_TILE_INDEX: u16 = 5;
 
 fn chunk_local_tile_index(local_x: u32, local_y: u32, chunk_edge: u32) -> usize {
@@ -81,9 +79,9 @@ pub fn build_floor_layer(
     world_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
-    z_offset: i32,
-    apply_depth_tint: bool,
-) -> Vec<Option<TileData>> {
+    _z_offset: i32,
+    _apply_depth_tint: bool,
+) -> Vec<Option<u16>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
         .expect("chunk tile count overflowed");
@@ -98,13 +96,7 @@ pub fn build_floor_layer(
             let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
             if terrain_block(world_position, blocks) == BlockType::SolidStone {
-                let mut td = TileData::from_tileset_index(STONE_TILE_INDEX);
-                if apply_depth_tint {
-                    td.color = get_depth_tint_color(z_offset);
-                } else {
-                    td.color = Color::WHITE;
-                }
-                tile_data[index_in_slice] = Some(td);
+                tile_data[index_in_slice] = Some(STONE_TILE_INDEX);
             }
         }
     }
@@ -162,7 +154,7 @@ pub fn build_edge_shadow_layer(
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
     unknown_is_solid: bool,
-) -> Vec<Option<TileData>> {
+) -> Vec<Option<u16>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
         .expect("chunk tile count overflowed");
@@ -198,7 +190,7 @@ pub fn build_edge_shadow_layer(
             }
 
             if mask > 0 && mask < 15 {
-                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
+                tile_data[index_in_slice] = Some((mask - 1) as u16);
             }
         }
     }
@@ -212,7 +204,7 @@ pub fn build_ceiling_shadow_layer(
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
     unknown_is_solid: bool,
-) -> Vec<Option<TileData>> {
+) -> Vec<Option<u16>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
         .expect("chunk tile count overflowed");
@@ -249,7 +241,7 @@ pub fn build_ceiling_shadow_layer(
             }
 
             if mask != 0 {
-                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
+                tile_data[index_in_slice] = Some((mask - 1) as u16);
             }
         }
     }
@@ -259,7 +251,7 @@ pub fn build_ceiling_shadow_layer(
 
 pub struct FogData {
     pub visible: std::collections::HashSet<Vec3i>,
-    pub memory: HashMap<Vec3i, ()>,
+    pub memory: HashMap<Vec3i, TileMemory>,
 }
 
 pub fn build_fog_shadow_layer(
@@ -269,7 +261,7 @@ pub fn build_fog_shadow_layer(
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
     fog: &FogData,
-) -> Vec<Option<TileData>> {
+) -> Vec<Option<u16>> {
     let tile_count =
         usize::try_from(chunk_edge * chunk_edge).expect("chunk tile count does not fit in usize");
     let mut tile_data = vec![None; tile_count];
@@ -296,24 +288,9 @@ pub fn build_fog_shadow_layer(
                     tile_data[idx] = None;
                     continue;
                 }
-
-                let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgba(
-                    REMEMBERED_FOG_RGBA[0],
-                    REMEMBERED_FOG_RGBA[1],
-                    REMEMBERED_FOG_RGBA[2],
-                    REMEMBERED_FOG_RGBA[3],
-                );
-                tile_data[idx] = Some(td);
+                tile_data[idx] = Some(0);
             } else if terrain_block(world_pos, blocks) == BlockType::SolidStone {
-                let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgba(
-                    REMEMBERED_FOG_RGBA[0],
-                    REMEMBERED_FOG_RGBA[1],
-                    REMEMBERED_FOG_RGBA[2],
-                    REMEMBERED_FOG_RGBA[3],
-                );
-                tile_data[idx] = Some(td);
+                tile_data[idx] = Some(0);
             } else {
                 tile_data[idx] = None;
             }

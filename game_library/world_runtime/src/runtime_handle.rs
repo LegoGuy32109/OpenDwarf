@@ -1,7 +1,6 @@
 use crate::protocol::{
     ChunkLayerPatch, ChunkKey, EntityPatchBatch, InputBatch, LayerId, LayerMask, RuntimeConfig,
-    RuntimeControl, RuntimeEvent, SnapshotKind, Vec3i, ViewportIntent, WorldCommand, WorldSnapshot,
-    WorldUpdate,
+    RuntimeControl, RuntimeEvent, SnapshotKind, Vec3i, ViewportIntent, WorldCommand, WorldUpdate,
 };
 #[cfg(target_arch = "wasm32")]
 use crate::protocol::{RuntimeMessage, RuntimeResponse};
@@ -17,7 +16,9 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
-use world_sim::world_core::WorldState;
+use bevy_math::IVec2;
+use std::collections::HashSet;
+use world_sim::world_core::{VisibilityState, WorldState};
 
 enum Backend {
     #[cfg(not(target_arch = "wasm32"))]
@@ -60,6 +61,7 @@ struct RuntimeCore {
     worker_frame_id: u64,
     active: bool,
     initial_snapshot_sent: bool,
+    emitted_chunk_layers: HashSet<(ChunkKey, LayerId)>,
     events: VecDeque<RuntimeEvent>,
 }
 
@@ -94,6 +96,7 @@ impl RuntimeCore {
             worker_frame_id: 0,
             active: true,
             initial_snapshot_sent: false,
+            emitted_chunk_layers: HashSet::new(),
             events: VecDeque::new(),
         };
 
@@ -116,27 +119,167 @@ impl RuntimeCore {
         *shared_session = self.session.clone();
     }
 
-    fn snapshot_to_patch(
+    fn build_chunk_layer_patch(
         &self,
-        snapshot: &WorldSnapshot,
-        chunk: ChunkKey,
+        chunk_xy: (i32, i32),
+        world_z: i32,
         layer: LayerId,
         kind: SnapshotKind,
+        viewport: &ViewportIntent,
+        visibility: Option<&VisibilityState>,
     ) -> ChunkLayerPatch {
         let full_chunk = matches!(
             kind,
             SnapshotKind::Initial | SnapshotKind::LayerToggle { .. } | SnapshotKind::Resync
         );
-        let payload = bincode::serde::encode_to_vec(snapshot, bincode::config::standard())
-            .expect("snapshot should serialize for patch payload");
+
+        let blocks = self.world.terrain_blocks_map();
+        let chunk_edge = self.world.chunk_edge();
+        let (chunk_x_i32, chunk_y_i32) = chunk_xy;
+        let chunk_x = IVec2::new(chunk_x_i32, chunk_y_i32);
+
+        let tile_data_vec = match layer {
+            LayerId::Floor => {
+                world_tiles::build_floor_layer(chunk_x, world_z, chunk_edge, &*blocks, 0, false)
+            }
+            LayerId::EdgeShadow => {
+                world_tiles::build_edge_shadow_layer(chunk_x, world_z, chunk_edge, &*blocks, false)
+            }
+            LayerId::CeilingShadow => {
+                world_tiles::build_ceiling_shadow_layer(chunk_x, world_z, chunk_edge, &*blocks, false)
+            }
+            LayerId::Fog => {
+                let fog_data = world_tiles::FogData {
+                    visible: visibility
+                        .map(|state| state.visible.clone())
+                        .unwrap_or_default(),
+                    memory: visibility
+                        .map(|state| state.memory.clone())
+                        .unwrap_or_default(),
+                };
+                world_tiles::build_fog_shadow_layer(
+                    chunk_x,
+                    world_z,
+                    viewport.camera_center.z,
+                    chunk_edge,
+                    &*blocks,
+                    &fog_data,
+                )
+            }
+        };
+
+        let payload = bincode::serde::encode_to_vec(&tile_data_vec, bincode::config::standard())
+            .expect("tile data should serialize for patch payload");
+
         ChunkLayerPatch {
-            chunk,
+            chunk: ChunkKey::new(chunk_x_i32, chunk_y_i32, world_z),
             layer,
-            revision: snapshot.tick,
+            revision: (self.world.tick() << 16)
+                | (((chunk_x_i32 as u64) ^ (chunk_y_i32 as u64) ^ (world_z as u64)) & 0xFFFF),
             worker_frame_id: self.worker_frame_id,
             full_chunk,
             tile_data: payload,
         }
+    }
+
+    fn viewport_chunks(&self, viewport: &ViewportIntent) -> Vec<(i32, i32, i32)> {
+        let chunk_edge = i32::try_from(self.world.chunk_edge().max(1))
+            .expect("chunk edge should fit in i32");
+        let half = chunk_edge / 2;
+        let world_chunks = self.world.world_chunks();
+        let chunk_min_x = -(i32::try_from(world_chunks.x).expect("world x chunks should fit") / 2);
+        let chunk_min_y = -(i32::try_from(world_chunks.y).expect("world y chunks should fit") / 2);
+        let chunk_max_x =
+            i32::try_from(world_chunks.x).expect("world x chunks should fit") + chunk_min_x - 1;
+        let chunk_max_y =
+            i32::try_from(world_chunks.y).expect("world y chunks should fit") + chunk_min_y - 1;
+        let (world_min, world_max) = self.world.world_bounds();
+
+        let min_x = (viewport.desired_bounds_min.x + half)
+            .div_euclid(chunk_edge)
+            .clamp(chunk_min_x, chunk_max_x);
+        let max_x = (viewport.desired_bounds_max.x + half)
+            .div_euclid(chunk_edge)
+            .clamp(chunk_min_x, chunk_max_x);
+        let min_y = (viewport.desired_bounds_min.y + half)
+            .div_euclid(chunk_edge)
+            .clamp(chunk_min_y, chunk_max_y);
+        let max_y = (viewport.desired_bounds_max.y + half)
+            .div_euclid(chunk_edge)
+            .clamp(chunk_min_y, chunk_max_y);
+        let min_z = viewport.relevant_z_min.max(world_min.z);
+        let max_z = viewport.relevant_z_max.min(world_max.z);
+
+        if min_x > max_x || min_y > max_y || min_z > max_z {
+            return Vec::new();
+        }
+
+        let mut chunks = Vec::new();
+        for z in min_z..=max_z {
+            for x in min_x..=max_x {
+                for y in min_y..=max_y {
+                    chunks.push((x, y, z));
+                }
+            }
+        }
+        self.sort_chunks_near_first(&mut chunks, viewport);
+        chunks
+    }
+
+    fn sort_chunks_near_first(&self, chunks: &mut [(i32, i32, i32)], viewport: &ViewportIntent) {
+        let edge = i32::try_from(self.world.chunk_edge().max(1))
+            .expect("chunk edge should fit in i32");
+        let half = edge / 2;
+        let camera_chunk_x = (viewport.camera_center.x + half).div_euclid(edge);
+        let camera_chunk_y = (viewport.camera_center.y + half).div_euclid(edge);
+        chunks.sort_by_key(|(x, y, z)| {
+            let dx = (*x as i64 - camera_chunk_x as i64).abs();
+            let dy = (*y as i64 - camera_chunk_y as i64).abs();
+            let dz = (*z as i64 - viewport.camera_center.z as i64).abs();
+            dx + dy + dz
+        });
+    }
+
+    fn emit_chunk_layers(
+        &mut self,
+        event_kind: SnapshotKind,
+        runtime_event: fn(ChunkLayerPatch) -> RuntimeEvent,
+        viewport: &ViewportIntent,
+        chunks: &[(i32, i32, i32)],
+        layers: &[LayerId],
+        visibility: Option<&VisibilityState>,
+    ) {
+        for &(chunk_x, chunk_y, chunk_z) in chunks {
+            for &layer in layers {
+                let chunk = ChunkKey::new(chunk_x, chunk_y, chunk_z);
+                self.events.push_back(runtime_event(self.build_chunk_layer_patch(
+                    (chunk_x, chunk_y),
+                    chunk_z,
+                    layer,
+                    event_kind.clone(),
+                    viewport,
+                    visibility,
+                )));
+                self.emitted_chunk_layers.insert((chunk, layer));
+            }
+        }
+    }
+
+    fn missing_viewport_chunk_layers(
+        &self,
+        chunks: &[(i32, i32, i32)],
+        layers: &[LayerId],
+    ) -> Vec<(i32, i32, i32)> {
+        chunks
+            .iter()
+            .copied()
+            .filter(|(x, y, z)| {
+                let chunk = ChunkKey::new(*x, *y, *z);
+                layers
+                    .iter()
+                    .any(|layer| !self.emitted_chunk_layers.contains(&(chunk, *layer)))
+            })
+            .collect()
     }
 
     fn queue_input(&mut self, input: InputBatch) {
@@ -163,18 +306,25 @@ impl RuntimeCore {
         self.events.push_back(RuntimeEvent::ResyncStarted {
             reason: reason.clone(),
         });
+        self.emitted_chunk_layers.clear();
+
+        if viewport.active_layers.contains(LayerId::Fog) {
+            self.world.refresh_primary_visibility();
+        }
+        let visibility = self.world.primary_visibility_state();
+        let chunks_to_emit = self.viewport_chunks(&viewport);
+        let active_layers = active_layers_in_order(viewport.active_layers);
+        self.emit_chunk_layers(
+            SnapshotKind::Resync,
+            RuntimeEvent::ResyncChunkLayer,
+            &viewport,
+            &chunks_to_emit,
+            &active_layers,
+            visibility.as_ref(),
+        );
         let snapshot = self
             .world
             .snapshot_with_visibility(viewport.active_layers.contains(LayerId::Fog));
-        for layer in active_layers_in_order(viewport.active_layers) {
-            self.events
-                .push_back(RuntimeEvent::ResyncChunkLayer(self.snapshot_to_patch(
-                    &snapshot,
-                    ChunkKey::new(0, 0, 0),
-                    layer,
-                    SnapshotKind::Resync,
-                )));
-        }
         self.events
             .push_back(RuntimeEvent::ResyncEntities(EntityPatchBatch {
                 worker_frame_id: self.worker_frame_id,
@@ -195,30 +345,39 @@ impl RuntimeCore {
         self.events.push_back(RuntimeEvent::InitialSnapshotStarted);
 
         let active_layers = active_layers_in_order(viewport.active_layers);
-        let total_layers = u32::try_from(active_layers.len()).expect("layer count should fit u32");
+        if viewport.active_layers.contains(LayerId::Fog) {
+            self.world.refresh_primary_visibility();
+        }
+        let visibility = self.world.primary_visibility_state();
         let snapshot_start_ms = now_millis();
         let snapshot = self
             .world
             .snapshot_with_visibility(viewport.active_layers.contains(LayerId::Fog));
         let snapshot_ms = now_millis().saturating_sub(snapshot_start_ms) as u64;
 
-        if total_layers == 0 {
+        let chunks_to_emit = self.viewport_chunks(viewport);
+        let total_chunks = u32::try_from(chunks_to_emit.len()).unwrap_or(u32::MAX);
+        if total_chunks == 0 {
             self.events.push_back(RuntimeEvent::InitialSnapshotProgress {
                 completed_chunks: 0,
                 total_chunks: 0,
             });
         }
 
-        for (index, layer) in active_layers.iter().enumerate() {
-            let completed = u32::try_from(index + 1).expect("initial snapshot progress should fit");
+        for (index, (chunk_x, chunk_y, chunk_z)) in chunks_to_emit.iter().enumerate() {
+            let completed = u32::try_from(index + 1).unwrap_or(u32::MAX);
             self.events.push_back(RuntimeEvent::InitialSnapshotProgress {
                 completed_chunks: completed,
-                total_chunks: total_layers,
+                total_chunks: total_chunks,
             });
-            self.events
-                .push_back(RuntimeEvent::InitialSnapshotChunkLayer(
-                    self.snapshot_to_patch(&snapshot, ChunkKey::new(0, 0, 0), *layer, SnapshotKind::Initial),
-                ));
+            self.emit_chunk_layers(
+                SnapshotKind::Initial,
+                RuntimeEvent::InitialSnapshotChunkLayer,
+                viewport,
+                &[(*chunk_x, *chunk_y, *chunk_z)],
+                &active_layers,
+                visibility.as_ref(),
+            );
         }
 
         self.events
@@ -227,31 +386,49 @@ impl RuntimeCore {
                 updates: vec![WorldUpdate::Snapshot(snapshot)],
             }));
         self.events.push_back(RuntimeEvent::InitialSnapshotComplete);
+        let _ = self.world.take_terrain_dirty_chunks();
+        let _ = self.world.take_entity_dirty_chunks();
+        let _ = self.world.take_visibility_dirty_chunks();
         snapshot_ms
     }
 
     fn emit_layer_snapshot(&mut self, viewport: &ViewportIntent, layer: LayerId) -> u64 {
         self.events.push_back(RuntimeEvent::LayerSnapshotStarted { layer });
-        self.events.push_back(RuntimeEvent::LayerSnapshotProgress {
-            layer,
-            completed_chunks: 1,
-            total_chunks: 1,
-        });
+
+        if layer == LayerId::Fog {
+            self.world.refresh_primary_visibility();
+        }
+        let visibility = self.world.primary_visibility_state();
         let snapshot_start_ms = now_millis();
-        let snapshot = self
+        let _snapshot = self
             .world
             .snapshot_with_visibility(viewport.active_layers.contains(LayerId::Fog));
         let snapshot_ms = now_millis().saturating_sub(snapshot_start_ms) as u64;
-        self.events.push_back(RuntimeEvent::ChunkLayerPatch(
-            self.snapshot_to_patch(
-                &snapshot,
-                ChunkKey::new(0, 0, 0),
+
+        let chunks_to_emit = self.viewport_chunks(viewport);
+        let total_chunks = u32::try_from(chunks_to_emit.len()).unwrap_or(u32::MAX);
+
+        for (index, (chunk_x, chunk_y, chunk_z)) in chunks_to_emit.iter().enumerate() {
+            let completed = u32::try_from(index + 1).unwrap_or(u32::MAX);
+            self.events.push_back(RuntimeEvent::LayerSnapshotProgress {
                 layer,
+                completed_chunks: completed,
+                total_chunks: total_chunks,
+            });
+            self.emit_chunk_layers(
                 SnapshotKind::LayerToggle { layer },
-            ),
-        ));
-        self.events
-            .push_back(RuntimeEvent::LayerSnapshotComplete { layer });
+                RuntimeEvent::ChunkLayerPatch,
+                viewport,
+                &[(*chunk_x, *chunk_y, *chunk_z)],
+                &[layer],
+                visibility.as_ref(),
+            );
+        }
+
+        self.events.push_back(RuntimeEvent::LayerSnapshotComplete { layer });
+        if layer == LayerId::Fog {
+            let _ = self.world.take_visibility_dirty_chunks();
+        }
         snapshot_ms
     }
 
@@ -267,8 +444,10 @@ impl RuntimeCore {
         let patch_apply_ms = 0;
         let mut active_layers_count = 0u32;
 
+        let mut viewport_changed = false;
         if let Some(viewport) = self.pending_viewport.take() {
             self.current_viewport = Some(viewport);
+            viewport_changed = true;
         }
 
         if let Some(viewport) = self.current_viewport {
@@ -312,29 +491,92 @@ impl RuntimeCore {
             let patch_start_ms = now_millis();
             if let Some(viewport) = self.current_viewport {
                 let include_visibility = viewport.active_layers.contains(LayerId::Fog);
-                let snapshot_start_ms = now_millis();
-                let snapshot = self.world.snapshot_with_visibility(include_visibility);
+                let fov_start_ms = now_millis();
                 if include_visibility {
-                    fov_ms = now_millis().saturating_sub(snapshot_start_ms) as u64;
+                    self.world.refresh_primary_visibility();
+                    fov_ms = now_millis().saturating_sub(fov_start_ms) as u64;
                 }
                 active_layers_count = viewport.active_layers.0.count_ones();
                 let active_layers = active_layers_in_order(viewport.active_layers);
-                for layer in active_layers {
-                    self.events.push_back(RuntimeEvent::ChunkLayerPatch(
-                        self.snapshot_to_patch(
-                            &snapshot,
-                            ChunkKey::new(0, 0, 0),
-                            layer,
-                            SnapshotKind::Incremental,
-                        ),
-                    ));
-                }
-                patch_build_ms = now_millis().saturating_sub(patch_start_ms) as u64;
+                let visibility = self.world.primary_visibility_state();
+                let viewport_chunks = self.viewport_chunks(&viewport);
+                let viewport_chunk_set: HashSet<Vec3i> = viewport_chunks
+                    .iter()
+                    .map(|(x, y, z)| Vec3i::new(*x, *y, *z))
+                    .collect();
 
-                let ser_start_ms = now_millis();
-                let _serialized = bincode::serde::encode_to_vec(&snapshot, bincode::config::standard())
-                    .expect("snapshot should serialize");
-                serialization_ms = now_millis().saturating_sub(ser_start_ms) as u64;
+                let terrain_dirty = self.world.take_terrain_dirty_chunks();
+                let _entity_dirty = self.world.take_entity_dirty_chunks();
+                let visibility_dirty = self.world.take_visibility_dirty_chunks();
+
+                let mut terrain_chunks: Vec<(i32, i32, i32)> = terrain_dirty
+                    .iter()
+                    .copied()
+                    .filter(|chunk| viewport_chunk_set.contains(chunk))
+                    .map(|chunk| (chunk.x, chunk.y, chunk.z))
+                    .collect();
+                self.sort_chunks_near_first(&mut terrain_chunks, &viewport);
+
+                let mut fog_chunks: Vec<(i32, i32, i32)> = visibility_dirty
+                    .iter()
+                    .copied()
+                    .filter(|chunk| viewport_chunk_set.contains(chunk))
+                    .map(|chunk| (chunk.x, chunk.y, chunk.z))
+                    .collect();
+                self.sort_chunks_near_first(&mut fog_chunks, &viewport);
+
+                let mut missing_chunks = if viewport_changed {
+                    self.missing_viewport_chunk_layers(&viewport_chunks, &active_layers)
+                } else {
+                    Vec::new()
+                };
+                self.sort_chunks_near_first(&mut missing_chunks, &viewport);
+
+                let terrain_layers: Vec<LayerId> = active_layers
+                    .iter()
+                    .copied()
+                    .filter(|layer| {
+                        matches!(
+                            layer,
+                            LayerId::Floor | LayerId::EdgeShadow | LayerId::CeilingShadow
+                        )
+                    })
+                    .collect();
+                if !terrain_chunks.is_empty() && !terrain_layers.is_empty() {
+                    self.emit_chunk_layers(
+                        SnapshotKind::Incremental,
+                        RuntimeEvent::ChunkLayerPatch,
+                        &viewport,
+                        &terrain_chunks,
+                        &terrain_layers,
+                        visibility.as_ref(),
+                    );
+                }
+
+                if include_visibility && !fog_chunks.is_empty() {
+                    self.emit_chunk_layers(
+                        SnapshotKind::Incremental,
+                        RuntimeEvent::ChunkLayerPatch,
+                        &viewport,
+                        &fog_chunks,
+                        &[LayerId::Fog],
+                        visibility.as_ref(),
+                    );
+                }
+
+                if !missing_chunks.is_empty() {
+                    self.emit_chunk_layers(
+                        SnapshotKind::Incremental,
+                        RuntimeEvent::ChunkLayerPatch,
+                        &viewport,
+                        &missing_chunks,
+                        &active_layers,
+                        visibility.as_ref(),
+                    );
+                }
+
+                patch_build_ms = now_millis().saturating_sub(patch_start_ms) as u64;
+                serialization_ms = 0;
             }
         }
 

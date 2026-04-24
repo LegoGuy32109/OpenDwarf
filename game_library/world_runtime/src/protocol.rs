@@ -141,11 +141,14 @@ pub enum RuntimeControl {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChunkLayerPatch {
+    /// Render chunk coordinate. `x` and `y` are chunk-space; `z` is the world z-level rendered by
+    /// this layer payload.
     pub chunk: ChunkKey,
     pub layer: LayerId,
     pub revision: u64,
     pub worker_frame_id: u64,
     pub full_chunk: bool,
+    /// Bincode-encoded `Vec<Option<u16>>` tile indices for the full chunk layer.
     pub tile_data: Vec<u8>,
 }
 

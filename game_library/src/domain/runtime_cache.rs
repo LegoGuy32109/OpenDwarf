@@ -89,10 +89,7 @@ impl RuntimePatchApplyQueue {
         for (slot_index, (_, event)) in patch_slots.into_iter().zip(patches.into_iter()) {
             ordered[slot_index] = Some(event);
         }
-        ordered
-            .into_iter()
-            .filter_map(|slot| slot)
-            .collect()
+        ordered.into_iter().filter_map(|slot| slot).collect()
     }
 
     #[must_use]
@@ -409,12 +406,17 @@ impl RuntimeBackpressureState {
         };
         // Ease toward the target so changes don't snap visually.
         let ease = 0.15f32;
-        self.overfetch_factor = self.overfetch_factor + (target_factor - self.overfetch_factor) * ease;
+        self.overfetch_factor =
+            self.overfetch_factor + (target_factor - self.overfetch_factor) * ease;
         self.overfetch_factor = self.overfetch_factor.clamp(0.0, 1.0);
         self.pressure_level = level;
     }
 
-    pub fn scaled_overfetch_radius(&mut self, base_radius_tiles: i32, min_radius_tiles: i32) -> i32 {
+    pub fn scaled_overfetch_radius(
+        &mut self,
+        base_radius_tiles: i32,
+        min_radius_tiles: i32,
+    ) -> i32 {
         let scaled = (base_radius_tiles as f32) * self.overfetch_factor;
         let radius = scaled.round() as i32;
         let radius = radius.max(min_radius_tiles).min(base_radius_tiles);

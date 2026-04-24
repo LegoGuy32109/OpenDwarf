@@ -163,6 +163,12 @@ pub struct EntityFov {
 }
 
 #[derive(Debug, Clone)]
+pub struct VisibilityState {
+    pub visible: HashSet<Vec3i>,
+    pub memory: HashMap<Vec3i, TileMemory>,
+}
+
+#[derive(Debug, Clone)]
 pub struct WorldState {
     tick: u64,
     chunk_edge: u32,
@@ -547,6 +553,18 @@ impl WorldState {
 
         // Mark FOV as dirty for the primary observer if they moved
         if !moved_entities.is_empty() {
+            let dirty_chunks: Vec<Vec3i> = moved_entities
+                .iter()
+                .flat_map(|moved| {
+                    [
+                        self.render_chunk_for_world_position(moved.from),
+                        self.render_chunk_for_world_position(moved.to),
+                    ]
+                })
+                .flatten()
+                .collect();
+            self.entity_dirty_chunks.extend(dirty_chunks);
+
             // Assume entity 1 is the primary observer
             if let Some(moved) = moved_entities.iter().find(|m| m.id == 1) {
                 if moved.from != moved.to {
@@ -753,7 +771,7 @@ impl WorldState {
         )
     }
 
-    fn world_position_to_chunk_coord(&self, position: Vec3i) -> Option<Vec3i> {
+    pub fn world_position_to_chunk_coord(&self, position: Vec3i) -> Option<Vec3i> {
         let world_size = self.world_size_in_voxels();
         let min = Vec3i::new(
             -(i32::try_from(world_size.x).ok()? / 2),
@@ -790,6 +808,20 @@ impl WorldState {
         ))
     }
 
+    pub fn render_chunk_for_world_position(&self, position: Vec3i) -> Option<Vec3i> {
+        let edge = i32::try_from(self.chunk_edge.max(1)).ok()?;
+        let half = edge / 2;
+        Some(Vec3i::new(
+            (position.x + half).div_euclid(edge),
+            (position.y + half).div_euclid(edge),
+            position.z,
+        ))
+    }
+
+    pub fn tick(&self) -> u64 {
+        self.tick
+    }
+
     pub fn chunk_edge(&self) -> u32 {
         self.chunk_edge
     }
@@ -800,6 +832,62 @@ impl WorldState {
 
     pub fn terrain_blocks_map(&self) -> Arc<HashMap<Vec3i, BlockType>> {
         Arc::clone(&self.terrain_blocks)
+    }
+
+    pub fn refresh_primary_visibility(&mut self) -> bool {
+        let Some(was_dirty) = self.entity_fov.get(&1).map(|fov| fov.dirty) else {
+            return false;
+        };
+        if !was_dirty {
+            return false;
+        }
+
+        let previous_visible = self
+            .entity_fov
+            .get(&1)
+            .map(|fov| fov.visible.clone())
+            .unwrap_or_default();
+        let previous_memory: HashSet<Vec3i> = self
+            .entity_fov
+            .get(&1)
+            .map(|fov| fov.memory.keys().copied().collect())
+            .unwrap_or_default();
+
+        if let Some(observer) = self.entities.get(&1) {
+            let position = observer.position;
+            if let Some(fov) = self.entity_fov.get_mut(&1) {
+                super::fov::compute_fov(
+                    fov,
+                    position,
+                    &self.blocks,
+                    self.world_chunks,
+                    self.chunk_edge,
+                    self.tick,
+                );
+            }
+        }
+
+        let mut changed_positions = Vec::new();
+        if let Some(fov) = self.entity_fov.get(&1) {
+            changed_positions.extend(previous_visible.symmetric_difference(&fov.visible).copied());
+            let current_memory: HashSet<Vec3i> = fov.memory.keys().copied().collect();
+            changed_positions.extend(previous_memory.symmetric_difference(&current_memory).copied());
+        }
+
+        let dirty_chunks: Vec<Vec3i> = changed_positions
+            .into_iter()
+            .filter_map(|position| self.render_chunk_for_world_position(position))
+            .collect();
+        let changed = !dirty_chunks.is_empty();
+        self.visibility_dirty_chunks.extend(dirty_chunks);
+        changed
+    }
+
+    pub fn primary_visibility_state(&self) -> Option<VisibilityState> {
+        self.entity_fov.get(&1).map(|fov| VisibilityState {
+            visible: fov.visible.clone(),
+            memory: fov.memory.clone(),
+        })
     }
 
     pub fn take_terrain_dirty_chunks(&mut self) -> HashSet<Vec3i> {
