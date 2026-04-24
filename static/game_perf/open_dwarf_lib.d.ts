@@ -8,11 +8,11 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly main: () => void;
-    readonly __wasm_bindgen_func_elem_63597: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_71027: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_65557: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_63598: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_74400: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_63604: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_71057: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_65587: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_63605: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_74430: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

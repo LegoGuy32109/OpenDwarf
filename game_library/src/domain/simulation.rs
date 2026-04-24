@@ -70,6 +70,8 @@ pub struct TerrainData {
     pub source_blocks: Arc<HashMap<Vec3i, BlockType>>,
     pub blocks: HashMap<Vec3i, BlockType>,
     pub dirty: bool,
+    pub full_rebuild: bool,
+    pub dirty_chunks: HashSet<Vec3i>,
 }
 
 #[derive(Resource, Default)]
@@ -100,6 +102,7 @@ pub struct FogData {
     pub visible: HashSet<Vec3i>,
     pub memory: HashMap<Vec3i, TileMemory>,
     pub dirty: bool,
+    pub full_rebuild: bool,
 }
 
 #[derive(Resource, Default)]
@@ -130,6 +133,11 @@ pub struct TileLayerDebugState {
     pub show_depth_stack: bool,
 }
 
+#[derive(Resource, Default)]
+pub struct VisibleChunkLayerCache {
+    pub entries: HashMap<WorldTileChunk, Vec<Option<TileData>>>,
+}
+
 impl Default for TileLayerDebugState {
     fn default() -> Self {
         Self {
@@ -153,7 +161,7 @@ pub enum TileLayer {
     FogShadow,
 }
 
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorldTileChunk {
     pub chunk_xy: IVec2,
     pub world_z: i32,
@@ -204,6 +212,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(ChunkStreamingState::default());
     commands.insert_resource(ChunkBorderDebugState::default());
     commands.insert_resource(TileLayerDebugState::default());
+    commands.insert_resource(VisibleChunkLayerCache::default());
     commands.insert_resource(TilemapRenderMetrics::default());
 }
 
@@ -394,6 +403,8 @@ pub fn drive_replay_playback(
         config.world_chunks = Vec3u::default();
         entity_data.tick = 0;
         terrain.dirty = true;
+        terrain.full_rebuild = true;
+        terrain.dirty_chunks.clear();
         entity_data.dirty = true;
         let _ = apply_first_checkpoint(
             &mut replay_playback,
@@ -486,6 +497,47 @@ fn chunk_local_tile_index(local_x: u32, local_y: u32, chunk_edge: u32) -> usize 
         .expect("chunk-local tile index overflowed")
 }
 
+fn build_chunk_layer_tile_data(
+    chunk_xy: IVec2,
+    world_z: i32,
+    layer: TileLayer,
+    chunk_edge: u32,
+    render_blocks: &HashMap<Vec3i, BlockType>,
+    entity_mode: bool,
+    render_depth_stack: bool,
+    view_z_current: i32,
+    fog_data: &FogData,
+) -> Vec<Option<TileData>> {
+    match layer {
+        TileLayer::Floor => build_chunk_tile_data(
+            chunk_xy,
+            world_z,
+            chunk_edge,
+            render_blocks,
+            world_z - view_z_current,
+            render_depth_stack,
+        ),
+        TileLayer::EdgeShadow => {
+            build_edge_shadow_tile_data(chunk_xy, world_z, chunk_edge, render_blocks, entity_mode)
+        }
+        TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
+            chunk_xy,
+            world_z,
+            chunk_edge,
+            render_blocks,
+            entity_mode,
+        ),
+        TileLayer::FogShadow => build_fog_tile_data(
+            chunk_xy,
+            world_z,
+            view_z_current,
+            chunk_edge,
+            render_blocks,
+            fog_data,
+        ),
+    }
+}
+
 pub fn project_world_to_tilemap(
     mut commands: Commands,
     replay_mode: Res<ReplayMode>,
@@ -500,6 +552,7 @@ pub fn project_world_to_tilemap(
     config: Res<TerrainConfig>,
     mut terrain: ResMut<TerrainData>,
     mut fog_data: ResMut<FogData>,
+    mut visible_chunk_cache: ResMut<VisibleChunkLayerCache>,
     mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
     mut chunk_query: Query<(
         Entity,
@@ -512,29 +565,34 @@ pub fn project_world_to_tilemap(
     #[cfg(not(target_arch = "wasm32"))]
     let start = std::time::Instant::now();
 
-    // Z-level changes require tile data rebuild for depth tinting
-    if view_z.is_changed() {
+    let config_changed = config.is_changed();
+    let context_changed = view_z.is_changed()
+        || view_mode.is_changed()
+        || tile_layer_debug_state.is_changed()
+        || config_changed;
+    let force_recreate_chunks = false;
+
+    if context_changed {
         terrain.dirty = true;
         fog_data.dirty = true;
+        visible_chunk_cache.entries.clear();
     }
 
-    // ViewMode changes should refresh the full tile projection immediately.
-    if view_mode.is_changed() {
-        terrain.dirty = true;
-        fog_data.dirty = true;
+    if terrain.full_rebuild {
+        visible_chunk_cache.entries.clear();
+        terrain.full_rebuild = false;
     }
 
-    if tile_layer_debug_state.is_changed() {
-        terrain.dirty = true;
-        fog_data.dirty = true;
+    if fog_data.full_rebuild {
+        visible_chunk_cache
+            .entries
+            .retain(|key, _| key.layer != TileLayer::FogShadow);
+        fog_data.full_rebuild = false;
     }
 
-    if !terrain.dirty && !fog_data.dirty {
+    if !terrain.dirty && !fog_data.dirty && terrain.dirty_chunks.is_empty() && !context_changed {
         return;
     }
-
-    let terrain_rebuild = terrain.dirty;
-    let fog_rebuild = fog_data.dirty;
 
     let chunk_edge = config.chunk_edge;
     if chunk_edge == 0 {
@@ -546,6 +604,8 @@ pub fn project_world_to_tilemap(
         config.world_chunks,
         chunk_streaming_state.as_deref(),
     );
+
+    let dirty_chunks = std::mem::take(&mut terrain.dirty_chunks);
 
     let entity_mode = *view_mode == ViewMode::Entity;
     let render_blocks = if entity_mode {
@@ -568,104 +628,140 @@ pub fn project_world_to_tilemap(
         vec![view_z.current]
     };
 
+    if !dirty_chunks.is_empty() {
+        visible_chunk_cache.entries.retain(|key, _| {
+            let chunk_coord = Vec3i::new(key.chunk_xy.x, key.chunk_xy.y, key.world_z);
+            !dirty_chunks.contains(&chunk_coord)
+        });
+    }
+
+    if fog_data.dirty {
+        visible_chunk_cache
+            .entries
+            .retain(|key, _| key.layer != TileLayer::FogShadow);
+    }
+
     // Collect existing chunk keys (chunk_xy, z, layer)
-    let existing_chunks: HashSet<(IVec2, i32, TileLayer)> = chunk_query
-        .iter()
-        .map(|(_, chunk, _, _, _)| (chunk.chunk_xy, chunk.world_z, chunk.layer))
-        .collect();
+    let existing_chunks: HashSet<(IVec2, i32, TileLayer)> = if force_recreate_chunks {
+        HashSet::default()
+    } else {
+        chunk_query
+            .iter()
+            .map(|(_, chunk, _, _, _)| (chunk.chunk_xy, chunk.world_z, chunk.layer))
+            .collect()
+    };
+
+    let mut rebuilt_chunk_count = 0usize;
+    let mut rebuilt_non_empty_tile_count = 0usize;
+    let mut rebuilt_chunk_keys: HashSet<WorldTileChunk> = HashSet::new();
 
     // Spawn new chunks and update existing ones.
     for &chunk_xy in &active_chunks_xy {
-        if terrain_rebuild {
-            for &world_z in &rendered_z_levels {
-                if render_floor {
-                    // Spawn floor layer.
-                    let chunk_key = (chunk_xy, world_z, TileLayer::Floor);
-                    if !existing_chunks.contains(&chunk_key) {
-                        let z_offset = world_z - view_z.current;
-                        let tile_data = build_chunk_tile_data(
+        for &world_z in &rendered_z_levels {
+            if render_floor {
+                let chunk_key = (chunk_xy, world_z, TileLayer::Floor);
+                let world_tile_chunk = WorldTileChunk {
+                    chunk_xy,
+                    world_z,
+                    layer: TileLayer::Floor,
+                };
+                let tile_data = visible_chunk_cache
+                    .entries
+                    .entry(world_tile_chunk)
+                    .or_insert_with(|| {
+                        rebuilt_chunk_count = rebuilt_chunk_count.saturating_add(1);
+                        rebuilt_chunk_keys.insert(world_tile_chunk);
+                        build_chunk_layer_tile_data(
                             chunk_xy,
                             world_z,
+                            TileLayer::Floor,
                             chunk_edge,
                             render_blocks,
-                            z_offset,
+                            entity_mode,
                             render_depth_stack,
-                        );
+                            view_z.current,
+                            &fog_data,
+                        )
+                    })
+                    .clone();
 
-                        let sprite_z = calculate_sprite_z(z_offset, TileLayer::Floor);
-                        commands.spawn((
-                            WorldTileChunk {
-                                chunk_xy,
-                                world_z,
-                                layer: TileLayer::Floor,
-                            },
-                            TilemapChunk {
-                                chunk_size: UVec2::splat(chunk_edge),
-                                tile_display_size: tilemap_assets.tile_display_size,
-                                tileset: tilemap_assets.tileset.clone(),
-                                alpha_mode: bevy::sprite_render::AlphaMode2d::Opaque,
-                            },
-                            TilemapChunkTileData(tile_data),
-                            Transform::from_translation(chunk_world_translation_xy(
-                                chunk_xy, chunk_edge, sprite_z,
-                            )),
-                            GlobalTransform::default(),
-                            Visibility::default(),
-                            InheritedVisibility::default(),
-                            ViewVisibility::default(),
-                        ));
-                    }
+                if !existing_chunks.contains(&chunk_key) {
+                    let sprite_z = calculate_sprite_z(world_z - view_z.current, TileLayer::Floor);
+                    rebuilt_non_empty_tile_count = rebuilt_non_empty_tile_count
+                        .saturating_add(tile_data.iter().filter(|tile| tile.is_some()).count());
+                    commands.spawn((
+                        world_tile_chunk,
+                        TilemapChunk {
+                            chunk_size: UVec2::splat(chunk_edge),
+                            tile_display_size: tilemap_assets.tile_display_size,
+                            tileset: tilemap_assets.tileset.clone(),
+                            alpha_mode: bevy::sprite_render::AlphaMode2d::Opaque,
+                        },
+                        TilemapChunkTileData(tile_data),
+                        Transform::from_translation(chunk_world_translation_xy(
+                            chunk_xy, chunk_edge, sprite_z,
+                        )),
+                        GlobalTransform::default(),
+                        Visibility::default(),
+                        InheritedVisibility::default(),
+                        ViewVisibility::default(),
+                    ));
                 }
+            }
 
-                if render_edge_shadow {
-                    // Shadow overlay is rendered at all visible z-levels to show elevation edges.
-                    // To avoid visual stacking of overlapping edges, only render if there's no edge above this level.
-                    let edge_shadow_key = (chunk_xy, world_z, TileLayer::EdgeShadow);
-                    if rendered_z_levels.contains(&world_z)
-                        && !existing_chunks.contains(&edge_shadow_key)
-                    {
-                        // Check if the z-level above has an edge at the same location.
-                        // If it does, skip rendering here (the edge above takes visual precedence).
-                        let z_above = world_z + 1;
-                        let has_edge_above = if rendered_z_levels.contains(&z_above) {
-                            // If the level above is also visible, check for edges there
-                            chunk_has_edge(
-                                chunk_xy,
-                                z_above,
-                                chunk_edge,
-                                render_blocks,
-                                entity_mode,
-                            )
-                        } else {
-                            // If above is outside the visible range, render edges at this level
-                            false
+            if render_edge_shadow {
+                let edge_shadow_key = (chunk_xy, world_z, TileLayer::EdgeShadow);
+                if rendered_z_levels.contains(&world_z) {
+                    let z_above = world_z + 1;
+                    let has_edge_above = if rendered_z_levels.contains(&z_above) {
+                        chunk_has_edge(chunk_xy, z_above, chunk_edge, render_blocks, entity_mode)
+                    } else {
+                        false
+                    };
+
+                    if !has_edge_above {
+                        let world_tile_chunk = WorldTileChunk {
+                            chunk_xy,
+                            world_z,
+                            layer: TileLayer::EdgeShadow,
                         };
-
-                        if !has_edge_above {
-                            let edge_shadow_data = build_edge_shadow_tile_data(
-                                chunk_xy,
-                                world_z,
-                                chunk_edge,
-                                render_blocks,
-                                entity_mode,
-                            );
-                            let z_offset = world_z - view_z.current;
-                            let edge_shadow_sprite_z =
-                                calculate_sprite_z(z_offset, TileLayer::EdgeShadow);
-                            let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
-                            commands.spawn((
-                                WorldTileChunk {
+                        let tile_data = visible_chunk_cache
+                            .entries
+                            .entry(world_tile_chunk)
+                            .or_insert_with(|| {
+                                rebuilt_chunk_count = rebuilt_chunk_count.saturating_add(1);
+                                rebuilt_chunk_keys.insert(world_tile_chunk);
+                                build_chunk_layer_tile_data(
                                     chunk_xy,
                                     world_z,
-                                    layer: TileLayer::EdgeShadow,
-                                },
+                                    TileLayer::EdgeShadow,
+                                    chunk_edge,
+                                    render_blocks,
+                                    entity_mode,
+                                    render_depth_stack,
+                                    view_z.current,
+                                    &fog_data,
+                                )
+                            })
+                            .clone();
+
+                        if !existing_chunks.contains(&edge_shadow_key) {
+                            let edge_shadow_sprite_z =
+                                calculate_sprite_z(world_z - view_z.current, TileLayer::EdgeShadow);
+                            let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
+                            rebuilt_non_empty_tile_count = rebuilt_non_empty_tile_count
+                                .saturating_add(
+                                    tile_data.iter().filter(|tile| tile.is_some()).count(),
+                                );
+                            commands.spawn((
+                                world_tile_chunk,
                                 TilemapChunk {
                                     chunk_size: UVec2::splat(chunk_edge),
                                     tile_display_size: UVec2::splat(64),
                                     tileset: shadow_atlas.atlas.clone(),
                                     alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
                                 },
-                                TilemapChunkTileData(edge_shadow_data),
+                                TilemapChunkTileData(tile_data),
                                 Transform::from_translation(
                                     chunk_world_translation_xy(
                                         chunk_xy,
@@ -680,32 +776,49 @@ pub fn project_world_to_tilemap(
                             ));
                         }
                     }
+                }
 
-                    // Ceiling shadow (dual-grid) — only on the current z-level
-                    let ceiling_key = (chunk_xy, world_z, TileLayer::CeilingShadow);
-                    if world_z == view_z.current && !existing_chunks.contains(&ceiling_key) {
-                        let ceiling_data = build_ceiling_shadow_tile_data(
-                            chunk_xy,
-                            world_z,
-                            chunk_edge,
-                            render_blocks,
-                            entity_mode,
-                        );
-                        let ceiling_sprite_z = calculate_sprite_z(0, TileLayer::CeilingShadow);
-                        let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
-                        commands.spawn((
-                            WorldTileChunk {
+                let ceiling_key = (chunk_xy, world_z, TileLayer::CeilingShadow);
+                if world_z == view_z.current {
+                    let world_tile_chunk = WorldTileChunk {
+                        chunk_xy,
+                        world_z,
+                        layer: TileLayer::CeilingShadow,
+                    };
+                    let tile_data = visible_chunk_cache
+                        .entries
+                        .entry(world_tile_chunk)
+                        .or_insert_with(|| {
+                            rebuilt_chunk_count = rebuilt_chunk_count.saturating_add(1);
+                            rebuilt_chunk_keys.insert(world_tile_chunk);
+                            build_chunk_layer_tile_data(
                                 chunk_xy,
                                 world_z,
-                                layer: TileLayer::CeilingShadow,
-                            },
+                                TileLayer::CeilingShadow,
+                                chunk_edge,
+                                render_blocks,
+                                entity_mode,
+                                render_depth_stack,
+                                view_z.current,
+                                &fog_data,
+                            )
+                        })
+                        .clone();
+
+                    if !existing_chunks.contains(&ceiling_key) {
+                        let ceiling_sprite_z = calculate_sprite_z(0, TileLayer::CeilingShadow);
+                        let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
+                        rebuilt_non_empty_tile_count = rebuilt_non_empty_tile_count
+                            .saturating_add(tile_data.iter().filter(|tile| tile.is_some()).count());
+                        commands.spawn((
+                            world_tile_chunk,
                             TilemapChunk {
                                 chunk_size: UVec2::splat(chunk_edge),
                                 tile_display_size: UVec2::splat(64),
                                 tileset: obscure_atlas.atlas.clone(),
                                 alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
                             },
-                            TilemapChunkTileData(ceiling_data),
+                            TilemapChunkTileData(tile_data),
                             Transform::from_translation(
                                 chunk_world_translation_xy(chunk_xy, chunk_edge, ceiling_sprite_z)
                                     + Vec3::new(half_tile, half_tile, 0.0),
@@ -718,35 +831,48 @@ pub fn project_world_to_tilemap(
                     }
                 }
             }
-        }
 
-        if (terrain_rebuild || fog_rebuild) && render_fog_shadow {
-            for &world_z in &rendered_z_levels {
+            if render_fog_shadow {
                 let fog_key = (chunk_xy, world_z, TileLayer::FogShadow);
-                if !existing_chunks.contains(&fog_key) {
-                    let fog_tile_data = build_fog_tile_data(
-                        chunk_xy,
-                        world_z,
-                        view_z.current,
-                        chunk_edge,
-                        render_blocks,
-                        &fog_data,
-                    );
-                    let fog_sprite_z =
-                        calculate_sprite_z(world_z - view_z.current, TileLayer::FogShadow);
-                    commands.spawn((
-                        WorldTileChunk {
+                let world_tile_chunk = WorldTileChunk {
+                    chunk_xy,
+                    world_z,
+                    layer: TileLayer::FogShadow,
+                };
+                let tile_data = visible_chunk_cache
+                    .entries
+                    .entry(world_tile_chunk)
+                    .or_insert_with(|| {
+                        rebuilt_chunk_count = rebuilt_chunk_count.saturating_add(1);
+                        rebuilt_chunk_keys.insert(world_tile_chunk);
+                        build_chunk_layer_tile_data(
                             chunk_xy,
                             world_z,
-                            layer: TileLayer::FogShadow,
-                        },
+                            TileLayer::FogShadow,
+                            chunk_edge,
+                            render_blocks,
+                            entity_mode,
+                            render_depth_stack,
+                            view_z.current,
+                            &fog_data,
+                        )
+                    })
+                    .clone();
+
+                if !existing_chunks.contains(&fog_key) {
+                    let fog_sprite_z =
+                        calculate_sprite_z(world_z - view_z.current, TileLayer::FogShadow);
+                    rebuilt_non_empty_tile_count = rebuilt_non_empty_tile_count
+                        .saturating_add(tile_data.iter().filter(|tile| tile.is_some()).count());
+                    commands.spawn((
+                        world_tile_chunk,
                         TilemapChunk {
                             chunk_size: UVec2::splat(chunk_edge),
                             tile_display_size: UVec2::splat(64),
                             tileset: fog_atlas.atlas.clone(),
                             alpha_mode: bevy::sprite_render::AlphaMode2d::Blend,
                         },
-                        TilemapChunkTileData(fog_tile_data),
+                        TilemapChunkTileData(tile_data),
                         Transform::from_translation(chunk_world_translation_xy(
                             chunk_xy,
                             chunk_edge,
@@ -765,44 +891,64 @@ pub fn project_world_to_tilemap(
     // Despawn chunks that are no longer active
     for (entity, world_chunk, _, _, _) in &mut chunk_query {
         let in_active_xy = active_chunks_xy.contains(&world_chunk.chunk_xy);
-        let in_z_range =
-            !(terrain_rebuild || fog_rebuild) || rendered_z_levels.contains(&world_chunk.world_z);
-        let top_layer_ok = if terrain_rebuild || fog_rebuild {
-            match world_chunk.layer {
-                TileLayer::Floor => render_floor,
-                TileLayer::EdgeShadow => render_edge_shadow,
-                TileLayer::CeilingShadow => {
-                    render_ceiling_shadow && world_chunk.world_z == view_z.current
-                }
-                TileLayer::FogShadow => {
-                    render_fog_shadow && rendered_z_levels.contains(&world_chunk.world_z)
-                }
+        let in_z_range = rendered_z_levels.contains(&world_chunk.world_z);
+        let layer_ok = match world_chunk.layer {
+            TileLayer::Floor => render_floor,
+            TileLayer::EdgeShadow => render_edge_shadow,
+            TileLayer::CeilingShadow => {
+                render_ceiling_shadow && world_chunk.world_z == view_z.current
             }
-        } else {
-            true
+            TileLayer::FogShadow => {
+                render_fog_shadow && rendered_z_levels.contains(&world_chunk.world_z)
+            }
         };
-        // FogShadow chunks are only valid in Entity mode.
-        let fog_ok = if fog_rebuild {
-            world_chunk.layer != TileLayer::FogShadow || render_fog_shadow
-        } else {
-            true
-        };
-        if !in_active_xy || !in_z_range || !top_layer_ok || !fog_ok {
+        if force_recreate_chunks || !in_active_xy || !in_z_range || !layer_ok {
             commands.entity(entity).despawn();
         }
     }
 
     // Update existing chunks.
     let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
-    let mut non_empty_tile_count = 0usize;
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
-        let layer_needs_update = match world_chunk.layer {
-            TileLayer::Floor => terrain_rebuild && render_floor,
-            TileLayer::EdgeShadow => terrain_rebuild && render_edge_shadow,
-            TileLayer::CeilingShadow => terrain_rebuild && render_ceiling_shadow,
-            TileLayer::FogShadow => (terrain_rebuild || fog_rebuild) && render_fog_shadow,
+        let active_layer_ok = match world_chunk.layer {
+            TileLayer::Floor => render_floor,
+            TileLayer::EdgeShadow => render_edge_shadow,
+            TileLayer::CeilingShadow => {
+                render_ceiling_shadow && world_chunk.world_z == view_z.current
+            }
+            TileLayer::FogShadow => render_fog_shadow,
         };
-        if !layer_needs_update {
+        if !active_layer_ok {
+            continue;
+        }
+
+        let cache_key = *world_chunk;
+        if !rebuilt_chunk_keys.contains(&cache_key) {
+            continue;
+        }
+
+        if let Some(cached_tile_data) = visible_chunk_cache.entries.get(&cache_key) {
+            let z_off = world_chunk.world_z - view_z.current;
+            let sprite_z = calculate_sprite_z(z_off, world_chunk.layer);
+            let base_translation =
+                chunk_world_translation_xy(world_chunk.chunk_xy, chunk_edge, sprite_z);
+            *transform = Transform::from_translation(
+                if matches!(
+                    world_chunk.layer,
+                    TileLayer::EdgeShadow | TileLayer::CeilingShadow
+                ) {
+                    base_translation + Vec3::new(half_tile, half_tile, 0.0)
+                } else {
+                    base_translation
+                },
+            );
+            rebuilt_non_empty_tile_count = rebuilt_non_empty_tile_count.saturating_add(
+                cached_tile_data
+                    .iter()
+                    .filter(|tile| tile.is_some())
+                    .count(),
+            );
+            chunk_data.0 = cached_tile_data.clone();
             continue;
         }
 
@@ -821,74 +967,39 @@ pub fn project_world_to_tilemap(
             },
         );
 
-        let tile_data = match world_chunk.layer {
-            TileLayer::Floor => build_chunk_tile_data(
-                world_chunk.chunk_xy,
-                world_chunk.world_z,
-                chunk_edge,
-                render_blocks,
-                z_off,
-                render_depth_stack,
-            ),
-            TileLayer::EdgeShadow => build_edge_shadow_tile_data(
-                world_chunk.chunk_xy,
-                world_chunk.world_z,
-                chunk_edge,
-                render_blocks,
-                entity_mode,
-            ),
-            TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
-                world_chunk.chunk_xy,
-                world_chunk.world_z,
-                chunk_edge,
-                render_blocks,
-                entity_mode,
-            ),
-            TileLayer::FogShadow => build_fog_tile_data(
-                world_chunk.chunk_xy,
-                world_chunk.world_z,
-                view_z.current,
-                chunk_edge,
-                render_blocks,
-                &fog_data,
-            ),
-        };
-        non_empty_tile_count = non_empty_tile_count
+        let tile_data = build_chunk_layer_tile_data(
+            world_chunk.chunk_xy,
+            world_chunk.world_z,
+            world_chunk.layer,
+            chunk_edge,
+            render_blocks,
+            entity_mode,
+            render_depth_stack,
+            view_z.current,
+            &fog_data,
+        );
+        rebuilt_non_empty_tile_count = rebuilt_non_empty_tile_count
             .saturating_add(tile_data.iter().filter(|tile| tile.is_some()).count());
+        visible_chunk_cache
+            .entries
+            .insert(*world_chunk, tile_data.clone());
         chunk_data.0 = tile_data;
+        rebuilt_chunk_count = rebuilt_chunk_count.saturating_add(1);
     }
 
-    tilemap_render_metrics.chunk_count =
-        (if terrain_rebuild {
-            let floor_chunks = if render_floor {
-                active_chunks_xy.len() * rendered_z_levels.len()
-            } else {
-                0
-            };
-            let edge_chunks = if render_edge_shadow {
-                active_chunks_xy.len() * rendered_z_levels.len()
-            } else {
-                0
-            };
-            let ceiling_chunks = if render_ceiling_shadow {
-                active_chunks_xy.len()
-            } else {
-                0
-            };
-            floor_chunks + edge_chunks + ceiling_chunks
-        } else {
-            0
-        }) + if (terrain_rebuild || fog_rebuild) && render_fog_shadow {
-            active_chunks_xy.len() * rendered_z_levels.len()
-        } else {
-            0
-        };
-    tilemap_render_metrics.non_empty_tile_count = non_empty_tile_count;
+    tilemap_render_metrics.chunk_count = rebuilt_chunk_count;
+    tilemap_render_metrics.non_empty_tile_count = rebuilt_non_empty_tile_count;
     #[cfg(not(target_arch = "wasm32"))]
     {
-        tilemap_render_metrics.last_rebuild_micros = start.elapsed().as_micros();
-        tilemap_render_metrics.rebuild_count =
-            tilemap_render_metrics.rebuild_count.saturating_add(1);
+        tilemap_render_metrics.last_rebuild_micros = if rebuilt_chunk_count == 0 {
+            0
+        } else {
+            start.elapsed().as_micros()
+        };
+        if rebuilt_chunk_count > 0 {
+            tilemap_render_metrics.rebuild_count =
+                tilemap_render_metrics.rebuild_count.saturating_add(1);
+        }
         if tilemap_render_metrics.last_rebuild_micros > 8_000 {
             warn!(
                 "Tilemap rebuild slow: {}us across {} chunks and {} non-empty tiles",
@@ -898,12 +1009,8 @@ pub fn project_world_to_tilemap(
             );
         }
     }
-    if terrain_rebuild {
-        terrain.dirty = false;
-    }
-    if fog_rebuild {
-        fog_data.dirty = false;
-    }
+    terrain.dirty = false;
+    fog_data.dirty = false;
 }
 
 pub fn draw_depth_labels(
@@ -1441,6 +1548,8 @@ fn apply_snapshot(
     config.world_chunks = snapshot.world_chunks;
     if terrain_changed {
         terrain.source_blocks = snapshot.terrain_blocks.clone();
+        terrain.full_rebuild = true;
+        terrain.dirty_chunks.clear();
     }
     entities.entities = snapshot
         .entities
@@ -1467,17 +1576,44 @@ fn apply_snapshot(
             fog.visible = new_visible;
             fog.memory = vis.memory.clone();
             fog.dirty = true;
+            fog.full_rebuild = true;
         }
     }
 
     if view_mode == ViewMode::Entity && (terrain_changed || visibility_changed) {
         terrain.blocks =
             build_render_terrain_blocks(terrain.source_blocks.as_ref(), visibility_snapshot);
+        terrain.full_rebuild = true;
+        terrain.dirty_chunks.clear();
         terrain.dirty = true;
     } else if terrain_changed {
         terrain.dirty = true;
     }
     entities.dirty = true;
+}
+
+fn mark_dirty_chunk_region(
+    dirty_chunks: &mut HashSet<Vec3i>,
+    world_position: Vec3i,
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+) {
+    let Some(center_chunk) = world_pos_to_chunk_coord(world_position, chunk_edge, world_chunks)
+    else {
+        return;
+    };
+
+    for dz in -1..=1 {
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                dirty_chunks.insert(Vec3i::new(
+                    center_chunk.x + dx,
+                    center_chunk.y + dy,
+                    center_chunk.z + dz,
+                ));
+            }
+        }
+    }
 }
 
 fn apply_update(
@@ -1509,6 +1645,12 @@ fn apply_update(
             entities.dirty = true;
 
             for change in delta.block_changes {
+                mark_dirty_chunk_region(
+                    &mut terrain.dirty_chunks,
+                    change.position,
+                    config.chunk_edge,
+                    config.world_chunks,
+                );
                 match change.to {
                     BlockType::SolidStone => {
                         Arc::make_mut(&mut terrain.source_blocks)
