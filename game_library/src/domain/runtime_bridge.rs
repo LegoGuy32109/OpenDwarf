@@ -1,3 +1,17 @@
+// Runtime Bridge: ECS integration point for the chunk-layer patch-driven architecture.
+//
+// All runtime modes (Debug, Perf, Release) use the same underlying runtime implementation
+// with different transport backends. This ensures consistent behavior across all builds.
+//
+// Transport selection (Phase 8 convergence):
+// - Native (all modes): Threaded backend, automatic perf session persistence
+// - Web Release/Perf: Worker backend if available, Inline fallback
+// - Web Debug: Inline backend for compatibility with all browsers
+//
+// The runtime is the sole source of truth for world state updates. The render cache
+// (ECS resources) is secondary and eager-loads chunks as patches arrive from the
+// runtime. Stale chunks are allowed for up to 250ms per Phase 8 backpressure tuning.
+
 use bevy::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::window;
