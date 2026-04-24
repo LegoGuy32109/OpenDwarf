@@ -7,7 +7,9 @@ export default function GameCanvas(
   { gameDir = "/game/", wasmFile = "" }: GameCanvasProps,
 ) {
   const gameJs = `${gameDir}open_dwarf_lib.js`;
-  const gameWasm = `${gameDir}${wasmFile}`;
+  const gameWasm = wasmFile
+    ? `${gameDir}${wasmFile}`
+    : gameDir.replace(/\/$/, "");
 
   return (
     <>

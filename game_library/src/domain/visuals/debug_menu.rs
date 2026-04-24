@@ -2,6 +2,8 @@ use bevy::ecs::system::Commands;
 use bevy::prelude::*;
 use world_sim::bevy_app::WorldSimDiagnostics;
 
+use crate::domain::runtime_telemetry::RuntimeTelemetryClipboard;
+use crate::domain::runtime_telemetry::RuntimeTelemetryState;
 use crate::domain::simulation::ReplayHudState;
 use crate::domain::simulation::TileLayerDebugState;
 use crate::domain::simulation::TilemapRenderMetrics;
@@ -23,6 +25,8 @@ pub fn debug_menu(
     world_sim_diagnostics: Option<Res<WorldSimDiagnostics>>,
     tilemap_render_metrics: Option<Res<TilemapRenderMetrics>>,
     tile_layer_debug_state: Option<Res<TileLayerDebugState>>,
+    telemetry_state: Option<Res<RuntimeTelemetryState>>,
+    mut telemetry_clipboard: Option<ResMut<RuntimeTelemetryClipboard>>,
     debug_text_query: Query<(Entity, &mut Text), With<DebugText>>,
 ) {
     // toggle debug text component
@@ -71,6 +75,7 @@ pub fn debug_menu(
         }
 
         let mut text = bundle.1;
+        let telemetry_state_ref = telemetry_state.as_deref();
 
         let pressed_output = format_keys("Pressed Keys", keyboard_input.get_pressed().copied());
 
@@ -84,6 +89,13 @@ pub fn debug_menu(
             keyboard_input.get_just_released().copied(),
         );
         let mut lines = vec![just_pressed_output, pressed_output, just_released_output];
+        if let Some(telemetry_state) = telemetry_state_ref {
+            lines.push(String::from("Telemetry"));
+            lines.push(telemetry_state.short_report.clone());
+            lines.push(String::from("F10 Copy Short | F11 Copy Long"));
+        } else {
+            lines.push(String::from("Telemetry unavailable"));
+        }
         if let Some(world_sim_diagnostics) = world_sim_diagnostics {
             lines.push(format!(
                 "Sim Diagnostics: processed={} rejected(unknown/oob/unloaded)={}/{}/{} loaded_chunks={}",
@@ -132,6 +144,18 @@ pub fn debug_menu(
                     "off"
                 },
             ));
+        }
+        if input_state.just_pressed_key(KeyCode::F10)
+            && let (Some(telemetry_state), Some(clipboard)) =
+                (telemetry_state_ref, telemetry_clipboard.as_deref_mut())
+        {
+            clipboard.copy_short_report(&telemetry_state.short_report);
+        }
+        if input_state.just_pressed_key(KeyCode::F11)
+            && let (Some(telemetry_state), Some(clipboard)) =
+                (telemetry_state_ref, telemetry_clipboard.as_deref_mut())
+        {
+            clipboard.copy_long_report(&telemetry_state.long_report);
         }
         text.0 = lines.join("\n");
     }

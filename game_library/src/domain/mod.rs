@@ -10,10 +10,12 @@ use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 
 pub mod messaging;
+pub mod runtime_telemetry;
 pub mod simulation;
 pub mod visuals;
 
 use crate::domain::messaging::webrtc::MultiplayerController;
+use runtime_telemetry::{collect_runtime_telemetry, setup_runtime_telemetry};
 #[cfg(not(target_arch = "wasm32"))]
 use simulation::drive_replay_playback;
 use simulation::{
@@ -60,6 +62,7 @@ impl Plugin for OpenDwarfPlugins {
             })
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
+            .add_systems(Startup, setup_runtime_telemetry)
             .add_systems(PreUpdate, update_input_state)
             .add_systems(
                 Update,
@@ -91,6 +94,7 @@ impl Plugin for OpenDwarfPlugins {
                     follow_player_camera.after(smooth_player_render_transform),
                 ),
             )
+            .add_systems(Update, collect_runtime_telemetry)
             .add_systems(
                 Update,
                 (
@@ -129,9 +133,7 @@ impl Plugin for OpenDwarfPlugins {
             });
 
         #[cfg(not(target_arch = "wasm32"))]
-        {
-            app.add_systems(Update, (drive_native_webrtc, drive_replay_playback));
-        }
+        app.add_systems(Update, (drive_native_webrtc, drive_replay_playback));
     }
 }
 

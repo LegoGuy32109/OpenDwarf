@@ -6,7 +6,8 @@ Connect with other players through WebRTC
 
 ## Usage
 
-Make sure to install Deno: [getting_started](https://deno.land/manual/getting_started/installation)
+Make sure to install Deno:
+[getting_started](https://deno.land/manual/getting_started/installation)
 
 Then start the project:
 
@@ -24,7 +25,8 @@ To create the wasm files to run in the web app
 deno task web-release
 ```
 
-For quicker iteration reachable at [localhost://8000/?debug](localhost://8000/?debug)
+For quicker iteration reachable at
+[localhost://8000/?debug](localhost://8000/?debug)
 
 ```bash
 deno task web-dev

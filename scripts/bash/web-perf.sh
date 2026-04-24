@@ -1,0 +1,15 @@
+set -euo pipefail;
+echo Importing game_library/assets/;
+rm -rf static/assets static/game_perf;
+mkdir -p static/assets static/game_perf;
+cp -R game_library/assets/. static/assets/;
+echo Building PERF rust project;
+cargo build --manifest-path game_library/Cargo.toml --release --target wasm32-unknown-unknown --no-default-features --features web;
+echo Compiling PERF wasm library;
+wasm-bindgen --target web --out-dir static/game_perf game_library/target/wasm32-unknown-unknown/release/open_dwarf_lib.wasm;
+echo Optimizing wasm size;
+wasm-opt -Oz --strip-debug static/game_perf/open_dwarf_lib_bg.wasm -o static/game_perf/opt_open_dwarf_lib.wasm --enable-bulk-memory-opt --enable-sign-ext --enable-nontrapping-float-to-int;
+echo Compressing wasm to Brotli file;
+brotli -q 11 static/game_perf/opt_open_dwarf_lib.wasm -f -o static/game_perf/opt_open_dwarf_lib.wasm.br;
+echo Done 😎;
+notify-send -i "$HOME/Projects/OpenDwarf/game_library/assets/sprites/Dwarf.png" "OpenDwarf" "web-perf complete";

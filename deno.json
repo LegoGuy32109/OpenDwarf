@@ -9,6 +9,7 @@
     "build": "deno run -A dev.ts build",
     "preview": "deno run -A main.ts",
     "local": "cargo run --manifest-path ./game_library/Cargo.toml",
+    "web-perf": "bash scripts/bash/web-perf.sh",
     "web-release": "bash scripts/bash/web-release.sh",
     "web-dev": "bash scripts/bash/web-dev.sh"
   },

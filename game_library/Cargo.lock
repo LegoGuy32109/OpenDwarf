@@ -5157,6 +5157,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "world_runtime",
  "world_sim",
 ]
 
@@ -8212,6 +8213,17 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-wlr",
+]
+
+[[package]]
+name = "world_runtime"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "world_sim",
 ]
 
 [[package]]
