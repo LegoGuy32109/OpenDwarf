@@ -1,16 +1,31 @@
-# Fresh project
+# Open Dwarf
 
-Your new Fresh project is ready to go. You can follow the Fresh "Getting
-Started" guide here: https://fresh.deno.dev/docs/getting-started
+A dwarf fortress inspired game playable in your browser
 
-### Usage
+Connect with other players through WebRTC
 
-Make sure to install Deno: https://deno.land/manual/getting_started/installation
+## Usage
+
+Make sure to install Deno: [getting_started](https://deno.land/manual/getting_started/installation)
 
 Then start the project:
 
-```
+```bash
 deno task start
 ```
 
 This will watch the project directory and restart as necessary.
+
+## Compile
+
+To create the wasm files to run in the web app
+
+```bash
+deno task web-release
+```
+
+For quicker iteration reachable at [localhost://8000/?debug](localhost://8000/?debug)
+
+```bash
+deno task web-dev
+```
