@@ -211,15 +211,19 @@ impl ChunkLayerCacheMap {
             ChunkLayerCacheEntry::new(revision, worker_frame_id, full_chunk, payload, now);
         let entry = self.entries.entry(key).or_insert_with(|| new_entry.clone());
         *entry = new_entry;
-        entry.materialized = true;
         entry.dirty = true;
         true
+    }
+
+    pub fn entries_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (&ChunkLayerKey, &mut ChunkLayerCacheEntry)> {
+        self.entries.iter_mut()
     }
 
     pub fn mark_all_stale(&mut self, now: u128, stale_after_ms: u64) {
         for entry in self.entries.values_mut() {
             let elapsed = now.saturating_sub(entry.last_touched_unix_ms);
-            entry.materialized = true;
             if elapsed > u128::from(stale_after_ms) {
                 if entry.stale_since_unix_ms.is_none() {
                     entry.stale_since_unix_ms = Some(now);
@@ -228,10 +232,8 @@ impl ChunkLayerCacheMap {
                 entry.dirty = true;
             } else if elapsed > u128::from(stale_after_ms / 2) {
                 entry.residency = ChunkLayerResidency::Warm;
-                entry.dirty = false;
             } else {
                 entry.residency = ChunkLayerResidency::Hot;
-                entry.dirty = false;
             }
         }
     }

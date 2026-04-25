@@ -5,6 +5,7 @@ use bevy::math::Isometry2d;
 use bevy::prelude::*;
 use bevy::sprite_render::{TileData, TilemapChunk, TilemapChunkTileData};
 
+use crate::domain::render_patches::RuntimeRenderedChunk;
 use crate::domain::runtime_cache::RuntimeInputQueue;
 use crate::resources::input_state::InputState;
 use crate::resources::view_mode::ViewMode;
@@ -554,13 +555,16 @@ pub fn project_world_to_tilemap(
     mut fog_data: ResMut<FogData>,
     mut visible_chunk_cache: ResMut<VisibleChunkLayerCache>,
     mut tilemap_render_metrics: ResMut<TilemapRenderMetrics>,
-    mut chunk_query: Query<(
-        Entity,
-        &WorldTileChunk,
-        &TilemapChunk,
-        &mut TilemapChunkTileData,
-        &mut Transform,
-    )>,
+    mut chunk_query: Query<
+        (
+            Entity,
+            &WorldTileChunk,
+            &TilemapChunk,
+            &mut TilemapChunkTileData,
+            &mut Transform,
+        ),
+        Without<RuntimeRenderedChunk>,
+    >,
 ) {
     #[cfg(not(target_arch = "wasm32"))]
     let start = std::time::Instant::now();
