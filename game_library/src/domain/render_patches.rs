@@ -14,17 +14,6 @@ const Z_LEVELS_BELOW_RENDERED: i32 = 5;
 const REMEMBERED_FOG_RGBA: [f32; 4] = [0.7, 0.7, 0.2, 0.05];
 const GLOBAL_MEMORY_OVERLAY_SPRITE_Z: f32 = 2.0;
 
-#[derive(Resource, Debug, Clone, Copy)]
-pub struct CutoverFlag {
-    pub enabled: bool,
-}
-
-impl Default for CutoverFlag {
-    fn default() -> Self {
-        Self { enabled: true }
-    }
-}
-
 #[derive(Resource, Default)]
 pub struct ChunkLayerRenderEntities {
     pub entities: HashMap<ChunkLayerKey, Entity>,
@@ -33,36 +22,8 @@ pub struct ChunkLayerRenderEntities {
 #[derive(Component)]
 pub struct RuntimeRenderedChunk;
 
-pub fn toggle_runtime_cutover(input: Res<ButtonInput<KeyCode>>, mut flag: ResMut<CutoverFlag>) {
-    if input.just_pressed(KeyCode::F9) {
-        flag.enabled = !flag.enabled;
-        info!(
-            "Runtime patch renderer {}",
-            if flag.enabled { "enabled" } else { "hidden" }
-        );
-    }
-}
-
-pub fn runtime_cutover_disabled(flag: Res<CutoverFlag>) -> bool {
-    !flag.enabled
-}
-
-pub fn despawn_legacy_tile_chunks_on_cutover(
-    cutover: Res<CutoverFlag>,
-    mut commands: Commands,
-    legacy_chunks: Query<Entity, (With<WorldTileChunk>, Without<RuntimeRenderedChunk>)>,
-) {
-    if !cutover.enabled || !cutover.is_changed() {
-        return;
-    }
-    for entity in &legacy_chunks {
-        commands.entity(entity).despawn();
-    }
-}
-
 pub fn apply_runtime_chunk_patches(
     mut commands: Commands,
-    cutover: Res<CutoverFlag>,
     viewport_state: Res<RuntimeViewportIntentState>,
     view_z: Res<ViewZLevel>,
     tile_layer_debug_state: Res<TileLayerDebugState>,
@@ -94,11 +55,7 @@ pub fn apply_runtime_chunk_patches(
     let active_layers = active_layers(&tile_layer_debug_state);
     let active_runtime_keys =
         active_runtime_keys(&viewport, chunk_edge, &rendered_z_levels, &active_layers);
-    let desired_visibility = if cutover.enabled {
-        Visibility::Visible
-    } else {
-        Visibility::Hidden
-    };
+    let desired_visibility = Visibility::Visible;
 
     for (entity, world_chunk, _, _, _) in &mut chunk_query {
         let key = ChunkLayerKey::new(
@@ -136,7 +93,7 @@ pub fn apply_runtime_chunk_patches(
         if !active_runtime_keys.contains(key) {
             continue;
         }
-        if !entry.dirty && !cutover.is_changed() {
+        if !entry.dirty {
             continue;
         }
 

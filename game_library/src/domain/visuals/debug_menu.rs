@@ -1,12 +1,10 @@
 use bevy::ecs::system::Commands;
 use bevy::prelude::*;
-use world_sim::bevy_app::WorldSimDiagnostics;
 
 use crate::domain::runtime_telemetry::RuntimeTelemetryClipboard;
 use crate::domain::runtime_telemetry::RuntimeTelemetryState;
 use crate::domain::simulation::ReplayHudState;
 use crate::domain::simulation::TileLayerDebugState;
-use crate::domain::simulation::TilemapRenderMetrics;
 use crate::resources::input_state::InputState;
 
 #[derive(Component)]
@@ -22,8 +20,6 @@ pub fn debug_menu(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     input_state: Res<InputState>,
-    world_sim_diagnostics: Option<Res<WorldSimDiagnostics>>,
-    tilemap_render_metrics: Option<Res<TilemapRenderMetrics>>,
     tile_layer_debug_state: Option<Res<TileLayerDebugState>>,
     telemetry_state: Option<Res<RuntimeTelemetryState>>,
     mut telemetry_clipboard: Option<ResMut<RuntimeTelemetryClipboard>>,
@@ -95,25 +91,6 @@ pub fn debug_menu(
             lines.push(String::from("F10 Copy Short | F11 Copy Long"));
         } else {
             lines.push(String::from("Telemetry unavailable"));
-        }
-        if let Some(world_sim_diagnostics) = world_sim_diagnostics {
-            lines.push(format!(
-                "Sim Diagnostics: processed={} rejected(unknown/oob/unloaded)={}/{}/{} loaded_chunks={}",
-                world_sim_diagnostics.commands_processed,
-                world_sim_diagnostics.rejected_unknown_entity,
-                world_sim_diagnostics.rejected_out_of_bounds,
-                world_sim_diagnostics.rejected_chunk_not_loaded,
-                world_sim_diagnostics.loaded_chunk_count,
-            ));
-        }
-        if let Some(tilemap_render_metrics) = tilemap_render_metrics {
-            lines.push(format!(
-                "Tilemap Metrics: chunks={} non_empty_tiles={} rebuild_us={} rebuild_count={}",
-                tilemap_render_metrics.chunk_count,
-                tilemap_render_metrics.non_empty_tile_count,
-                tilemap_render_metrics.last_rebuild_micros,
-                tilemap_render_metrics.rebuild_count,
-            ));
         }
         if let Some(tile_layer_debug_state) = tile_layer_debug_state {
             lines.push(format!(

@@ -18,19 +18,16 @@ pub mod simulation;
 pub mod visuals;
 
 use crate::domain::messaging::webrtc::MultiplayerController;
-use render_patches::{
-    ChunkLayerRenderEntities, CutoverFlag, apply_runtime_chunk_patches,
-    despawn_legacy_tile_chunks_on_cutover, runtime_cutover_disabled, toggle_runtime_cutover,
-};
+use render_patches::{ChunkLayerRenderEntities, apply_runtime_chunk_patches};
 use runtime_bridge::{drive_runtime_bridge, setup_runtime_bridge};
 use runtime_telemetry::setup_runtime_telemetry;
 #[cfg(not(target_arch = "wasm32"))]
 use simulation::drive_replay_playback;
 use simulation::{
     draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera,
-    project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
-    setup_simulation_state, smooth_player_render_transform, sync_camera_z_to_player,
-    toggle_chunk_borders, toggle_tile_layers, update_view_z_level,
+    project_world_entities_to_sprites, queue_world_commands_from_input, setup_simulation_state,
+    smooth_player_render_transform, sync_camera_z_to_player, toggle_chunk_borders,
+    toggle_tile_layers, update_view_z_level,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -86,7 +83,6 @@ impl Plugin for OpenDwarfPlugins {
                 Update,
                 (
                     toggle_chunk_borders,
-                    toggle_runtime_cutover,
                     toggle_tile_layers,
                     (
                         sync_camera_z_to_player,
@@ -96,11 +92,6 @@ impl Plugin for OpenDwarfPlugins {
                         .after(toggle_tile_layers),
                     (update_view_z_level, project_world_entities_to_sprites)
                         .after(sync_camera_z_to_player),
-                    project_world_to_tilemap
-                        .run_if(runtime_cutover_disabled)
-                        .after(update_view_z_level)
-                        .after(project_world_entities_to_sprites),
-                    despawn_legacy_tile_chunks_on_cutover.after(toggle_runtime_cutover),
                     (draw_depth_labels, draw_chunk_borders).after(apply_runtime_chunk_patches),
                     smooth_player_render_transform.after(project_world_entities_to_sprites),
                     follow_player_camera.after(smooth_player_render_transform),
@@ -137,7 +128,6 @@ impl Plugin for OpenDwarfPlugins {
             .init_resource::<PlayerFocusState>()
             .init_resource::<ViewMode>()
             .init_resource::<ViewZLevel>()
-            .init_resource::<CutoverFlag>()
             .init_resource::<ChunkLayerRenderEntities>()
             .insert_non_send_resource(MultiplayerController::default())
             // debug systems

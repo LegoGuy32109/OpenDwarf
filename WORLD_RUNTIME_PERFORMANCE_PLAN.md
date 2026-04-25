@@ -537,6 +537,10 @@ ingestion.
 
 ## Phase 5: Visible Chunk Render Path Replacement
 
+Status: completed as the default runtime path. The renderer now consumes
+runtime `ChunkLayerPatch` payloads directly; the temporary cutover flag and
+legacy broad tilemap rebuild system have been removed.
+
 ### Purpose
 
 Replace the current broad tilemap rebuild path with a chunk/layer renderer
@@ -557,7 +561,7 @@ designed for runtime patches.
 
 ### Exit Criteria
 
-- old visible chunk render path can be deleted
+- old visible chunk render path deleted
 
 ## Phase 6: Browser Worker Backend
 
@@ -635,6 +639,11 @@ browser/native stress.
   locally responsive
 
 ## Phase 9: Cleanup and Release Convergence
+
+Status: completed for the runtime/render hot path. Obsolete snapshot-driven
+render systems, cutover controls, stale tilemap diagnostics, and main-thread
+simulation debug surface have been removed. WebRTC debug warnings remain
+outside this runtime-render cleanup.
 
 ### Purpose
 
