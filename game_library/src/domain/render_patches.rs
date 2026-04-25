@@ -57,7 +57,14 @@ pub fn apply_runtime_chunk_patches(
         active_runtime_keys(&viewport, chunk_edge, &rendered_z_levels, &active_layers);
     let desired_visibility = Visibility::Visible;
 
-    for (entity, world_chunk, _, _, _) in &mut chunk_query {
+    let edge = i32::try_from(chunk_edge.max(1)).expect("chunk edge should fit in i32");
+    let half = edge / 2;
+    let min_x = (viewport.desired_bounds_min.x + half).div_euclid(edge);
+    let max_x = (viewport.desired_bounds_max.x + half).div_euclid(edge);
+    let min_y = (viewport.desired_bounds_min.y + half).div_euclid(edge);
+    let max_y = (viewport.desired_bounds_max.y + half).div_euclid(edge);
+
+    for (entity, world_chunk, _, _, mut visibility) in &mut chunk_query {
         let key = ChunkLayerKey::new(
             ChunkKey::new(
                 world_chunk.chunk_xy.x,
@@ -67,8 +74,16 @@ pub fn apply_runtime_chunk_patches(
             layer_to_runtime(world_chunk.layer),
         );
         if !active_runtime_keys.contains(&key) {
-            commands.entity(entity).despawn();
-            render_entities.entities.remove(&key);
+            let chunk_xy_in_viewport = world_chunk.chunk_xy.x >= min_x
+                && world_chunk.chunk_xy.x <= max_x
+                && world_chunk.chunk_xy.y >= min_y
+                && world_chunk.chunk_xy.y <= max_y;
+            if chunk_xy_in_viewport {
+                *visibility = Visibility::Hidden;
+            } else {
+                commands.entity(entity).despawn();
+                render_entities.entities.remove(&key);
+            }
         }
     }
 
@@ -119,7 +134,7 @@ pub fn apply_runtime_chunk_patches(
         let transform = chunk_transform(
             key.chunk,
             layer,
-            tilemap_assets.tile_display_size.x,
+            config.chunk_edge,
             view_z.current,
         );
 
@@ -133,7 +148,7 @@ pub fn apply_runtime_chunk_patches(
             {
                 chunk_data.0 = tile_data;
                 *existing_transform = transform;
-                *visibility = desired_visibility;
+                *visibility = Visibility::Visible;
             }
         } else {
             let entity = spawn_runtime_chunk(
@@ -325,12 +340,12 @@ fn spawn_runtime_chunk(
 fn chunk_transform(
     chunk: ChunkKey,
     layer: TileLayer,
-    chunk_edge: u32,
+    tiles_per_chunk: u32,
     current_z: i32,
 ) -> Transform {
     let sprite_z = calculate_sprite_z(chunk.z - current_z, layer);
     let mut translation =
-        chunk_world_translation_xy(IVec2::new(chunk.x, chunk.y), chunk_edge, sprite_z);
+        chunk_world_translation_xy(IVec2::new(chunk.x, chunk.y), tiles_per_chunk, sprite_z);
     if matches!(layer, TileLayer::EdgeShadow | TileLayer::CeilingShadow) {
         let half_tile = f32::from(TILE_SIZE_IN_PX) / 2.0;
         translation += Vec3::new(half_tile, half_tile, 0.0);
@@ -348,12 +363,12 @@ fn calculate_sprite_z(z_offset: i32, layer: TileLayer) -> f32 {
     }
 }
 
-fn chunk_world_translation_xy(chunk_xy: IVec2, chunk_edge: u32, sprite_z: f32) -> Vec3 {
-    let edge = chunk_edge as f32;
+fn chunk_world_translation_xy(chunk_xy: IVec2, tiles_per_chunk: u32, sprite_z: f32) -> Vec3 {
+    let tiles_per_chunk = tiles_per_chunk as f32;
     let tile_size = f32::from(TILE_SIZE_IN_PX);
     Vec3::new(
-        (chunk_xy.x as f32) * edge * tile_size,
-        (chunk_xy.y as f32) * edge * tile_size,
+        (chunk_xy.x as f32) * tiles_per_chunk * tile_size,
+        (chunk_xy.y as f32) * tiles_per_chunk * tile_size,
         sprite_z,
     )
 }
