@@ -17,16 +17,18 @@ use bevy::prelude::*;
 use web_sys::window;
 use world_runtime::{
     LayerMask, RuntimeBackpressureStats, RuntimeConfig, RuntimeHandle, RuntimeMode,
-    RuntimeTransport, Vec3i, ViewMode as RuntimeViewMode, ViewportIntent,
+    RuntimeTransport, Vec3i, ViewMode as RuntimeViewMode, ViewportIntent, WorldUpdate,
 };
-use world_sim::bevy_app::{PrimarySimulationEntityId, WorldSimSettings, WorldView};
+use world_sim::bevy_app::WorldSimSettings;
 
 use crate::domain::runtime_cache::{
     ChunkCacheState, ChunkLayerCacheMap, RuntimeBackpressureState, RuntimeInputQueue,
     RuntimePatchApplyQueue, RuntimeViewportIntentState, build_input_batch,
 };
 use crate::domain::runtime_telemetry::RuntimeTelemetryState;
-use crate::domain::simulation::{RenderEntityData, TerrainConfig, TileLayerDebugState};
+use crate::domain::simulation::{
+    FogData, RenderEntityData, TerrainConfig, TerrainData, TileLayerDebugState, apply_update,
+};
 use crate::resources::view_mode::ViewMode as GameViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 
@@ -130,12 +132,12 @@ pub fn setup_runtime_bridge(
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn drive_runtime_bridge(
-    primary_entity_id: Res<PrimarySimulationEntityId>,
-    world_view: Res<WorldView>,
     view_mode: Res<GameViewMode>,
     view_z: Res<ViewZLevel>,
-    terrain_config: Res<TerrainConfig>,
-    entity_data: Res<RenderEntityData>,
+    terrain_config: ResMut<TerrainConfig>,
+    terrain_data: ResMut<TerrainData>,
+    entity_data: ResMut<RenderEntityData>,
+    fog_data: ResMut<FogData>,
     tile_layer_debug_state: Res<TileLayerDebugState>,
     runtime_input_queue: ResMut<RuntimeInputQueue>,
     patch_queue: ResMut<RuntimePatchApplyQueue>,
@@ -148,12 +150,12 @@ pub fn drive_runtime_bridge(
     telemetry: ResMut<RuntimeTelemetryState>,
 ) {
     drive_runtime_bridge_inner(
-        primary_entity_id,
-        world_view,
         view_mode,
         view_z,
         terrain_config,
+        terrain_data,
         entity_data,
+        fog_data,
         tile_layer_debug_state,
         runtime_input_queue,
         patch_queue,
@@ -169,12 +171,12 @@ pub fn drive_runtime_bridge(
 
 #[cfg(target_arch = "wasm32")]
 pub fn drive_runtime_bridge(
-    primary_entity_id: Res<PrimarySimulationEntityId>,
-    world_view: Res<WorldView>,
     view_mode: Res<GameViewMode>,
     view_z: Res<ViewZLevel>,
-    terrain_config: Res<TerrainConfig>,
-    entity_data: Res<RenderEntityData>,
+    terrain_config: ResMut<TerrainConfig>,
+    terrain_data: ResMut<TerrainData>,
+    entity_data: ResMut<RenderEntityData>,
+    fog_data: ResMut<FogData>,
     tile_layer_debug_state: Res<TileLayerDebugState>,
     runtime_input_queue: ResMut<RuntimeInputQueue>,
     patch_queue: ResMut<RuntimePatchApplyQueue>,
@@ -187,12 +189,12 @@ pub fn drive_runtime_bridge(
     telemetry: ResMut<RuntimeTelemetryState>,
 ) {
     drive_runtime_bridge_inner(
-        primary_entity_id,
-        world_view,
         view_mode,
         view_z,
         terrain_config,
+        terrain_data,
         entity_data,
+        fog_data,
         tile_layer_debug_state,
         runtime_input_queue,
         patch_queue,
@@ -208,12 +210,12 @@ pub fn drive_runtime_bridge(
 
 #[allow(clippy::too_many_arguments)]
 fn drive_runtime_bridge_inner(
-    primary_entity_id: Res<PrimarySimulationEntityId>,
-    world_view: Res<WorldView>,
     view_mode: Res<GameViewMode>,
     view_z: Res<ViewZLevel>,
-    terrain_config: Res<TerrainConfig>,
-    entity_data: Res<RenderEntityData>,
+    mut terrain_config: ResMut<TerrainConfig>,
+    mut terrain_data: ResMut<TerrainData>,
+    mut entity_data: ResMut<RenderEntityData>,
+    mut fog_data: ResMut<FogData>,
     tile_layer_debug_state: Res<TileLayerDebugState>,
     mut runtime_input_queue: ResMut<RuntimeInputQueue>,
     mut patch_queue: ResMut<RuntimePatchApplyQueue>,
@@ -230,8 +232,6 @@ fn drive_runtime_bridge_inner(
     }
 
     let Some(viewport_intent) = build_viewport_intent(
-        &primary_entity_id,
-        &world_view,
         *view_mode,
         *view_z,
         &terrain_config,
@@ -311,10 +311,21 @@ fn drive_runtime_bridge_inner(
                     now,
                 );
             }
-            world_runtime::RuntimeEvent::InitialSnapshotEntities(_)
-            | world_runtime::RuntimeEvent::EntityPatchBatch(_)
-            | world_runtime::RuntimeEvent::ResyncEntities(_)
-            | world_runtime::RuntimeEvent::ResyncComplete => {
+            world_runtime::RuntimeEvent::InitialSnapshotEntities(batch)
+            | world_runtime::RuntimeEvent::EntityPatchBatch(batch)
+            | world_runtime::RuntimeEvent::ResyncEntities(batch) => {
+                apply_runtime_entity_batch(
+                    *view_mode,
+                    *view_z,
+                    &mut terrain_config,
+                    &mut terrain_data,
+                    &mut entity_data,
+                    &mut fog_data,
+                    batch.updates,
+                );
+                chunk_cache_state.snapshot_progress_percent = 100;
+            }
+            world_runtime::RuntimeEvent::ResyncComplete => {
                 chunk_cache_state.snapshot_progress_percent = 100;
             }
             world_runtime::RuntimeEvent::InitialSnapshotComplete => {
@@ -414,8 +425,6 @@ fn drive_runtime_bridge_inner(
 }
 
 fn build_viewport_intent(
-    primary_entity_id: &PrimarySimulationEntityId,
-    world_view: &WorldView,
     view_mode: GameViewMode,
     view_z: ViewZLevel,
     terrain_config: &TerrainConfig,
@@ -424,10 +433,9 @@ fn build_viewport_intent(
     camera_query: &Query<&Projection, With<Camera2d>>,
     backpressure: &mut RuntimeBackpressureState,
 ) -> Option<ViewportIntent> {
-    let entity_id = primary_entity_id.0?;
+    let entity_id = entity_data.entities.keys().copied().min()?;
     let entity = entity_data.entities.get(&entity_id)?;
-    let snapshot = world_view.snapshot();
-    let chunk_edge = snapshot.chunk_edge.max(1) as i32;
+    let chunk_edge = terrain_config.chunk_edge.max(1) as i32;
     let center = entity.position;
     let zoom = camera_zoom(camera_query);
     let zoom_scale = (1.0 / zoom.max(0.25)).clamp(0.75, 4.0);
@@ -446,8 +454,8 @@ fn build_viewport_intent(
         center.y + radius_tiles,
         view_z.current,
     );
-    let relevant_z_min = (view_z.current - 5).max(min_world_z(snapshot));
-    let relevant_z_max = view_z.current.min(max_world_z(snapshot));
+    let relevant_z_min = (view_z.current - 5).max(min_world_z(terrain_config));
+    let relevant_z_max = view_z.current.min(max_world_z(terrain_config));
     let active_layers = build_layer_mask(view_mode, tile_layer_debug_state);
 
     Some(ViewportIntent::new(
@@ -509,19 +517,45 @@ fn quantize_zoom(zoom: f32) -> f32 {
     (zoom * 100.0).round() / 100.0
 }
 
-fn min_world_z(snapshot: &world_runtime::WorldSnapshot) -> i32 {
-    let span = i32::try_from(snapshot.chunk_edge)
+fn apply_runtime_entity_batch(
+    view_mode: GameViewMode,
+    view_z: ViewZLevel,
+    terrain_config: &mut TerrainConfig,
+    terrain_data: &mut TerrainData,
+    entity_data: &mut RenderEntityData,
+    fog_data: &mut FogData,
+    updates: Vec<WorldUpdate>,
+) {
+    for update in updates {
+        apply_update(
+            view_mode,
+            view_z,
+            terrain_config,
+            terrain_data,
+            entity_data,
+            fog_data,
+            update,
+        );
+    }
+}
+
+fn min_world_z(terrain_config: &TerrainConfig) -> i32 {
+    let span = i32::try_from(terrain_config.chunk_edge)
         .expect("chunk edge should fit in i32")
-        .checked_mul(i32::try_from(snapshot.world_chunks.z).expect("chunk count should fit in i32"))
+        .checked_mul(
+            i32::try_from(terrain_config.world_chunks.z).expect("chunk count should fit in i32"),
+        )
         .expect("world z span should fit in i32");
     -(span / 2)
 }
 
-fn max_world_z(snapshot: &world_runtime::WorldSnapshot) -> i32 {
-    let min_z = min_world_z(snapshot);
-    let span = i32::try_from(snapshot.chunk_edge)
+fn max_world_z(terrain_config: &TerrainConfig) -> i32 {
+    let min_z = min_world_z(terrain_config);
+    let span = i32::try_from(terrain_config.chunk_edge)
         .expect("chunk edge should fit in i32")
-        .checked_mul(i32::try_from(snapshot.world_chunks.z).expect("chunk count should fit in i32"))
+        .checked_mul(
+            i32::try_from(terrain_config.world_chunks.z).expect("chunk count should fit in i32"),
+        )
         .expect("world z span should fit in i32");
     min_z + span - 1
 }

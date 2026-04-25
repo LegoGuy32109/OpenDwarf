@@ -14,9 +14,15 @@ const Z_LEVELS_BELOW_RENDERED: i32 = 5;
 const REMEMBERED_FOG_RGBA: [f32; 4] = [0.7, 0.7, 0.2, 0.05];
 const GLOBAL_MEMORY_OVERLAY_SPRITE_Z: f32 = 2.0;
 
-#[derive(Resource, Debug, Clone, Copy, Default)]
+#[derive(Resource, Debug, Clone, Copy)]
 pub struct CutoverFlag {
     pub enabled: bool,
+}
+
+impl Default for CutoverFlag {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
 }
 
 #[derive(Resource, Default)]

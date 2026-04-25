@@ -11,20 +11,18 @@ use crate::resources::input_state::InputState;
 use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 use world_sim::bevy_app::PrimarySimulationEntityId;
-use world_sim::bevy_app::WorldCommandQueue;
 use world_sim::bevy_app::WorldSimDiagnostics;
-use world_sim::bevy_app::WorldView;
+use world_sim::bevy_app::WorldSimSettings;
 #[cfg(not(target_arch = "wasm32"))]
 use world_sim::replay::{ReplayEvent, load_replay};
+#[cfg(not(target_arch = "wasm32"))]
+use world_sim::world_api::WorldCommand;
 use world_sim::world_api::{
-    BlockType, EntityMovementSnapshot, TileMemory, Vec3i, Vec3u, WorldCommand, WorldSnapshot,
-    WorldUpdate,
+    BlockType, EntityMovementSnapshot, TileMemory, Vec3i, Vec3u, WorldSnapshot, WorldUpdate,
 };
 
 use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets};
 
-const CHUNK_STREAM_RADIUS_XY: i32 = 2;
-const CHUNK_STREAM_RADIUS_Z: i32 = 1;
 const Z_LEVELS_BELOW_RENDERED: i32 = 5;
 const REMEMBERED_FOG_RGBA: [f32; 4] = [0.7, 0.7, 0.2, 0.05];
 const GLOBAL_MEMORY_OVERLAY_SPRITE_Z: f32 = 2.0;
@@ -109,7 +107,6 @@ pub struct FogData {
 #[derive(Resource, Default)]
 pub struct ChunkStreamingState {
     loaded_chunks: HashSet<Vec3i>,
-    last_center_chunk: Option<Vec3i>,
 }
 
 #[derive(Resource, Default)]
@@ -172,11 +169,33 @@ pub struct WorldTileChunk {
 #[derive(Component)]
 pub struct DepthDebugLabel;
 
-pub fn setup_simulation_state(mut commands: Commands) {
+pub fn setup_simulation_state(mut commands: Commands, world_sim_settings: Res<WorldSimSettings>) {
+    #[allow(unused_mut)]
     let mut replay_mode = ReplayMode::default();
-    let mut config = TerrainConfig::default();
+    #[allow(unused_mut)]
+    let mut config = TerrainConfig {
+        chunk_edge: world_sim_settings.config.chunk_edge,
+        world_chunks: world_sim_settings.config.world_chunks,
+    };
+    #[allow(unused_mut)]
     let mut terrain = TerrainData::default();
-    let mut entities = RenderEntityData::default();
+    let mut entities = RenderEntityData {
+        dirty: true,
+        ..RenderEntityData::default()
+    };
+    let mut primary_entity = PrimarySimulationEntityId(None);
+    if world_sim_settings.spawn_default_player {
+        primary_entity.0 = Some(1);
+        entities.entities.insert(
+            1,
+            RenderEntityState {
+                position: Vec3i::ZERO,
+                facing_left: false,
+                is_prone: false,
+                movement: None,
+            },
+        );
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(mut replay_playback) = try_load_replay_playback() {
@@ -204,6 +223,8 @@ pub fn setup_simulation_state(mut commands: Commands) {
     };
 
     commands.insert_resource(replay_mode);
+    commands.insert_resource(primary_entity);
+    commands.insert_resource(WorldSimDiagnostics::default());
     commands.insert_resource(replay_hud_state);
     commands.insert_resource(HeldMovementState::default());
     commands.insert_resource(config);
@@ -258,7 +279,6 @@ pub fn queue_world_commands_from_input(
     primary_entity_id: Res<PrimarySimulationEntityId>,
     entity_data: Res<RenderEntityData>,
     mut held_movement_state: ResMut<HeldMovementState>,
-    mut world_command_queue: ResMut<WorldCommandQueue>,
     mut runtime_input_queue: ResMut<RuntimeInputQueue>,
 ) {
     if replay_mode.active {
@@ -304,10 +324,6 @@ pub fn queue_world_commands_from_input(
         } else {
             held_direction
         };
-        world_command_queue.move_entity(
-            entity_id,
-            Vec3i::new(chosen_direction.x, chosen_direction.y, chosen_direction.z),
-        );
         runtime_input_queue.move_entity(
             entity_id,
             Vec3i::new(chosen_direction.x, chosen_direction.y, chosen_direction.z),
@@ -317,48 +333,11 @@ pub fn queue_world_commands_from_input(
         && active_direction != Some(direction)
         && !active_direction_is_held
     {
-        world_command_queue
-            .move_entity(entity_id, Vec3i::new(direction.x, direction.y, direction.z));
         runtime_input_queue
             .move_entity(entity_id, Vec3i::new(direction.x, direction.y, direction.z));
     }
 
     held_movement_state.was_moving_last_frame = is_moving;
-}
-
-pub fn sync_render_world_from_snapshot(
-    replay_mode: Res<ReplayMode>,
-    world_view: Res<WorldView>,
-    view_mode: Res<ViewMode>,
-    view_z: Res<ViewZLevel>,
-    mut config: ResMut<TerrainConfig>,
-    mut terrain: ResMut<TerrainData>,
-    mut entity_data: ResMut<RenderEntityData>,
-    mut fog_data: ResMut<FogData>,
-) {
-    if replay_mode.active {
-        return;
-    }
-
-    let snapshot = world_view.snapshot();
-    if entity_data.tick == snapshot.tick
-        && config.chunk_edge == snapshot.chunk_edge
-        && config.world_chunks == snapshot.world_chunks
-        && !view_mode.is_changed()
-        && !view_z.is_changed()
-    {
-        return;
-    }
-
-    apply_snapshot(
-        *view_mode,
-        *view_z,
-        &mut config,
-        &mut terrain,
-        &mut entity_data,
-        &mut fog_data,
-        snapshot,
-    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1277,89 +1256,6 @@ pub fn smooth_player_render_transform(
     transform.translation = transform.translation.lerp(target, smoothing);
 }
 
-pub fn stream_chunks_around_player(
-    replay_mode: Res<ReplayMode>,
-    primary_entity_id: Res<PrimarySimulationEntityId>,
-    world_sim_diagnostics: Res<WorldSimDiagnostics>,
-    config: Res<TerrainConfig>,
-    mut terrain: ResMut<TerrainData>,
-    entity_data: Res<RenderEntityData>,
-    mut chunk_streaming_state: ResMut<ChunkStreamingState>,
-    mut world_command_queue: ResMut<WorldCommandQueue>,
-) {
-    if replay_mode.active {
-        return;
-    }
-
-    let Some(entity_id) = primary_entity_id.0 else {
-        return;
-    };
-    if config.chunk_edge == 0 {
-        return;
-    }
-    let Some(entity) = entity_data.entities.get(&entity_id) else {
-        return;
-    };
-    let Some(center_chunk) =
-        world_pos_to_chunk_coord(entity.position, config.chunk_edge, config.world_chunks)
-    else {
-        return;
-    };
-
-    let desired = chunk_window(center_chunk, config.world_chunks);
-
-    if chunk_streaming_state.loaded_chunks.is_empty() {
-        chunk_streaming_state.loaded_chunks = desired.clone();
-        chunk_streaming_state.last_center_chunk = Some(center_chunk);
-        terrain.dirty = true;
-        return;
-    }
-
-    if chunk_streaming_state.last_center_chunk != Some(center_chunk) {
-        info!(
-            "Player chunk changed to ({}, {}, {}), loaded_chunks={}, desired_window={}",
-            center_chunk.x,
-            center_chunk.y,
-            center_chunk.z,
-            world_sim_diagnostics.loaded_chunk_count,
-            desired.len()
-        );
-        chunk_streaming_state.last_center_chunk = Some(center_chunk);
-    }
-
-    if !chunk_streaming_state.loaded_chunks.contains(&center_chunk) {
-        warn!(
-            "Center chunk ({}, {}, {}) was not tracked as loaded; enqueueing load",
-            center_chunk.x, center_chunk.y, center_chunk.z
-        );
-    }
-
-    let mut tracked_chunk_set_changed = false;
-
-    // Load new chunks that entered the window
-    for chunk in desired.difference(&chunk_streaming_state.loaded_chunks) {
-        world_command_queue.set_chunk_loaded(*chunk, true);
-        tracked_chunk_set_changed = true;
-    }
-
-    // Unload chunks that left the window
-    let to_unload: Vec<Vec3i> = chunk_streaming_state
-        .loaded_chunks
-        .difference(&desired)
-        .copied()
-        .collect();
-    for &chunk in &to_unload {
-        world_command_queue.set_chunk_loaded(chunk, false);
-        chunk_streaming_state.loaded_chunks.remove(&chunk);
-        tracked_chunk_set_changed = true;
-    }
-
-    chunk_streaming_state.loaded_chunks.extend(desired);
-    if tracked_chunk_set_changed {
-        terrain.dirty = true;
-    }
-}
-
 pub fn sync_camera_z_to_player(
     mut view_z: ResMut<ViewZLevel>,
     entity_data: Res<RenderEntityData>,
@@ -1422,19 +1318,17 @@ pub fn follow_player_camera(
 
 pub fn update_view_z_level(
     input_state: Res<InputState>,
-    world_view: Res<WorldView>,
     view_mode: Res<ViewMode>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
     fog: Res<FogData>,
-    _terrain_config: Res<TerrainConfig>,
+    terrain_config: Res<TerrainConfig>,
     mut view_z: ResMut<ViewZLevel>,
     mut terrain: ResMut<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
 ) {
-    let world_snapshot = &world_view.snapshot();
-    let world_size_z = world_snapshot
+    let world_size_z = terrain_config
         .chunk_edge
-        .checked_mul(world_snapshot.world_chunks.z)
+        .checked_mul(terrain_config.world_chunks.z)
         .expect("world z-size overflowed");
     let world_min_z = -(i32::try_from(world_size_z).expect("world z-size does not fit in i32") / 2);
     let world_max_z =
@@ -1534,7 +1428,7 @@ fn build_render_terrain_blocks(
     blocks
 }
 
-fn apply_snapshot(
+pub fn apply_snapshot(
     view_mode: ViewMode,
     _view_z: ViewZLevel,
     config: &mut TerrainConfig,
@@ -1620,7 +1514,7 @@ fn mark_dirty_chunk_region(
     }
 }
 
-fn apply_update(
+pub fn apply_update(
     view_mode: ViewMode,
     view_z: ViewZLevel,
     config: &mut TerrainConfig,
@@ -2239,26 +2133,6 @@ fn all_world_chunk_coords(world_chunks: Vec3u) -> HashSet<Vec3i> {
     }
 
     result
-}
-
-fn chunk_window(center_chunk: Vec3i, world_chunks: Vec3u) -> HashSet<Vec3i> {
-    let all_chunks = all_world_chunk_coords(world_chunks);
-    let mut window = HashSet::new();
-    for z in (center_chunk.z - CHUNK_STREAM_RADIUS_Z)..=(center_chunk.z + CHUNK_STREAM_RADIUS_Z) {
-        for y in
-            (center_chunk.y - CHUNK_STREAM_RADIUS_XY)..=(center_chunk.y + CHUNK_STREAM_RADIUS_XY)
-        {
-            for x in (center_chunk.x - CHUNK_STREAM_RADIUS_XY)
-                ..=(center_chunk.x + CHUNK_STREAM_RADIUS_XY)
-            {
-                let chunk = Vec3i::new(x, y, z);
-                if all_chunks.contains(&chunk) {
-                    window.insert(chunk);
-                }
-            }
-        }
-    }
-    window
 }
 
 fn world_pos_to_chunk_coord(

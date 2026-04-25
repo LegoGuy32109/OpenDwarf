@@ -29,9 +29,8 @@ use simulation::drive_replay_playback;
 use simulation::{
     draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera,
     project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
-    setup_simulation_state, smooth_player_render_transform, stream_chunks_around_player,
-    sync_camera_z_to_player, sync_render_world_from_snapshot, toggle_chunk_borders,
-    toggle_tile_layers, update_view_z_level,
+    setup_simulation_state, smooth_player_render_transform, sync_camera_z_to_player,
+    toggle_chunk_borders, toggle_tile_layers, update_view_z_level,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -48,7 +47,7 @@ use visuals::ui::options_menu::{options_menu_input, options_menu_visuals};
 use visuals::{
     setup, update_ceiling_shadow_atlas_image, update_edge_shadow_atlas_image, update_tileset_image,
 };
-use world_sim::bevy_app::{WorldSimSettings, WorldSimulationPlugin};
+use world_sim::bevy_app::WorldSimSettings;
 use world_sim::world_api::Vec3u;
 use world_sim::world_core::WorldConfig;
 
@@ -68,9 +67,6 @@ impl Plugin for OpenDwarfPlugins {
             .insert_resource(bevy::time::Time::<bevy::time::Fixed>::from_hz(20.0))
             .insert_resource(world_sim_settings.clone())
             .init_state::<GameMode>()
-            .add_plugins(WorldSimulationPlugin {
-                settings: world_sim_settings.clone(),
-            })
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
             .add_systems(
@@ -92,23 +88,20 @@ impl Plugin for OpenDwarfPlugins {
                     toggle_chunk_borders,
                     toggle_runtime_cutover,
                     toggle_tile_layers,
-                    sync_render_world_from_snapshot,
                     (
                         sync_camera_z_to_player,
                         queue_world_commands_from_input.run_if(in_state(GameMode::World)),
                         draw_entity_occupancy_boxes,
                     )
-                        .after(sync_render_world_from_snapshot),
+                        .after(toggle_tile_layers),
                     (update_view_z_level, project_world_entities_to_sprites)
                         .after(sync_camera_z_to_player),
-                    (
-                        stream_chunks_around_player,
-                        project_world_to_tilemap.run_if(runtime_cutover_disabled),
-                    )
+                    project_world_to_tilemap
+                        .run_if(runtime_cutover_disabled)
                         .after(update_view_z_level)
                         .after(project_world_entities_to_sprites),
                     despawn_legacy_tile_chunks_on_cutover.after(toggle_runtime_cutover),
-                    (draw_depth_labels, draw_chunk_borders).after(project_world_to_tilemap),
+                    (draw_depth_labels, draw_chunk_borders).after(apply_runtime_chunk_patches),
                     smooth_player_render_transform.after(project_world_entities_to_sprites),
                     follow_player_camera.after(smooth_player_render_transform),
                     drive_runtime_bridge.after(follow_player_camera),
