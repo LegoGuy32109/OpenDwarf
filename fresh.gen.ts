@@ -10,10 +10,12 @@ import * as $game from "./routes/game.ts";
 import * as $game_perf from "./routes/game_perf.ts";
 import * as $greet_name_ from "./routes/greet/[name].tsx";
 import * as $index from "./routes/index.tsx";
+import * as $worker from "./routes/worker.tsx";
 import * as $Counter from "./islands/Counter.tsx";
 import * as $FullscreenButton from "./islands/FullscreenButton.tsx";
 import * as $GameCanvas from "./islands/GameCanvas.tsx";
 import * as $MultiplayerSidebar from "./islands/MultiplayerSidebar.tsx";
+import * as $test_workerTest from "./islands/test/workerTest.tsx";
 import type { Manifest } from "$fresh/server.ts";
 
 const manifest = {
@@ -26,12 +28,14 @@ const manifest = {
     "./routes/game_perf.ts": $game_perf,
     "./routes/greet/[name].tsx": $greet_name_,
     "./routes/index.tsx": $index,
+    "./routes/worker.tsx": $worker,
   },
   islands: {
     "./islands/Counter.tsx": $Counter,
     "./islands/FullscreenButton.tsx": $FullscreenButton,
     "./islands/GameCanvas.tsx": $GameCanvas,
     "./islands/MultiplayerSidebar.tsx": $MultiplayerSidebar,
+    "./islands/test/workerTest.tsx": $test_workerTest,
   },
   baseUrl: import.meta.url,
 } satisfies Manifest;
