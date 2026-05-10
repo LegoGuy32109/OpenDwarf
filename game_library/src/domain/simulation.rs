@@ -1590,20 +1590,68 @@ fn apply_snapshot(
 
     let visibility_snapshot = snapshot.visibility.as_ref();
     if view_mode == ViewMode::Entity {
-        let mut visibility_changed = false;
         if let Some(vis) = visibility_snapshot {
             let new_visible: HashSet<Vec3i> = vis.visible.iter().copied().collect();
-            visibility_changed = fog.visible != new_visible || fog.memory != vis.memory;
-            if visibility_changed {
-                fog.visible = new_visible;
-                fog.memory = vis.memory.clone();
+            let new_memory = vis.memory.clone();
+            let visibility_changed =
+                fog.visible != new_visible || fog.memory != new_memory;
+
+            if visibility_changed || terrain_changed {
+                let prev_visible = std::mem::replace(&mut fog.visible, new_visible.clone());
+                let prev_memory = std::mem::replace(&mut fog.memory, new_memory.clone());
+
+                let prev_all: HashSet<Vec3i> = prev_visible
+                    .iter()
+                    .chain(prev_memory.keys())
+                    .copied()
+                    .collect();
+                let new_all: HashSet<Vec3i> = new_visible
+                    .iter()
+                    .chain(new_memory.keys())
+                    .copied()
+                    .collect();
+
+                // Positions no longer visible or remembered: remove from render blocks.
+                for p in prev_all.difference(&new_all).copied() {
+                    terrain.blocks.remove(&p);
+                    invalidation.mark_block_change(
+                        p,
+                        config.chunk_edge,
+                        view_mode,
+                        tile_layer_debug_state,
+                    );
+                }
+
+                // Positions that are new, transitioned between visible/memory, or whose
+                // source_blocks may have changed (terrain_changed): check and update.
+                for p in &new_all {
+                    let expected = if new_visible.contains(p) {
+                        terrain.source_blocks.get(p).copied().unwrap_or(BlockType::Air)
+                    } else {
+                        new_memory[p].block
+                    };
+                    let is_new = !prev_all.contains(p);
+                    let source_maybe_changed = terrain_changed && new_visible.contains(p);
+                    if is_new
+                        || source_maybe_changed
+                        || terrain.blocks.get(p).copied() != Some(expected)
+                    {
+                        terrain.blocks.insert(*p, expected);
+                        invalidation.mark_block_change(
+                            *p,
+                            config.chunk_edge,
+                            view_mode,
+                            tile_layer_debug_state,
+                        );
+                    }
+                }
+
                 fog.dirty = true;
-                invalidation.mark_all_visible_layers(viewport, tile_layer_debug_state);
+                terrain.dirty = true;
             }
-        }
-        if terrain_changed || visibility_changed {
-            terrain.blocks =
-                build_render_terrain_blocks(terrain.source_blocks.as_ref(), visibility_snapshot);
+        } else if terrain_changed {
+            // No visibility snapshot — clear render blocks (nothing to show).
+            terrain.blocks.clear();
             terrain.dirty = true;
             invalidation.mark_all_visible_layers(viewport, tile_layer_debug_state);
         }
@@ -1663,7 +1711,12 @@ fn apply_update(
                         terrain.blocks.remove(&change.position);
                     }
                 }
-                invalidation.mark_all_visible_layers(viewport, tile_layer_debug_state);
+                invalidation.mark_block_change(
+                    change.position,
+                    config.chunk_edge,
+                    view_mode,
+                    tile_layer_debug_state,
+                );
             }
         }
     }
