@@ -22,8 +22,8 @@ use simulation::{
     draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera,
     project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
     setup_simulation_state, smooth_player_render_transform, stream_chunks_around_player,
-    sync_camera_z_to_player, sync_render_world_from_snapshot, toggle_chunk_borders,
-    toggle_tile_layers, update_view_z_level,
+    sync_camera_z_to_player, sync_render_world_from_snapshot, sync_viewport_to_invalidation,
+    toggle_chunk_borders, toggle_tile_layers, update_view_z_level,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -86,9 +86,14 @@ impl Plugin for OpenDwarfPlugins {
                         .after(sync_render_world_from_snapshot),
                     (update_view_z_level, project_world_entities_to_sprites)
                         .after(sync_camera_z_to_player),
-                    (stream_chunks_around_player, project_world_to_tilemap)
+                    stream_chunks_around_player
                         .after(update_view_z_level)
                         .after(project_world_entities_to_sprites),
+                    sync_viewport_to_invalidation.after(update_render_viewport),
+                    project_world_to_tilemap
+                        .after(update_view_z_level)
+                        .after(project_world_entities_to_sprites)
+                        .after(sync_viewport_to_invalidation),
                     (draw_depth_labels, draw_chunk_borders).after(project_world_to_tilemap),
                     smooth_player_render_transform.after(project_world_entities_to_sprites),
                     follow_player_camera.after(smooth_player_render_transform),

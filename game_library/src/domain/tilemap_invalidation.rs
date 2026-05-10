@@ -7,10 +7,27 @@ use crate::domain::simulation::TileLayer;
 use crate::resources::render_viewport::RenderViewport;
 use crate::resources::view_z_level::ViewZLevel;
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct TilemapInvalidation {
     dirty: HashSet<(IVec2, i32, TileLayer)>,
     view_invalidated: bool,
+    pub visible_chunks_xy: HashSet<IVec2>,
+    pub visible_z_levels: Vec<i32>,
+    pub viewport_changed: bool,
+    pub newly_visible_chunks_xy: HashSet<IVec2>,
+}
+
+impl Default for TilemapInvalidation {
+    fn default() -> Self {
+        Self {
+            dirty: HashSet::new(),
+            view_invalidated: false,
+            visible_chunks_xy: HashSet::new(),
+            visible_z_levels: Vec::new(),
+            viewport_changed: false,
+            newly_visible_chunks_xy: HashSet::new(),
+        }
+    }
 }
 
 impl TilemapInvalidation {
