@@ -204,6 +204,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(ChunkBorderDebugState::default());
     commands.insert_resource(TileLayerDebugState::default());
     commands.insert_resource(TilemapRenderMetrics::default());
+    commands.insert_resource(crate::resources::render_viewport::RenderViewport::default());
 }
 
 pub fn toggle_tile_layers(

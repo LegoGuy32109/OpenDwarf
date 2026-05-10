@@ -6,6 +6,7 @@ use bevy::render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreproc
 use crate::resources::game_mode::GameMode;
 use crate::resources::input_state::{InputState, update_input_state};
 use crate::resources::player_focus_state::PlayerFocusState;
+use crate::resources::render_viewport::update_render_viewport;
 use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
 
@@ -61,6 +62,7 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
             .add_systems(PreUpdate, update_input_state)
+            .add_systems(PreUpdate, update_render_viewport)
             .add_systems(
                 Update,
                 (
