@@ -22,8 +22,6 @@ use world_sim::world_api::{
 
 use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets};
 
-const CHUNK_STREAM_RADIUS_XY: i32 = 2;
-const CHUNK_STREAM_RADIUS_Z: i32 = 1;
 const Z_LEVELS_BELOW_RENDERED: i32 = 5;
 const REMEMBERED_FOG_RGBA: [f32; 4] = [0.7, 0.7, 0.2, 0.05];
 const GLOBAL_MEMORY_OVERLAY_SPRITE_Z: f32 = 2.0;
@@ -685,6 +683,7 @@ pub fn project_world_to_tilemap(
                             build_chunk_tile_data(
                                 chunk_xy,
                                 world_z,
+                                view_z.current,
                                 chunk_edge,
                                 render_blocks,
                                 z_offset,
@@ -751,6 +750,7 @@ pub fn project_world_to_tilemap(
                                 build_edge_shadow_tile_data(
                                     chunk_xy,
                                     world_z,
+                                    view_z.current,
                                     chunk_edge,
                                     render_blocks,
                                     entity_mode,
@@ -799,6 +799,7 @@ pub fn project_world_to_tilemap(
                             build_ceiling_shadow_tile_data(
                                 chunk_xy,
                                 world_z,
+                                view_z.current,
                                 chunk_edge,
                                 render_blocks,
                                 entity_mode,
@@ -919,17 +920,18 @@ pub fn project_world_to_tilemap(
     let half_tile = f32::from(super::visuals::TILE_SIZE_IN_PX) / 2.0;
     let mut non_empty_tile_count = 0usize;
     for (_, world_chunk, _, mut chunk_data, mut transform) in &mut chunk_query {
-        let layer_needs_update = match world_chunk.layer {
-            TileLayer::Floor => terrain_rebuild && render_floor,
-            TileLayer::EdgeShadow => terrain_rebuild && render_edge_shadow,
-            TileLayer::CeilingShadow => terrain_rebuild && render_ceiling_shadow,
-            TileLayer::FogShadow => (terrain_rebuild || fog_rebuild) && render_fog_shadow,
+        // Respect per-layer render-enabled flag (still skip layers the user disabled).
+        let layer_render_enabled = match world_chunk.layer {
+            TileLayer::Floor => render_floor,
+            TileLayer::EdgeShadow => render_edge_shadow,
+            TileLayer::CeilingShadow => render_ceiling_shadow,
+            TileLayer::FogShadow => render_fog_shadow,
         };
-        if !layer_needs_update {
+        if !layer_render_enabled {
             continue;
         }
 
-        // Phase 3: only rebuild chunks that are in the to_rebuild set
+        // to_rebuild is the authoritative source of truth for what needs rebuilding.
         if !to_rebuild.contains(&(world_chunk.chunk_xy, world_chunk.world_z, world_chunk.layer)) {
             continue;
         }
@@ -953,6 +955,7 @@ pub fn project_world_to_tilemap(
             TileLayer::Floor => build_chunk_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
+                view_z.current,
                 chunk_edge,
                 render_blocks,
                 z_off,
@@ -961,6 +964,7 @@ pub fn project_world_to_tilemap(
             TileLayer::EdgeShadow => build_edge_shadow_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
+                view_z.current,
                 chunk_edge,
                 render_blocks,
                 entity_mode,
@@ -968,6 +972,7 @@ pub fn project_world_to_tilemap(
             TileLayer::CeilingShadow => build_ceiling_shadow_tile_data(
                 world_chunk.chunk_xy,
                 world_chunk.world_z,
+                view_z.current,
                 chunk_edge,
                 render_blocks,
                 entity_mode,
@@ -1251,9 +1256,18 @@ pub fn project_world_entities_to_sprites(
         let z_offset = player_world_position.position.z - view_z.current;
         sprite.color = get_depth_tint_sprite_color(z_offset);
 
-        let in_z_range = z_offset <= 0 && z_offset >= -Z_LEVELS_BELOW_RENDERED;
-        let occluded = if in_z_range && z_offset < 0 {
-            (player_world_position.position.z + 1..=view_z.current).any(|check_z| {
+        // Below the camera plane is bounded by the depth stack; above is unbounded
+        // because the player is looking down through clear air.
+        let in_z_range = z_offset >= -Z_LEVELS_BELOW_RENDERED;
+        let occluded = if z_offset != 0 {
+            let (lo, hi) = if z_offset < 0 {
+                // Entity below view: check column from entity+1 up to view_z (inclusive).
+                (player_world_position.position.z + 1, view_z.current)
+            } else {
+                // Entity above view: check column from view_z+1 up to entity (inclusive).
+                (view_z.current + 1, player_world_position.position.z)
+            };
+            (lo..=hi).any(|check_z| {
                 terrain_block_for_shadow(
                     Vec3i::new(
                         player_world_position.position.x,
@@ -1301,70 +1315,34 @@ pub fn smooth_player_render_transform(
 
 pub fn stream_chunks_around_player(
     replay_mode: Res<ReplayMode>,
-    primary_entity_id: Res<PrimarySimulationEntityId>,
-    world_sim_diagnostics: Res<WorldSimDiagnostics>,
     config: Res<TerrainConfig>,
-    mut terrain: ResMut<TerrainData>,
-    entity_data: Res<RenderEntityData>,
     mut chunk_streaming_state: ResMut<ChunkStreamingState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
     viewport: Res<RenderViewport>,
-    tile_layer_debug_state: Res<TileLayerDebugState>,
     mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     if replay_mode.active {
         return;
     }
 
-    let Some(entity_id) = primary_entity_id.0 else {
-        return;
-    };
     if config.chunk_edge == 0 {
         return;
     }
-    let Some(entity) = entity_data.entities.get(&entity_id) else {
-        return;
-    };
-    let Some(center_chunk) =
-        world_pos_to_chunk_coord(entity.position, config.chunk_edge, config.world_chunks)
-    else {
-        return;
-    };
 
-    let desired = chunk_window(center_chunk, config.world_chunks);
+    // Phase 4: Use viewport-derived rectangular streaming window instead of radius
+    let desired = desired_streaming_window(&viewport, config.world_chunks);
 
     if chunk_streaming_state.loaded_chunks.is_empty() {
         chunk_streaming_state.loaded_chunks = desired.clone();
-        chunk_streaming_state.last_center_chunk = Some(center_chunk);
-        invalidation.mark_all_visible_layers(&viewport, &tile_layer_debug_state);
         return;
     }
 
-    if chunk_streaming_state.last_center_chunk != Some(center_chunk) {
-        info!(
-            "Player chunk changed to ({}, {}, {}), loaded_chunks={}, desired_window={}",
-            center_chunk.x,
-            center_chunk.y,
-            center_chunk.z,
-            world_sim_diagnostics.loaded_chunk_count,
-            desired.len()
-        );
-        chunk_streaming_state.last_center_chunk = Some(center_chunk);
-    }
-
-    if !chunk_streaming_state.loaded_chunks.contains(&center_chunk) {
-        warn!(
-            "Center chunk ({}, {}, {}) was not tracked as loaded; enqueueing load",
-            center_chunk.x, center_chunk.y, center_chunk.z
-        );
-    }
-
-    let mut tracked_chunk_set_changed = false;
+    let mut new_chunks_loaded = false;
 
     // Load new chunks that entered the window
     for chunk in desired.difference(&chunk_streaming_state.loaded_chunks) {
         world_command_queue.set_chunk_loaded(*chunk, true);
-        tracked_chunk_set_changed = true;
+        new_chunks_loaded = true;
     }
 
     // Unload chunks that left the window
@@ -1376,12 +1354,13 @@ pub fn stream_chunks_around_player(
     for &chunk in &to_unload {
         world_command_queue.set_chunk_loaded(chunk, false);
         chunk_streaming_state.loaded_chunks.remove(&chunk);
-        tracked_chunk_set_changed = true;
     }
 
     chunk_streaming_state.loaded_chunks.extend(desired);
-    if tracked_chunk_set_changed {
-        invalidation.mark_all_visible_layers(&viewport, &tile_layer_debug_state);
+
+    // Only invalidate view when new chunks load, not on unload-only deltas
+    if new_chunks_loaded {
+        invalidation.invalidate_view();
     }
 }
 
@@ -1892,6 +1871,7 @@ fn stone_tile_index() -> u16 {
 fn build_chunk_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
+    view_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
     z_offset: i32,
@@ -1910,7 +1890,11 @@ fn build_chunk_tile_data(
                 world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
-            if terrain_block(world_position, blocks) == BlockType::SolidStone {
+            // Column-aware: only render the topmost solid in each xy column.
+            // Tiles below an opaque upper tile are occluded.
+            if topmost_solid_z_in_column(world_position.x, world_position.y, view_z, blocks, false)
+                == Some(world_z)
+            {
                 let mut td = TileData::from_tileset_index(stone_tile_index());
                 td.color = if apply_depth_tint {
                     get_depth_tint_tile_color(z_offset)
@@ -1983,6 +1967,7 @@ fn chunk_has_edge(
 fn build_edge_shadow_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
+    view_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
     unknown_is_solid: bool,
@@ -1999,12 +1984,16 @@ fn build_edge_shadow_tile_data(
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
+            // Column-aware: a corner contributes to the edge mask only if it's the
+            // topmost solid in its column (otherwise it's occluded and not rendered).
             let is_solid = |dx: i32, dy: i32| -> bool {
-                terrain_block_for_shadow(
-                    Vec3i::new(wp.x + dx, wp.y + dy, world_z),
+                topmost_solid_z_in_column(
+                    wp.x + dx,
+                    wp.y + dy,
+                    view_z,
                     blocks,
                     unknown_is_solid,
-                ) == BlockType::SolidStone
+                ) == Some(world_z)
             };
 
             let mut mask: u8 = 0;
@@ -2046,6 +2035,7 @@ fn build_edge_shadow_tile_data(
 fn build_ceiling_shadow_tile_data(
     chunk_xy: IVec2,
     world_z: i32,
+    view_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
     unknown_is_solid: bool,
@@ -2064,11 +2054,16 @@ fn build_ceiling_shadow_tile_data(
 
             let mut mask: u8 = 0;
 
+            // Column-aware: a corner draws the ceiling only where (a) world_z is the
+            // topmost-solid in its column (the actual visible floor) and (b) world_z+1
+            // above is solid (something is overhanging it).
             let check_corner = |dx: i32, dy: i32| -> bool {
-                let above = Vec3i::new(wp.x + dx, wp.y + dy, world_z + 1);
-                let below = Vec3i::new(wp.x + dx, wp.y + dy, world_z);
-                terrain_block_for_shadow(above, blocks, unknown_is_solid) == BlockType::SolidStone
-                    && terrain_block_for_shadow(below, blocks, unknown_is_solid)
+                let cx = wp.x + dx;
+                let cy = wp.y + dy;
+                let above = Vec3i::new(cx, cy, world_z + 1);
+                topmost_solid_z_in_column(cx, cy, view_z, blocks, unknown_is_solid)
+                    == Some(world_z)
+                    && terrain_block_for_shadow(above, blocks, unknown_is_solid)
                         == BlockType::SolidStone
             };
 
@@ -2132,34 +2127,25 @@ fn build_fog_tile_data(
 
             let idx = chunk_local_tile_index(local_x, local_y, chunk_edge);
 
-            if fog.visible.contains(&world_pos) {
-                tile_data[idx] = None;
-            } else if world_z == current_z {
-                if !fog.memory.contains_key(&world_pos) {
-                    tile_data[idx] = None;
-                    continue;
-                }
-
-                let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgba(
-                    REMEMBERED_FOG_RGBA[0],
-                    REMEMBERED_FOG_RGBA[1],
-                    REMEMBERED_FOG_RGBA[2],
-                    REMEMBERED_FOG_RGBA[3],
-                );
-                tile_data[idx] = Some(td);
-            } else if terrain_block(world_pos, blocks) == BlockType::SolidStone {
-                let mut td = TileData::from_tileset_index(0);
-                td.color = Color::srgba(
-                    REMEMBERED_FOG_RGBA[0],
-                    REMEMBERED_FOG_RGBA[1],
-                    REMEMBERED_FOG_RGBA[2],
-                    REMEMBERED_FOG_RGBA[3],
-                );
-                tile_data[idx] = Some(td);
-            } else {
-                tile_data[idx] = None;
+            // Column-aware: yellow tint applies only at the topmost-solid tile in the
+            // column (the tile the player actually sees), and only when that tile is
+            // not currently in FOV.
+            if topmost_solid_z_in_column(wx, wy, current_z, blocks, false) != Some(world_z) {
+                continue;
             }
+
+            if fog.visible.contains(&world_pos) {
+                continue;
+            }
+
+            let mut td = TileData::from_tileset_index(0);
+            td.color = Color::srgba(
+                REMEMBERED_FOG_RGBA[0],
+                REMEMBERED_FOG_RGBA[1],
+                REMEMBERED_FOG_RGBA[2],
+                REMEMBERED_FOG_RGBA[3],
+            );
+            tile_data[idx] = Some(td);
         }
     }
 
@@ -2183,7 +2169,16 @@ fn get_depth_tint_tile_color(z_offset: i32) -> Color {
 }
 
 fn get_depth_tint_sprite_color(z_offset: i32) -> Color {
-    get_depth_tint_tile_color(z_offset)
+    // Sprites can appear above or below the view plane; tint by absolute distance.
+    match z_offset.abs() {
+        0 => Color::WHITE,
+        1 => Color::srgb(0.75, 0.75, 0.75),
+        2 => Color::srgb(0.47, 0.49, 0.49),
+        3 => Color::srgb(0.33, 0.35, 0.61),
+        4 => Color::srgb(0.22, 0.24, 0.61),
+        5 => Color::srgb(0.12, 0.15, 0.43),
+        _ => Color::srgb(0.02, 0.05, 0.43),
+    }
 }
 
 fn chunk_world_translation_xy(chunk_xy: IVec2, chunk_edge: u32, sprite_z: f32) -> Vec3 {
@@ -2277,70 +2272,42 @@ fn all_world_chunk_coords(world_chunks: Vec3u) -> HashSet<Vec3i> {
     result
 }
 
-fn chunk_window(center_chunk: Vec3i, world_chunks: Vec3u) -> HashSet<Vec3i> {
+fn desired_streaming_window(
+    viewport: &RenderViewport,
+    world_chunks: Vec3u,
+) -> HashSet<Vec3i> {
+    // Use visible_chunks_xy from viewport (includes 1-chunk padding from Phase 1).
+    // Extend z range by ±1 for boundary correctness:
+    // - EdgeShadow reads z-1 neighbor
+    // - CeilingShadow reads z+1 for ceiling input
+    let z_min = viewport
+        .visible_z_levels
+        .iter()
+        .min()
+        .copied()
+        .unwrap_or(0)
+        .saturating_sub(1);
+    let z_max = viewport
+        .visible_z_levels
+        .iter()
+        .max()
+        .copied()
+        .unwrap_or(0)
+        .saturating_add(1);
+
     let all_chunks = all_world_chunk_coords(world_chunks);
     let mut window = HashSet::new();
-    for z in (center_chunk.z - CHUNK_STREAM_RADIUS_Z)..=(center_chunk.z + CHUNK_STREAM_RADIUS_Z) {
-        for y in
-            (center_chunk.y - CHUNK_STREAM_RADIUS_XY)..=(center_chunk.y + CHUNK_STREAM_RADIUS_XY)
-        {
-            for x in (center_chunk.x - CHUNK_STREAM_RADIUS_XY)
-                ..=(center_chunk.x + CHUNK_STREAM_RADIUS_XY)
-            {
-                let chunk = Vec3i::new(x, y, z);
-                if all_chunks.contains(&chunk) {
-                    window.insert(chunk);
-                }
+
+    for &chunk_xy in &viewport.visible_chunks_xy {
+        for z in z_min..=z_max {
+            let chunk = Vec3i::new(chunk_xy.x, chunk_xy.y, z);
+            if all_chunks.contains(&chunk) {
+                window.insert(chunk);
             }
         }
     }
+
     window
-}
-
-fn world_pos_to_chunk_coord(
-    world_position: Vec3i,
-    chunk_edge: u32,
-    world_chunks: Vec3u,
-) -> Option<Vec3i> {
-    let edge = chunk_edge.max(1);
-    let world_size = Vec3u::new(
-        world_chunks.x.checked_mul(edge)?,
-        world_chunks.y.checked_mul(edge)?,
-        world_chunks.z.checked_mul(edge)?,
-    );
-    let min = Vec3i::new(
-        -(i32::try_from(world_size.x).ok()? / 2),
-        -(i32::try_from(world_size.y).ok()? / 2),
-        -(i32::try_from(world_size.z).ok()? / 2),
-    );
-
-    let local_x = world_position.x - min.x;
-    let local_y = world_position.y - min.y;
-    let local_z = world_position.z - min.z;
-    if local_x < 0 || local_y < 0 || local_z < 0 {
-        return None;
-    }
-
-    let local_x_u = u32::try_from(local_x).ok()?;
-    let local_y_u = u32::try_from(local_y).ok()?;
-    let local_z_u = u32::try_from(local_z).ok()?;
-    if local_x_u >= world_size.x || local_y_u >= world_size.y || local_z_u >= world_size.z {
-        return None;
-    }
-
-    let chunk_local_x = local_x_u / edge;
-    let chunk_local_y = local_y_u / edge;
-    let chunk_local_z = local_z_u / edge;
-
-    let center_x = i32::try_from(world_chunks.x).ok()? / 2;
-    let center_y = i32::try_from(world_chunks.y).ok()? / 2;
-    let center_z = i32::try_from(world_chunks.z).ok()? / 2;
-
-    Some(Vec3i::new(
-        i32::try_from(chunk_local_x).ok()? - center_x,
-        i32::try_from(chunk_local_y).ok()? - center_y,
-        i32::try_from(chunk_local_z).ok()? - center_z,
-    ))
 }
 
 /// Compute which cardinal edges of a tile are exposed (adjacent to air).
@@ -2383,4 +2350,25 @@ fn terrain_block_for_shadow(
     } else {
         BlockType::Air
     })
+}
+
+/// Find the highest z in `[view_z - Z_LEVELS_BELOW_RENDERED, view_z]` where
+/// `(wx, wy, z)` is solid stone. Returns `None` if no solid tile exists in that range.
+/// This is the tile the player "sees" looking down at column (wx, wy).
+fn topmost_solid_z_in_column(
+    wx: i32,
+    wy: i32,
+    view_z: i32,
+    blocks: &HashMap<Vec3i, BlockType>,
+    unknown_is_solid: bool,
+) -> Option<i32> {
+    for offset in 0..=Z_LEVELS_BELOW_RENDERED {
+        let z = view_z - offset;
+        if terrain_block_for_shadow(Vec3i::new(wx, wy, z), blocks, unknown_is_solid)
+            == BlockType::SolidStone
+        {
+            return Some(z);
+        }
+    }
+    None
 }
