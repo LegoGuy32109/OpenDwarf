@@ -15,8 +15,7 @@ use world_sim::bevy_app::WorldView;
 #[cfg(not(target_arch = "wasm32"))]
 use world_sim::replay::{ReplayEvent, load_replay};
 use world_sim::world_api::{
-    BlockType, EntityMovementSnapshot, TileMemory, Vec3i, Vec3u, WorldCommand, WorldSnapshot,
-    WorldUpdate,
+    BlockType, TileMemory, Vec3i, Vec3u, WorldCommand, WorldSnapshot, WorldUpdate,
 };
 
 use super::visuals::{Player, PlayerRenderTarget, TILE_SIZE_IN_PX, TilemapAssets};

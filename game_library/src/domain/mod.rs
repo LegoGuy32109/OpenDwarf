@@ -46,6 +46,16 @@ use world_sim::world_core::WorldConfig;
 
 pub struct OpenDwarfPlugins;
 
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+enum SimulationSet {
+    SyncWorld,
+    CameraAndEntities,
+    Streaming,
+    TilemapLifecycle,
+    TilemapBuild,
+    DebugDraw,
+}
+
 impl Plugin for OpenDwarfPlugins {
     fn build(&self, app: &mut App) {
         app.add_plugins(define_defaults())
@@ -62,8 +72,25 @@ impl Plugin for OpenDwarfPlugins {
             })
             .add_systems(Startup, setup_simulation_state)
             .add_systems(Startup, setup)
-            .add_systems(PreUpdate, update_input_state)
-            .add_systems(PreUpdate, update_render_viewport)
+            .configure_sets(
+                Update,
+                (
+                    SimulationSet::SyncWorld,
+                    SimulationSet::CameraAndEntities.after(SimulationSet::SyncWorld),
+                    SimulationSet::Streaming.after(SimulationSet::CameraAndEntities),
+                    SimulationSet::TilemapLifecycle.after(SimulationSet::Streaming),
+                    SimulationSet::TilemapBuild.after(SimulationSet::TilemapLifecycle),
+                    SimulationSet::DebugDraw.after(SimulationSet::TilemapBuild),
+                ),
+            )
+            .add_systems(
+                PreUpdate,
+                update_input_state.in_set(SimulationSet::SyncWorld),
+            )
+            .add_systems(
+                PreUpdate,
+                update_render_viewport.in_set(SimulationSet::SyncWorld),
+            )
             .add_systems(
                 Update,
                 (
@@ -75,33 +102,24 @@ impl Plugin for OpenDwarfPlugins {
             .add_systems(
                 Update,
                 (
-                    toggle_chunk_borders,
-                    toggle_tile_layers,
-                    sync_render_world_from_snapshot,
+                    toggle_chunk_borders.in_set(SimulationSet::DebugDraw),
+                    toggle_tile_layers.in_set(SimulationSet::SyncWorld),
+                    sync_render_world_from_snapshot.in_set(SimulationSet::SyncWorld),
                     (
                         sync_camera_z_to_player,
                         queue_world_commands_from_input.run_if(in_state(GameMode::World)),
                         draw_entity_occupancy_boxes,
                     )
-                        .after(sync_render_world_from_snapshot),
+                        .in_set(SimulationSet::CameraAndEntities),
                     (update_view_z_level, project_world_entities_to_sprites)
-                        .after(sync_camera_z_to_player),
-                    stream_chunks_around_player
-                        .after(update_view_z_level)
-                        .after(project_world_entities_to_sprites),
+                        .in_set(SimulationSet::CameraAndEntities),
+                    stream_chunks_around_player.in_set(SimulationSet::Streaming),
                     sync_viewport_to_invalidation.after(update_render_viewport),
-                    manage_tilemap_chunk_lifecycle
-                        .after(update_view_z_level)
-                        .after(project_world_entities_to_sprites)
-                        .after(stream_chunks_around_player),
-                    project_world_to_tilemap
-                        .after(update_view_z_level)
-                        .after(project_world_entities_to_sprites)
-                        .after(sync_viewport_to_invalidation)
-                        .after(manage_tilemap_chunk_lifecycle),
-                    (draw_depth_labels, draw_chunk_borders).after(project_world_to_tilemap),
-                    smooth_player_render_transform.after(project_world_entities_to_sprites),
-                    follow_player_camera.after(smooth_player_render_transform),
+                    manage_tilemap_chunk_lifecycle.in_set(SimulationSet::TilemapLifecycle),
+                    project_world_to_tilemap.in_set(SimulationSet::TilemapBuild),
+                    (draw_depth_labels, draw_chunk_borders).in_set(SimulationSet::DebugDraw),
+                    smooth_player_render_transform.in_set(SimulationSet::CameraAndEntities),
+                    follow_player_camera.in_set(SimulationSet::CameraAndEntities),
                 ),
             )
             .add_systems(
