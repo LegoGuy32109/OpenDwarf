@@ -152,6 +152,15 @@ impl EntityState {
             movement: None,
         }
     }
+
+    fn visibility_position(self) -> Vec3i {
+        if let Some(movement) = self.movement
+            && movement.occupies_target()
+        {
+            return movement.target;
+        }
+        self.position
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -391,6 +400,7 @@ impl WorldState {
             .entities
             .get(&id)
             .ok_or(MoveEntityError::UnknownEntity)?;
+        let previous_visibility_position = current.visibility_position();
 
         let raw_target_position = current.position.add(direction);
         if !self.contains_position(raw_target_position) {
@@ -467,19 +477,23 @@ impl WorldState {
             movement_distance(direction)
         };
         let total_ticks = (distance * self.movement_ticks_per_tile as f32).ceil() as u32;
-        self.entities.insert(
+        let next_entity = EntityState {
+            position: current.position,
+            facing_left: facing_left_after,
+            is_prone: is_prone_after,
+            movement: Some(EntityMovementState::with_start_position(
+                movement_origin,
+                target_position,
+                total_ticks,
+                movement_start_position,
+            )),
+        };
+        let next_visibility_position = next_entity.visibility_position();
+        self.entities.insert(id, next_entity);
+        self.mark_fov_dirty_if_visibility_position_changed(
             id,
-            EntityState {
-                position: current.position,
-                facing_left: facing_left_after,
-                is_prone: is_prone_after,
-                movement: Some(EntityMovementState::with_start_position(
-                    movement_origin,
-                    target_position,
-                    total_ticks,
-                    movement_start_position,
-                )),
-            },
+            previous_visibility_position,
+            next_visibility_position,
         );
 
         let _ = is_prone_after;
@@ -498,11 +512,13 @@ impl WorldState {
 
         self.tick = self.tick.saturating_add(1);
         let mut moved_entities = Vec::new();
+        let mut fov_position_changes = Vec::new();
         for id in moving_ids {
             let Some(entity) = self.entities.get_mut(&id) else {
                 continue;
             };
             let from = entity.position;
+            let previous_visibility_position = entity.visibility_position();
             let facing_left_before = entity.facing_left;
             let is_prone_before = entity.is_prone;
 
@@ -533,19 +549,19 @@ impl WorldState {
                     is_prone_after: entity.is_prone,
                     movement_after,
                 });
+                let next_visibility_position = entity.visibility_position();
+                if previous_visibility_position != next_visibility_position {
+                    fov_position_changes.push((
+                        id,
+                        previous_visibility_position,
+                        next_visibility_position,
+                    ));
+                }
             }
         }
 
-        // Mark FOV as dirty for the primary observer if they moved
-        if !moved_entities.is_empty() {
-            // Assume entity 1 is the primary observer
-            if let Some(moved) = moved_entities.iter().find(|m| m.id == 1) {
-                if moved.from != moved.to {
-                    if let Some(fov) = self.entity_fov.get_mut(&1) {
-                        fov.dirty = true;
-                    }
-                }
-            }
+        for (id, from, to) in fov_position_changes {
+            self.mark_fov_dirty_if_visibility_position_changed(id, from, to);
         }
 
         Some(WorldDelta {
@@ -625,6 +641,14 @@ impl WorldState {
         Ok(())
     }
 
+    fn mark_fov_dirty_if_visibility_position_changed(&mut self, id: u64, from: Vec3i, to: Vec3i) {
+        if from != to
+            && let Some(fov) = self.entity_fov.get_mut(&id)
+        {
+            fov.dirty = true;
+        }
+    }
+
     #[must_use]
     pub fn apply_command(&mut self, command: WorldCommand) -> Option<WorldDelta> {
         match command {
@@ -651,7 +675,7 @@ impl WorldState {
             if fov.dirty {
                 // Get the observer's current position
                 if let Some(observer) = self.entities.get(&1) {
-                    let position = observer.position;
+                    let position = observer.visibility_position();
                     super::fov::compute_fov(
                         fov,
                         position,
@@ -1512,6 +1536,55 @@ mod tests {
     }
 
     #[test]
+    fn fov_visibility_position_moves_when_target_becomes_occupied() {
+        let mut world = test_world();
+        world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("spawn should succeed");
+        let _ = world.snapshot();
+
+        let fov = world.entity_fov.get(&1).expect("primary fov should exist");
+        assert!(!fov.dirty);
+
+        world
+            .start_entity_move_with_reason(1, Vec3i::new(1, 0, 0))
+            .expect("move should start");
+        assert!(!world.entity_fov.get(&1).expect("fov should exist").dirty);
+
+        let _ = world.advance_active_movements_one_tick();
+        assert!(world.entity_fov.get(&1).expect("fov should exist").dirty);
+
+        let snapshot = world.snapshot();
+        let visibility = snapshot.visibility.expect("visibility should be present");
+        assert!(visibility.visible.contains(&Vec3i::new(1, 0, 0)));
+    }
+
+    #[test]
+    fn interrupting_movement_marks_fov_dirty_when_visibility_snaps_back() {
+        let mut world = test_world();
+        world
+            .spawn_entity_auto(Vec3i::ZERO)
+            .expect("spawn should succeed");
+        let _ = world.snapshot();
+
+        world
+            .start_entity_move_with_reason(1, Vec3i::new(1, 0, 0))
+            .expect("move should start");
+        let _ = world.advance_active_movements_one_tick();
+        let _ = world.snapshot();
+        assert!(!world.entity_fov.get(&1).expect("fov should exist").dirty);
+
+        world
+            .start_entity_move_with_reason(1, Vec3i::new(0, 1, 0))
+            .expect("interrupting move should start");
+        assert!(world.entity_fov.get(&1).expect("fov should exist").dirty);
+
+        let snapshot = world.snapshot();
+        let visibility = snapshot.visibility.expect("visibility should be present");
+        assert!(visibility.visible.contains(&Vec3i::ZERO));
+    }
+
+    #[test]
     fn interrupting_movement_uses_interpolated_start_position() {
         let mut world = test_world();
         world
@@ -1557,18 +1630,14 @@ mod tests {
 
     #[test]
     fn cave_generation_is_deterministic_and_seeded() {
-        let mut world_a = cave_world("opendwarf");
-        let mut world_b = cave_world("opendwarf");
-        let mut world_c = cave_world("josh");
+        let world_a = cave_world("opendwarf");
+        let world_b = cave_world("opendwarf");
+        let world_c = cave_world("josh");
 
-        let snapshot_a = world_a.snapshot();
-        let snapshot_b = world_b.snapshot();
-        let snapshot_c = world_c.snapshot();
-
-        assert_eq!(snapshot_a.blocks.len(), snapshot_b.blocks.len());
-        assert_eq!(snapshot_a.blocks.len(), snapshot_c.blocks.len());
-        assert_eq!(block_hash(&snapshot_a.blocks), block_hash(&snapshot_b.blocks));
-        assert_ne!(block_hash(&snapshot_a.blocks), block_hash(&snapshot_c.blocks));
+        assert_eq!(world_a.blocks.len(), world_b.blocks.len());
+        assert_eq!(world_a.blocks.len(), world_c.blocks.len());
+        assert_eq!(block_hash(&world_a.blocks), block_hash(&world_b.blocks));
+        assert_ne!(block_hash(&world_a.blocks), block_hash(&world_c.blocks));
         assert_eq!(slice_dump(&world_a, 0), slice_dump(&world_b, 0));
     }
 
@@ -1587,9 +1656,9 @@ mod tests {
             .and_then(|n| n.checked_mul(usize::try_from(snapshot.world_chunks.z).expect("z too large")))
             .expect("block count should fit in usize");
 
-        assert_eq!(snapshot.blocks.len(), expected_blocks);
-        assert!(snapshot.blocks.iter().any(|block| *block == BlockType::Air));
-        assert!(snapshot
+        assert_eq!(world.blocks.len(), expected_blocks);
+        assert!(world.blocks.iter().any(|block| *block == BlockType::Air));
+        assert!(world
             .blocks
             .iter()
             .any(|block| *block == BlockType::SolidStone));
@@ -1597,7 +1666,7 @@ mod tests {
 
     #[test]
     fn cave_generation_keeps_noise_within_the_playable_band() {
-        let mut world = cave_world("opendwarf");
+        let world = cave_world("opendwarf");
         let (min, max) = world.centered_bounds();
 
         for z in min.z..=max.z {
@@ -1628,7 +1697,7 @@ mod tests {
 
     #[test]
     fn cave_generation_keeps_the_band_varied_across_slices() {
-        let mut world = cave_world("josh");
+        let world = cave_world("josh");
         let adjacent_difference = slice_difference_ratio(&world, -1, 0);
         let opposite_difference = slice_difference_ratio(&world, 0, 1);
 
