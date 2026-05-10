@@ -601,14 +601,12 @@ pub fn project_world_to_tilemap(
         } else {
             active_chunks_xy.clone()
         };
-        let z_levels = if !invalidation.visible_z_levels.is_empty() {
-            invalidation.visible_z_levels.clone()
-        } else {
-            rendered_z_levels.clone()
-        };
+        // Always use rendered_z_levels (computed from current view_z) rather than
+        // invalidation.visible_z_levels, which is stale from PreUpdate when view_z changes.
+        let z_levels = &rendered_z_levels;
 
         for &chunk_xy in &chunks_to_rebuild {
-            for &z in &z_levels {
+            for &z in z_levels {
                 if tile_layer_debug_state.show_floor && (invalidation.view_invalidated() || terrain_rebuild) {
                     to_rebuild.insert((chunk_xy, z, TileLayer::Floor));
                 }
@@ -635,7 +633,7 @@ pub fn project_world_to_tilemap(
     // Newly-visible chunks (entered viewport this frame): mark all layers.
     if invalidation.viewport_changed {
         for &chunk_xy in &invalidation.newly_visible_chunks_xy {
-            for &z in &invalidation.visible_z_levels {
+            for &z in &rendered_z_levels {
                 if tile_layer_debug_state.show_floor {
                     to_rebuild.insert((chunk_xy, z, TileLayer::Floor));
                 }
