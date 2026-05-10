@@ -36,13 +36,6 @@ impl TilemapInvalidation {
         self.dirty.insert((chunk_xy, z, layer));
     }
 
-    pub fn mark_all_layers_at(&mut self, chunk_xy: IVec2, z: i32) {
-        self.mark(chunk_xy, z, TileLayer::Floor);
-        self.mark(chunk_xy, z, TileLayer::EdgeShadow);
-        self.mark(chunk_xy, z, TileLayer::CeilingShadow);
-        self.mark(chunk_xy, z, TileLayer::FogShadow);
-    }
-
     pub fn mark_all_visible_layers(
         &mut self,
         viewport: &RenderViewport,
@@ -168,10 +161,7 @@ impl TilemapInvalidation {
 pub fn chunk_of_xy(p: Vec3i, chunk_edge: u32) -> IVec2 {
     let edge = i32::try_from(chunk_edge).expect("chunk_edge fits in i32");
     let half = edge / 2;
-    IVec2::new(
-        (p.x + half).div_euclid(edge),
-        (p.y + half).div_euclid(edge),
-    )
+    IVec2::new((p.x + half).div_euclid(edge), (p.y + half).div_euclid(edge))
 }
 
 #[cfg(test)]
