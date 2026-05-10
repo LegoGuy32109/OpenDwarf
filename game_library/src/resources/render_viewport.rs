@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use bevy::prelude::*;
+use bevy::platform::collections::HashSet;
 
 use crate::domain::simulation::{TerrainConfig, TileLayerDebugState};
 use crate::domain::visuals::TILE_SIZE_IN_PX;

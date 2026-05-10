@@ -1,4 +1,18 @@
-use super::*;
+use bevy::math::Isometry2d;
+use bevy::prelude::*;
+use bevy::sprite_render::TilemapChunk;
+
+use super::coords::{
+    compute_shadow_mask_for_air, terrain_block, world_pos_in_chunk, world_to_pixel_translation,
+    z_levels_to_render,
+};
+use super::{ChunkBorderDebugState, DepthDebugLabel, TerrainConfig, TerrainData, WorldTileChunk};
+use crate::domain::visuals::TILE_SIZE_IN_PX;
+use crate::resources::input_state::InputState;
+use crate::resources::render_viewport::RenderViewport;
+use crate::resources::view_mode::ViewMode;
+use crate::resources::view_z_level::ViewZLevel;
+use world_sim::world_api::{BlockType, Vec3i};
 
 pub fn draw_depth_labels(
     mut commands: Commands,

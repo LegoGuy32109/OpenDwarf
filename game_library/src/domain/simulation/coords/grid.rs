@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::sprite_render::TileData;
-use std::collections::HashSet;
+use bevy::platform::collections::HashSet;
 
 use crate::domain::simulation::{ChunkStreamingState, Z_LEVELS_BELOW_RENDERED};
 use crate::resources::render_viewport::RenderViewport;

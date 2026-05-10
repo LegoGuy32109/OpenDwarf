@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use bevy::math::IVec2;
+use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use world_sim::world_api::Vec3i;
 

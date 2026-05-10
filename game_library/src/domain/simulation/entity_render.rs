@@ -1,4 +1,17 @@
-use super::*;
+use bevy::prelude::*;
+
+use super::coords::{
+    get_depth_tint_sprite_color, terrain_block_for_shadow, world_to_pixel_translation,
+    world_to_pixel_translation_f32,
+};
+use super::{
+    ChunkBorderDebugState, RenderEntityData, TerrainData, Z_LEVELS_BELOW_RENDERED,
+};
+use crate::domain::visuals::{Player, PlayerRenderTarget, TilemapAssets};
+use crate::resources::view_mode::ViewMode;
+use crate::resources::view_z_level::ViewZLevel;
+use world_sim::bevy_app::PrimarySimulationEntityId;
+use world_sim::world_api::{BlockType, Vec3i};
 
 pub fn draw_entity_occupancy_boxes(
     chunk_border_debug_state: Res<ChunkBorderDebugState>,
