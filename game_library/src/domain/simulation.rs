@@ -167,6 +167,9 @@ pub fn setup_simulation_state(mut commands: Commands) {
     let mut config = TerrainConfig::default();
     let mut terrain = TerrainData::default();
     let mut entities = RenderEntityData::default();
+    let viewport = crate::resources::render_viewport::RenderViewport::default();
+    let tile_layer_debug_state = TileLayerDebugState::default();
+    let mut invalidation = crate::domain::tilemap_invalidation::TilemapInvalidation::default();
 
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(mut replay_playback) = try_load_replay_playback() {
@@ -177,6 +180,9 @@ pub fn setup_simulation_state(mut commands: Commands) {
             &mut config,
             &mut terrain,
             &mut entities,
+            &viewport,
+            &tile_layer_debug_state,
+            &mut invalidation,
         ) {
             warn!("Replay did not contain any checkpoint/snapshot data");
         }
@@ -202,9 +208,10 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(FogData::default());
     commands.insert_resource(ChunkStreamingState::default());
     commands.insert_resource(ChunkBorderDebugState::default());
-    commands.insert_resource(TileLayerDebugState::default());
+    commands.insert_resource(tile_layer_debug_state);
     commands.insert_resource(TilemapRenderMetrics::default());
-    commands.insert_resource(crate::resources::render_viewport::RenderViewport::default());
+    commands.insert_resource(viewport);
+    commands.insert_resource(invalidation);
 }
 
 pub fn toggle_tile_layers(
@@ -212,6 +219,7 @@ pub fn toggle_tile_layers(
     mut tile_layer_debug_state: ResMut<TileLayerDebugState>,
     mut terrain: ResMut<TerrainData>,
     mut fog_data: ResMut<FogData>,
+    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     let mut changed = false;
 
@@ -239,6 +247,7 @@ pub fn toggle_tile_layers(
     if changed {
         terrain.dirty = true;
         fog_data.dirty = true;
+        invalidation.invalidate_view();
     }
 }
 
@@ -314,10 +323,13 @@ pub fn sync_render_world_from_snapshot(
     world_view: Res<WorldView>,
     view_mode: Res<ViewMode>,
     view_z: Res<ViewZLevel>,
+    viewport: Res<crate::resources::render_viewport::RenderViewport>,
+    tile_layer_debug_state: Res<TileLayerDebugState>,
     mut config: ResMut<TerrainConfig>,
     mut terrain: ResMut<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
     mut fog_data: ResMut<FogData>,
+    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     if replay_mode.active {
         return;
@@ -341,6 +353,9 @@ pub fn sync_render_world_from_snapshot(
         &mut entity_data,
         &mut fog_data,
         snapshot,
+        &viewport,
+        &tile_layer_debug_state,
+        &mut invalidation,
     );
 }
 
@@ -353,6 +368,9 @@ pub fn drive_replay_playback(
     mut config: ResMut<TerrainConfig>,
     mut terrain: ResMut<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
+    viewport: Res<crate::resources::render_viewport::RenderViewport>,
+    tile_layer_debug_state: Res<TileLayerDebugState>,
+    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     if !replay_mode.active {
         replay_hud_state.active = false;
@@ -388,11 +406,15 @@ pub fn drive_replay_playback(
         entity_data.tick = 0;
         terrain.dirty = true;
         entity_data.dirty = true;
+        invalidation.clear();
         let _ = apply_first_checkpoint(
             &mut replay_playback,
             &mut config,
             &mut terrain,
             &mut entity_data,
+            &viewport,
+            &tile_layer_debug_state,
+            &mut invalidation,
         );
         info!("Replay reset to beginning");
     }
@@ -403,6 +425,9 @@ pub fn drive_replay_playback(
             &mut config,
             &mut terrain,
             &mut entity_data,
+            &viewport,
+            &tile_layer_debug_state,
+            &mut invalidation,
         );
     }
 
@@ -416,6 +441,9 @@ pub fn drive_replay_playback(
             &mut config,
             &mut terrain,
             &mut entity_data,
+            &viewport,
+            &tile_layer_debug_state,
+            &mut invalidation,
         )
     {
         replay_playback.playing = false;
@@ -501,6 +529,7 @@ pub fn project_world_to_tilemap(
         &mut TilemapChunkTileData,
         &mut Transform,
     )>,
+    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     #[cfg(not(target_arch = "wasm32"))]
     let start = std::time::Instant::now();
@@ -509,17 +538,20 @@ pub fn project_world_to_tilemap(
     if view_z.is_changed() {
         terrain.dirty = true;
         fog_data.dirty = true;
+        invalidation.invalidate_view();
     }
 
     // ViewMode changes should refresh the full tile projection immediately.
     if view_mode.is_changed() {
         terrain.dirty = true;
         fog_data.dirty = true;
+        invalidation.invalidate_view();
     }
 
     if tile_layer_debug_state.is_changed() {
         terrain.dirty = true;
         fog_data.dirty = true;
+        invalidation.invalidate_view();
     }
 
     if !terrain.dirty && !fog_data.dirty {
@@ -528,6 +560,18 @@ pub fn project_world_to_tilemap(
 
     let terrain_rebuild = terrain.dirty;
     let fog_rebuild = fog_data.dirty;
+
+    // Phase 2 equivalence check: invalidation and dirty flags should track the same state.
+    // If this fires, a producer site is missing an invalidation call.
+    debug_assert_eq!(
+        invalidation.is_empty() && !invalidation.view_invalidated(),
+        !terrain.dirty && !fog_data.dirty,
+        "invalidation state diverged from dirty flags: invalidation empty={}, view_invalidated={}, terrain.dirty={}, fog_data.dirty={}",
+        invalidation.is_empty(),
+        invalidation.view_invalidated(),
+        terrain.dirty,
+        fog_data.dirty
+    );
 
     let chunk_edge = config.chunk_edge;
     if chunk_edge == 0 {
@@ -1168,6 +1212,9 @@ pub fn stream_chunks_around_player(
     entity_data: Res<RenderEntityData>,
     mut chunk_streaming_state: ResMut<ChunkStreamingState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
+    viewport: Res<crate::resources::render_viewport::RenderViewport>,
+    tile_layer_debug_state: Res<TileLayerDebugState>,
+    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     if replay_mode.active {
         return;
@@ -1193,7 +1240,7 @@ pub fn stream_chunks_around_player(
     if chunk_streaming_state.loaded_chunks.is_empty() {
         chunk_streaming_state.loaded_chunks = desired.clone();
         chunk_streaming_state.last_center_chunk = Some(center_chunk);
-        terrain.dirty = true;
+        invalidation.mark_all_visible_layers(&viewport, &tile_layer_debug_state);
         return;
     }
 
@@ -1238,15 +1285,15 @@ pub fn stream_chunks_around_player(
 
     chunk_streaming_state.loaded_chunks.extend(desired);
     if tracked_chunk_set_changed {
-        terrain.dirty = true;
+        invalidation.mark_all_visible_layers(&viewport, &tile_layer_debug_state);
     }
 }
 
 pub fn sync_camera_z_to_player(
     mut view_z: ResMut<ViewZLevel>,
     entity_data: Res<RenderEntityData>,
-    mut terrain: ResMut<TerrainData>,
     primary_entity: Option<Res<PrimarySimulationEntityId>>,
+    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     let Some(primary_res) = primary_entity else {
         return;
@@ -1261,14 +1308,14 @@ pub fn sync_camera_z_to_player(
         view_z.current = entity.position.z;
         view_z.initialized = true;
         view_z.last_player_z = Some(entity.position.z);
-        terrain.dirty = true;
+        invalidation.invalidate_view();
         return;
     }
 
     if view_z.last_player_z != Some(entity.position.z) {
         view_z.current = entity.position.z;
         view_z.last_player_z = Some(entity.position.z);
-        terrain.dirty = true;
+        invalidation.invalidate_view();
     }
 }
 
@@ -1312,6 +1359,7 @@ pub fn update_view_z_level(
     mut view_z: ResMut<ViewZLevel>,
     mut terrain: ResMut<TerrainData>,
     mut entity_data: ResMut<RenderEntityData>,
+    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     let world_snapshot = &world_view.snapshot();
     let world_size_z = world_snapshot
@@ -1355,11 +1403,13 @@ pub fn update_view_z_level(
         view_z.current = (view_z.current + 1).min(effective_max_z);
         terrain.dirty = true;
         entity_data.dirty = true;
+        invalidation.invalidate_view();
     }
     if z_down_pressed {
         view_z.current = (view_z.current - 1).max(effective_min_z);
         terrain.dirty = true;
         entity_data.dirty = true;
+        invalidation.invalidate_view();
     }
     // Clamp current view z in case the entity moved to a different level
     let clamped = view_z.current.clamp(effective_min_z, effective_max_z);
@@ -1367,6 +1417,7 @@ pub fn update_view_z_level(
         view_z.current = clamped;
         terrain.dirty = true;
         entity_data.dirty = true;
+        invalidation.invalidate_view();
     }
 }
 
@@ -1424,6 +1475,9 @@ fn apply_snapshot(
     entities: &mut RenderEntityData,
     fog: &mut FogData,
     snapshot: &WorldSnapshot,
+    viewport: &crate::resources::render_viewport::RenderViewport,
+    tile_layer_debug_state: &TileLayerDebugState,
+    invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
 ) {
     let terrain_changed = config.chunk_edge != snapshot.chunk_edge
         || config.world_chunks != snapshot.world_chunks
@@ -1452,23 +1506,31 @@ fn apply_snapshot(
         .collect();
 
     let visibility_snapshot = snapshot.visibility.as_ref();
-    let mut visibility_changed = false;
-    if let Some(vis) = visibility_snapshot {
-        let new_visible: HashSet<Vec3i> = vis.visible.iter().copied().collect();
-        visibility_changed = fog.visible != new_visible || fog.memory != vis.memory;
-        if visibility_changed {
-            fog.visible = new_visible;
-            fog.memory = vis.memory.clone();
-            fog.dirty = true;
+    if view_mode == ViewMode::Entity {
+        let mut visibility_changed = false;
+        if let Some(vis) = visibility_snapshot {
+            let new_visible: HashSet<Vec3i> = vis.visible.iter().copied().collect();
+            visibility_changed = fog.visible != new_visible || fog.memory != vis.memory;
+            if visibility_changed {
+                fog.visible = new_visible;
+                fog.memory = vis.memory.clone();
+                fog.dirty = true;
+                invalidation.mark_all_visible_layers(viewport, tile_layer_debug_state);
+            }
         }
-    }
-
-    if view_mode == ViewMode::Entity && (terrain_changed || visibility_changed) {
-        terrain.blocks =
-            build_render_terrain_blocks(terrain.source_blocks.as_ref(), visibility_snapshot);
-        terrain.dirty = true;
-    } else if terrain_changed {
-        terrain.dirty = true;
+        if terrain_changed || visibility_changed {
+            terrain.blocks =
+                build_render_terrain_blocks(terrain.source_blocks.as_ref(), visibility_snapshot);
+            terrain.dirty = true;
+            invalidation.mark_all_visible_layers(viewport, tile_layer_debug_state);
+        }
+    } else {
+        // Master mode: skip visibility delta + terrain.blocks rebuild.
+        // Master uses source_blocks directly; fog is not rendered.
+        if terrain_changed {
+            terrain.dirty = true;
+            invalidation.mark_all_visible_layers(viewport, tile_layer_debug_state);
+        }
     }
     entities.dirty = true;
 }
@@ -1481,10 +1543,13 @@ fn apply_update(
     entities: &mut RenderEntityData,
     fog: &mut FogData,
     update: WorldUpdate,
+    viewport: &crate::resources::render_viewport::RenderViewport,
+    tile_layer_debug_state: &crate::domain::simulation::TileLayerDebugState,
+    invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
 ) {
     match update {
         WorldUpdate::Snapshot(snapshot) => {
-            apply_snapshot(view_mode, view_z, config, terrain, entities, fog, &snapshot)
+            apply_snapshot(view_mode, view_z, config, terrain, entities, fog, &snapshot, viewport, tile_layer_debug_state, invalidation)
         }
         WorldUpdate::Delta(delta) => {
             entities.tick = delta.tick;
@@ -1515,7 +1580,7 @@ fn apply_update(
                         terrain.blocks.remove(&change.position);
                     }
                 }
-                terrain.dirty = true;
+                invalidation.mark_all_visible_layers(viewport, tile_layer_debug_state);
             }
         }
     }
@@ -1597,6 +1662,9 @@ fn apply_first_checkpoint(
     config: &mut TerrainConfig,
     terrain: &mut TerrainData,
     entities: &mut RenderEntityData,
+    viewport: &crate::resources::render_viewport::RenderViewport,
+    tile_layer_debug_state: &TileLayerDebugState,
+    invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
 ) -> bool {
     // Replay doesn't carry FOV data — use a throwaway FogData
     let mut fog = FogData::default();
@@ -1613,6 +1681,9 @@ fn apply_first_checkpoint(
                     entities,
                     &mut fog,
                     &snapshot,
+                    viewport,
+                    tile_layer_debug_state,
+                    invalidation,
                 );
                 return true;
             }
@@ -1625,6 +1696,9 @@ fn apply_first_checkpoint(
                     entities,
                     &mut fog,
                     update,
+                    viewport,
+                    tile_layer_debug_state,
+                    invalidation,
                 );
                 return true;
             }
@@ -1640,6 +1714,9 @@ fn apply_next_replay_event(
     config: &mut TerrainConfig,
     terrain: &mut TerrainData,
     entities: &mut RenderEntityData,
+    viewport: &crate::resources::render_viewport::RenderViewport,
+    tile_layer_debug_state: &TileLayerDebugState,
+    invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
 ) -> bool {
     let mut fog = FogData::default();
     while replay_playback.cursor < replay_playback.events.len() {
@@ -1656,6 +1733,9 @@ fn apply_next_replay_event(
                     entities,
                     &mut fog,
                     update,
+                    viewport,
+                    tile_layer_debug_state,
+                    invalidation,
                 );
                 return true;
             }
@@ -1668,6 +1748,9 @@ fn apply_next_replay_event(
                     entities,
                     &mut fog,
                     &snapshot,
+                    viewport,
+                    tile_layer_debug_state,
+                    invalidation,
                 );
                 return true;
             }

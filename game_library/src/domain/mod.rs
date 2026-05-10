@@ -12,6 +12,7 @@ use crate::resources::view_z_level::ViewZLevel;
 
 pub mod messaging;
 pub mod simulation;
+pub mod tilemap_invalidation;
 pub mod visuals;
 
 use crate::domain::messaging::webrtc::MultiplayerController;
