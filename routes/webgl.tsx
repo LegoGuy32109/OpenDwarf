@@ -26,9 +26,9 @@ export default function WebGlRoute() {
             </a>
           </div>
           <p class="max-w-3xl text-sm leading-6 text-white/70">
-            Step 0: boot the renderer, prove DPR-native fullscreen sizing, and
-            establish the screenshot/replay baseline before any terrain or world
-            logic is added.
+            Step 1: render the single-rock smoke test, capture deterministic
+            checkpoints, and keep replay/frame-dump artifacts readable before any
+            wasm or world-simulation work is added.
           </p>
         </header>
         <WebGlGameCanvas />

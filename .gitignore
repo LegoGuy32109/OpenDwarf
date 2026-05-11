@@ -11,3 +11,6 @@ _fresh/
 node_modules/
 vendor/
 /**/target
+
+# testing artifacts
+exports/

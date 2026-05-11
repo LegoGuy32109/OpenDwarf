@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
+declare global {
+  interface Window {
+    __openDwarfWebGlHarness?: WebGlTestHarness;
+  }
+}
+
 type WebGlCapabilityReport = {
   userAgent: string;
   platform: string;
@@ -22,10 +28,255 @@ type WebGlCapabilityReport = {
   };
 };
 
-type LogEntry = {
-  id: number;
-  text: string;
+type ReplayEvent =
+  | {
+    type: "boot";
+    tick: number;
+  }
+  | {
+    type: "resize";
+    tick: number;
+    cssWidth: number;
+    cssHeight: number;
+    dpr: number;
+    framebufferWidth: number;
+    framebufferHeight: number;
+  }
+  | {
+    type: "fullscreen";
+    tick: number;
+    active: boolean;
+  }
+  | {
+    type: "texture_loaded";
+    tick: number;
+    src: string;
+    width: number;
+    height: number;
+  }
+  | {
+    type: "screenshot";
+    tick: number;
+    filename: string;
+    bytes: number;
+  }
+  | {
+    type: "checkpoint";
+    tick: number;
+    name: string;
+    frame: number;
+    screenshotFilename: string;
+    stateFilename: string;
+    stateHash: string;
+    baselineConfigured: boolean;
+  }
+  | {
+    type: "recording_started";
+    tick: number;
+    mimeType: string;
+  }
+  | {
+    type: "recording_stopped";
+    tick: number;
+    filename: string | null;
+    bytes: number | null;
+  };
+
+type WebGlSceneSnapshot = {
+  tick: number;
+  frame: number;
+  camera: { x: number; y: number; zoom: number };
+  fullscreen: boolean;
+  viewport: {
+    cssWidth: number;
+    cssHeight: number;
+    devicePixelRatio: number;
+    framebufferWidth: number;
+    framebufferHeight: number;
+  };
+  visibleChunks: string[];
+  streamingChunks: string[];
+  residentChunks: number;
+  assetsLoaded: string[];
+  uiMode: string;
+  sceneHash: string;
 };
+
+type WebGlCheckpointRecord = {
+  name: string;
+  ordinal: number;
+  tick: number;
+  frame: number;
+  screenshotFilename: string;
+  stateFilename: string;
+  stateHash: string;
+  baselineConfigured: boolean;
+  baselineSource: string | null;
+};
+
+type WebGlScreenshotBaselineManifest = {
+  version: 1;
+  flow: string;
+  screenshots: Record<string, { path: string; sha256?: string }>;
+};
+
+type ReplayDocument = {
+  version: 1;
+  flow: "webgl-step1-single-rock";
+  scene: "webgl-step1-single-rock";
+  seed: string;
+  viewport: {
+    width: number;
+    height: number;
+    devicePixelRatio: number;
+  };
+  capture: {
+    fullscreenRequired: boolean;
+    screenshots: boolean;
+    video: boolean;
+  };
+  createdAt: string;
+  capability: WebGlCapabilityReport | null;
+  events: ReplayEvent[];
+  checkpoints: WebGlCheckpointRecord[];
+};
+
+type ReplayPreview = {
+  eventCount: number;
+  checkpointCount: number;
+  lastResize: ReplayEvent | null;
+  fullscreenActive: boolean;
+  textureCount: number;
+  screenshotCount: number;
+};
+
+type WebGlArtifactManifest = {
+  version: 1;
+  flow: "webgl-step1-single-rock";
+  runId: string;
+  createdAt: string;
+  browser: {
+    name: string;
+    version: string | null;
+    userAgent: string;
+    platform: string | null;
+  };
+  renderer: {
+    webgl2: boolean;
+    renderer: string | null;
+    vendor: string | null;
+  };
+  baseline: {
+    configured: boolean;
+    source: string | null;
+  };
+  checkpoints: WebGlCheckpointRecord[];
+};
+
+type WebGlReplayBundle = {
+  replay: ReplayDocument;
+  manifest: WebGlArtifactManifest;
+  screenshots: Array<{ filename: string; blob: Blob }>;
+  states: Array<{ filename: string; blob: Blob }>;
+  video: Blob | null;
+};
+
+type WebGlSerializableArtifact = {
+  filename: string;
+  dataUrl: string;
+};
+
+type WebGlExportBundleData = {
+  replayJson: string;
+  manifestJson: string;
+  frames: WebGlSerializableArtifact[];
+  screenshots: WebGlSerializableArtifact[];
+  states: WebGlSerializableArtifact[];
+};
+
+type WebGlTestHarness = {
+  loadFlow: (flowName: string) => Promise<void>;
+  startRecording: () => Promise<void>;
+  stopRecording: () => Promise<WebGlReplayBundle | null>;
+  captureCheckpoint: (name: string) => Promise<WebGlCheckpointRecord | null>;
+  setCamera: (x: number, y: number, zoom?: number) => Promise<void>;
+  exportReplay: () => ReplayDocument;
+  exportReviewArtifacts: () => Promise<string>;
+  exportBundle: () => Promise<WebGlReplayBundle>;
+  exportBundleData: () => Promise<WebGlExportBundleData>;
+  importReplay: (doc: ReplayDocument) => Promise<void>;
+  exportScreenshot: (name: string) => Promise<Blob | null>;
+  exportVideo: () => Promise<Blob | null>;
+  setScreenshotBaselineManifest: (
+    manifest: WebGlScreenshotBaselineManifest | null,
+  ) => void;
+  getManifest: () => WebGlArtifactManifest;
+};
+
+const FLOW_NAME = "webgl-step1-single-rock";
+const SEED_NAME = "single-rock-step1";
+const TILE_TEXTURE_SRC = "/assets/sprites/SingleRock.png";
+const GRID_COLUMNS = 64;
+const GRID_ROWS = 36;
+const GRID_SPACING_PX = 64;
+const GRID_OFFSET_X = -((GRID_COLUMNS - 1) * GRID_SPACING_PX) / 2;
+const GRID_OFFSET_Y = -((GRID_ROWS - 1) * GRID_SPACING_PX) / 2;
+const DEFAULT_CAPTURE_DELAY_FRAMES = 1;
+
+function createRunId() {
+  const stamp = new Date().toISOString().replaceAll(":", "-");
+  const entropy = globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
+    .toString(16)
+    .padStart(8, "0");
+  return `${stamp}__${entropy}`;
+}
+
+function slugifyName(name: string) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+}
+
+function makeArtifactFilename(ordinal: number, name: string, extension: string) {
+  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${slugifyName(name)}.${extension}`;
+}
+
+function makeStateFilename(ordinal: number, name: string) {
+  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${slugifyName(name)}.json`;
+}
+
+function browserVersionFromUserAgent(userAgent: string) {
+  const chromeMatch = userAgent.match(/Chrome\/([0-9.]+)/);
+  if (chromeMatch) return chromeMatch[1];
+  const firefoxMatch = userAgent.match(/Firefox\/([0-9.]+)/);
+  if (firefoxMatch) return firefoxMatch[1];
+  const safariMatch = userAgent.match(/Version\/([0-9.]+).*Safari\//);
+  if (safariMatch) return safariMatch[1];
+  return null;
+}
+
+async function hashJson(value: unknown) {
+  const encoded = new TextEncoder().encode(JSON.stringify(value));
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  const bytes = [...new Uint8Array(digest)].map((byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+  return `sha256:${bytes}`;
+}
+
+function createJsonBlob(value: unknown) {
+  return new Blob([JSON.stringify(value, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+}
+
+function buildSceneHash(snapshot: Omit<WebGlSceneSnapshot, "sceneHash">) {
+  return hashJson(snapshot);
+}
+
+function waitForAnimationFrame() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
 
 function readGpuStrings(gl: WebGL2RenderingContext) {
   const debugInfo = gl.getExtension("WEBGL_debug_renderer_info") as
@@ -45,24 +296,648 @@ function readGpuStrings(gl: WebGL2RenderingContext) {
   };
 }
 
+function compileShader(
+  gl: WebGL2RenderingContext,
+  type: number,
+  source: string,
+) {
+  const shader = gl.createShader(type);
+  if (!shader) {
+    throw new Error("Failed to create shader");
+  }
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(shader) ?? "unknown shader compile error";
+    gl.deleteShader(shader);
+    throw new Error(info);
+  }
+  return shader;
+}
+
+function createProgram(
+  gl: WebGL2RenderingContext,
+  vertexSource: string,
+  fragmentSource: string,
+) {
+  const program = gl.createProgram();
+  if (!program) {
+    throw new Error("Failed to create program");
+  }
+
+  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+
+  gl.deleteShader(vertexShader);
+  gl.deleteShader(fragmentShader);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const info = gl.getProgramInfoLog(program) ?? "unknown link error";
+    gl.deleteProgram(program);
+    throw new Error(info);
+  }
+
+  return program;
+}
+
+function downloadTextFile(filename: string, text: string) {
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function summarizeReplay(events: ReplayEvent[]): ReplayPreview {
+  let lastResize: ReplayEvent | null = null;
+  let fullscreenActive = false;
+  let textureCount = 0;
+  let screenshotCount = 0;
+  let checkpointCount = 0;
+
+  for (const event of events) {
+    if (event.type === "resize") {
+      lastResize = event;
+    } else if (event.type === "fullscreen") {
+      fullscreenActive = event.active;
+    } else if (event.type === "texture_loaded") {
+      textureCount += 1;
+    } else if (event.type === "screenshot") {
+      screenshotCount += 1;
+    } else if (event.type === "checkpoint") {
+      checkpointCount += 1;
+    }
+  }
+
+  return {
+    eventCount: events.length,
+    checkpointCount,
+    lastResize,
+    fullscreenActive,
+    textureCount,
+    screenshotCount,
+  };
+}
+
 export default function WebGlGameCanvas() {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const glRef = useRef<WebGL2RenderingContext | null>(null);
+  const recordCanvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const rafRef = useRef<number | null>(null);
   const logIdRef = useRef(0);
+  const eventTickRef = useRef(0);
+  const frameRef = useRef(0);
+  const runIdRef = useRef(createRunId());
+  const glRef = useRef<WebGL2RenderingContext | null>(null);
+  const programRef = useRef<WebGLProgram | null>(null);
+  const textureRef = useRef<WebGLTexture | null>(null);
+  const instanceBufferRef = useRef<WebGLBuffer | null>(null);
+  const vertexBufferRef = useRef<WebGLBuffer | null>(null);
+  const sceneReadyRef = useRef(false);
+  const capabilityRef = useRef<WebGlCapabilityReport | null>(null);
+  const recordingContextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const recordingTrackRef = useRef<
+    (CanvasCaptureMediaStreamTrack & { requestFrame?: () => void }) | null
+  >(null);
+  const baselineManifestRef = useRef<WebGlScreenshotBaselineManifest | null>(
+    null,
+  );
+  const checkpointsRef = useRef<WebGlCheckpointRecord[]>([]);
+  const sceneStateRef = useRef({
+    camera: { x: 0, y: 0, zoom: 1 },
+    fullscreen: false,
+    viewport: {
+      cssWidth: 0,
+      cssHeight: 0,
+      devicePixelRatio: 1,
+      framebufferWidth: 0,
+      framebufferHeight: 0,
+    },
+    visibleChunks: [] as string[],
+    streamingChunks: [] as string[],
+    residentChunks: 0,
+    assetsLoaded: [] as string[],
+    uiMode: "boot",
+  });
+  const screenshotArtifactsRef = useRef<Record<string, Blob>>({});
+  const stateArtifactsRef = useRef<Record<string, Blob>>({});
+  const recordingStateRef = useRef<{
+    recorder: MediaRecorder | null;
+    chunks: BlobPart[];
+    mimeType: string | null;
+    videoBlob: Blob | null;
+  }>({
+    recorder: null,
+    chunks: [],
+    mimeType: null,
+    videoBlob: null,
+  });
+  const replayEventsRef = useRef<ReplayEvent[]>([]);
 
   const [status, setStatus] = useState("booting");
   const [fullscreen, setFullscreen] = useState(false);
   const [capability, setCapability] = useState<WebGlCapabilityReport | null>(
     null,
   );
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [replayPreview, setReplayPreview] = useState<ReplayPreview>(
+    summarizeReplay([]),
+  );
+  const [checkpointRecords, setCheckpointRecords] = useState<
+    WebGlCheckpointRecord[]
+  >([]);
+  const [baselineConfigured, setBaselineConfigured] = useState(false);
+  const [videoStatus, setVideoStatus] = useState("idle");
+  const [importedReplayInfo, setImportedReplayInfo] = useState<string | null>(
+    null,
+  );
+
+  const appendLog = (text: string) => {
+    const id = logIdRef.current++;
+    const next = `${String(id).padStart(3, "0")} ${text}`;
+    setLogs((prev) => [next, ...prev].slice(0, 10));
+  };
+
+  const pushReplayEvent = (event: ReplayEvent) => {
+    replayEventsRef.current = [...replayEventsRef.current, event];
+    setReplayPreview(summarizeReplay(replayEventsRef.current));
+  };
+
+  const nextTick = () => {
+    eventTickRef.current += 1;
+    return eventTickRef.current;
+  };
+
+  const refreshCapability = (
+    gl: WebGL2RenderingContext,
+    canvas: HTMLCanvasElement,
+    fullscreenElement: Element | null,
+  ) => {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
+
+    setCapability({
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+      devicePixelRatio: dpr,
+      innerSize: { width: window.innerWidth, height: window.innerHeight },
+      screenSize: { width: window.screen.width, height: window.screen.height },
+      maxTouchPoints: navigator.maxTouchPoints ?? null,
+      fullscreen: fullscreenElement === hostRef.current,
+      canvasCssSize: { width: rect.width, height: rect.height },
+      framebufferSize: { width: canvas.width, height: canvas.height },
+      context: {
+        webgl2: true,
+        version: String(gl.getParameter(gl.VERSION)),
+        shadingLanguageVersion: String(
+          gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+        ),
+        ...readGpuStrings(gl),
+        maxTextureSize: Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)),
+        maxViewportDims: [maxViewportDims[0], maxViewportDims[1]],
+      },
+    });
+    capabilityRef.current = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+      devicePixelRatio: dpr,
+      innerSize: { width: window.innerWidth, height: window.innerHeight },
+      screenSize: { width: window.screen.width, height: window.screen.height },
+      maxTouchPoints: navigator.maxTouchPoints ?? null,
+      fullscreen: fullscreenElement === hostRef.current,
+      canvasCssSize: { width: rect.width, height: rect.height },
+      framebufferSize: { width: canvas.width, height: canvas.height },
+      context: {
+        webgl2: true,
+        version: String(gl.getParameter(gl.VERSION)),
+        shadingLanguageVersion: String(
+          gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+        ),
+        ...readGpuStrings(gl),
+        maxTextureSize: Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)),
+        maxViewportDims: [maxViewportDims[0], maxViewportDims[1]],
+      },
+    };
+  };
+
+  const syncSceneStateFromCapability = (
+    canvas: HTMLCanvasElement,
+    fullscreenElement: Element | null,
+  ) => {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    sceneStateRef.current = {
+      ...sceneStateRef.current,
+      fullscreen: fullscreenElement === hostRef.current,
+      viewport: {
+        cssWidth: rect.width,
+        cssHeight: rect.height,
+        devicePixelRatio: dpr,
+        framebufferWidth: canvas.width,
+        framebufferHeight: canvas.height,
+      },
+    };
+  };
+
+  const buildSceneSnapshot = async (): Promise<WebGlSceneSnapshot> => {
+    const snapshotBase = {
+      tick: eventTickRef.current,
+      frame: frameRef.current,
+      camera: sceneStateRef.current.camera,
+      fullscreen: sceneStateRef.current.fullscreen,
+      viewport: sceneStateRef.current.viewport,
+      visibleChunks: sceneStateRef.current.visibleChunks,
+      streamingChunks: sceneStateRef.current.streamingChunks,
+      residentChunks: sceneStateRef.current.residentChunks,
+      assetsLoaded: sceneStateRef.current.assetsLoaded,
+      uiMode: sceneStateRef.current.uiMode,
+    };
+    return {
+      ...snapshotBase,
+      sceneHash: await buildSceneHash(snapshotBase),
+    };
+  };
+
+  const buildReplayDocument = (): ReplayDocument => ({
+    version: 1,
+    flow: FLOW_NAME,
+    scene: FLOW_NAME,
+    seed: SEED_NAME,
+    viewport: {
+      width: sceneStateRef.current.viewport.cssWidth,
+      height: sceneStateRef.current.viewport.cssHeight,
+      devicePixelRatio: sceneStateRef.current.viewport.devicePixelRatio,
+    },
+    capture: {
+      fullscreenRequired: true,
+      screenshots: true,
+      video: Boolean(recordingStateRef.current.videoBlob),
+    },
+    createdAt: new Date().toISOString(),
+    capability: capabilityRef.current,
+    events: replayEventsRef.current,
+    checkpoints: checkpointsRef.current,
+  });
+
+  const buildArtifactManifest = (): WebGlArtifactManifest => ({
+    version: 1,
+    flow: FLOW_NAME,
+    runId: runIdRef.current,
+    createdAt: new Date().toISOString(),
+    browser: {
+      name: "Chrome",
+      version: browserVersionFromUserAgent(navigator.userAgent),
+      userAgent: navigator.userAgent,
+      platform: navigator.platform ?? null,
+    },
+    renderer: {
+      webgl2: Boolean(glRef.current),
+      renderer: capabilityRef.current?.context.renderer ?? null,
+      vendor: capabilityRef.current?.context.vendor ?? null,
+    },
+    baseline: {
+      configured: Boolean(baselineManifestRef.current),
+      source: baselineManifestRef.current ? "in-memory-baseline-manifest" : null,
+    },
+    checkpoints: checkpointsRef.current,
+  });
+
+  const downloadReplayAndManifest = () => {
+    const replay = buildReplayDocument();
+    const manifest = buildArtifactManifest();
+    downloadTextFile(
+      `${FLOW_NAME}-replay.json`,
+      JSON.stringify(replay, null, 2),
+    );
+    downloadTextFile(
+      `${FLOW_NAME}-manifest.json`,
+      JSON.stringify(manifest, null, 2),
+    );
+    appendLog(`export replay ${replay.events.length} events / ${manifest.checkpoints.length} checkpoints`);
+  };
+
+  const captureCanvasBlob = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    await waitForAnimationFrame();
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve));
+  };
+
+  const captureCheckpoint = async (name: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const blob = await captureCanvasBlob();
+    if (!blob) return null;
+
+    const ordinal = checkpointsRef.current.length;
+    const screenshotFilename = makeArtifactFilename(ordinal, name, "png");
+    const stateFilename = makeStateFilename(ordinal, name);
+    const snapshot = await buildSceneSnapshot();
+    const statePayload = {
+      ...snapshot,
+      checkpoint: name,
+      ordinal,
+      screenshotFilename,
+    };
+    const stateHash = await hashJson(statePayload);
+    const baselineSource = baselineManifestRef.current?.screenshots[name]?.path ??
+      null;
+    const record: WebGlCheckpointRecord = {
+      name,
+      ordinal,
+      tick: snapshot.tick,
+      frame: snapshot.frame,
+      screenshotFilename,
+      stateFilename,
+      stateHash,
+      baselineConfigured: Boolean(baselineSource),
+      baselineSource,
+    };
+
+    checkpointsRef.current = [...checkpointsRef.current, record];
+    setCheckpointRecords(checkpointsRef.current);
+    screenshotArtifactsRef.current[screenshotFilename] = blob;
+    stateArtifactsRef.current[stateFilename] = createJsonBlob(statePayload);
+    downloadBlob(screenshotFilename, blob);
+    downloadTextFile(stateFilename, JSON.stringify(statePayload, null, 2));
+    pushReplayEvent({
+      type: "checkpoint",
+      tick: nextTick(),
+      name,
+      frame: snapshot.frame,
+      screenshotFilename,
+      stateFilename,
+      stateHash,
+      baselineConfigured: Boolean(baselineSource),
+    });
+    pushReplayEvent({
+      type: "screenshot",
+      tick: nextTick(),
+      filename: screenshotFilename,
+      bytes: blob.size,
+    });
+    appendLog(
+      `checkpoint ${name} -> ${screenshotFilename} (${blob.size} bytes)`,
+    );
+    if (baselineSource) {
+      appendLog(`baseline configured for ${name}: ${baselineSource}`);
+    }
+    return record;
+  };
+
+  const exportScreenshot = async (name: string) => {
+    const blob = await captureCanvasBlob();
+    if (!blob) return null;
+    const filename = makeArtifactFilename(checkpointsRef.current.length, name, "png");
+    downloadBlob(filename, blob);
+    appendLog(`screenshot ${filename} (${blob.size} bytes)`);
+    return blob;
+  };
+
+  const buildRecordingMimeType = () => {
+    const candidates = [
+      "video/webm;codecs=vp8,opus",
+      "video/webm;codecs=vp9,opus",
+      "video/webm",
+    ];
+    return candidates.find((candidate) =>
+      typeof MediaRecorder !== "undefined" &&
+      MediaRecorder.isTypeSupported(candidate)
+    ) ?? "video/webm";
+  };
+
+  const startRecording = async () => {
+    const canvas = canvasRef.current;
+    const recordCanvas = recordCanvasRef.current;
+    if (
+      !canvas || !recordCanvas || typeof recordCanvas.captureStream !== "function"
+    ) {
+      setVideoStatus("captureStream unavailable");
+      return;
+    }
+    if (recordingStateRef.current.recorder) {
+      return;
+    }
+
+    syncRecordingCanvasSize(canvas.width, canvas.height);
+    const mimeType = buildRecordingMimeType();
+    const stream = recordCanvas.captureStream(0);
+    const track = stream.getVideoTracks()[0] as
+      | (CanvasCaptureMediaStreamTrack & { requestFrame?: () => void })
+      | undefined;
+    recordingTrackRef.current = track ?? null;
+    const recorder = new MediaRecorder(stream, { mimeType });
+    recordingStateRef.current = {
+      recorder,
+      chunks: [],
+      mimeType,
+      videoBlob: null,
+    };
+    setVideoStatus(`recording ${mimeType}`);
+    pushReplayEvent({
+      type: "recording_started",
+      tick: nextTick(),
+      mimeType,
+    });
+    appendLog(`recording start ${mimeType}`);
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        recordingStateRef.current.chunks.push(event.data);
+      }
+    };
+
+    recorder.start();
+    requestRecordingFrame();
+  };
+
+  const stopRecording = async (): Promise<WebGlReplayBundle | null> => {
+    const recording = recordingStateRef.current.recorder;
+    if (!recording) return null;
+
+    const mimeType = recordingStateRef.current.mimeType ?? "video/webm";
+    requestRecordingFrame();
+    const blob = await new Promise<Blob | null>((resolve) => {
+      recording.onstop = () => {
+        const videoBlob = new Blob(recordingStateRef.current.chunks, {
+          type: mimeType,
+        });
+        recordingStateRef.current.videoBlob = videoBlob;
+        recordingStateRef.current.recorder = null;
+        recordingStateRef.current.chunks = [];
+        recordingTrackRef.current = null;
+        resolve(videoBlob);
+      };
+      recording.stop();
+    });
+
+    pushReplayEvent({
+      type: "recording_stopped",
+      tick: nextTick(),
+      filename: blob ? `${FLOW_NAME}-review.webm` : null,
+      bytes: blob?.size ?? null,
+    });
+    setVideoStatus(blob ? `video ready (${blob.size} bytes)` : "video stopped");
+    appendLog(blob ? `recording stop ${blob.size} bytes` : "recording stop");
+    return blob ? await exportBundle() : null;
+  };
+
+  const importReplayDocument = async (doc: ReplayDocument) => {
+    if (doc.version !== 1 || doc.flow !== FLOW_NAME) {
+      throw new Error("Unsupported replay document");
+    }
+
+    replayEventsRef.current = doc.events ?? [];
+    checkpointsRef.current = doc.checkpoints ?? [];
+    setReplayPreview(summarizeReplay(replayEventsRef.current));
+    setCheckpointRecords(checkpointsRef.current);
+    setImportedReplayInfo(
+      `${doc.createdAt} | ${replayEventsRef.current.length} events | ${checkpointsRef.current.length} checkpoints`,
+    );
+    setLogs(
+      replayEventsRef.current.slice(-10).map((entry, index) =>
+        `${String(index).padStart(3, "0")} ${JSON.stringify(entry)}`
+      ).reverse(),
+    );
+    appendLog(`imported replay ${doc.createdAt}`);
+  };
+
+  const exportBundle = async (): Promise<WebGlReplayBundle> => {
+    const replay = buildReplayDocument();
+    const manifest = buildArtifactManifest();
+    const screenshots = Object.entries(screenshotArtifactsRef.current).map(
+      ([filename, blob]) => ({ filename, blob }),
+    );
+    const states = Object.entries(stateArtifactsRef.current).map(
+      ([filename, blob]) => ({ filename, blob }),
+    );
+    const video = recordingStateRef.current.videoBlob;
+    const bundle: WebGlReplayBundle = {
+      replay,
+      manifest,
+      screenshots,
+      states,
+      video,
+    };
+
+    downloadTextFile(
+      `${FLOW_NAME}-replay.json`,
+      JSON.stringify(replay, null, 2),
+    );
+    downloadTextFile(
+      `${FLOW_NAME}-manifest.json`,
+      JSON.stringify(manifest, null, 2),
+    );
+    if (video) {
+      downloadBlob(`${FLOW_NAME}-review.webm`, video);
+    }
+    appendLog(
+      `export bundle replay=${replay.events.length} checkpoints=${manifest.checkpoints.length} screenshots=${screenshots.length} states=${states.length}`,
+    );
+    return bundle;
+  };
+
+  const exportBundleData = async (): Promise<WebGlExportBundleData> => {
+    const replay = buildReplayDocument();
+    const manifest = buildArtifactManifest();
+    const screenshots = await Promise.all(
+      Object.entries(screenshotArtifactsRef.current).map(async ([filename, blob]) => ({
+        filename,
+        dataUrl: await blobToDataUrl(blob),
+      })),
+    );
+    const states = await Promise.all(
+      Object.entries(stateArtifactsRef.current).map(async ([filename, blob]) => ({
+        filename,
+        dataUrl: await blobToDataUrl(blob),
+      })),
+    );
+
+    return {
+      replayJson: JSON.stringify(replay, null, 2),
+      manifestJson: JSON.stringify(manifest, null, 2),
+      frames: screenshots,
+      screenshots,
+      states,
+    };
+  };
+
+  const setBaselineManifest = (
+    manifest: WebGlScreenshotBaselineManifest | null,
+  ) => {
+    baselineManifestRef.current = manifest;
+    setBaselineConfigured(Boolean(manifest));
+    appendLog(manifest ? "baseline manifest configured" : "baseline manifest cleared");
+  };
+
+  const blobToDataUrl = (blob: Blob) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () =>
+        reject(reader.error ?? new Error("Failed to read blob"));
+      reader.readAsDataURL(blob);
+    });
+
+  const requestRecordingFrame = () => {
+    const track = recordingTrackRef.current;
+    if (track && typeof track.requestFrame === "function") {
+      track.requestFrame();
+    }
+  };
+
+  const syncRecordingCanvasSize = (width: number, height: number) => {
+    const recordCanvas = recordCanvasRef.current;
+    if (!recordCanvas) return;
+
+    if (recordCanvas.width !== width) recordCanvas.width = width;
+    if (recordCanvas.height !== height) recordCanvas.height = height;
+    const context = recordCanvas.getContext("2d", {
+      alpha: false,
+      desynchronized: true,
+      willReadFrequently: false,
+    });
+    recordingContextRef.current = context;
+    if (context) {
+      context.imageSmoothingEnabled = false;
+      context.fillStyle = "#000000";
+      context.fillRect(0, 0, width, height);
+    }
+  };
+
+  const setCamera = async (x: number, y: number, zoom = 1) => {
+    sceneStateRef.current = {
+      ...sceneStateRef.current,
+      camera: { x, y, zoom },
+    };
+    appendLog(`camera ${x.toFixed(1)},${y.toFixed(1)} z${zoom.toFixed(2)}`);
+    await waitForAnimationFrame();
+  };
 
   useEffect(() => {
-    const canvas = canvasRef.current;
     const host = hostRef.current;
-    if (!canvas || !host) return;
+    const canvas = canvasRef.current;
+    if (!host || !canvas) return;
 
     canvas.tabIndex = 0;
     canvas.style.touchAction = "none";
@@ -78,124 +953,595 @@ export default function WebGlGameCanvas() {
     }) as WebGL2RenderingContext | null;
 
     if (!gl) {
-      setStatus("webgl2 unavailable");
+      const fallbackContext = canvas.getContext("2d", {
+        alpha: false,
+        desynchronized: true,
+        willReadFrequently: false,
+      });
+      if (!fallbackContext) {
+        setStatus("canvas2d unavailable");
+        setCapability({
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+          devicePixelRatio: window.devicePixelRatio || 1,
+          innerSize: { width: window.innerWidth, height: window.innerHeight },
+          screenSize: {
+            width: window.screen.width,
+            height: window.screen.height,
+          },
+          maxTouchPoints: navigator.maxTouchPoints ?? null,
+          fullscreen: false,
+          canvasCssSize: { width: 0, height: 0 },
+          framebufferSize: { width: 0, height: 0 },
+          context: {
+            webgl2: false,
+            version: null,
+            shadingLanguageVersion: null,
+            renderer: null,
+            vendor: null,
+            maxTextureSize: null,
+            maxViewportDims: null,
+          },
+        });
+        return () => {};
+      }
+
+      fallbackContext.imageSmoothingEnabled = false;
+      setStatus("canvas2d fallback active");
       setCapability({
         userAgent: navigator.userAgent,
         platform: navigator.platform,
         hardwareConcurrency: navigator.hardwareConcurrency ?? null,
         devicePixelRatio: window.devicePixelRatio || 1,
         innerSize: { width: window.innerWidth, height: window.innerHeight },
-        screenSize: { width: window.screen.width, height: window.screen.height },
+        screenSize: {
+          width: window.screen.width,
+          height: window.screen.height,
+        },
         maxTouchPoints: navigator.maxTouchPoints ?? null,
-        fullscreen: document.fullscreenElement === canvas,
+        fullscreen: false,
         canvasCssSize: { width: 0, height: 0 },
         framebufferSize: { width: 0, height: 0 },
         context: {
           webgl2: false,
-          version: null,
+          version: "canvas2d-fallback",
           shadingLanguageVersion: null,
-          renderer: null,
+          renderer: "canvas2d-fallback",
           vendor: null,
           maxTextureSize: null,
           maxViewportDims: null,
         },
       });
-      return;
-    }
-
-    glRef.current = gl;
-    setStatus("webgl2 ready");
-
-    const emitLog = (text: string) => {
-      const id = logIdRef.current++;
-      setLogs((prev) => [{ id, text }, ...prev].slice(0, 8));
-    };
-
-    const updateCapability = () => {
-      const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
-      setCapability({
+      capabilityRef.current = {
         userAgent: navigator.userAgent,
         platform: navigator.platform,
         hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-        devicePixelRatio: dpr,
+        devicePixelRatio: window.devicePixelRatio || 1,
         innerSize: { width: window.innerWidth, height: window.innerHeight },
-        screenSize: { width: window.screen.width, height: window.screen.height },
-        maxTouchPoints: navigator.maxTouchPoints ?? null,
-        fullscreen: document.fullscreenElement === canvas,
-        canvasCssSize: { width: rect.width, height: rect.height },
-        framebufferSize: { width: canvas.width, height: canvas.height },
-        context: {
-          webgl2: true,
-          version: String(gl.getParameter(gl.VERSION)),
-          shadingLanguageVersion: String(
-            gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
-          ),
-          ...readGpuStrings(gl),
-          maxTextureSize: Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)),
-          maxViewportDims: [maxViewportDims[0], maxViewportDims[1]],
+        screenSize: {
+          width: window.screen.width,
+          height: window.screen.height,
         },
+        maxTouchPoints: navigator.maxTouchPoints ?? null,
+        fullscreen: false,
+        canvasCssSize: { width: 0, height: 0 },
+        framebufferSize: { width: 0, height: 0 },
+        context: {
+          webgl2: false,
+          version: "canvas2d-fallback",
+          shadingLanguageVersion: null,
+          renderer: "canvas2d-fallback",
+          vendor: null,
+          maxTextureSize: null,
+          maxViewportDims: null,
+        },
+      };
+
+      const fallbackImage = new Image();
+      fallbackImage.decoding = "async";
+
+      const drawFrame = () => {
+        frameRef.current += 1;
+        fallbackContext.fillStyle = "#14161c";
+        fallbackContext.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (sceneReadyRef.current) {
+          const image = fallbackImage.complete ? fallbackImage : null;
+          if (image) {
+            for (let row = 0; row < GRID_ROWS; row += 1) {
+              for (let column = 0; column < GRID_COLUMNS; column += 1) {
+                const x = GRID_OFFSET_X + column * GRID_SPACING_PX
+                  - sceneStateRef.current.camera.x
+                  + canvas.width * 0.5;
+                const y = GRID_OFFSET_Y + row * GRID_SPACING_PX
+                  - sceneStateRef.current.camera.y
+                  + canvas.height * 0.5;
+                fallbackContext.drawImage(
+                  image,
+                  x,
+                  y,
+                  GRID_SPACING_PX,
+                  GRID_SPACING_PX,
+                );
+              }
+            }
+          }
+        }
+
+        if (recordingStateRef.current.recorder && recordingContextRef.current) {
+          const recordCanvas = recordCanvasRef.current;
+          if (
+            recordCanvas && recordCanvas.width === canvas.width &&
+            recordCanvas.height === canvas.height
+          ) {
+            recordingContextRef.current.clearRect(
+              0,
+              0,
+              recordCanvas.width,
+              recordCanvas.height,
+            );
+            recordingContextRef.current.drawImage(canvas, 0, 0);
+            requestRecordingFrame();
+          }
+        }
+
+        rafRef.current = window.requestAnimationFrame(drawFrame);
+      };
+
+      const resizeCanvas = () => {
+        const rect = host.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.max(1, Math.round(rect.width * dpr));
+        const height = Math.max(1, Math.round(rect.height * dpr));
+
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+        syncRecordingCanvasSize(width, height);
+
+        fallbackContext.imageSmoothingEnabled = false;
+        setCapability({
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+          devicePixelRatio: dpr,
+          innerSize: { width: window.innerWidth, height: window.innerHeight },
+          screenSize: {
+            width: window.screen.width,
+            height: window.screen.height,
+          },
+          maxTouchPoints: navigator.maxTouchPoints ?? null,
+          fullscreen: document.fullscreenElement === host,
+          canvasCssSize: { width: rect.width, height: rect.height },
+          framebufferSize: { width, height },
+          context: {
+            webgl2: false,
+            version: "canvas2d-fallback",
+            shadingLanguageVersion: null,
+            renderer: "canvas2d-fallback",
+            vendor: null,
+            maxTextureSize: null,
+            maxViewportDims: null,
+          },
+        });
+        capabilityRef.current = {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+          devicePixelRatio: dpr,
+          innerSize: { width: window.innerWidth, height: window.innerHeight },
+          screenSize: {
+            width: window.screen.width,
+            height: window.screen.height,
+          },
+          maxTouchPoints: navigator.maxTouchPoints ?? null,
+          fullscreen: document.fullscreenElement === host,
+          canvasCssSize: { width: rect.width, height: rect.height },
+          framebufferSize: { width, height },
+          context: {
+            webgl2: false,
+            version: "canvas2d-fallback",
+            shadingLanguageVersion: null,
+            renderer: "canvas2d-fallback",
+            vendor: null,
+            maxTextureSize: null,
+            maxViewportDims: null,
+          },
+        };
+        syncSceneStateFromCapability(canvas, document.fullscreenElement);
+        pushReplayEvent({
+          type: "resize",
+          tick: nextTick(),
+          cssWidth: rect.width,
+          cssHeight: rect.height,
+          dpr,
+          framebufferWidth: width,
+          framebufferHeight: height,
+        });
+        appendLog(`resize ${Math.round(rect.width)}x${Math.round(rect.height)} @ ${dpr.toFixed(2)}x`);
+        drawFrame();
+      };
+
+      const loadRockTexture = async () => {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = TILE_TEXTURE_SRC;
+        await image.decode();
+        fallbackImage.src = TILE_TEXTURE_SRC;
+        pushReplayEvent({
+          type: "texture_loaded",
+          tick: nextTick(),
+          src: TILE_TEXTURE_SRC,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+        appendLog(`texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`);
+        setStatus("SingleRock texture ready");
+        sceneReadyRef.current = true;
+        sceneStateRef.current = {
+          ...sceneStateRef.current,
+          assetsLoaded: [...sceneStateRef.current.assetsLoaded, TILE_TEXTURE_SRC],
+          residentChunks: 1,
+          uiMode: "world",
+        };
+        drawFrame();
+      };
+
+      const handleFullscreenChange = () => {
+        const isFullscreen = document.fullscreenElement === host;
+        setFullscreen(isFullscreen);
+        sceneStateRef.current = {
+          ...sceneStateRef.current,
+          fullscreen: isFullscreen,
+        };
+        pushReplayEvent({
+          type: "fullscreen",
+          tick: nextTick(),
+          active: isFullscreen,
+        });
+        appendLog(isFullscreen ? "fullscreen enter" : "fullscreen exit");
+        resizeCanvas();
+      };
+
+      const handlePointerDown = () => {
+        canvas.focus();
+      };
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "F11") {
+          event.preventDefault();
+          if (document.fullscreenElement === host) {
+            void document.exitFullscreen();
+          } else {
+            void host.requestFullscreen();
+          }
+        }
+        if (event.key === "Escape" && document.fullscreenElement === host) {
+          event.preventDefault();
+          void document.exitFullscreen();
+        }
+      };
+
+      const resizeObserver = new ResizeObserver(() => resizeCanvas());
+      resizeObserver.observe(host);
+      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("keydown", handleKeyDown);
+      canvas.addEventListener("pointerdown", handlePointerDown);
+      document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+      const harness: WebGlTestHarness = {
+        loadFlow: async (flowName: string) => {
+          if (flowName !== FLOW_NAME) {
+            throw new Error(`Unsupported flow: ${flowName}`);
+          }
+          appendLog(`load flow ${flowName}`);
+        },
+        startRecording,
+        stopRecording,
+        captureCheckpoint,
+        setCamera,
+        exportReplay: buildReplayDocument,
+        exportReviewArtifacts: async () => {
+          downloadReplayAndManifest();
+          return "review artifacts queued";
+        },
+        exportBundle,
+        exportBundleData,
+        importReplay: importReplayDocument,
+        exportScreenshot,
+        exportVideo: async () => recordingStateRef.current.videoBlob,
+        setScreenshotBaselineManifest: setBaselineManifest,
+        getManifest: buildArtifactManifest,
+      };
+      window.__openDwarfWebGlHarness = harness;
+
+      resizeCanvas();
+      drawFrame();
+      pushReplayEvent({ type: "boot", tick: nextTick() });
+      appendLog("boot");
+      void loadRockTexture().catch((error) => {
+        setStatus(`texture load failed: ${String(error)}`);
+        appendLog(`texture load failed: ${String(error)}`);
       });
+
+      return () => {
+        resizeObserver.disconnect();
+        window.removeEventListener("resize", resizeCanvas);
+        window.removeEventListener("keydown", handleKeyDown);
+        canvas.removeEventListener("pointerdown", handlePointerDown);
+        document.removeEventListener("fullscreenchange", handleFullscreenChange);
+        if (window.__openDwarfWebGlHarness === harness) {
+          delete window.__openDwarfWebGlHarness;
+        }
+        if (rafRef.current !== null) {
+          window.cancelAnimationFrame(rafRef.current);
+        }
+      };
+    }
+
+    glRef.current = gl;
+
+    const vertexSource = `#version 300 es
+      precision highp float;
+      in vec2 a_position;
+      in vec2 a_uv;
+      in vec2 a_instance_offset;
+      in vec2 a_instance_size;
+      uniform vec2 u_canvas_size;
+      uniform vec2 u_camera;
+      out vec2 v_uv;
+
+      void main() {
+        vec2 world_px = a_instance_offset + a_position * a_instance_size;
+        vec2 screen_px = world_px - u_camera + u_canvas_size * 0.5;
+        vec2 ndc = (screen_px / u_canvas_size) * 2.0 - 1.0;
+        gl_Position = vec4(ndc * vec2(1.0, -1.0), 0.0, 1.0);
+        v_uv = a_uv;
+      }
+    `;
+
+    const fragmentSource = `#version 300 es
+      precision highp float;
+      uniform sampler2D u_texture;
+      in vec2 v_uv;
+      out vec4 out_color;
+
+      void main() {
+        out_color = texture(u_texture, v_uv);
+      }
+    `;
+
+    const program = createProgram(gl, vertexSource, fragmentSource);
+    programRef.current = program;
+
+    const vertexData = new Float32Array([
+      0, 0, 0, 0,
+      1, 0, 1, 0,
+      0, 1, 0, 1,
+      1, 1, 1, 1,
+    ]);
+    const instanceData = new Float32Array(GRID_COLUMNS * GRID_ROWS * 4);
+    let instanceOffset = 0;
+    for (let row = 0; row < GRID_ROWS; row += 1) {
+      for (let column = 0; column < GRID_COLUMNS; column += 1) {
+        instanceData[instanceOffset++] = GRID_OFFSET_X + column * GRID_SPACING_PX;
+        instanceData[instanceOffset++] = GRID_OFFSET_Y + row * GRID_SPACING_PX;
+        instanceData[instanceOffset++] = GRID_SPACING_PX;
+        instanceData[instanceOffset++] = GRID_SPACING_PX;
+      }
+    }
+
+    const vertexBuffer = gl.createBuffer();
+    if (!vertexBuffer) {
+      throw new Error("Failed to create vertex buffer");
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+    vertexBufferRef.current = vertexBuffer;
+
+    const instanceBuffer = gl.createBuffer();
+    if (!instanceBuffer) {
+      throw new Error("Failed to create instance buffer");
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.STATIC_DRAW);
+    instanceBufferRef.current = instanceBuffer;
+
+    gl.useProgram(program);
+    gl.clearColor(0.08, 0.09, 0.11, 1.0);
+
+    const positionLocation = gl.getAttribLocation(program, "a_position");
+    const uvLocation = gl.getAttribLocation(program, "a_uv");
+    const instanceOffsetLocation = gl.getAttribLocation(
+      program,
+      "a_instance_offset",
+    );
+    const instanceSizeLocation = gl.getAttribLocation(
+      program,
+      "a_instance_size",
+    );
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(uvLocation);
+    gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, 16, 8);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+    gl.enableVertexAttribArray(instanceOffsetLocation);
+    gl.vertexAttribPointer(instanceOffsetLocation, 2, gl.FLOAT, false, 16, 0);
+    gl.vertexAttribDivisor(instanceOffsetLocation, 1);
+    gl.enableVertexAttribArray(instanceSizeLocation);
+    gl.vertexAttribPointer(instanceSizeLocation, 2, gl.FLOAT, false, 16, 8);
+    gl.vertexAttribDivisor(instanceSizeLocation, 1);
+
+    const texture = gl.createTexture();
+    if (!texture) {
+      throw new Error("Failed to create texture");
+    }
+    textureRef.current = texture;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    const loadRockTexture = async () => {
+      const image = new Image();
+      image.decoding = "async";
+      image.src = TILE_TEXTURE_SRC;
+      await image.decode();
+
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      pushReplayEvent({
+        type: "texture_loaded",
+        tick: nextTick(),
+        src: TILE_TEXTURE_SRC,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+      appendLog(`texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`);
+      setStatus("SingleRock texture ready");
+      sceneReadyRef.current = true;
+      sceneStateRef.current = {
+        ...sceneStateRef.current,
+        assetsLoaded: [...sceneStateRef.current.assetsLoaded, TILE_TEXTURE_SRC],
+        residentChunks: 1,
+        uiMode: "world",
+      };
+      drawFrame();
     };
 
     const resizeCanvas = () => {
-      const rect = canvas.getBoundingClientRect();
+      const rect = host.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(rect.width * dpr));
       const height = Math.max(1, Math.round(rect.height * dpr));
 
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
+      syncRecordingCanvasSize(width, height);
 
       gl.viewport(0, 0, width, height);
-      updateCapability();
-      emitLog(`resize ${Math.round(rect.width)}x${Math.round(rect.height)} @ ${dpr.toFixed(2)}x`);
+      refreshCapability(gl, canvas, document.fullscreenElement);
+      syncSceneStateFromCapability(canvas, document.fullscreenElement);
+      pushReplayEvent({
+        type: "resize",
+        tick: nextTick(),
+        cssWidth: rect.width,
+        cssHeight: rect.height,
+        dpr,
+        framebufferWidth: width,
+        framebufferHeight: height,
+      });
+      appendLog(`resize ${Math.round(rect.width)}x${Math.round(rect.height)} @ ${dpr.toFixed(2)}x`);
+      drawFrame();
     };
 
     const drawFrame = () => {
+      if (!glRef.current || !programRef.current || !textureRef.current) {
+        rafRef.current = window.requestAnimationFrame(drawFrame);
+        return;
+      }
+
+      frameRef.current += 1;
+      gl.useProgram(programRef.current);
       gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.clearColor(0.1, 0.11, 0.13, 1.0);
       gl.clear(gl.COLOR_BUFFER_BIT);
+
+      const canvasSizeLocation = gl.getUniformLocation(
+        programRef.current,
+        "u_canvas_size",
+      );
+      const cameraLocation = gl.getUniformLocation(
+        programRef.current,
+        "u_camera",
+      );
+      if (canvasSizeLocation) {
+        gl.uniform2f(canvasSizeLocation, canvas.width, canvas.height);
+      }
+      if (cameraLocation) {
+        gl.uniform2f(
+          cameraLocation,
+          sceneStateRef.current.camera.x,
+          sceneStateRef.current.camera.y,
+        );
+      }
+
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, textureRef.current);
+      const textureLocation = gl.getUniformLocation(programRef.current, "u_texture");
+      if (textureLocation) {
+        gl.uniform1i(textureLocation, 0);
+      }
+
+      if (sceneReadyRef.current) {
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, GRID_COLUMNS * GRID_ROWS);
+      }
+
+      if (recordingStateRef.current.recorder && recordingContextRef.current) {
+        gl.flush();
+        const recordCanvas = recordCanvasRef.current;
+        if (
+          recordCanvas && recordCanvas.width === canvas.width &&
+          recordCanvas.height === canvas.height
+        ) {
+          recordingContextRef.current.clearRect(
+            0,
+            0,
+            recordCanvas.width,
+            recordCanvas.height,
+          );
+          recordingContextRef.current.drawImage(canvas, 0, 0);
+          requestRecordingFrame();
+        }
+      }
+
       rafRef.current = window.requestAnimationFrame(drawFrame);
     };
 
-    const enterFullscreen = async () => {
-      if (document.fullscreenElement === canvas) return;
-      await canvas.requestFullscreen();
-    };
-
-    const exitFullscreen = async () => {
-      if (document.fullscreenElement === canvas) {
-        await document.exitFullscreen();
-      }
-    };
-
     const handleFullscreenChange = () => {
-      const isFullscreen = document.fullscreenElement === canvas;
+      const isFullscreen = document.fullscreenElement === host;
       setFullscreen(isFullscreen);
-      emitLog(isFullscreen ? "fullscreen enter" : "fullscreen exit");
+      sceneStateRef.current = {
+        ...sceneStateRef.current,
+        fullscreen: isFullscreen,
+      };
+      pushReplayEvent({
+        type: "fullscreen",
+        tick: nextTick(),
+        active: isFullscreen,
+      });
+      appendLog(isFullscreen ? "fullscreen enter" : "fullscreen exit");
+      refreshCapability(gl, canvas, document.fullscreenElement);
+      syncSceneStateFromCapability(canvas, document.fullscreenElement);
       resizeCanvas();
+    };
+
+    const handlePointerDown = () => {
+      canvas.focus();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "F11") {
         event.preventDefault();
-        if (document.fullscreenElement === canvas) {
-          void exitFullscreen();
+        if (document.fullscreenElement === host) {
+          void document.exitFullscreen();
         } else {
-          void enterFullscreen();
+          void host.requestFullscreen();
         }
       }
-
-      if (event.key === "Escape" && document.fullscreenElement === canvas) {
+      if (event.key === "Escape" && document.fullscreenElement === host) {
         event.preventDefault();
-        void exitFullscreen();
+        void document.exitFullscreen();
       }
-    };
-
-    const handlePointerDown = () => {
-      canvas.focus();
     };
 
     const resizeObserver = new ResizeObserver(() => resizeCanvas());
@@ -205,9 +1551,40 @@ export default function WebGlGameCanvas() {
     canvas.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
+    const harness: WebGlTestHarness = {
+      loadFlow: async (flowName: string) => {
+        if (flowName !== FLOW_NAME) {
+          throw new Error(`Unsupported flow: ${flowName}`);
+        }
+        appendLog(`load flow ${flowName}`);
+      },
+      startRecording,
+      stopRecording,
+      captureCheckpoint,
+      setCamera,
+      exportReplay: buildReplayDocument,
+      exportReviewArtifacts: async () => {
+        downloadReplayAndManifest();
+        return "review artifacts queued";
+      },
+      exportBundle,
+      exportBundleData,
+      importReplay: importReplayDocument,
+      exportScreenshot,
+      exportVideo: async () => recordingStateRef.current.videoBlob,
+      setScreenshotBaselineManifest: setBaselineManifest,
+      getManifest: buildArtifactManifest,
+    };
+    window.__openDwarfWebGlHarness = harness;
+
     resizeCanvas();
     drawFrame();
-    emitLog("webgl2 boot");
+    pushReplayEvent({ type: "boot", tick: nextTick() });
+    appendLog("boot");
+    void loadRockTexture().catch((error) => {
+      setStatus(`texture load failed: ${String(error)}`);
+      appendLog(`texture load failed: ${String(error)}`);
+    });
 
     return () => {
       resizeObserver.disconnect();
@@ -215,38 +1592,117 @@ export default function WebGlGameCanvas() {
       window.removeEventListener("keydown", handleKeyDown);
       canvas.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      if (window.__openDwarfWebGlHarness === harness) {
+        delete window.__openDwarfWebGlHarness;
+      }
+      recordingStateRef.current.recorder = null;
+      recordingStateRef.current.chunks = [];
+      recordingStateRef.current.mimeType = null;
+      recordingTrackRef.current = null;
       if (rafRef.current !== null) {
         window.cancelAnimationFrame(rafRef.current);
       }
       glRef.current = null;
+      programRef.current = null;
+      textureRef.current = null;
+      instanceBufferRef.current = null;
+      vertexBufferRef.current = null;
+      sceneReadyRef.current = false;
     };
   }, []);
+
+  const openImportDialog = () => fileInputRef.current?.click();
+
+  const handleReplayFileInputChange = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as ReplayDocument;
+      if (
+        parsed.version !== 1 || parsed.flow !== FLOW_NAME ||
+        parsed.scene !== FLOW_NAME
+      ) {
+        throw new Error("Unsupported replay document");
+      }
+
+      await importReplayDocument(parsed);
+    } catch (error) {
+      setImportedReplayInfo(
+        `import failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      if (input) input.value = "";
+      }
+    };
+
+  const handleCaptureCheckpoint = async () => {
+    await captureCheckpoint(
+      sceneReadyRef.current ? "single_rock_loaded" : "boot",
+    );
+  };
+
+  const handleExportReplay = () => {
+    downloadReplayAndManifest();
+  };
+
+  const handleExportBundle = async () => {
+    await exportBundle();
+  };
+
+  const handleStartRecording = async () => {
+    await startRecording();
+  };
+
+  const handleStopRecording = async () => {
+    await stopRecording();
+  };
 
   return (
     <div
       ref={hostRef}
-      class="relative overflow-hidden rounded-[18px] border border-white/10 bg-[#0e1015] shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+      class="webgl-experiment-shell relative overflow-hidden rounded-[18px] border border-white/10 bg-[#0e1015] shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
     >
       <style>
         {`
+          .webgl-experiment-shell:fullscreen {
+            width: 100vw;
+            height: 100vh;
+            border-radius: 0;
+          }
+
+          .webgl-experiment-shell:fullscreen .webgl-experiment-canvas {
+            width: 100vw;
+            height: 100vh;
+            border-radius: 0;
+          }
+
           .webgl-experiment-canvas {
             display: block;
             width: 100%;
             height: 74vh;
             outline: none;
           }
-
-          .webgl-experiment-canvas:fullscreen {
-            width: 100vw;
-            height: 100vh;
-            border-radius: 0;
-          }
         `}
       </style>
-      <div class="absolute left-4 top-4 z-10 max-w-[min(28rem,calc(100%-2rem))] rounded-2xl border border-amber-200/15 bg-black/55 px-4 py-3 text-xs text-amber-50/90 backdrop-blur">
-        <div class="flex items-center gap-3">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        class="hidden"
+        onChange={handleReplayFileInputChange}
+      />
+      <canvas
+        ref={recordCanvasRef}
+        aria-hidden="true"
+        class="pointer-events-none absolute left-[-10000px] top-0 h-px w-px opacity-0"
+      />
+      <div class="absolute left-4 top-4 z-10 max-w-[min(31rem,calc(100%-2rem))] rounded-2xl border border-amber-200/15 bg-black/55 px-4 py-3 text-xs text-amber-50/90 backdrop-blur">
+        <div class="flex flex-wrap items-center gap-3">
           <span class="rounded-full bg-amber-300/20 px-2 py-1 font-semibold uppercase tracking-[0.18em] text-amber-100">
-            WebGL Step 0
+            Step 1 Single Rock
           </span>
           <span class="text-white/70">{status}</span>
         </div>
@@ -257,8 +1713,9 @@ export default function WebGlGameCanvas() {
             {capability?.framebufferSize.height ?? 0}
           </div>
           <div>
-            dpr: {capability?.devicePixelRatio.toFixed(2) ?? "0.00"} browser:{" "}
-            {capability?.userAgent ?? "n/a"}
+            css size: {capability?.canvasCssSize.width.toFixed(0) ?? "0"} x{" "}
+            {capability?.canvasCssSize.height.toFixed(0) ?? "0"} dpr:{" "}
+            {capability?.devicePixelRatio.toFixed(2) ?? "0.00"}
           </div>
           <div>
             renderer: {capability?.context.renderer ?? "n/a"} / vendor:{" "}
@@ -267,15 +1724,26 @@ export default function WebGlGameCanvas() {
           <div>
             max texture size: {capability?.context.maxTextureSize ?? "n/a"}
           </div>
+          <div>
+            replay events: {replayPreview.eventCount} | textures:{" "}
+            {replayPreview.textureCount} | screenshots:{" "}
+            {replayPreview.screenshotCount} | checkpoints:{" "}
+            {replayPreview.checkpointCount}
+          </div>
+          <div>baseline manifest: {baselineConfigured ? "configured" : "unset"}</div>
+          <div>video: {videoStatus}</div>
+          <div>
+            import: {importedReplayInfo ?? "none"}
+          </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             class="rounded-md border border-amber-100/15 bg-amber-50/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-50 transition hover:bg-amber-50/15"
             onClick={() => {
-              const canvas = canvasRef.current;
-              if (!canvas) return;
-              void canvas.requestFullscreen();
+              const host = hostRef.current;
+              if (!host) return;
+              void host.requestFullscreen();
             }}
           >
             Enter Fullscreen
@@ -287,20 +1755,78 @@ export default function WebGlGameCanvas() {
           >
             Focus Canvas
           </button>
+          <button
+            type="button"
+            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
+            onClick={handleCaptureCheckpoint}
+          >
+            Capture Checkpoint
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
+            onClick={handleExportReplay}
+          >
+            Export Replay JSON
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
+            onClick={handleExportBundle}
+          >
+            Export Bundle
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
+            onClick={handleStartRecording}
+          >
+            Start Video
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
+            onClick={handleStopRecording}
+          >
+            Stop Video
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
+            onClick={openImportDialog}
+          >
+            Import Replay JSON
+          </button>
         </div>
       </div>
       <canvas
         ref={canvasRef}
         class="webgl-experiment-canvas"
       />
-      <div class="pointer-events-none absolute bottom-4 right-4 w-[min(24rem,calc(100%-2rem))] rounded-2xl border border-white/10 bg-black/45 px-4 py-3 text-[11px] text-white/80 backdrop-blur">
+      <div class="pointer-events-none absolute bottom-4 right-4 w-[min(28rem,calc(100%-2rem))] rounded-2xl border border-white/10 bg-black/45 px-4 py-3 text-[11px] text-white/80 backdrop-blur">
         <div class="font-semibold uppercase tracking-[0.16em] text-white/55">
           Event Log
         </div>
-        <div class="mt-2 space-y-1 font-mono leading-5">
+        <div class="mt-2 max-h-40 space-y-1 overflow-hidden font-mono leading-5">
           {logs.length === 0
             ? <div class="text-white/45">waiting for resize or fullscreen...</div>
-            : logs.map((entry) => <div key={entry.id}>{entry.text}</div>)}
+            : logs.map((entry) => <div key={entry}>{entry}</div>)}
+        </div>
+      </div>
+      <div class="pointer-events-none absolute bottom-4 left-4 w-[min(27rem,calc(100%-2rem))] rounded-2xl border border-emerald-200/10 bg-black/45 px-4 py-3 text-[11px] text-white/80 backdrop-blur">
+        <div class="font-semibold uppercase tracking-[0.16em] text-white/55">
+          Checkpoints
+        </div>
+        <div class="mt-2 max-h-40 space-y-1 overflow-hidden font-mono leading-5">
+          {checkpointRecords.length === 0
+            ? <div class="text-white/45">no checkpoints captured yet</div>
+            : checkpointRecords.slice().reverse().map((entry) => (
+              <div key={`${entry.ordinal}:${entry.name}`}>
+                {String(entry.ordinal).padStart(3, "0")} {entry.name} |{" "}
+                {entry.screenshotFilename} | baseline:{" "}
+                {entry.baselineConfigured ? "yes" : "no"}
+              </div>
+            ))}
         </div>
       </div>
     </div>

@@ -687,6 +687,13 @@ Pass criteria:
 
 ## Test Harness Requirements
 
+The artifact format and run lifecycle are defined in
+[WEBGL_TEST_ARTIFACT_SPEC.md](/home/josh/Projects/OpenDwarf/docs/WEBGL_TEST_ARTIFACT_SPEC.md).
+Screenshot baselines are optional for now; CI can supply a baseline manifest
+later without changing the step1 harness contract.
+The review flow is frame-dump based: screenshots at semantic checkpoints are
+the canonical review frames, and any stitched video is optional.
+
 Add a debug overlay from the first working route:
 
 - seed
@@ -718,6 +725,7 @@ Add replay controls:
 - capture screenshot baseline
 - compare screenshot against baseline
 - export compact binary payloads later for high-volume chunk/replay data
+- export a deterministic frame-dump review bundle for `step1-single-rock-review`
 
 ## Deferred Decisions
 
@@ -732,21 +740,18 @@ Add replay controls:
 
 ## First Concrete Experiment
 
-Build Step 0 through Step 3 as one narrow vertical slice:
+Build Step 1 as one narrow vertical slice:
 
 ```text
 open /webgl
 load SingleRock.png
-seed deterministic rock chunks
-render visible chunk floor layers
-move camera pixel-smoothly with keyboard
-enter fullscreen for primary input test
-resize browser
-show exact AABB and chunk window overlay
-record and replay the camera movement
-capture screenshot baseline
+capture semantic checkpoints
+export replay JSON + manifest JSON
+emit frame-dump PNGs for review
+keep screenshot baselines optional for CI
 ```
 
-This answers the most important near-term question: can the new renderer stream
-and draw rock tiles accurately and responsively from the actual browser visual
-window?
+This answers the most important near-term question: can the new renderer
+display the single-rock smoke test, capture deterministic artifacts, and keep
+the artifact contract readable enough for CI to adopt later without rewriting
+the flow?
