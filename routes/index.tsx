@@ -26,6 +26,12 @@ export default function Home({ url }: PageProps) {
         />
         <div class="flex flex-wrap justify-center items-center gap-6 pt-3">
           <FullscreenButton />
+          <a
+            href="/webgl"
+            class="inline-flex items-center gap-2 bg-white/5 px-3 py-1 text-sm font-medium uppercase tracking-[0.18em] text-white/80 transition hover:bg-white/10 hover:text-white"
+          >
+            WebGL Experiment
+          </a>
           <MultiplayerSidebar />
         </div>
       </div>

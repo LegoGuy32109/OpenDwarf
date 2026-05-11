@@ -8,10 +8,12 @@ import * as $api_joke from "./routes/api/joke.ts";
 import * as $game from "./routes/game.ts";
 import * as $greet_name_ from "./routes/greet/[name].tsx";
 import * as $index from "./routes/index.tsx";
+import * as $webgl from "./routes/webgl.tsx";
 import * as $Counter from "./islands/Counter.tsx";
 import * as $FullscreenButton from "./islands/FullscreenButton.tsx";
 import * as $GameCanvas from "./islands/GameCanvas.tsx";
 import * as $MultiplayerSidebar from "./islands/MultiplayerSidebar.tsx";
+import * as $WebGlGameCanvas from "./islands/WebGlGameCanvas.tsx";
 import type { Manifest } from "$fresh/server.ts";
 
 const manifest = {
@@ -22,12 +24,14 @@ const manifest = {
     "./routes/game.ts": $game,
     "./routes/greet/[name].tsx": $greet_name_,
     "./routes/index.tsx": $index,
+    "./routes/webgl.tsx": $webgl,
   },
   islands: {
     "./islands/Counter.tsx": $Counter,
     "./islands/FullscreenButton.tsx": $FullscreenButton,
     "./islands/GameCanvas.tsx": $GameCanvas,
     "./islands/MultiplayerSidebar.tsx": $MultiplayerSidebar,
+    "./islands/WebGlGameCanvas.tsx": $WebGlGameCanvas,
   },
   baseUrl: import.meta.url,
 } satisfies Manifest;
