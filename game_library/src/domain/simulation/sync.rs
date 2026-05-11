@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use super::coords::render_movement_state;
 use super::{
-    FogData, ReplayMode, RenderEntityData, RenderEntityState, TerrainConfig, TileLayerDebugState,
-    TerrainData,
+    FogData, ReplayMode, RenderEntityData, RenderEntityState, TerrainConfig, TileDataCache,
+    TileLayerDebugState, TerrainData,
 };
 use crate::resources::render_viewport::RenderViewport;
 use crate::resources::view_mode::ViewMode;
@@ -25,6 +25,7 @@ pub fn sync_render_world_from_snapshot(
     mut entity_data: ResMut<RenderEntityData>,
     mut fog_data: ResMut<FogData>,
     mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
+    mut tile_cache: ResMut<TileDataCache>,
 ) {
     if replay_mode.active {
         return;
@@ -53,6 +54,7 @@ pub fn sync_render_world_from_snapshot(
         &viewport,
         &tile_layer_debug_state,
         &mut invalidation,
+        &mut tile_cache,
     );
 }
 
@@ -88,6 +90,7 @@ pub(super) fn apply_snapshot(
     viewport: &crate::resources::render_viewport::RenderViewport,
     tile_layer_debug_state: &TileLayerDebugState,
     invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
+    tile_cache: &mut TileDataCache,
 ) {
     let terrain_changed = config.chunk_edge != snapshot.chunk_edge
         || config.world_chunks != snapshot.world_chunks
@@ -142,6 +145,7 @@ pub(super) fn apply_snapshot(
                 // Positions no longer visible or remembered: remove from render blocks.
                 for p in prev_all.difference(&new_all).copied() {
                     terrain.blocks.remove(&p);
+                    tile_cache.invalidate_block(p, config.chunk_edge);
                     invalidation.mark_block_change(
                         p,
                         config.chunk_edge,
@@ -169,6 +173,7 @@ pub(super) fn apply_snapshot(
                         || terrain.blocks.get(p).copied() != Some(expected)
                     {
                         terrain.blocks.insert(*p, expected);
+                        tile_cache.invalidate_block(*p, config.chunk_edge);
                         invalidation.mark_block_change(
                             *p,
                             config.chunk_edge,
@@ -178,20 +183,17 @@ pub(super) fn apply_snapshot(
                     }
                 }
 
-                // Fog overlay depends on visibility state, not just terrain block contents.
-                // Mark positions that changed between visible, remembered, and unknown.
+                // Fog overlay depends on visibility state, not block geometry.
+                // Only mark FogShadow — Floor/EdgeShadow/CeilingShadow are pure geometry
+                // and do not change when visibility transitions between visible/remembered/unknown.
                 for p in all_visibility_positions {
                     let was_visible = prev_visible.contains(&p);
                     let is_visible = new_visible.contains(&p);
                     let prev_memory_tile = prev_memory.get(&p);
                     let new_memory_tile = new_memory.get(&p);
                     if was_visible != is_visible || prev_memory_tile != new_memory_tile {
-                        invalidation.mark_block_change(
-                            p,
-                            config.chunk_edge,
-                            view_mode,
-                            tile_layer_debug_state,
-                        );
+                        tile_cache.invalidate_fog(p, config.chunk_edge);
+                        invalidation.mark_fog_change(p, config.chunk_edge);
                     }
                 }
             }
@@ -223,6 +225,7 @@ pub(super) fn apply_update(
     viewport: &crate::resources::render_viewport::RenderViewport,
     tile_layer_debug_state: &crate::domain::simulation::TileLayerDebugState,
     invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
+    tile_cache: &mut TileDataCache,
 ) {
     match update {
         WorldUpdate::Snapshot(snapshot) => apply_snapshot(
@@ -236,6 +239,7 @@ pub(super) fn apply_update(
             viewport,
             tile_layer_debug_state,
             invalidation,
+            tile_cache,
         ),
         WorldUpdate::Delta(delta) => {
             entities.tick = delta.tick;
@@ -266,6 +270,7 @@ pub(super) fn apply_update(
                         terrain.blocks.remove(&change.position);
                     }
                 }
+                tile_cache.invalidate_block(change.position, config.chunk_edge);
                 invalidation.mark_block_change(
                     change.position,
                     config.chunk_edge,

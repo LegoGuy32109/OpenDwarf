@@ -5,7 +5,7 @@ use super::coords::{
     world_to_pixel_translation_f32,
 };
 use super::{
-    ChunkBorderDebugState, RenderEntityData, TerrainData, Z_LEVELS_BELOW_RENDERED,
+    ChunkBorderDebugState, RenderEntityData, TerrainConfig, TerrainData,
 };
 use crate::domain::visuals::{Player, PlayerRenderTarget, TilemapAssets};
 use crate::resources::view_mode::ViewMode;
@@ -53,6 +53,7 @@ pub fn draw_entity_occupancy_boxes(
 
 pub fn project_world_entities_to_sprites(
     terrain: Res<TerrainData>,
+    config: Res<TerrainConfig>,
     mut entity_data: ResMut<RenderEntityData>,
     primary_entity_id: Res<PrimarySimulationEntityId>,
     view_mode: Res<ViewMode>,
@@ -94,7 +95,7 @@ pub fn project_world_entities_to_sprites(
 
         // Below the camera plane is bounded by the depth stack; above is unbounded
         // because the player is looking down through clear air.
-        let in_z_range = z_offset >= -Z_LEVELS_BELOW_RENDERED;
+        let in_z_range = z_offset >= -config.z_levels_below_rendered;
         let occluded = if z_offset != 0 {
             let (lo, hi) = if z_offset < 0 {
                 // Entity below view: check column from entity+1 up to view_z (inclusive).

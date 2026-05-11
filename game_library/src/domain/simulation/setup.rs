@@ -3,19 +3,28 @@ use bevy::prelude::*;
 use crate::domain::simulation::RenderEntityData;
 use super::{
     ChunkBorderDebugState, ChunkStreamingState, FogData, HeldMovementState, ReplayHudState,
-    ReplayMode, TerrainConfig, TerrainData, TileLayerDebugState, TilemapRenderMetrics,
+    ReplayMode, TerrainConfig, TerrainData, TileDataCache, TileLayerDebugState,
+    TilemapRenderMetrics,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use super::replay::{apply_first_checkpoint, try_load_replay_playback};
 
 pub fn setup_simulation_state(mut commands: Commands) {
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
     let mut replay_mode = ReplayMode::default();
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
     let mut config = TerrainConfig::default();
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
     let mut terrain = TerrainData::default();
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
     let mut entities = RenderEntityData::default();
     let viewport = crate::resources::render_viewport::RenderViewport::default();
     let tile_layer_debug_state = TileLayerDebugState::default();
     let mut invalidation = crate::domain::tilemap_invalidation::TilemapInvalidation::default();
     invalidation.invalidate_view(); // Trigger full rebuild on first frame
+
+    #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
+    let mut tile_cache_setup = TileDataCache::default();
 
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(mut replay_playback) = try_load_replay_playback() {
@@ -29,6 +38,7 @@ pub fn setup_simulation_state(mut commands: Commands) {
             &viewport,
             &tile_layer_debug_state,
             &mut invalidation,
+            &mut tile_cache_setup,
         ) {
             warn!("Replay did not contain any checkpoint/snapshot data");
         }
@@ -60,4 +70,5 @@ pub fn setup_simulation_state(mut commands: Commands) {
     commands.insert_resource(TilemapRenderMetrics::default());
     commands.insert_resource(viewport);
     commands.insert_resource(invalidation);
+    commands.insert_resource(tile_cache_setup);
 }

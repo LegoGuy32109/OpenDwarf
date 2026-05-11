@@ -47,7 +47,7 @@ pub fn draw_depth_labels(
     }
 
     // Determine z-levels to render (same as tints)
-    let z_levels_to_render = z_levels_to_render(view_z.current);
+    let z_levels_to_render = z_levels_to_render(view_z.current, config.z_levels_below_rendered);
     let entity_mode = *view_mode == ViewMode::Entity;
     let render_blocks = if entity_mode {
         &terrain.blocks

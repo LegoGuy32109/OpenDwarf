@@ -20,10 +20,11 @@ use crate::domain::messaging::webrtc::MultiplayerController;
 use simulation::drive_replay_playback;
 use simulation::{
     draw_chunk_borders, draw_depth_labels, draw_entity_occupancy_boxes, follow_player_camera,
-    manage_tilemap_chunk_lifecycle, project_world_entities_to_sprites, project_world_to_tilemap,
-    queue_world_commands_from_input, setup_simulation_state, smooth_player_render_transform,
-    stream_chunks_around_player, sync_camera_z_to_player, sync_render_world_from_snapshot,
-    sync_viewport_to_invalidation, toggle_chunk_borders, toggle_tile_layers, update_view_z_level,
+    manage_tilemap_chunk_lifecycle, pre_build_adjacent_z_levels,
+    project_world_entities_to_sprites, project_world_to_tilemap, queue_world_commands_from_input,
+    setup_simulation_state, smooth_player_render_transform, stream_chunks_around_player,
+    sync_camera_z_to_player, sync_render_world_from_snapshot, sync_viewport_to_invalidation,
+    toggle_chunk_borders, toggle_tile_layers, update_view_z_level,
 };
 use visuals::chat_bubbles::ChatBubblePlugin;
 use visuals::debug_menu::{debug_menu, replay_debug_overlay};
@@ -117,6 +118,9 @@ impl Plugin for OpenDwarfPlugins {
                     sync_viewport_to_invalidation.after(update_render_viewport),
                     manage_tilemap_chunk_lifecycle.in_set(SimulationSet::TilemapLifecycle),
                     project_world_to_tilemap.in_set(SimulationSet::TilemapBuild),
+                    pre_build_adjacent_z_levels
+                        .in_set(SimulationSet::TilemapBuild)
+                        .after(project_world_to_tilemap),
                     (draw_depth_labels, draw_chunk_borders).in_set(SimulationSet::DebugDraw),
                     smooth_player_render_transform.in_set(SimulationSet::CameraAndEntities),
                     follow_player_camera.in_set(SimulationSet::CameraAndEntities),

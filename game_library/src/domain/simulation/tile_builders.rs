@@ -13,224 +13,219 @@ pub(super) fn stone_tile_index() -> u16 {
     5
 }
 
-pub(super) fn build_chunk_tile_data(
+// ─── Geometry-cache helpers ────────────────────────────────────────────────
+// These separate "build geometry indices" from "apply color at read time".
+// The geometry (which tiles are solid + atlas index) is static while the world
+// is static. Tint/fog color is applied from the cache at read time so view_z
+// changes never require a full geometry rebuild.
+
+/// Returns floor geometry (tileset indices) without tint — suitable for caching.
+pub(super) fn build_floor_geometry(
     chunk_xy: IVec2,
     world_z: i32,
-    view_z: i32,
     chunk_edge: u32,
-    blocks: &HashMap<Vec3i, BlockType>,
+    topmost_cache: &HashMap<(i32, i32), Option<i32>>,
+) -> Vec<Option<u16>> {
+    let tile_count = chunk_edge
+        .checked_mul(chunk_edge)
+        .expect("chunk tile count overflowed") as usize;
+    let mut geom = vec![None; tile_count];
+    let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
+    for local_y in 0..chunk_edge {
+        for local_x in 0..chunk_edge {
+            let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
+            if topmost_from_cache(wp.x, wp.y, topmost_cache) == Some(world_z) {
+                geom[chunk_local_tile_index(local_x, local_y, chunk_edge)] = Some(stone_tile_index());
+            }
+        }
+    }
+    geom
+}
+
+/// Applies depth tint to cached floor geometry indices at read time.
+pub(super) fn floor_tile_data_from_geometry(
+    geometry: &[Option<u16>],
     z_offset: i32,
     apply_depth_tint: bool,
 ) -> Vec<Option<TileData>> {
-    let tile_count = chunk_edge
-        .checked_mul(chunk_edge)
-        .expect("chunk tile count overflowed");
-    let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
-
-    let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
-
-    for local_y in 0..chunk_edge {
-        for local_x in 0..chunk_edge {
-            let world_position =
-                world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
-            let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
-
-            // Column-aware: only render the topmost solid in each xy column.
-            // Tiles below an opaque upper tile are occluded.
-            if topmost_solid_z_in_column(world_position.x, world_position.y, view_z, blocks, false)
-                == Some(world_z)
-            {
-                let mut td = TileData::from_tileset_index(stone_tile_index());
+    geometry
+        .iter()
+        .map(|opt| {
+            opt.map(|idx| {
+                let mut td = TileData::from_tileset_index(idx);
                 td.color = if apply_depth_tint {
                     get_depth_tint_tile_color(z_offset)
                 } else {
                     Color::WHITE
                 };
-                tile_data[index_in_slice] = Some(td);
-            }
-        }
-    }
-
-    tile_data
+                td
+            })
+        })
+        .collect()
 }
 
-/// Dual-grid terrain edge shadow. Rendered offset by half a tile (+32, +32 px).
-/// For each dual-grid cell (lx, ly), samples whether each of the 4 surrounding
-/// world tiles at the same z is solid, building a 4-bit corner mask:
-///
-///   C = (wx,   wy+1)  |  D = (wx+1, wy+1)     bit 2 | bit 3
-///   ------------------+------------------      ------+------
-///   A = (wx,   wy  )  |  B = (wx+1, wy  )     bit 0 | bit 1
-///
-/// Mask 0 (all air) and mask 15 (all solid) produce no tile.
-/// Masks 1-14 -> atlas frame index (mask - 1).
-pub(super) fn build_edge_shadow_tile_data(
+/// Returns edge shadow geometry (atlas indices) for caching.
+pub(super) fn build_edge_shadow_geometry(
     chunk_xy: IVec2,
     world_z: i32,
-    view_z: i32,
     chunk_edge: u32,
-    blocks: &HashMap<Vec3i, BlockType>,
-    unknown_is_solid: bool,
-) -> Vec<Option<TileData>> {
+    topmost_cache: &HashMap<(i32, i32), Option<i32>>,
+) -> Vec<Option<u16>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
-        .expect("chunk tile count overflowed");
-    let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
-
+        .expect("chunk tile count overflowed") as usize;
+    let mut geom = vec![None; tile_count];
     let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
-
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
-            let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
-
-            // Column-aware: a corner contributes to the edge mask only if it's the
-            // topmost solid in its column (otherwise it's occluded and not rendered).
+            let idx = chunk_local_tile_index(local_x, local_y, chunk_edge);
             let is_solid = |dx: i32, dy: i32| -> bool {
-                topmost_solid_z_in_column(wp.x + dx, wp.y + dy, view_z, blocks, unknown_is_solid)
-                    == Some(world_z)
+                topmost_from_cache(wp.x + dx, wp.y + dy, topmost_cache) == Some(world_z)
             };
-
             let mut mask: u8 = 0;
-            if is_solid(0, 0) {
-                mask |= 1;
-            } // A: bottom-left
-            if is_solid(1, 0) {
-                mask |= 2;
-            } // B: bottom-right
-            if is_solid(0, 1) {
-                mask |= 4;
-            } // C: top-left
-            if is_solid(1, 1) {
-                mask |= 8;
-            } // D: top-right
-
+            if is_solid(0, 0) { mask |= 1; }
+            if is_solid(1, 0) { mask |= 2; }
+            if is_solid(0, 1) { mask |= 4; }
+            if is_solid(1, 1) { mask |= 8; }
             if mask > 0 && mask < 15 {
-                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
+                geom[idx] = Some((mask - 1) as u16);
             }
         }
     }
-
-    tile_data
+    geom
 }
 
-/// Builds the dual-grid ceiling shadow tile data for one chunk at `world_z`.
-///
-/// The resulting tilemap is rendered offset by half a tile (+tile_size/2 in x and y)
-/// relative to the regular floor chunks, so each shadow tile sits at the corner between
-/// four regular tiles. For shadow tile at chunk-local (lx, ly), the 4-bit mask samples
-/// whether the block ONE LEVEL ABOVE (world_z + 1) is solid at each of the four surrounding
-/// world positions:
-///
-///   C = (wx,   wy+1)  |  D = (wx+1, wy+1)     bit 2 | bit 3
-///   ──────────────────+──────────────────      ──────+──────
-///   A = (wx,   wy  )  |  B = (wx+1, wy  )     bit 0 | bit 1
-///
-/// Mask 0 → no ceiling tile. Masks 1–15 → atlas frame index (mask - 1).
-pub(super) fn build_ceiling_shadow_tile_data(
+/// Returns ceiling shadow geometry (atlas indices) for caching.
+pub(super) fn build_ceiling_shadow_geometry(
     chunk_xy: IVec2,
     world_z: i32,
-    view_z: i32,
     chunk_edge: u32,
     blocks: &HashMap<Vec3i, BlockType>,
     unknown_is_solid: bool,
-) -> Vec<Option<TileData>> {
+    topmost_cache: &HashMap<(i32, i32), Option<i32>>,
+) -> Vec<Option<u16>> {
     let tile_count = chunk_edge
         .checked_mul(chunk_edge)
-        .expect("chunk tile count overflowed");
-    let mut tile_data = vec![None; usize::try_from(tile_count).expect("tile count too large")];
-
+        .expect("chunk tile count overflowed") as usize;
+    let mut geom = vec![None; tile_count];
     let chunk_coord = Vec3i::new(chunk_xy.x, chunk_xy.y, 0);
-
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
-            let index_in_slice = chunk_local_tile_index(local_x, local_y, chunk_edge);
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
-
+            let idx = chunk_local_tile_index(local_x, local_y, chunk_edge);
             let mut mask: u8 = 0;
-
-            // Column-aware: a corner draws the ceiling only where (a) world_z is the
-            // topmost-solid in its column (the actual visible floor) and (b) world_z+1
-            // above is solid (something is overhanging it).
             let check_corner = |dx: i32, dy: i32| -> bool {
                 let cx = wp.x + dx;
                 let cy = wp.y + dy;
                 let above = Vec3i::new(cx, cy, world_z + 1);
-                topmost_solid_z_in_column(cx, cy, view_z, blocks, unknown_is_solid) == Some(world_z)
+                topmost_from_cache(cx, cy, topmost_cache) == Some(world_z)
                     && terrain_block_for_shadow(above, blocks, unknown_is_solid)
                         == BlockType::SolidStone
             };
-
-            if check_corner(0, 0) {
-                mask |= 1;
-            } // A: bottom-left
-            if check_corner(1, 0) {
-                mask |= 2;
-            } // B: bottom-right
-            if check_corner(0, 1) {
-                mask |= 4;
-            } // C: top-left
-            if check_corner(1, 1) {
-                mask |= 8;
-            } // D: top-right
-
+            if check_corner(0, 0) { mask |= 1; }
+            if check_corner(1, 0) { mask |= 2; }
+            if check_corner(0, 1) { mask |= 4; }
+            if check_corner(1, 1) { mask |= 8; }
             if mask != 0 {
-                tile_data[index_in_slice] = Some(TileData::from_tileset_index((mask - 1) as u16));
+                geom[idx] = Some((mask - 1) as u16);
             }
         }
     }
-
-    tile_data
+    geom
 }
 
-pub(super) fn build_fog_tile_data(
+/// Converts cached shadow geometry indices directly to TileData (no color modification).
+pub(super) fn shadow_tile_data_from_geometry(geometry: &[Option<u16>]) -> Vec<Option<TileData>> {
+    geometry
+        .iter()
+        .map(|opt| opt.map(TileData::from_tileset_index))
+        .collect()
+}
+
+/// Builds fog geometry for caching: stores RGBA per tile, or None for transparent tiles.
+pub(super) fn build_fog_geometry(
     chunk_xy: IVec2,
     world_z: i32,
-    current_z: i32,
     chunk_edge: u32,
-    blocks: &HashMap<Vec3i, BlockType>,
+    topmost_cache: &HashMap<(i32, i32), Option<i32>>,
     fog: &FogData,
-) -> Vec<Option<TileData>> {
-    let tile_count =
-        usize::try_from(chunk_edge * chunk_edge).expect("chunk tile count does not fit in usize");
-    let mut tile_data = vec![None; tile_count];
-
-    let edge_i = i32::try_from(chunk_edge).expect("chunk_edge does not fit in i32");
+) -> Vec<Option<[f32; 4]>> {
+    let tile_count = (chunk_edge * chunk_edge) as usize;
+    let mut geom: Vec<Option<[f32; 4]>> = vec![None; tile_count];
+    let edge_i = chunk_edge as i32;
     let half = edge_i / 2;
-
     for local_y in 0..chunk_edge {
         for local_x in 0..chunk_edge {
-            let wx = chunk_xy.x * edge_i
-                + i32::try_from(local_x).expect("local_x does not fit in i32")
-                - half;
-            let wy = chunk_xy.y * edge_i
-                + i32::try_from(local_y).expect("local_y does not fit in i32")
-                - half;
+            let wx = chunk_xy.x * edge_i + local_x as i32 - half;
+            let wy = chunk_xy.y * edge_i + local_y as i32 - half;
             let world_pos = Vec3i::new(wx, wy, world_z);
-
             let idx = chunk_local_tile_index(local_x, local_y, chunk_edge);
-
-            // Column-aware: yellow tint applies only at the topmost-solid tile in the
-            // column (the tile the player actually sees), and only when that tile is
-            // not currently in FOV.
-            if topmost_solid_z_in_column(wx, wy, current_z, blocks, false) != Some(world_z) {
+            if topmost_from_cache(wx, wy, topmost_cache) != Some(world_z) {
                 continue;
             }
-
             if fog.visible.contains(&world_pos) {
                 continue;
             }
+            geom[idx] = Some(REMEMBERED_FOG_RGBA);
+        }
+    }
+    geom
+}
 
-            let mut td = TileData::from_tileset_index(0);
-            td.color = Color::srgba(
-                REMEMBERED_FOG_RGBA[0],
-                REMEMBERED_FOG_RGBA[1],
-                REMEMBERED_FOG_RGBA[2],
-                REMEMBERED_FOG_RGBA[3],
-            );
-            tile_data[idx] = Some(td);
+/// Converts cached fog geometry to TileData.
+pub(super) fn fog_tile_data_from_cache(fog_geom: &[Option<[f32; 4]>]) -> Vec<Option<TileData>> {
+    fog_geom
+        .iter()
+        .map(|opt| {
+            opt.map(|rgba| {
+                let mut td = TileData::from_tileset_index(0);
+                td.color = Color::srgba(rgba[0], rgba[1], rgba[2], rgba[3]);
+                td
+            })
+        })
+        .collect()
+}
+
+/// Precompute `topmost_solid_z_in_column` for every (wx, wy) position covered by the
+/// given chunks plus a 1-tile border on each side. Building this once per rebuild batch
+/// eliminates repeated HashMap traversal inside each tile builder.
+///
+/// Pass `unknown_is_solid = false` for Floor/Fog layers and `true` for Edge/Ceiling
+/// shadow layers in Entity mode.
+pub(super) fn build_topmost_cache(
+    chunk_xys: impl IntoIterator<Item = IVec2>,
+    view_z: i32,
+    chunk_edge: u32,
+    blocks: &HashMap<Vec3i, BlockType>,
+    unknown_is_solid: bool,
+    depth: i32,
+) -> HashMap<(i32, i32), Option<i32>> {
+    let edge = chunk_edge as i32;
+    let half = edge / 2;
+    let mut cache: HashMap<(i32, i32), Option<i32>> = HashMap::new();
+
+    for chunk_xy in chunk_xys {
+        // Cover the chunk tile range plus 1-tile border on each side so that
+        // dual-grid shadow builders can query neighboring positions without a cache miss.
+        let min_wx = chunk_xy.x * edge - half - 1;
+        let max_wx = chunk_xy.x * edge + edge - half; // inclusive upper bound
+        let min_wy = chunk_xy.y * edge - half - 1;
+        let max_wy = chunk_xy.y * edge + edge - half;
+        for wx in min_wx..=max_wx {
+            for wy in min_wy..=max_wy {
+                cache.entry((wx, wy)).or_insert_with(|| {
+                    topmost_solid_z_in_column(wx, wy, view_z, blocks, unknown_is_solid, depth)
+                });
+            }
         }
     }
 
-    tile_data
+    cache
 }
+
+#[inline]
+fn topmost_from_cache(wx: i32, wy: i32, cache: &HashMap<(i32, i32), Option<i32>>) -> Option<i32> {
+    cache.get(&(wx, wy)).copied().flatten()
+}
+

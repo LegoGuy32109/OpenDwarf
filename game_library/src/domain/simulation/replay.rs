@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use super::{
     FogData, ReplayHudState, ReplayMode, ReplayPlayback,
-    RenderEntityData, TerrainConfig, TerrainData, TileLayerDebugState, REPLAY_PATH_ENV,
+    RenderEntityData, TerrainConfig, TerrainData, TileDataCache, TileLayerDebugState,
+    REPLAY_PATH_ENV,
 };
 use super::sync::{apply_snapshot, apply_update};
 use crate::resources::render_viewport::RenderViewport;
@@ -23,6 +24,7 @@ pub fn drive_replay_playback(
     viewport: Res<RenderViewport>,
     tile_layer_debug_state: Res<TileLayerDebugState>,
     mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
+    mut tile_cache: ResMut<TileDataCache>,
 ) {
     if !replay_mode.active {
         replay_hud_state.active = false;
@@ -59,6 +61,7 @@ pub fn drive_replay_playback(
         entity_data.dirty = true;
         invalidation.clear();
         invalidation.invalidate_view();
+        *tile_cache = TileDataCache::default();
         let _ = apply_first_checkpoint(
             &mut replay_playback,
             &mut config,
@@ -67,6 +70,7 @@ pub fn drive_replay_playback(
             &viewport,
             &tile_layer_debug_state,
             &mut invalidation,
+            &mut tile_cache,
         );
         info!("Replay reset to beginning");
     }
@@ -80,6 +84,7 @@ pub fn drive_replay_playback(
             &viewport,
             &tile_layer_debug_state,
             &mut invalidation,
+            &mut tile_cache,
         );
     }
 
@@ -96,6 +101,7 @@ pub fn drive_replay_playback(
             &viewport,
             &tile_layer_debug_state,
             &mut invalidation,
+            &mut tile_cache,
         )
     {
         replay_playback.playing = false;
@@ -191,6 +197,7 @@ pub(super) fn apply_first_checkpoint(
     viewport: &crate::resources::render_viewport::RenderViewport,
     tile_layer_debug_state: &TileLayerDebugState,
     invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
+    tile_cache: &mut TileDataCache,
 ) -> bool {
     // Replay doesn't carry FOV data — use a throwaway FogData
     let mut fog = FogData::default();
@@ -210,6 +217,7 @@ pub(super) fn apply_first_checkpoint(
                     viewport,
                     tile_layer_debug_state,
                     invalidation,
+                    tile_cache,
                 );
                 return true;
             }
@@ -225,6 +233,7 @@ pub(super) fn apply_first_checkpoint(
                     viewport,
                     tile_layer_debug_state,
                     invalidation,
+                    tile_cache,
                 );
                 return true;
             }
@@ -243,6 +252,7 @@ pub(super) fn apply_next_replay_event(
     viewport: &crate::resources::render_viewport::RenderViewport,
     tile_layer_debug_state: &TileLayerDebugState,
     invalidation: &mut crate::domain::tilemap_invalidation::TilemapInvalidation,
+    tile_cache: &mut TileDataCache,
 ) -> bool {
     let mut fog = FogData::default();
     while replay_playback.cursor < replay_playback.events.len() {
@@ -262,6 +272,7 @@ pub(super) fn apply_next_replay_event(
                     viewport,
                     tile_layer_debug_state,
                     invalidation,
+                    tile_cache,
                 );
                 return true;
             }
@@ -277,6 +288,7 @@ pub(super) fn apply_next_replay_event(
                     viewport,
                     tile_layer_debug_state,
                     invalidation,
+                    tile_cache,
                 );
                 return true;
             }

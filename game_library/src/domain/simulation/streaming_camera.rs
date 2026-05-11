@@ -18,7 +18,6 @@ pub fn stream_chunks_around_player(
     mut chunk_streaming_state: ResMut<ChunkStreamingState>,
     mut world_command_queue: ResMut<WorldCommandQueue>,
     viewport: Res<RenderViewport>,
-    mut invalidation: ResMut<crate::domain::tilemap_invalidation::TilemapInvalidation>,
 ) {
     if replay_mode.active {
         return;
@@ -56,11 +55,9 @@ pub fn stream_chunks_around_player(
     }
 
     chunk_streaming_state.loaded_chunks.extend(desired);
-
-    // Only invalidate view when new chunks load, not on unload-only deltas
-    if new_chunks_loaded {
-        invalidation.invalidate_view();
-    }
+    // manage_tilemap_chunk_lifecycle marks each newly spawned chunk entity dirty via
+    // invalidation.mark(), so no full view invalidation is needed here.
+    let _ = new_chunks_loaded;
 }
 
 pub fn sync_camera_z_to_player(

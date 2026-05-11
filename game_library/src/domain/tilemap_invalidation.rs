@@ -114,12 +114,49 @@ impl TilemapInvalidation {
         }
     }
 
+    /// Mark only FogShadow dirty for a position that changed visibility/memory state but has
+    /// no block geometry change. FOV transitions affect only the fog overlay layer.
+    pub fn mark_fog_change(&mut self, p: Vec3i, chunk_edge: u32) {
+        let c = chunk_of_xy(p, chunk_edge);
+        self.mark(c, p.z, TileLayer::FogShadow);
+        // FogShadow at z-1 shows depth fog for the level above.
+        self.mark(c, p.z - 1, TileLayer::FogShadow);
+        // Boundary neighbors: dual-grid shadow reads +1 tile in each direction.
+        for (dx, dy) in [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ] {
+            let nc = chunk_of_xy(Vec3i::new(p.x + dx, p.y + dy, p.z), chunk_edge);
+            if nc != c {
+                self.mark(nc, p.z, TileLayer::FogShadow);
+            }
+        }
+    }
+
     pub fn invalidate_view(&mut self) {
         self.view_invalidated = true;
     }
 
     pub fn is_empty(&self) -> bool {
         self.dirty.is_empty() && !self.view_invalidated
+    }
+
+    pub fn pending_count(&self) -> usize {
+        self.dirty.len()
+    }
+
+    /// Remove dirty entries for z-levels no longer in the rendered set. Call this before
+    /// expanding a view invalidation so stale z-level entries don't accumulate when the
+    /// player moves up or down a slope.
+    pub fn retain_z_levels(&mut self, rendered_z_levels: &[i32]) {
+        self.dirty
+            .retain(|(_, z, _)| rendered_z_levels.contains(z));
     }
 
     pub fn view_invalidated(&self) -> bool {

@@ -28,6 +28,7 @@ impl RenderViewport {
         view_z: i32,
         view_mode: ViewMode,
         show_depth_stack: bool,
+        z_levels_below_rendered: i32,
     ) {
         self.last_visible_chunks_xy = self.visible_chunks_xy.clone();
         self.last_visible_z_levels = self.visible_z_levels.clone();
@@ -35,7 +36,7 @@ impl RenderViewport {
 
         self.visible_chunks_xy = Self::chunks_from_rect(camera_aabb, chunk_edge);
         self.visible_z_levels = if show_depth_stack {
-            z_levels_to_render(view_z)
+            z_levels_to_render(view_z, z_levels_below_rendered)
         } else {
             vec![view_z]
         };
@@ -107,6 +108,7 @@ pub fn update_render_viewport(
         view_z.current,
         *view_mode,
         tile_layer_debug_state.show_depth_stack,
+        terrain_config.z_levels_below_rendered,
     );
 
     #[cfg(debug_assertions)]
@@ -119,9 +121,6 @@ pub fn update_render_viewport(
     }
 }
 
-fn z_levels_to_render(view_z_current: i32) -> Vec<i32> {
-    const Z_LEVELS_BELOW_RENDERED: i32 = 5;
-    (0..=Z_LEVELS_BELOW_RENDERED)
-        .map(|offset| view_z_current - offset)
-        .collect()
+fn z_levels_to_render(view_z_current: i32, depth: i32) -> Vec<i32> {
+    (0..=depth).map(|offset| view_z_current - offset).collect()
 }

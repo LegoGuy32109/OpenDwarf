@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::domain::simulation::Z_LEVELS_BELOW_RENDERED;
 use world_sim::world_api::{BlockType, Vec3i};
 
 pub(crate) fn compute_shadow_mask_for_air(
@@ -50,8 +49,9 @@ pub(crate) fn topmost_solid_z_in_column(
     view_z: i32,
     blocks: &HashMap<Vec3i, BlockType>,
     unknown_is_solid: bool,
+    depth: i32,
 ) -> Option<i32> {
-    for offset in 0..=Z_LEVELS_BELOW_RENDERED {
+    for offset in 0..=depth {
         let z = view_z - offset;
         if terrain_block_for_shadow(Vec3i::new(wx, wy, z), blocks, unknown_is_solid)
             == BlockType::SolidStone

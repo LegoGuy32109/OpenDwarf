@@ -25,7 +25,7 @@ pub use streaming_camera::{
     sync_viewport_to_invalidation, update_view_z_level,
 };
 pub use sync::sync_render_world_from_snapshot;
-pub use tilemap::{manage_tilemap_chunk_lifecycle, project_world_to_tilemap};
+pub use tilemap::{manage_tilemap_chunk_lifecycle, pre_build_adjacent_z_levels, project_world_to_tilemap};
 
 #[cfg(test)]
 mod tests;

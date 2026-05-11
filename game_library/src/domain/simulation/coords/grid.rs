@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::sprite_render::TileData;
 use bevy::platform::collections::HashSet;
 
-use crate::domain::simulation::{ChunkStreamingState, Z_LEVELS_BELOW_RENDERED};
+use crate::domain::simulation::ChunkStreamingState;
 use crate::resources::render_viewport::RenderViewport;
 use world_sim::world_api::{Vec3i, Vec3u};
 
@@ -37,8 +37,8 @@ pub(crate) fn active_chunks_xy(
     }
 }
 
-pub(crate) fn z_levels_to_render(view_z_current: i32) -> Vec<i32> {
-    (0..=Z_LEVELS_BELOW_RENDERED)
+pub(crate) fn z_levels_to_render(view_z_current: i32, depth: i32) -> Vec<i32> {
+    (0..=depth)
         .map(|offset| view_z_current - offset)
         .collect()
 }
