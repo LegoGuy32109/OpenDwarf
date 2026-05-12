@@ -596,6 +596,9 @@ export default function WebGlGameCanvas() {
   const keysHeldRef = useRef<Set<string>>(new Set());
   const cameraKeysHeldRef = useRef<Set<string>>(new Set());
   const playerKeysHeldRef = useRef<Set<string>>(new Set());
+  const playerKeysJustPressedRef = useRef<Set<string>>(new Set());
+  const wasMovingLastTickRef = useRef(false);
+  const smoothPlayerWorldPosRef = useRef<[number, number] | null>(null);
   const streamingKeySetRef = useRef<string>("");
   const lastFrameTimeRef = useRef<number | null>(null);
   const simTickRef = useRef(0);
@@ -1134,26 +1137,69 @@ export default function WebGlGameCanvas() {
   };
 
   const processPlayerMovement = () => {
-    if (uiModeRef.current === "chat") return;
-    if (worldRef.current.entity.movement) return;
-    const up = playerKeysHeldRef.current.has("KeyE");
-    const down = playerKeysHeldRef.current.has("KeyD");
-    const left = playerKeysHeldRef.current.has("KeyS");
-    const right = playerKeysHeldRef.current.has("KeyF");
-    if (!up && !down && !left && !right) return;
+    if (uiModeRef.current === "chat") {
+      playerKeysJustPressedRef.current.clear();
+      return;
+    }
 
-    const direction: Vec3i = {
-      x: left && !right ? -1 : right && !left ? 1 : 0,
-      y: up && !down ? -1 : down && !up ? 1 : 0,
+    const isMoving = !!worldRef.current.entity.movement;
+    const wasMoving = wasMovingLastTickRef.current;
+    wasMovingLastTickRef.current = isMoving;
+    const shouldChainHeld = wasMoving && !isMoving;
+
+    // just-pressed: non-repeat keydowns since last tick, cleared after reading
+    const jp = playerKeysJustPressedRef.current;
+    const justPressedDir: Vec3i = {
+      x: (jp.has("KeyS") && !jp.has("KeyF")) ? -1
+        : (jp.has("KeyF") && !jp.has("KeyS")) ? 1 : 0,
+      y: (jp.has("KeyE") && !jp.has("KeyD")) ? -1
+        : (jp.has("KeyD") && !jp.has("KeyE")) ? 1 : 0,
       z: 0,
     };
-    const result = startEntityMove(
-      worldRef.current,
-      direction,
-      loadedChunkSet(),
-    );
-    if (!result.ok && result.reason !== "moving") {
-      appendLog(`move blocked: ${result.reason}`);
+    playerKeysJustPressedRef.current.clear();
+    const justPressedNonZero = justPressedDir.x !== 0 || justPressedDir.y !== 0;
+
+    // held direction
+    const h = playerKeysHeldRef.current;
+    const heldDir: Vec3i = {
+      x: (h.has("KeyS") && !h.has("KeyF")) ? -1
+        : (h.has("KeyF") && !h.has("KeyS")) ? 1 : 0,
+      y: (h.has("KeyE") && !h.has("KeyD")) ? -1
+        : (h.has("KeyD") && !h.has("KeyE")) ? 1 : 0,
+      z: 0,
+    };
+    const heldNonZero = heldDir.x !== 0 || heldDir.y !== 0;
+
+    const tryMove = (dir: Vec3i) => {
+      const result = startEntityMove(worldRef.current, dir, loadedChunkSet());
+      if (!result.ok && result.reason !== "moving") {
+        appendLog(`move blocked: ${result.reason}`);
+      }
+    };
+
+    if (!isMoving) {
+      if (justPressedNonZero) {
+        tryMove(justPressedDir);
+      } else if (shouldChainHeld && heldNonZero) {
+        tryMove(heldDir);
+      }
+    } else if (justPressedNonZero) {
+      const mv = worldRef.current.entity.movement!;
+      const activeDir: Vec3i = {
+        x: Math.sign(mv.target.x - mv.origin.x),
+        y: Math.sign(mv.target.y - mv.origin.y),
+        z: 0,
+      };
+      // direction_contains: does heldDir contain activeDir?
+      // Prevents interrupting e.g. north movement when user holds NE (NE contains N)
+      const activeInHeld = (heldDir.x !== 0 || heldDir.y !== 0) &&
+        (activeDir.x === 0 || Math.sign(heldDir.x) === activeDir.x) &&
+        (activeDir.y === 0 || Math.sign(heldDir.y) === activeDir.y);
+      const sameAsActive = justPressedDir.x === activeDir.x &&
+        justPressedDir.y === activeDir.y;
+      if (!sameAsActive && !activeInHeld) {
+        tryMove(justPressedDir);
+      }
     }
   };
 
@@ -1703,6 +1749,7 @@ export default function WebGlGameCanvas() {
           flowDescriptorRef.current = descriptor;
           const cam = descriptor.camera ?? { x: 0, y: 0, zoom: 1 };
           worldRef.current = createWorldSim(descriptor.seed);
+          smoothPlayerWorldPosRef.current = null;
           const player = worldPlayerSnapshot();
           sceneStateRef.current = {
             ...sceneStateRef.current,
@@ -1856,7 +1903,7 @@ export default function WebGlGameCanvas() {
           out_color = vec4(0.0, 0.0, 0.0, texel.a * u_alpha_multiplier);
         } else if (u_render_mode == 2) {
           out_color = vec4(0.0, 0.0, 0.0, v_instance_alpha);
-        } else if (u_render_mode == 3) {
+        } else if (u_render_mode == 3 || u_render_mode == 4) {
           out_color = vec4(u_tint, texel.a * u_alpha_multiplier);
         } else {
           out_color = texel;
@@ -2128,8 +2175,33 @@ export default function WebGlGameCanvas() {
 
       const lastGl = lastFrameTimeRef.current ?? timestamp;
       lastFrameTimeRef.current = timestamp;
-      void lastGl;
       advanceSimulationTick();
+
+      // Smooth player render position — mirrors Rust's smooth_player_render_transform.
+      // entityRenderPosition gives the tick-LERP target; we exponentially decay toward it
+      // each frame so the sprite eases into each tile rather than sliding mechanically.
+      const deltaS = Math.min((timestamp - lastGl) / 1000, 0.1);
+      const [spTargetX, spTargetY] = entityRenderPosition(worldRef.current.entity);
+      if (!smoothPlayerWorldPosRef.current) {
+        smoothPlayerWorldPosRef.current = [spTargetX, spTargetY];
+      } else {
+        const sf = 1 - Math.exp(-10 * deltaS);
+        const sp = smoothPlayerWorldPosRef.current;
+        sp[0] += (spTargetX - sp[0]) * sf;
+        sp[1] += (spTargetY - sp[1]) * sf;
+      }
+      if (viewModeRef.current === "entity") {
+        const [sx, sy] = smoothPlayerWorldPosRef.current;
+        const lkOff = cameraLookOffsetRef.current;
+        sceneStateRef.current = {
+          ...sceneStateRef.current,
+          camera: {
+            x: (sx + 0.5) * TILE_SIZE_PX + lkOff.x,
+            y: (sy + 0.5) * TILE_SIZE_PX + lkOff.y,
+            zoom: sceneStateRef.current.camera.zoom,
+          },
+        };
+      }
       frameRef.current += 1;
 
       if (sceneReadyRef.current) {
@@ -2593,7 +2665,7 @@ export default function WebGlGameCanvas() {
           gl.bindTexture(gl.TEXTURE_2D, whiteTextureRef.current);
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-          if (renderModeLoc) gl.uniform1i(renderModeLoc, 3);
+          if (renderModeLoc) gl.uniform1i(renderModeLoc, 4);
           if (tintLoc) gl.uniform3f(tintLoc, 1.0, 0.78, 0.18);
           if (alphaMultiplierLoc) gl.uniform1f(alphaMultiplierLoc, 0.18);
 
@@ -2676,21 +2748,17 @@ export default function WebGlGameCanvas() {
               );
             }
             if (alphaMultiplierLoc) gl.uniform1f(alphaMultiplierLoc, 1);
-            const [rx, ry] = entityRenderPosition(worldRef.current.entity);
-            const worldX = (rx + 0.5) * TILE_SIZE_PX;
-            const worldY = (ry + 0.5) * TILE_SIZE_PX;
-            const screenX = worldX - sceneStateRef.current.camera.x +
-              canvas.width * 0.5 - TILE_SIZE_PX * 0.5;
-            const screenY = worldY - sceneStateRef.current.camera.y +
-              canvas.height * 0.5 - TILE_SIZE_PX * 0.5;
+            const [rx, ry] = smoothPlayerWorldPosRef.current ??
+              entityRenderPosition(worldRef.current.entity);
+            const facingLeft = worldRef.current.entity.facingLeft;
             const off = 0;
-            scratch[off + 0] = screenX;
-            scratch[off + 1] = screenY;
+            scratch[off + 0] = rx * TILE_SIZE_PX;
+            scratch[off + 1] = ry * TILE_SIZE_PX;
             scratch[off + 2] = TILE_SIZE_PX;
             scratch[off + 3] = TILE_SIZE_PX;
-            scratch[off + 4] = 0;
+            scratch[off + 4] = facingLeft ? 1 : 0;
             scratch[off + 5] = 0;
-            scratch[off + 6] = 1;
+            scratch[off + 6] = facingLeft ? -1 : 1;
             scratch[off + 7] = 1;
             flushPass(1);
           }
@@ -3038,6 +3106,9 @@ export default function WebGlGameCanvas() {
       if (PLAYER_KEYS.has(event.code)) {
         event.preventDefault();
         playerKeysHeldRef.current.add(event.code);
+        if (!event.repeat) {
+          playerKeysJustPressedRef.current.add(event.code);
+        }
       }
       if (CAMERA_KEYS.has(event.code)) {
         event.preventDefault();
