@@ -6,6 +6,7 @@ const UI_FONT_COLS = 16;
 const UI_FONT_RENDER_PX = 24;
 const UI_FONT_PADDING = 2;
 const UI_FONT_SCALE = 1;
+const UI_FONT_TRACKING_PX = 1;
 const UI_FONT_LINE_GAP = 2;
 
 export type UiFontAtlas = {
@@ -100,6 +101,7 @@ export async function createUiFontAtlas(
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   ctx.font = `${UI_FONT_RENDER_PX}px ${UI_FONT_FAMILY}`;
+  const baselineY = UI_FONT_PADDING + maxAscent;
 
   for (let code = UI_FONT_FIRST_CHAR; code <= UI_FONT_LAST_CHAR; code++) {
     const glyphIndex = code - UI_FONT_FIRST_CHAR;
@@ -108,7 +110,6 @@ export async function createUiFontAtlas(
     const ch = String.fromCharCode(code);
     const metrics = ctx.measureText(ch);
     const drawLeft = metrics.actualBoundingBoxLeft || 0;
-    const ascent = Math.ceil(metrics.actualBoundingBoxAscent || maxAscent);
     ctx.save();
     ctx.beginPath();
     ctx.rect(
@@ -121,7 +122,7 @@ export async function createUiFontAtlas(
     ctx.fillText(
       ch,
       x + UI_FONT_PADDING - drawLeft,
-      y + UI_FONT_PADDING + ascent,
+      y + baselineY,
     );
     ctx.restore();
   }
@@ -192,8 +193,7 @@ export function drawUiTextLines(
 
   let count = 0;
   let cursorX = 0;
-  const yOffset =
-    (fontAtlas.lineHeight - fontAtlas.cellHeight + fontAtlas.descent) *
+  const yOffset = (fontAtlas.lineHeight - fontAtlas.cellHeight) *
     UI_FONT_SCALE;
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
@@ -209,11 +209,12 @@ export function drawUiTextLines(
     const gy = Math.floor(glyph / UI_FONT_COLS);
     const u0 = gx * fontAtlas.cellWidth + UI_FONT_PADDING + 0.5;
     const v0 = gy * fontAtlas.cellHeight + UI_FONT_PADDING + 0.5;
-    const advance = fontAtlas.advance * UI_FONT_SCALE;
+    const advance = (fontAtlas.advance + UI_FONT_TRACKING_PX) *
+      UI_FONT_SCALE;
     const off = count * 8;
     scratch[off + 0] = x + cursorX;
     scratch[off + 1] = y + yOffset;
-    scratch[off + 2] = advance;
+    scratch[off + 2] = fontAtlas.cellWidth * UI_FONT_SCALE;
     scratch[off + 3] = fontAtlas.cellHeight * UI_FONT_SCALE;
     scratch[off + 4] = u0 / fontAtlas.width;
     scratch[off + 5] = v0 / fontAtlas.height;
