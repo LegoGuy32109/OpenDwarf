@@ -1,4 +1,4 @@
-import { expect, test } from "npm:@playwright/test@1.52.0";
+import { expect, test } from "@playwright/test";
 import {
   captureCheckpoint,
   loadFlow,

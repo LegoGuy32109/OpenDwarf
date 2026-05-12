@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { FlowDescriptor, PerfWindow } from "../lib/webgl-harness-types.ts";
+import {
+  CHUNK_EDGE_TILES,
+  type ChunkKey,
+  chunkKeyString,
+  computeVisibleChunks,
+  generateChunk,
+  TILE_SIZE_PX,
+} from "../lib/webgl-chunk-gen.ts";
 
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
@@ -110,6 +118,8 @@ type WebGlCheckpointRecord = {
   baselineConfigured: boolean;
   baselineSource: string | null;
   perf: PerfWindow;
+  visibleChunks: string[];
+  residentChunks: number;
 };
 
 type WebGlScreenshotBaselineManifest = {
@@ -201,11 +211,18 @@ type WebGlTestHarness = {
 const FLOW_NAME = "webgl-step1-single-rock";
 const SEED_NAME = "single-rock-step1";
 const TILE_TEXTURE_SRC = "/assets/sprites/SingleRock.png";
-const GRID_COLUMNS = 64;
-const GRID_ROWS = 36;
-const GRID_SPACING_PX = 64;
-const GRID_OFFSET_X = -((GRID_COLUMNS - 1) * GRID_SPACING_PX) / 2;
-const GRID_OFFSET_Y = -((GRID_ROWS - 1) * GRID_SPACING_PX) / 2;
+const CHUNK_WINDOW = 2;
+
+function buildChunkCache(seed: string): Map<string, Uint16Array> {
+  const cache = new Map<string, Uint16Array>();
+  for (let cy = -CHUNK_WINDOW; cy <= CHUNK_WINDOW; cy++) {
+    for (let cx = -CHUNK_WINDOW; cx <= CHUNK_WINDOW; cx++) {
+      const key: ChunkKey = { chunkX: cx, chunkY: cy, chunkZ: 0 };
+      cache.set(chunkKeyString(key), generateChunk(seed, key));
+    }
+  }
+  return cache;
+}
 function createRunId() {
   const stamp = new Date().toISOString().replaceAll(":", "-");
   const entropy = globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
@@ -442,6 +459,11 @@ export default function WebGlGameCanvas() {
   const screenshotArtifactsRef = useRef<Record<string, Blob>>({});
   const stateArtifactsRef = useRef<Record<string, Blob>>({});
   const frameMetricsRef = useRef<FrameMetric[]>([]);
+  const chunkCacheRef = useRef<Map<string, Uint16Array>>(new Map());
+  const instanceCountRef = useRef(0);
+  const textureInfoRef = useRef<
+    { src: string; width: number; height: number } | null
+  >(null);
   const flowDescriptorRef = useRef<FlowDescriptor>({
     name: FLOW_NAME,
     seed: SEED_NAME,
@@ -679,6 +701,8 @@ export default function WebGlGameCanvas() {
       baselineConfigured: Boolean(baselineSource),
       baselineSource,
       perf,
+      visibleChunks: snapshot.visibleChunks,
+      residentChunks: snapshot.residentChunks,
     };
 
     checkpointsRef.current = [...checkpointsRef.current, record];
@@ -909,24 +933,42 @@ export default function WebGlGameCanvas() {
         fallbackContext.fillStyle = "#14161c";
         fallbackContext.fillRect(0, 0, canvas.width, canvas.height);
 
+        sceneStateRef.current.visibleChunks = computeVisibleChunks(
+          sceneStateRef.current.camera,
+          { framebufferWidth: canvas.width, framebufferHeight: canvas.height },
+        )
+          .filter((k) => chunkCacheRef.current.has(chunkKeyString(k)))
+          .map(chunkKeyString);
+
         if (sceneReadyRef.current) {
           const image = fallbackImage.complete ? fallbackImage : null;
           if (image) {
-            for (let row = 0; row < GRID_ROWS; row += 1) {
-              for (let column = 0; column < GRID_COLUMNS; column += 1) {
-                const x = GRID_OFFSET_X + column * GRID_SPACING_PX -
-                  sceneStateRef.current.camera.x +
-                  canvas.width * 0.5;
-                const y = GRID_OFFSET_Y + row * GRID_SPACING_PX -
-                  sceneStateRef.current.camera.y +
-                  canvas.height * 0.5;
-                fallbackContext.drawImage(
-                  image,
-                  x,
-                  y,
-                  GRID_SPACING_PX,
-                  GRID_SPACING_PX,
-                );
+            for (const keyStr of chunkCacheRef.current.keys()) {
+              const parts = keyStr.split(",");
+              const cx = parseInt(parts[0]);
+              const cy = parseInt(parts[1]);
+              for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
+                for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
+                  const worldX = (cx * CHUNK_EDGE_TILES + tx) * TILE_SIZE_PX;
+                  const worldY = (cy * CHUNK_EDGE_TILES + ty) * TILE_SIZE_PX;
+                  const screenX = worldX - sceneStateRef.current.camera.x +
+                    canvas.width * 0.5;
+                  const screenY = worldY - sceneStateRef.current.camera.y +
+                    canvas.height * 0.5;
+                  if (
+                    screenX + TILE_SIZE_PX < 0 || screenX > canvas.width ||
+                    screenY + TILE_SIZE_PX < 0 || screenY > canvas.height
+                  ) {
+                    continue;
+                  }
+                  fallbackContext.drawImage(
+                    image,
+                    screenX,
+                    screenY,
+                    TILE_SIZE_PX,
+                    TILE_SIZE_PX,
+                  );
+                }
               }
             }
           }
@@ -1029,6 +1071,11 @@ export default function WebGlGameCanvas() {
         image.src = TILE_TEXTURE_SRC;
         await image.decode();
         fallbackImage.src = TILE_TEXTURE_SRC;
+        textureInfoRef.current = {
+          src: TILE_TEXTURE_SRC,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        };
         pushReplayEvent({
           type: "texture_loaded",
           tick: nextTick(),
@@ -1039,6 +1086,8 @@ export default function WebGlGameCanvas() {
         appendLog(
           `texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`,
         );
+        const cache = buildChunkCache(flowDescriptorRef.current.seed);
+        chunkCacheRef.current = cache;
         setStatus("SingleRock texture ready");
         sceneReadyRef.current = true;
         sceneStateRef.current = {
@@ -1047,7 +1096,8 @@ export default function WebGlGameCanvas() {
             ...sceneStateRef.current.assetsLoaded,
             TILE_TEXTURE_SRC,
           ],
-          residentChunks: 1,
+          residentChunks: cache.size,
+          streamingChunks: [...cache.keys()],
           uiMode: "world",
         };
         drawFrame();
@@ -1115,6 +1165,22 @@ export default function WebGlGameCanvas() {
           setCheckpointRecords([]);
           setReplayPreview(summarizeReplay([]));
           setImportedReplayInfo(null);
+          if (sceneReadyRef.current) {
+            const cache = buildChunkCache(descriptor.seed);
+            chunkCacheRef.current = cache;
+            sceneStateRef.current = {
+              ...sceneStateRef.current,
+              residentChunks: cache.size,
+              streamingChunks: [...cache.keys()],
+            };
+            if (textureInfoRef.current) {
+              pushReplayEvent({
+                type: "texture_loaded",
+                tick: nextTick(),
+                ...textureInfoRef.current,
+              });
+            }
+          }
           pushReplayEvent({ type: "boot", tick: nextTick() });
           appendLog(`load flow ${descriptor.name} seed=${descriptor.seed}`);
         },
@@ -1214,17 +1280,8 @@ export default function WebGlGameCanvas() {
       1,
       1,
     ]);
-    const instanceData = new Float32Array(GRID_COLUMNS * GRID_ROWS * 4);
-    let instanceOffset = 0;
-    for (let row = 0; row < GRID_ROWS; row += 1) {
-      for (let column = 0; column < GRID_COLUMNS; column += 1) {
-        instanceData[instanceOffset++] = GRID_OFFSET_X +
-          column * GRID_SPACING_PX;
-        instanceData[instanceOffset++] = GRID_OFFSET_Y + row * GRID_SPACING_PX;
-        instanceData[instanceOffset++] = GRID_SPACING_PX;
-        instanceData[instanceOffset++] = GRID_SPACING_PX;
-      }
-    }
+    const maxInstances = Math.pow(2 * CHUNK_WINDOW + 1, 2) *
+      CHUNK_EDGE_TILES * CHUNK_EDGE_TILES;
 
     const vertexBuffer = gl.createBuffer();
     if (!vertexBuffer) {
@@ -1239,7 +1296,11 @@ export default function WebGlGameCanvas() {
       throw new Error("Failed to create instance buffer");
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, instanceData, gl.STATIC_DRAW);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      maxInstances * 4 * Float32Array.BYTES_PER_ELEMENT,
+      gl.DYNAMIC_DRAW,
+    );
     instanceBufferRef.current = instanceBuffer;
 
     gl.useProgram(program);
@@ -1269,6 +1330,30 @@ export default function WebGlGameCanvas() {
     gl.enableVertexAttribArray(instanceSizeLocation);
     gl.vertexAttribPointer(instanceSizeLocation, 2, gl.FLOAT, false, 16, 8);
     gl.vertexAttribDivisor(instanceSizeLocation, 1);
+
+    const rebuildGlInstances = (cache: Map<string, Uint16Array>) => {
+      const data = new Float32Array(
+        cache.size * CHUNK_EDGE_TILES * CHUNK_EDGE_TILES * 4,
+      );
+      let offset = 0;
+      for (const keyStr of cache.keys()) {
+        const parts = keyStr.split(",");
+        const cx = parseInt(parts[0]);
+        const cy = parseInt(parts[1]);
+        for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
+          for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
+            data[offset++] = (cx * CHUNK_EDGE_TILES + tx) * TILE_SIZE_PX;
+            data[offset++] = (cy * CHUNK_EDGE_TILES + ty) * TILE_SIZE_PX;
+            data[offset++] = TILE_SIZE_PX;
+            data[offset++] = TILE_SIZE_PX;
+          }
+        }
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, instanceBufferRef.current!);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+      instanceCountRef.current = cache.size * CHUNK_EDGE_TILES *
+        CHUNK_EDGE_TILES;
+    };
 
     const texture = gl.createTexture();
     if (!texture) {
@@ -1302,6 +1387,11 @@ export default function WebGlGameCanvas() {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      textureInfoRef.current = {
+        src: TILE_TEXTURE_SRC,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      };
       pushReplayEvent({
         type: "texture_loaded",
         tick: nextTick(),
@@ -1312,12 +1402,16 @@ export default function WebGlGameCanvas() {
       appendLog(
         `texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`,
       );
+      const cache = buildChunkCache(flowDescriptorRef.current.seed);
+      chunkCacheRef.current = cache;
+      rebuildGlInstances(cache);
       setStatus("SingleRock texture ready");
       sceneReadyRef.current = true;
       sceneStateRef.current = {
         ...sceneStateRef.current,
         assetsLoaded: [...sceneStateRef.current.assetsLoaded, TILE_TEXTURE_SRC],
-        residentChunks: 1,
+        residentChunks: cache.size,
+        streamingChunks: [...cache.keys()],
         uiMode: "world",
       };
       drawFrame();
@@ -1401,12 +1495,19 @@ export default function WebGlGameCanvas() {
         gl.uniform1i(textureLocation, 0);
       }
 
-      if (sceneReadyRef.current) {
+      sceneStateRef.current.visibleChunks = computeVisibleChunks(
+        sceneStateRef.current.camera,
+        { framebufferWidth: canvas.width, framebufferHeight: canvas.height },
+      )
+        .filter((k) => chunkCacheRef.current.has(chunkKeyString(k)))
+        .map(chunkKeyString);
+
+      if (sceneReadyRef.current && instanceCountRef.current > 0) {
         gl.drawArraysInstanced(
           gl.TRIANGLE_STRIP,
           0,
           4,
-          GRID_COLUMNS * GRID_ROWS,
+          instanceCountRef.current,
         );
         drawCalls = 1;
       }
@@ -1484,6 +1585,23 @@ export default function WebGlGameCanvas() {
         setCheckpointRecords([]);
         setReplayPreview(summarizeReplay([]));
         setImportedReplayInfo(null);
+        if (sceneReadyRef.current) {
+          const cache = buildChunkCache(descriptor.seed);
+          chunkCacheRef.current = cache;
+          rebuildGlInstances(cache);
+          sceneStateRef.current = {
+            ...sceneStateRef.current,
+            residentChunks: cache.size,
+            streamingChunks: [...cache.keys()],
+          };
+          if (textureInfoRef.current) {
+            pushReplayEvent({
+              type: "texture_loaded",
+              tick: nextTick(),
+              ...textureInfoRef.current,
+            });
+          }
+        }
         pushReplayEvent({ type: "boot", tick: nextTick() });
         appendLog(`load flow ${descriptor.name} seed=${descriptor.seed}`);
       },

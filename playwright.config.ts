@@ -1,6 +1,11 @@
 export default {
   testDir: "./tests",
+  testIgnore: "**/unit/**",
   outputDir: "./exports/playwright-results",
+  reporter: [["html", {
+    outputFolder: "exports/playwright-report",
+    open: "never",
+  }]],
   webServer: {
     command: "deno run -A dev.ts",
     url: "http://127.0.0.1:8000",
@@ -13,8 +18,8 @@ export default {
     headless: true,
     viewport: { width: 1920, height: 1080 },
     deviceScaleFactor: 1,
-    video: "retain-on-failure",
-    screenshot: "only-on-failure",
+    video: "on",
+    screenshot: "on",
     launchOptions: {
       executablePath: "/usr/bin/chromium",
       args: [

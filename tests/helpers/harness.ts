@@ -1,4 +1,4 @@
-import type { Page } from "npm:@playwright/test@1.52.0";
+import type { Page } from "@playwright/test";
 import type {
   FlowDescriptor,
   PerfWindow,
@@ -17,6 +17,8 @@ export type HarnessCheckpoint = {
   baselineConfigured: boolean;
   baselineSource: string | null;
   perf: PerfWindow;
+  visibleChunks: string[];
+  residentChunks: number;
 };
 
 type BrowserHarness = {
@@ -39,6 +41,14 @@ export async function waitForHarness(page: Page, timeout = 15_000) {
   await page.waitForFunction(
     () => !!(self as unknown as BrowserGlobal).__openDwarfWebGlHarness,
     { timeout },
+  );
+  await page.evaluate(() => {
+    const shell = document.querySelector(".webgl-experiment-shell");
+    return shell?.requestFullscreen({ navigationUI: "hide" });
+  });
+  await page.waitForFunction(
+    () => document.fullscreenElement !== null,
+    { timeout: 5_000 },
   );
 }
 
