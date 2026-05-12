@@ -521,13 +521,14 @@ Pass criteria:
 
 Goal:
 
-Add the fog/obscure shadow layer that the native renderer uses in entity view mode.
+Add the fog/obscure shadow layer that the native renderer uses in entity view
+mode.
 
 Build:
 
 - Load `FogShadowAtlas.png` (to be created) as a fourth atlas.
-- Add fog mask generation: per-tile visibility state drives which fog atlas frame to
-  display.
+- Add fog mask generation: per-tile visibility state drives which fog atlas
+  frame to display.
 - Render fog layer on top of ceiling shadows at `viewZ`, using alpha blend.
 - Match the `TileLayer::FogShadow` ordering from `tilemap.rs`.
 

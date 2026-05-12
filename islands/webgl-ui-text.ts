@@ -3,10 +3,10 @@ const UI_FONT_FAMILY = "TinyPixie2WebGl";
 const UI_FONT_FIRST_CHAR = 32;
 const UI_FONT_LAST_CHAR = 126;
 const UI_FONT_COLS = 20;
-const UI_FONT_RENDER_PX = 16;
+const UI_FONT_RENDER_PX = 21;
 const UI_FONT_PADDING = 0;
 const UI_FONT_SCALE = 1;
-const UI_FONT_TRACKING_PX = -5;
+const UI_FONT_TRACKING_PX = 1;
 const UI_FONT_LINE_GAP = 0;
 
 export type UiFontAtlas = {
@@ -209,8 +209,9 @@ export function drawUiTextLines(
     const gy = Math.floor(glyph / UI_FONT_COLS);
     const u0 = gx * fontAtlas.cellWidth + UI_FONT_PADDING + 0.5;
     const v0 = gy * fontAtlas.cellHeight + UI_FONT_PADDING + 0.5;
-    const advance = (fontAtlas.advance + UI_FONT_TRACKING_PX) *
-      UI_FONT_SCALE;
+    const advance = (fontAtlas.advances[glyph] || fontAtlas.advance) +
+      UI_FONT_TRACKING_PX *
+        UI_FONT_SCALE;
     const off = count * 8;
     scratch[off + 0] = x + cursorX;
     scratch[off + 1] = y + yOffset;
