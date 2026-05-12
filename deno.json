@@ -13,7 +13,10 @@
     "web-dev": "bash scripts/bash/web-dev.sh",
     "ui-test": "deno run -A scripts/webgl_review.ts",
     "unit": "deno test tests/unit/",
-    "test": "npx playwright test",
+    "patch-playwright-video": "find ~/.cache/deno/npm -path '*/playwright-core/*/videoRecorder.js' -exec sed -i 's/-qmax 50 -crf 8 -deadline realtime -speed 8 -b:v 1M/-qmax 20 -crf 4 -deadline good -speed 2 -b:v 8M/' {} \\;",
+    "test": "npx playwright test --project=fast",
+    "test:visual": "npx playwright test --project=visual && deno task reencode-visual",
+    "reencode-visual": "bash scripts/reencode-visual.sh",
     "show-tests": "npx playwright show-report exports/playwright-report --host 0.0.0.0"
   },
   "lint": {

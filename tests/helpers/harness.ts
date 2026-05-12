@@ -96,3 +96,56 @@ export function waitForEvent(page: Page, type: string, timeout = 15_000) {
     { timeout },
   );
 }
+
+// ---------------------------------------------------------------------------
+// Canvas recording — bypasses Playwright's JPEG screencasting pipeline and
+// records straight from the WebGL framebuffer via captureStream + MediaRecorder.
+// ---------------------------------------------------------------------------
+
+export async function startCanvasRecording(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const canvas = document.querySelector("canvas") as HTMLCanvasElement;
+    if (!canvas) throw new Error("canvas not found");
+    const stream = canvas.captureStream(60);
+    const mimeType = "video/webm;codecs=vp9";
+    const recorder = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported(mimeType)
+        ? mimeType
+        : "video/webm",
+      videoBitsPerSecond: 16_000_000,
+    });
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    (self as unknown as Record<string, unknown>)["__canvasRecorder"] = recorder;
+    (self as unknown as Record<string, unknown>)["__canvasChunks"] = chunks;
+    recorder.start();
+  });
+}
+
+export async function stopAndSaveCanvasRecording(
+  page: Page,
+  outputPath: string,
+): Promise<void> {
+  const b64 = await page.evaluate((): Promise<string> => {
+    return new Promise((resolve) => {
+      const g = self as unknown as Record<string, unknown>;
+      const recorder = g["__canvasRecorder"] as MediaRecorder;
+      const chunks = g["__canvasChunks"] as BlobPart[];
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "video/webm" });
+        const reader = new FileReader();
+        reader.onload = () =>
+          resolve((reader.result as string).split(",")[1]);
+        reader.readAsDataURL(blob);
+      };
+      recorder.stop();
+    });
+  });
+
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, Buffer.from(b64, "base64"));
+}
