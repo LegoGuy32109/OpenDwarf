@@ -549,6 +549,7 @@ export default function WebGlGameCanvas() {
   const instanceBufferRef = useRef<WebGLBuffer | null>(null);
   const vertexBufferRef = useRef<WebGLBuffer | null>(null);
   const solidCacheRef = useRef<Map<string, Uint8Array>>(new Map());
+  const pendingChunkGenerationRef = useRef<string[]>([]);
   const layersRef = useRef({
     floor: true,
     edgeShadow: true,
@@ -1319,13 +1320,15 @@ export default function WebGlGameCanvas() {
         solidCacheRef.current.delete(key);
       }
     }
+    // Rebuild pending queue: drop no-longer-wanted keys, add newly missing ones.
+    const pendingSet = new Set(pendingChunkGenerationRef.current);
+    pendingChunkGenerationRef.current = pendingChunkGenerationRef.current.filter(
+      (k) => wanted.has(k),
+    );
     for (const key of wanted) {
-      if (solidCacheRef.current.has(key)) continue;
-      const [chunkX, chunkY, chunkZ] = key.split(",").map(Number);
-      solidCacheRef.current.set(
-        key,
-        generateWorldSolidChunk(world.seed, { chunkX, chunkY, chunkZ }),
-      );
+      if (!solidCacheRef.current.has(key) && !pendingSet.has(key)) {
+        pendingChunkGenerationRef.current.push(key);
+      }
     }
   };
 
@@ -1627,7 +1630,7 @@ export default function WebGlGameCanvas() {
             dpr.toFixed(2)
           }x`,
         );
-        drawFrame();
+        // RAF loop is already running — no need to force a frame here.
       };
 
       const loadRockTexture = async () => {
@@ -1665,7 +1668,7 @@ export default function WebGlGameCanvas() {
         sceneStateRef.current.residentChunks = cache2d.size;
         sceneStateRef.current.streamingChunks = [...cache2d.keys()];
         sceneStateRef.current.uiMode = "world";
-        drawFrame();
+        // RAF loop picks up sceneReadyRef.current = true on the next tick.
       };
 
       const handleFullscreenChange = () => {
@@ -1751,6 +1754,7 @@ export default function WebGlGameCanvas() {
           inputLogRef.current = [];
           checkpointsRef.current = [];
           solidCacheRef.current.clear();
+          pendingChunkGenerationRef.current = [];
           screenshotArtifactsRef.current = {};
           stateArtifactsRef.current = {};
           frameMetricsRef.current = [];
@@ -2103,7 +2107,7 @@ export default function WebGlGameCanvas() {
         chunkKeyString({ ...k, chunkZ: viewZ })
       );
       sceneStateRef.current.uiMode = "world";
-      drawFrame();
+      // RAF loop picks up sceneReadyRef.current = true on the next tick.
     };
 
     const resizeCanvas = () => {
@@ -2132,7 +2136,7 @@ export default function WebGlGameCanvas() {
           dpr.toFixed(2)
         }x`,
       );
-      drawFrame();
+      // RAF loop is already running — no need to force a frame here.
     };
 
     const drawFrame = (timestamp = performance.now()) => {
@@ -2153,19 +2157,24 @@ export default function WebGlGameCanvas() {
         return;
       }
 
-      const lastGl = lastFrameTimeRef.current ?? timestamp;
+      const lastGl = lastFrameTimeRef.current;
       lastFrameTimeRef.current = timestamp;
-      // Cap delta to avoid spiral of death if tab was backgrounded.
-      const deltaMs = Math.min(timestamp - lastGl, 100);
+      // Raw delta for FPS — not capped so background-resume spikes are visible/skippable.
+      const rawDeltaMs = lastGl !== null ? timestamp - lastGl : 0;
+      // Cap delta for simulation so a background tab can't spiral.
+      const deltaMs = Math.min(rawDeltaMs, 100);
 
       // Simulation runs at 20 TPS (50ms/tick) — matching Rust's FixedUpdate schedule.
       // Input just_pressed events accumulate in playerKeysJustPressedRef across render
       // frames and are consumed once per simulation tick, exactly like Rust's command queue.
       const SIM_TICK_MS = 1000 / 20;
       simAccumulatorRef.current += deltaMs;
-      while (simAccumulatorRef.current >= SIM_TICK_MS) {
+      // Cap to 3 ticks to prevent spiral of death on slow frames.
+      let ticksThisFrame = 0;
+      while (simAccumulatorRef.current >= SIM_TICK_MS && ticksThisFrame < 3) {
         advanceSimulationTick();
         simAccumulatorRef.current -= SIM_TICK_MS;
+        ticksThisFrame++;
       }
 
       const deltaS = Math.min(deltaMs / 1000, 0.1);
@@ -2213,11 +2222,32 @@ export default function WebGlGameCanvas() {
         }
       }
 
-      // Part 2: FPS rolling average
+      // Drain up to 5 pending solid-chunk generations per frame to avoid startup stalls.
       {
-        const instantFps = deltaMs > 0 ? 1000 / deltaMs : 0;
-        fpsHistoryRef.current.push(instantFps);
-        if (fpsHistoryRef.current.length > 30) fpsHistoryRef.current.shift();
+        const pending = pendingChunkGenerationRef.current;
+        if (pending.length > 0) {
+          const batch = pending.splice(0, 5);
+          const seed = worldRef.current.seed;
+          for (const key of batch) {
+            if (!solidCacheRef.current.has(key)) {
+              const [cx, cy, cz] = key.split(",").map(Number);
+              solidCacheRef.current.set(
+                key,
+                generateWorldSolidChunk(seed, { chunkX: cx, chunkY: cy, chunkZ: cz }),
+              );
+            }
+          }
+          topmostCacheDirtyRef.current = true;
+          fovDirtyRef.current = true;
+        }
+      }
+
+      // Part 2: FPS rolling average — use raw delta, skip first frame and resume spikes.
+      {
+        if (rawDeltaMs > 0 && rawDeltaMs < 250) {
+          fpsHistoryRef.current.push(1000 / rawDeltaMs);
+          if (fpsHistoryRef.current.length > 60) fpsHistoryRef.current.shift();
+        }
       }
       // Part 2: sim TPS tracking — latch last complete second's count for stable display
       {
@@ -3244,6 +3274,7 @@ export default function WebGlGameCanvas() {
         inputLogRef.current = [];
         checkpointsRef.current = [];
         solidCacheRef.current.clear();
+        pendingChunkGenerationRef.current = [];
         screenshotArtifactsRef.current = {};
         stateArtifactsRef.current = {};
         frameMetricsRef.current = [];
