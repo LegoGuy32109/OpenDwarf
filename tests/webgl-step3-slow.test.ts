@@ -3,6 +3,7 @@ import {
   captureCheckpoint,
   loadFlow,
   setCamera,
+  setCameraSpeed,
   startCanvasRecording,
   stepTick,
   stopAndSaveCanvasRecording,
@@ -11,9 +12,6 @@ import {
 } from "./helpers/harness.ts";
 import { flow } from "./flows/webgl-step1-single-rock.ts";
 
-// ESDF / IJKL key layout:
-//   E / I → north (dy-)   D / K → south (dy+)
-//   S / J → west  (dx-)   F / L → east  (dx+)
 const OCTANTS: Array<{ name: string; keys: string[] }> = [
   { name: "north", keys: ["KeyE"] },
   { name: "northeast", keys: ["KeyE", "KeyF"] },
@@ -25,10 +23,13 @@ const OCTANTS: Array<{ name: string; keys: string[] }> = [
   { name: "northwest", keys: ["KeyE", "KeyS"] },
 ];
 
-const HOLD_MS = 2_000;
+// 120px/s = quarter of the default 480px/s.
+// N/S chunk boundary sits 484px away → needs 4.03s to cross. 4100ms is the margin.
+const SLOW_SPEED = 120;
+const HOLD_MS = 4_100;
 
-test("webgl step3 visual — keypresses in all 8 octants", async ({ page }) => {
-  test.setTimeout(60_000);
+test("webgl step3 slow visual — keypresses in all 8 octants", async ({ page }) => {
+  test.setTimeout(90_000);
 
   await page.goto("/webgl");
   await waitForHarness(page);
@@ -36,7 +37,7 @@ test("webgl step3 visual — keypresses in all 8 octants", async ({ page }) => {
   await waitForEvent(page, "texture_loaded");
   await stepTick(page, 4);
 
-  // Record directly from the WebGL canvas — no JPEG screencasting in the path.
+  await setCameraSpeed(page, SLOW_SPEED);
   await startCanvasRecording(page);
 
   const cpOrigin = await captureCheckpoint(page, "origin");
@@ -69,6 +70,6 @@ test("webgl step3 visual — keypresses in all 8 octants", async ({ page }) => {
 
   await stopAndSaveCanvasRecording(
     page,
-    "exports/canvas-recordings/step3-octants.webm",
+    "exports/canvas-recordings/step3-octants-slow.webm",
   );
 });

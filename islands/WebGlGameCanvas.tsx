@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { FlowDescriptor, PerfWindow } from "../lib/webgl-harness-types.ts";
 import {
   CHUNK_EDGE_TILES,
-  type ChunkKey,
   chunkKeyString,
   computeStreamingChunks,
   computeVisibleChunks,
@@ -200,6 +199,7 @@ type WebGlTestHarness = {
   stepTick: (n: number) => Promise<void>;
   captureCheckpoint: (name: string) => Promise<WebGlCheckpointRecord | null>;
   setCamera: (x: number, y: number, zoom?: number) => Promise<void>;
+  setCameraSpeed: (pxPerS: number) => void;
   exportReplay: () => ReplayDocument;
   exportBundleData: () => Promise<WebGlExportBundleData>;
   importReplay: (doc: ReplayDocument) => void;
@@ -212,7 +212,7 @@ type WebGlTestHarness = {
 const FLOW_NAME = "webgl-step1-single-rock";
 const SEED_NAME = "single-rock-step1";
 const TILE_TEXTURE_SRC = "/assets/sprites/SingleRock.png";
-const CAMERA_PX_PER_S = 480;
+let cameraSpeedPxPerS = 480;
 const STREAM_PADDING = 1;
 const MAX_STREAMING_CHUNKS = 64;
 const GAME_KEYS = new Set([
@@ -941,7 +941,7 @@ export default function WebGlGameCanvas() {
         lastFrameTimeRef.current = timestamp;
 
         const cam2d = sceneStateRef.current.camera;
-        const step2d = CAMERA_PX_PER_S * dt2d;
+        const step2d = cameraSpeedPxPerS * dt2d;
         let dx2d = 0, dy2d = 0;
         const k2d = keysHeldRef.current;
         if (k2d.has("KeyE") || k2d.has("KeyI")) dy2d -= step2d;
@@ -1287,6 +1287,9 @@ export default function WebGlGameCanvas() {
         },
         captureCheckpoint,
         setCamera,
+        setCameraSpeed: (pxPerS: number) => {
+          cameraSpeedPxPerS = pxPerS;
+        },
         exportReplay: buildReplayDocument,
         exportBundleData,
         importReplay: importReplayDocument,
@@ -1574,7 +1577,7 @@ export default function WebGlGameCanvas() {
       lastFrameTimeRef.current = timestamp;
 
       const camGl = sceneStateRef.current.camera;
-      const stepGl = CAMERA_PX_PER_S * dtGl;
+      const stepGl = cameraSpeedPxPerS * dtGl;
       let dxGl = 0, dyGl = 0;
       const kGl = keysHeldRef.current;
       if (kGl.has("KeyE") || kGl.has("KeyI")) dyGl -= stepGl;
@@ -1803,6 +1806,9 @@ export default function WebGlGameCanvas() {
       },
       captureCheckpoint,
       setCamera,
+      setCameraSpeed: (pxPerS: number) => {
+        cameraSpeedPxPerS = pxPerS;
+      },
       exportReplay: buildReplayDocument,
       exportBundleData,
       importReplay: importReplayDocument,

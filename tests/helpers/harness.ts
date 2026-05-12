@@ -26,6 +26,7 @@ type BrowserHarness = {
   stepTick(n: number): Promise<void>;
   captureCheckpoint(name: string): Promise<HarnessCheckpoint | null>;
   setCamera(x: number, y: number, zoom: number): Promise<void>;
+  setCameraSpeed(pxPerS: number): void;
   exportReplay(): { events: { type: string }[] };
   exportBundleData(): Promise<{
     replayJson: string;
@@ -86,6 +87,13 @@ export function setCamera(page: Page, x: number, y: number, zoom = 1) {
   );
 }
 
+export function setCameraSpeed(page: Page, pxPerS: number) {
+  return page.evaluate((pxPerS) => {
+    (self as unknown as BrowserGlobal)
+      .__openDwarfWebGlHarness!.setCameraSpeed(pxPerS);
+  }, pxPerS);
+}
+
 export function waitForEvent(page: Page, type: string, timeout = 15_000) {
   return page.waitForFunction(
     (type) => {
@@ -136,8 +144,7 @@ export async function stopAndSaveCanvasRecording(
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: "video/webm" });
         const reader = new FileReader();
-        reader.onload = () =>
-          resolve((reader.result as string).split(",")[1]);
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
         reader.readAsDataURL(blob);
       };
       recorder.stop();
@@ -146,6 +153,7 @@ export async function stopAndSaveCanvasRecording(
 
   const fs = await import("node:fs");
   const path = await import("node:path");
+  const { Buffer } = await import("node:buffer");
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, Buffer.from(b64, "base64"));
 }
