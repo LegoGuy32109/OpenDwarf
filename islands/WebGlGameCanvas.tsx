@@ -1715,6 +1715,15 @@ export default function WebGlGameCanvas() {
           chunkCacheRef.current.has(chunkKeyString({ ...k, chunkZ: viewZ }))
         )
         .map((k) => chunkKeyString({ ...k, chunkZ: viewZ }));
+      const shadowXY = new Map<string, { chunkX: number; chunkY: number }>();
+      for (const vis of visibleXY) {
+        shadowXY.set(`${vis.chunkX},${vis.chunkY}`, vis);
+        shadowXY.set(`${vis.chunkX},${vis.chunkY - 1}`, {
+          chunkX: vis.chunkX,
+          chunkY: vis.chunkY - 1,
+        });
+      }
+      const shadowVisibleXY = [...shadowXY.values()];
 
       if (sceneReadyRef.current) {
         const HALF = TILE_SIZE_PX * 0.5;
@@ -1747,7 +1756,7 @@ export default function WebGlGameCanvas() {
         // or 127 if no solid in the depth stack.
         const topmostOffsets = new Map<string, Int8Array>();
         const topmostXY = new Map<string, { chunkX: number; chunkY: number }>();
-        for (const vis of visibleXY) {
+        for (const vis of shadowVisibleXY) {
           for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
             const chunkX = vis.chunkX + dx;
             const chunkY = vis.chunkY + dy;
@@ -1932,7 +1941,7 @@ export default function WebGlGameCanvas() {
             );
           };
 
-          for (const vis of visibleXY) {
+          for (const vis of shadowVisibleXY) {
             const baseX = vis.chunkX * CHUNK_EDGE_TILES;
             const baseY = vis.chunkY * CHUNK_EDGE_TILES;
             for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
@@ -1946,11 +1955,11 @@ export default function WebGlGameCanvas() {
                   tx + 1,
                   ty,
                 );
-                if (right !== 127 && right !== here) {
+                if (right !== here) {
                   addVerticalShadow(
                     (baseX + tx + 1) * TILE_SIZE_PX,
                     (baseY + ty) * TILE_SIZE_PX,
-                    right < here,
+                    right === 127 || right < here,
                   );
                 }
 
@@ -1960,11 +1969,11 @@ export default function WebGlGameCanvas() {
                   tx,
                   ty + 1,
                 );
-                if (down !== 127 && down !== here) {
+                if (down !== here) {
                   addHorizontalShadow(
                     (baseX + tx) * TILE_SIZE_PX,
                     (baseY + ty + 1) * TILE_SIZE_PX,
-                    down < here,
+                    down === 127 || down < here,
                   );
                 }
               }
@@ -1982,7 +1991,7 @@ export default function WebGlGameCanvas() {
 
         if (layersRef.current.ceilShadow) {
           let count = 0;
-          for (const vis of visibleXY) {
+          for (const vis of shadowVisibleXY) {
             const ceilIds = computeCeilingShadowIds(
               vis.chunkX,
               vis.chunkY,
