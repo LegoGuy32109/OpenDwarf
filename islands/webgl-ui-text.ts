@@ -15,6 +15,9 @@ export type UiFontAtlas = {
   cellWidth: number;
   cellHeight: number;
   lineHeight: number;
+  advance: number;
+  ascent: number;
+  descent: number;
   advances: Float32Array;
 };
 
@@ -156,6 +159,9 @@ export async function createUiFontAtlas(
     cellWidth,
     cellHeight,
     lineHeight: cellHeight + UI_FONT_LINE_GAP,
+    advance: maxAdvance,
+    ascent: maxAscent,
+    descent: maxDescent,
     advances,
   };
 }
@@ -186,6 +192,9 @@ export function drawUiTextLines(
 
   let count = 0;
   let cursorX = 0;
+  const yOffset =
+    (fontAtlas.lineHeight - fontAtlas.cellHeight + fontAtlas.descent) *
+    UI_FONT_SCALE;
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
     if (code < UI_FONT_FIRST_CHAR || code > UI_FONT_LAST_CHAR) {
@@ -200,11 +209,10 @@ export function drawUiTextLines(
     const gy = Math.floor(glyph / UI_FONT_COLS);
     const u0 = gx * fontAtlas.cellWidth + UI_FONT_PADDING + 0.5;
     const v0 = gy * fontAtlas.cellHeight + UI_FONT_PADDING + 0.5;
-    const advance = (fontAtlas.advances[glyph] || fontAtlas.cellWidth) *
-      UI_FONT_SCALE;
+    const advance = fontAtlas.advance * UI_FONT_SCALE;
     const off = count * 8;
     scratch[off + 0] = x + cursorX;
-    scratch[off + 1] = y;
+    scratch[off + 1] = y + yOffset;
     scratch[off + 2] = advance;
     scratch[off + 3] = fontAtlas.cellHeight * UI_FONT_SCALE;
     scratch[off + 4] = u0 / fontAtlas.width;
