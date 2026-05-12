@@ -1717,10 +1717,10 @@ export default function WebGlGameCanvas() {
         const DEPTH_TINTS: [number, number, number][] = [
           [1.0, 1.0, 1.0],
           [0.75, 0.75, 0.75],
-          [0.47, 0.49, 0.49],
-          [0.33, 0.35, 0.61],
-          [0.22, 0.24, 0.61],
-          [0.12, 0.15, 0.43],
+          [0.65, 0.65, 0.8],
+          [0.43, 0.45, 0.61],
+          [0.32, 0.34, 0.61],
+          [0.2, 0.2, 0.4],
         ];
         // Stone tile atlas frame index (matches stone_tile_index() in Rust)
         const STONE_FRAME_UV = 5 * INV_FLOOR;
