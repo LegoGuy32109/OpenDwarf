@@ -14,6 +14,13 @@ import {
   updateSolidCache,
   Z_LEVELS_BELOW,
 } from "../lib/webgl-chunk-gen.ts";
+import {
+  createUiFontAtlas,
+  drawUiTextLines,
+  UI_FONT_SRC,
+  type UiFontAtlas,
+  uiTextLineHeight,
+} from "./webgl-ui-text.ts";
 
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
@@ -237,6 +244,7 @@ const GAME_KEYS = new Set([
   "KeyK",
   "KeyL",
 ]);
+
 function createRunId() {
   const stamp = new Date().toISOString().replaceAll(":", "-");
   const entropy = globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
@@ -448,6 +456,7 @@ export default function WebGlGameCanvas() {
   const textureRef = useRef<WebGLTexture | null>(null);
   const shadowTextureRef = useRef<WebGLTexture | null>(null);
   const ceilShadowTextureRef = useRef<WebGLTexture | null>(null);
+  const uiFontAtlasRef = useRef<UiFontAtlas | null>(null);
   const instanceBufferRef = useRef<WebGLBuffer | null>(null);
   const vertexBufferRef = useRef<WebGLBuffer | null>(null);
   const solidCacheRef = useRef<Map<string, Uint8Array>>(new Map());
@@ -495,39 +504,70 @@ export default function WebGlGameCanvas() {
     camera: { x: 0, y: 0, zoom: 1 },
   });
   const replayEventsRef = useRef<ReplayEvent[]>([]);
+  const uiOverlayVisibleRef = useRef(true);
+  const statusRef = useRef("booting");
+  const fullscreenRef = useRef(false);
+  const capabilityStateRef = useRef<WebGlCapabilityReport | null>(null);
+  const logsRef = useRef<string[]>([]);
+  const replayPreviewRef = useRef<ReplayPreview>(summarizeReplay([]));
+  const checkpointRecordsRef = useRef<WebGlCheckpointRecord[]>([]);
+  const baselineConfiguredRef = useRef(false);
 
-  const [status, setStatus] = useState("booting");
-  const [fullscreen, setFullscreen] = useState(false);
-  const [capability, setCapability] = useState<WebGlCapabilityReport | null>(
+  const [_status, setStatus] = useState("booting");
+  const [_fullscreen, setFullscreen] = useState(false);
+  const [_capability, setCapability] = useState<WebGlCapabilityReport | null>(
     null,
   );
-  const [logs, setLogs] = useState<string[]>([]);
-  const [replayPreview, setReplayPreview] = useState<ReplayPreview>(
+  const [_logs, setLogs] = useState<string[]>([]);
+  const [_replayPreview, setReplayPreview] = useState<ReplayPreview>(
     summarizeReplay([]),
   );
-  const [checkpointRecords, setCheckpointRecords] = useState<
+  const [_checkpointRecords, setCheckpointRecords] = useState<
     WebGlCheckpointRecord[]
   >([]);
-  const [baselineConfigured, setBaselineConfigured] = useState(false);
-  const [importedReplayInfo, setImportedReplayInfo] = useState<string | null>(
+  const [_baselineConfigured, setBaselineConfigured] = useState(false);
+  const [_importedReplayInfo, setImportedReplayInfo] = useState<string | null>(
     null,
   );
-  const [layers, setLayers] = useState({
+  const [_layers, setLayers] = useState({
     floor: true,
     edgeShadow: true,
     ceilShadow: true,
     depthTint: true,
   });
+  const [_uiOverlayVisible, setUiOverlayVisible] = useState(true);
 
   const appendLog = (text: string) => {
     const id = logIdRef.current++;
     const next = `${String(id).padStart(3, "0")} ${text}`;
-    setLogs((prev) => [next, ...prev].slice(0, 10));
+    logsRef.current = [next, ...logsRef.current].slice(0, 10);
+    setLogs(logsRef.current);
   };
 
   const pushReplayEvent = (event: ReplayEvent) => {
     replayEventsRef.current = [...replayEventsRef.current, event];
-    setReplayPreview(summarizeReplay(replayEventsRef.current));
+    replayPreviewRef.current = summarizeReplay(replayEventsRef.current);
+    setReplayPreview(replayPreviewRef.current);
+  };
+
+  const setStatusText = (next: string) => {
+    statusRef.current = next;
+    setStatus(next);
+  };
+
+  const setFullscreenState = (next: boolean) => {
+    fullscreenRef.current = next;
+    setFullscreen(next);
+  };
+
+  const setCheckpointRecordsState = (next: WebGlCheckpointRecord[]) => {
+    checkpointRecordsRef.current = next;
+    setCheckpointRecords(next);
+  };
+
+  const setBaselineConfiguredState = (next: boolean) => {
+    baselineConfiguredRef.current = next;
+    setBaselineConfigured(next);
   };
 
   const nextTick = () => {
@@ -544,35 +584,7 @@ export default function WebGlGameCanvas() {
     const dpr = globalThis.devicePixelRatio || 1;
     const maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
 
-    setCapability({
-      userAgent: navigator.userAgent,
-      platform: navigator.platform,
-      hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-      devicePixelRatio: dpr,
-      innerSize: {
-        width: globalThis.innerWidth,
-        height: globalThis.innerHeight,
-      },
-      screenSize: {
-        width: globalThis.screen.width,
-        height: globalThis.screen.height,
-      },
-      maxTouchPoints: navigator.maxTouchPoints ?? null,
-      fullscreen: fullscreenElement === hostRef.current,
-      canvasCssSize: { width: rect.width, height: rect.height },
-      framebufferSize: { width: canvas.width, height: canvas.height },
-      context: {
-        webgl2: true,
-        version: String(gl.getParameter(gl.VERSION)),
-        shadingLanguageVersion: String(
-          gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
-        ),
-        ...readGpuStrings(gl),
-        maxTextureSize: Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)),
-        maxViewportDims: [maxViewportDims[0], maxViewportDims[1]],
-      },
-    });
-    capabilityRef.current = {
+    const nextCapability: WebGlCapabilityReport = {
       userAgent: navigator.userAgent,
       platform: navigator.platform,
       hardwareConcurrency: navigator.hardwareConcurrency ?? null,
@@ -600,6 +612,9 @@ export default function WebGlGameCanvas() {
         maxViewportDims: [maxViewportDims[0], maxViewportDims[1]],
       },
     };
+    setCapability(nextCapability);
+    capabilityRef.current = nextCapability;
+    capabilityStateRef.current = nextCapability;
   };
 
   const syncSceneStateFromCapability = (
@@ -737,7 +752,7 @@ export default function WebGlGameCanvas() {
     };
 
     checkpointsRef.current = [...checkpointsRef.current, record];
-    setCheckpointRecords(checkpointsRef.current);
+    setCheckpointRecordsState(checkpointsRef.current);
     screenshotArtifactsRef.current[screenshotFilename] = blob;
     stateArtifactsRef.current[stateFilename] = createJsonBlob(statePayload);
     pushReplayEvent({
@@ -772,16 +787,16 @@ export default function WebGlGameCanvas() {
 
     replayEventsRef.current = doc.events ?? [];
     checkpointsRef.current = doc.checkpoints ?? [];
-    setReplayPreview(summarizeReplay(replayEventsRef.current));
-    setCheckpointRecords(checkpointsRef.current);
+    replayPreviewRef.current = summarizeReplay(replayEventsRef.current);
+    setReplayPreview(replayPreviewRef.current);
+    setCheckpointRecordsState(checkpointsRef.current);
     setImportedReplayInfo(
       `${doc.createdAt} | ${replayEventsRef.current.length} events | ${checkpointsRef.current.length} checkpoints`,
     );
-    setLogs(
-      replayEventsRef.current.slice(-10).map((entry, index) =>
-        `${String(index).padStart(3, "0")} ${JSON.stringify(entry)}`
-      ).reverse(),
-    );
+    logsRef.current = replayEventsRef.current.slice(-10).map((entry, index) =>
+      `${String(index).padStart(3, "0")} ${JSON.stringify(entry)}`
+    ).reverse();
+    setLogs(logsRef.current);
     appendLog(`imported replay ${doc.createdAt}`);
   };
 
@@ -818,7 +833,7 @@ export default function WebGlGameCanvas() {
     manifest: WebGlScreenshotBaselineManifest | null,
   ) => {
     baselineManifestRef.current = manifest;
-    setBaselineConfigured(Boolean(manifest));
+    setBaselineConfiguredState(Boolean(manifest));
     appendLog(
       manifest ? "baseline manifest configured" : "baseline manifest cleared",
     );
@@ -867,7 +882,7 @@ export default function WebGlGameCanvas() {
         willReadFrequently: false,
       });
       if (!fallbackContext) {
-        setStatus("canvas2d unavailable");
+        setStatusText("canvas2d unavailable");
         setCapability({
           userAgent: navigator.userAgent,
           platform: navigator.platform,
@@ -899,7 +914,7 @@ export default function WebGlGameCanvas() {
       }
 
       fallbackContext.imageSmoothingEnabled = false;
-      setStatus("canvas2d fallback active");
+      setStatusText("canvas2d fallback active");
       setCapability({
         userAgent: navigator.userAgent,
         platform: navigator.platform,
@@ -1180,7 +1195,7 @@ export default function WebGlGameCanvas() {
         updateChunkCache(cache2d, flowDescriptorRef.current.seed, sk2dLoad);
         chunkCacheRef.current = cache2d;
         streamingKeySetRef.current = sk2dLoad.map(chunkKeyString).join("|");
-        setStatus("SingleRock texture ready");
+        setStatusText("SingleRock texture ready");
         sceneReadyRef.current = true;
         sceneStateRef.current = {
           ...sceneStateRef.current,
@@ -1199,7 +1214,7 @@ export default function WebGlGameCanvas() {
         keysHeldRef.current.clear();
         lastFrameTimeRef.current = null;
         const isFullscreen = document.fullscreenElement === host;
-        setFullscreen(isFullscreen);
+        setFullscreenState(isFullscreen);
         sceneStateRef.current = {
           ...sceneStateRef.current,
           fullscreen: isFullscreen,
@@ -1270,8 +1285,9 @@ export default function WebGlGameCanvas() {
           stateArtifactsRef.current = {};
           frameMetricsRef.current = [];
           eventTickRef.current = 0;
-          setCheckpointRecords([]);
-          setReplayPreview(summarizeReplay([]));
+          setCheckpointRecordsState([]);
+          replayPreviewRef.current = summarizeReplay([]);
+          setReplayPreview(replayPreviewRef.current);
           setImportedReplayInfo(null);
           keysHeldRef.current.clear();
           streamingKeySetRef.current = "";
@@ -1329,7 +1345,7 @@ export default function WebGlGameCanvas() {
       pushReplayEvent({ type: "boot", tick: nextTick() });
       appendLog("boot");
       void loadRockTexture().catch((error) => {
-        setStatus(`texture load failed: ${String(error)}`);
+        setStatusText(`texture load failed: ${String(error)}`);
         appendLog(`texture load failed: ${String(error)}`);
       });
 
@@ -1357,6 +1373,7 @@ export default function WebGlGameCanvas() {
 
     const vertexSource = `#version 300 es
       precision highp float;
+      precision highp int;
       in vec2 a_position;
       in vec2 a_uv;
       in vec2 a_instance_offset;
@@ -1364,12 +1381,15 @@ export default function WebGlGameCanvas() {
       in vec4 a_instance_uv;
       uniform vec2 u_canvas_size;
       uniform vec2 u_camera;
+      uniform int u_render_mode;
       out vec2 v_uv;
       out float v_instance_alpha;
 
       void main() {
         vec2 world_px = a_instance_offset + a_position * a_instance_size;
-        vec2 screen_px = world_px - u_camera + u_canvas_size * 0.5;
+        vec2 screen_px = u_render_mode == 3
+          ? world_px
+          : world_px - u_camera + u_canvas_size * 0.5;
         vec2 ndc = (screen_px / u_canvas_size) * 2.0 - 1.0;
         gl_Position = vec4(ndc * vec2(1.0, -1.0), 0.0, 1.0);
         v_uv = a_uv * a_instance_uv.zw + a_instance_uv.xy;
@@ -1379,6 +1399,7 @@ export default function WebGlGameCanvas() {
 
     const fragmentSource = `#version 300 es
       precision highp float;
+      precision highp int;
       uniform sampler2D u_texture;
       uniform vec3 u_tint;
       uniform float u_alpha_multiplier;
@@ -1393,6 +1414,8 @@ export default function WebGlGameCanvas() {
           out_color = vec4(0.0, 0.0, 0.0, texel.a * u_alpha_multiplier);
         } else if (u_render_mode == 2) {
           out_color = vec4(0.0, 0.0, 0.0, v_instance_alpha);
+        } else if (u_render_mode == 3) {
+          out_color = vec4(u_tint, texel.a * u_alpha_multiplier);
         } else {
           out_color = texel;
           out_color.rgb *= u_tint;
@@ -1519,15 +1542,17 @@ export default function WebGlGameCanvas() {
         img.src = src;
         return img.decode().then(() => img);
       };
-      const [floorImg, shadowImg, ceilImg] = await Promise.all([
+      const [floorImg, shadowImg, ceilImg, uiFontAtlas] = await Promise.all([
         loadImg(TILE_TEXTURE_SRC),
         loadImg(SHADOW_TEXTURE_SRC),
         loadImg(CEIL_SHADOW_TEXTURE_SRC),
+        createUiFontAtlas(gl),
       ]);
 
       uploadTexImage(floorTex, floorImg);
       uploadTexImage(shadowTex, shadowImg);
       uploadTexImage(ceilShadowTex, ceilImg);
+      uiFontAtlasRef.current = uiFontAtlas;
 
       textureInfoRef.current = {
         src: TILE_TEXTURE_SRC,
@@ -1564,7 +1589,7 @@ export default function WebGlGameCanvas() {
         chunkKeyString({ ...k, chunkZ: viewZ })
       ).join("|") +
         `|z${viewZ}`;
-      setStatus("depth stack ready");
+      setStatusText("depth stack ready");
       sceneReadyRef.current = true;
       sceneStateRef.current = {
         ...sceneStateRef.current,
@@ -1572,6 +1597,7 @@ export default function WebGlGameCanvas() {
           TILE_TEXTURE_SRC,
           SHADOW_TEXTURE_SRC,
           CEIL_SHADOW_TEXTURE_SRC,
+          UI_FONT_SRC,
         ],
         residentChunks: skLoad.length,
         streamingChunks: skLoad.map((k) =>
@@ -2020,6 +2046,108 @@ export default function WebGlGameCanvas() {
           flushPass(count);
         }
 
+        // --- WEBGL UI PASS ---
+        if (uiOverlayVisibleRef.current && uiFontAtlasRef.current) {
+          const fontAtlas = uiFontAtlasRef.current;
+          const drawText = (
+            text: string,
+            x: number,
+            y: number,
+            rgb: [number, number, number],
+            alpha = 1,
+          ) => {
+            drawUiTextLines(
+              {
+                gl,
+                fontAtlas,
+                scratch,
+                maxInstances,
+                flushPass,
+                tintLoc,
+                alphaMultiplierLoc,
+                renderModeLoc,
+              },
+              text,
+              x,
+              y,
+              rgb,
+              alpha,
+            );
+          };
+          const drawLines = (
+            lines: string[],
+            x: number,
+            y: number,
+            rgb: [number, number, number],
+            alpha = 1,
+          ) => {
+            for (let i = 0; i < lines.length; i++) {
+              drawText(
+                lines[i],
+                x,
+                y + i * uiTextLineHeight(fontAtlas),
+                rgb,
+                alpha,
+              );
+            }
+          };
+
+          const cap = capabilityStateRef.current;
+          const preview = replayPreviewRef.current;
+          const statusLines = [
+            `STEP 6 WEBGL UI  ${statusRef.current}`,
+            `[1] ui:${uiOverlayVisibleRef.current ? "on" : "OFF"} [6] floor:${
+              layersRef.current.floor ? "on" : "OFF"
+            } [7] edge:${layersRef.current.edgeShadow ? "on" : "OFF"}`,
+            `[8] ceil:${layersRef.current.ceilShadow ? "on" : "OFF"} [9] tint:${
+              layersRef.current.depthTint ? "on" : "OFF"
+            }`,
+            `fullscreen: ${fullscreenRef.current ? "yes" : "no"}  z:${viewZ}`,
+            `framebuffer: ${cap?.framebufferSize.width ?? 0} x ${
+              cap?.framebufferSize.height ?? 0
+            }`,
+            `css: ${cap?.canvasCssSize.width.toFixed(0) ?? "0"} x ${
+              cap?.canvasCssSize.height.toFixed(0) ?? "0"
+            } dpr:${cap?.devicePixelRatio.toFixed(2) ?? "0.00"}`,
+            `replay:${preview.eventCount} tex:${preview.textureCount} shots:${preview.screenshotCount} checks:${preview.checkpointCount}`,
+            `baseline: ${
+              baselineConfiguredRef.current ? "configured" : "unset"
+            }`,
+          ];
+          drawLines(statusLines, 32, 28, [1.0, 0.86, 0.56], 0.95);
+
+          const logLines = logsRef.current.length === 0
+            ? ["waiting for resize or fullscreen..."]
+            : ["EVENT LOG", ...logsRef.current.slice(0, 7)];
+          const logW = Math.min(560, canvas.width - 32);
+          drawLines(
+            logLines,
+            canvas.width - logW,
+            canvas.height - 202,
+            [0.82, 0.9, 1.0],
+            0.88,
+          );
+
+          const checkpoints = checkpointRecordsRef.current.slice(-6).reverse();
+          const checkpointLines = checkpoints.length === 0
+            ? ["CHECKPOINTS", "no checkpoints captured yet"]
+            : [
+              "CHECKPOINTS",
+              ...checkpoints.map((entry) =>
+                `${String(entry.ordinal).padStart(3, "0")} ${entry.name} ${
+                  entry.baselineConfigured ? "base" : "new"
+                }`
+              ),
+            ];
+          drawLines(
+            checkpointLines,
+            32,
+            canvas.height - 162,
+            [0.7, 1.0, 0.82],
+            0.88,
+          );
+        }
+
         gl.disable(gl.BLEND);
       }
 
@@ -2036,7 +2164,7 @@ export default function WebGlGameCanvas() {
       keysHeldRef.current.clear();
       lastFrameTimeRef.current = null;
       const isFullscreen = document.fullscreenElement === host;
-      setFullscreen(isFullscreen);
+      setFullscreenState(isFullscreen);
       sceneStateRef.current = {
         ...sceneStateRef.current,
         fullscreen: isFullscreen,
@@ -2076,6 +2204,12 @@ export default function WebGlGameCanvas() {
       if (GAME_KEYS.has(event.code)) {
         event.preventDefault();
         keysHeldRef.current.add(event.code);
+      }
+      if (event.code === "Digit1") {
+        event.preventDefault();
+        uiOverlayVisibleRef.current = !uiOverlayVisibleRef.current;
+        setUiOverlayVisible(uiOverlayVisibleRef.current);
+        appendLog(`ui: ${uiOverlayVisibleRef.current ? "on" : "off"}`);
       }
       if (event.code === "KeyR") {
         event.preventDefault();
@@ -2159,8 +2293,9 @@ export default function WebGlGameCanvas() {
         stateArtifactsRef.current = {};
         frameMetricsRef.current = [];
         eventTickRef.current = 0;
-        setCheckpointRecords([]);
-        setReplayPreview(summarizeReplay([]));
+        setCheckpointRecordsState([]);
+        replayPreviewRef.current = summarizeReplay([]);
+        setReplayPreview(replayPreviewRef.current);
         setImportedReplayInfo(null);
         keysHeldRef.current.clear();
         streamingKeySetRef.current = "";
@@ -2223,7 +2358,7 @@ export default function WebGlGameCanvas() {
     pushReplayEvent({ type: "boot", tick: nextTick() });
     appendLog("boot");
     void loadTextures().catch((error) => {
-      setStatus(`texture load failed: ${String(error)}`);
+      setStatusText(`texture load failed: ${String(error)}`);
       appendLog(`texture load failed: ${String(error)}`);
     });
 
@@ -2251,8 +2386,6 @@ export default function WebGlGameCanvas() {
       sceneReadyRef.current = false;
     };
   }, []);
-
-  const openImportDialog = () => fileInputRef.current?.click();
 
   const handleReplayFileInputChange = async (event: Event) => {
     const input = event.currentTarget as HTMLInputElement | null;
@@ -2315,112 +2448,10 @@ export default function WebGlGameCanvas() {
         class="hidden"
         onChange={handleReplayFileInputChange}
       />
-      <div class="absolute left-4 top-4 z-10 max-w-[min(31rem,calc(100%-2rem))] rounded-2xl border border-amber-200/15 bg-black/55 px-4 py-3 text-xs text-amber-50/90 backdrop-blur">
-        <div class="flex flex-wrap items-center gap-3">
-          <span class="rounded-full bg-amber-300/20 px-2 py-1 font-semibold uppercase tracking-[0.18em] text-amber-100">
-            Step 4 Depth Stack
-          </span>
-          <span class="text-white/70">{status}</span>
-        </div>
-        <div class="mt-2 space-y-1 font-mono text-[11px] leading-5 text-white/75">
-          <div>
-            [6] floor:{layers.floor ? "on" : "OFF"}{" "}
-            [7] edge:{layers.edgeShadow ? "on" : "OFF"}{" "}
-            [8] ceil:{layers.ceilShadow ? "on" : "OFF"}{" "}
-            [9] tint:{layers.depthTint ? "on" : "OFF"}
-          </div>
-          <div>fullscreen: {fullscreen ? "yes" : "no"}</div>
-          <div>
-            framebuffer: {capability?.framebufferSize.width ?? 0} x{" "}
-            {capability?.framebufferSize.height ?? 0}
-          </div>
-          <div>
-            css size: {capability?.canvasCssSize.width.toFixed(0) ?? "0"} x{" "}
-            {capability?.canvasCssSize.height.toFixed(0) ?? "0"} dpr:{" "}
-            {capability?.devicePixelRatio.toFixed(2) ?? "0.00"}
-          </div>
-          <div>
-            renderer: {capability?.context.renderer ?? "n/a"} / vendor:{" "}
-            {capability?.context.vendor ?? "n/a"}
-          </div>
-          <div>
-            max texture size: {capability?.context.maxTextureSize ?? "n/a"}
-          </div>
-          <div>
-            replay events: {replayPreview.eventCount} | textures:{" "}
-            {replayPreview.textureCount} | screenshots:{" "}
-            {replayPreview.screenshotCount} | checkpoints:{" "}
-            {replayPreview.checkpointCount}
-          </div>
-          <div>
-            baseline manifest: {baselineConfigured ? "configured" : "unset"}
-          </div>
-          <div>
-            import: {importedReplayInfo ?? "none"}
-          </div>
-        </div>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="rounded-md border border-amber-100/15 bg-amber-50/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-50 transition hover:bg-amber-50/15"
-            onClick={() => {
-              const host = hostRef.current;
-              if (!host) return;
-              void host.requestFullscreen();
-            }}
-          >
-            Enter Fullscreen
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
-            onClick={() => canvasRef.current?.focus()}
-          >
-            Focus Canvas
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
-            onClick={openImportDialog}
-          >
-            Import Replay JSON
-          </button>
-        </div>
-      </div>
       <canvas
         ref={canvasRef}
         class="webgl-experiment-canvas"
       />
-      <div class="pointer-events-none absolute bottom-4 right-4 w-[min(28rem,calc(100%-2rem))] rounded-2xl border border-white/10 bg-black/45 px-4 py-3 text-[11px] text-white/80 backdrop-blur">
-        <div class="font-semibold uppercase tracking-[0.16em] text-white/55">
-          Event Log
-        </div>
-        <div class="mt-2 max-h-40 space-y-1 overflow-hidden font-mono leading-5">
-          {logs.length === 0
-            ? (
-              <div class="text-white/45">
-                waiting for resize or fullscreen...
-              </div>
-            )
-            : logs.map((entry) => <div key={entry}>{entry}</div>)}
-        </div>
-      </div>
-      <div class="pointer-events-none absolute bottom-4 left-4 w-[min(27rem,calc(100%-2rem))] rounded-2xl border border-emerald-200/10 bg-black/45 px-4 py-3 text-[11px] text-white/80 backdrop-blur">
-        <div class="font-semibold uppercase tracking-[0.16em] text-white/55">
-          Checkpoints
-        </div>
-        <div class="mt-2 max-h-40 space-y-1 overflow-hidden font-mono leading-5">
-          {checkpointRecords.length === 0
-            ? <div class="text-white/45">no checkpoints captured yet</div>
-            : checkpointRecords.slice().reverse().map((entry) => (
-              <div key={`${entry.ordinal}:${entry.name}`}>
-                {String(entry.ordinal).padStart(3, "0")} {entry.name} |{" "}
-                {entry.screenshotFilename} | baseline:{" "}
-                {entry.baselineConfigured ? "yes" : "no"}
-              </div>
-            ))}
-        </div>
-      </div>
     </div>
   );
 }
