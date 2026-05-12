@@ -45,7 +45,7 @@ export type MoveResult =
     reason: "moving" | "blocked" | "non_adjacent" | "chunk_unloaded";
   };
 
-const FOV_RADIUS = 5;
+const FOV_RADIUS = 20;
 const STARTER_ROOM_HALF_EXTENT = 3;
 const STARTER_ROOM_MIN_Z = 0;
 const STARTER_ROOM_MAX_Z = 1;
@@ -409,7 +409,12 @@ export function advanceWorldMovement(world: WorldSimState) {
   return true;
 }
 
-function hasLos(seed: string, from: Vec3i, to: Vec3i): boolean {
+function hasLos(
+  seed: string,
+  from: Vec3i,
+  to: Vec3i,
+  solidFn: (x: number, y: number, z: number) => boolean,
+): boolean {
   if (sameVec(from, to)) return true;
   const fx = from.x + 0.5;
   const fy = from.y + 0.5;
@@ -444,16 +449,40 @@ function hasLos(seed: string, from: Vec3i, to: Vec3i): boolean {
       tMaxZ += tDeltaZ;
     }
     if (cx === to.x && cy === to.y && cz === to.z) return true;
-    if (isSolid(seed, { x: cx, y: cy, z: cz })) return false;
+    if (solidFn(cx, cy, cz)) return false;
   }
   return true;
 }
 
-export function recomputeFov(world: WorldSimState) {
+export function recomputeFov(
+  world: WorldSimState,
+  // Optional pre-cached solid lookup (O(1) array access vs expensive noise recomputation).
+  // Returns undefined if the chunk isn't loaded; falls back to worldBlockAt in that case.
+  solidCheck?: (x: number, y: number, z: number) => boolean | undefined,
+) {
   const previousVisible = world.visible;
   const nextVisible = new Set<string>();
   const position = entityVisibilityPosition(world.entity);
   const rSq = FOV_RADIUS * FOV_RADIUS;
+
+  // Int8Array memo: -1=unknown, 0=air, 1=solid. Indexed by [dz+R][dy+R][dx+R].
+  // Each unique cell is computed at most once regardless of how many DDA paths cross it.
+  const D = 2 * FOV_RADIUS + 1;
+  const memo = new Int8Array(D * D * D).fill(-1);
+  const memoSolid = (x: number, y: number, z: number): boolean => {
+    const dx = x - position.x + FOV_RADIUS;
+    const dy = y - position.y + FOV_RADIUS;
+    const dz = z - position.z + FOV_RADIUS;
+    if (dx < 0 || dy < 0 || dz < 0 || dx >= D || dy >= D || dz >= D) {
+      return solidCheck?.(x, y, z) ?? isSolid(world.seed, { x, y, z });
+    }
+    const idx = dz * D * D + dy * D + dx;
+    if (memo[idx] < 0) {
+      const cached = solidCheck?.(x, y, z);
+      memo[idx] = (cached !== undefined ? cached : isSolid(world.seed, { x, y, z })) ? 1 : 0;
+    }
+    return memo[idx] > 0;
+  };
 
   for (let dz = -FOV_RADIUS; dz <= FOV_RADIUS; dz++) {
     for (let dy = -FOV_RADIUS; dy <= FOV_RADIUS; dy++) {
@@ -464,7 +493,7 @@ export function recomputeFov(world: WorldSimState) {
           y: position.y + dy,
           z: position.z + dz,
         };
-        if (hasLos(world.seed, position, candidate)) {
+        if (hasLos(world.seed, position, candidate, memoSolid)) {
           nextVisible.add(tileKeyString({
             tileX: candidate.x,
             tileY: candidate.y,
@@ -475,8 +504,28 @@ export function recomputeFov(world: WorldSimState) {
     }
   }
 
+  // "Lit walls": for every visible open tile, also reveal its 4 orthogonal solid
+  // neighbors at the same z-level. Prevents the jarring flat wall cutoff at the
+  // FOV sphere edge — if you see the floor next to a wall, you see the wall.
+  const wallReveal: string[] = [];
+  for (const key of nextVisible) {
+    const pos = parseTileKey(key);
+    if (memoSolid(pos.x, pos.y, pos.z)) continue;
+    for (const [nx, ny] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const wx = pos.x + nx;
+      const wy = pos.y + ny;
+      const wKey = tileKeyString({ tileX: wx, tileY: wy, tileZ: pos.z });
+      if (!nextVisible.has(wKey) && memoSolid(wx, wy, pos.z)) {
+        wallReveal.push(wKey);
+      }
+    }
+  }
+  for (const key of wallReveal) nextVisible.add(key);
+
+  // For every visible open tile at or below the player, also reveal the tile directly
+  // below — fills in floors at the base of walls when looking along a corridor.
   const lowerHalf = [...nextVisible].map(parseTileKey).filter((pos) =>
-    pos.z <= position.z && worldBlockAt(world.seed, pos) !== "solid"
+    pos.z <= position.z && !memoSolid(pos.x, pos.y, pos.z)
   );
   for (const pos of lowerHalf) {
     nextVisible.add(

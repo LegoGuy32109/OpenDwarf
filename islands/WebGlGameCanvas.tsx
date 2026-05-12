@@ -1255,9 +1255,20 @@ export default function WebGlGameCanvas() {
       }
       return;
     }
-    // Fix 1: only recompute FOV when position or view mode changed
     if (fovDirtyRef.current) {
-      recomputeFov(worldRef.current);
+      // Pass solidCacheRef as a fast O(1) lookup so recomputeFov avoids noise recomputation.
+      // Returns undefined for uncached chunks; recomputeFov falls back to worldBlockAt.
+      const solidCache = solidCacheRef.current;
+      const solidCheck = (x: number, y: number, z: number): boolean | undefined => {
+        const { chunkX, chunkY } = chunkOfTile(x, y);
+        const key = `${chunkX},${chunkY},${z}`;
+        const chunk = solidCache.get(key);
+        if (!chunk) return undefined;
+        const lx = ((x % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) % CHUNK_EDGE_TILES;
+        const ly = ((y % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) % CHUNK_EDGE_TILES;
+        return chunk[ly * CHUNK_EDGE_TILES + lx] !== 0;
+      };
+      recomputeFov(worldRef.current, solidCheck);
       fovDirtyRef.current = false;
       topmostCacheDirtyRef.current = true;
     }
@@ -1857,6 +1868,7 @@ export default function WebGlGameCanvas() {
       in vec4 a_instance_uv;
       uniform vec2 u_canvas_size;
       uniform vec2 u_camera;
+      uniform float u_zoom;
       uniform int u_render_mode;
       out vec2 v_uv;
       out float v_instance_alpha;
@@ -1865,7 +1877,7 @@ export default function WebGlGameCanvas() {
         vec2 world_px = a_instance_offset + a_position * a_instance_size;
         vec2 screen_px = u_render_mode == 3
           ? world_px
-          : world_px - u_camera + u_canvas_size * 0.5;
+          : (world_px - u_camera) * u_zoom + u_canvas_size * 0.5;
         vec2 ndc = (screen_px / u_canvas_size) * 2.0 - 1.0;
         gl_Position = vec4(ndc * vec2(1.0, -1.0), 0.0, 1.0);
         v_uv = a_uv * a_instance_uv.zw + a_instance_uv.xy;
@@ -2238,7 +2250,8 @@ export default function WebGlGameCanvas() {
             }
           }
           topmostCacheDirtyRef.current = true;
-          fovDirtyRef.current = true;
+          // New solid data doesn't invalidate FOV — recomputeFov calls worldBlockAt directly.
+          // FOV only re-runs when the player actually moves (syncScenePlayerFromWorld).
         }
       }
 
@@ -2268,6 +2281,7 @@ export default function WebGlGameCanvas() {
       const prog = programRef.current;
       const canvasSizeLoc = gl.getUniformLocation(prog, "u_canvas_size");
       const cameraLoc = gl.getUniformLocation(prog, "u_camera");
+      const zoomLoc = gl.getUniformLocation(prog, "u_zoom");
       const textureLoc = gl.getUniformLocation(prog, "u_texture");
       const tintLoc = gl.getUniformLocation(prog, "u_tint");
       const alphaMultiplierLoc = gl.getUniformLocation(
@@ -2285,6 +2299,9 @@ export default function WebGlGameCanvas() {
           sceneStateRef.current.camera.x,
           sceneStateRef.current.camera.y,
         );
+      }
+      if (zoomLoc) {
+        gl.uniform1f(zoomLoc, sceneStateRef.current.camera.zoom);
       }
       gl.activeTexture(gl.TEXTURE0);
       if (textureLoc) gl.uniform1i(textureLoc, 0);
@@ -3180,7 +3197,6 @@ export default function WebGlGameCanvas() {
         viewZ += 1;
         streamingKeySetRef.current = "";
         topmostCacheDirtyRef.current = true;
-        fovDirtyRef.current = true;
         appendLog(`z-level: ${viewZ}`);
       }
       if (event.code === "KeyV") {
@@ -3188,8 +3204,22 @@ export default function WebGlGameCanvas() {
         viewZ -= 1;
         streamingKeySetRef.current = "";
         topmostCacheDirtyRef.current = true;
-        fovDirtyRef.current = true;
         appendLog(`z-level: ${viewZ}`);
+      }
+      if (event.code === "KeyU" || event.code === "KeyM") {
+        event.preventDefault();
+        const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0];
+        const cur = sceneStateRef.current.camera.zoom;
+        const idx = ZOOM_LEVELS.reduce(
+          (best, z, i) =>
+            Math.abs(z - cur) < Math.abs(ZOOM_LEVELS[best] - cur) ? i : best,
+          0,
+        );
+        const next = event.code === "KeyU"
+          ? ZOOM_LEVELS[Math.max(0, idx - 1)]
+          : ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)];
+        sceneStateRef.current.camera = { ...sceneStateRef.current.camera, zoom: next };
+        appendLog(`zoom: ${next}`);
       }
       if (event.code === "Digit6") {
         event.preventDefault();
