@@ -517,6 +517,25 @@ Pass criteria:
 
 - No z-fighting, unstable ordering, or random layer flicker.
 
+### Step 4.5: FogShadow Overlay
+
+Goal:
+
+Add the fog/obscure shadow layer that the native renderer uses in entity view mode.
+
+Build:
+
+- Load `FogShadowAtlas.png` (to be created) as a fourth atlas.
+- Add fog mask generation: per-tile visibility state drives which fog atlas frame to
+  display.
+- Render fog layer on top of ceiling shadows at `viewZ`, using alpha blend.
+- Match the `TileLayer::FogShadow` ordering from `tilemap.rs`.
+
+Pass criteria:
+
+- Fog tiles are alpha-blended over the floor/shadow stack.
+- Fog density is deterministic from seed and visibility state.
+
 ### Step 5: Low-Latency Game Input
 
 Goal:

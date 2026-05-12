@@ -1,6 +1,12 @@
 export const TILE_SIZE_PX = 64;
 export const CHUNK_EDGE_TILES = 16;
 export const CHUNK_SIZE_PX = TILE_SIZE_PX * CHUNK_EDGE_TILES;
+// StackedTextures.png: 16×496 px → 31 frames of 16 px each
+export const FLOOR_FRAMES = 31;
+// ShadowAtlas.png / ObscureAtlas.png: 16×240 px → 15 frames (masks 1–15)
+export const SHADOW_FRAMES = 15;
+// Number of z-levels rendered below the current view level
+export const Z_LEVELS_BELOW = 5;
 
 export type ChunkKey = {
   chunkX: number;
@@ -39,6 +45,230 @@ export function generateChunk(seed: string, key: ChunkKey): Uint16Array {
     tiles[i] = Math.floor(rng() * 65536);
   }
   return tiles;
+}
+
+// Returns a solid mask for one chunk: 1 = stone, 0 = air. ~55% solid.
+export function generateChunkSolid(seed: string, key: ChunkKey): Uint8Array {
+  const combined = `${seed}:solid:${key.chunkX}:${key.chunkY}:${key.chunkZ}`;
+  const rng = mulberry32(fnv32a(combined));
+  const count = CHUNK_EDGE_TILES * CHUNK_EDGE_TILES;
+  const solid = new Uint8Array(count);
+  for (let i = 0; i < count; i++) {
+    solid[i] = rng() < 0.55 ? 1 : 0;
+  }
+  return solid;
+}
+
+const E = CHUNK_EDGE_TILES;
+
+// ShadowAtlas.png was authored in screen space. The mask builders use world
+// tile offsets where +Y is south/down, so atlas lookup needs the north/south
+// corners swapped or horizontal ledge shadows land on the rock instead of air.
+export function shadowMaskToAtlasId(mask: number): number {
+  return ((mask & 1) << 2) |
+    (mask & 2 ? 8 : 0) |
+    ((mask & 4) >> 2) |
+    (mask & 8 ? 2 : 0);
+}
+
+// Dual-grid edge shadow: shadow cell (sx,sy) samples the 2×2 block of floor
+// tiles at (sx,sy),(sx+1,sy),(sx,sy+1),(sx+1,sy+1) at z=cz.
+// Bits: (0,0)→1, (1,0)→2, (0,1)→4, (1,1)→8. Frame = mask-1 for mask 1–14.
+export function computeEdgeShadowIds(
+  cx: number,
+  cy: number,
+  cz: number,
+  solidCache: ReadonlyMap<string, Uint8Array>,
+): Uint8Array {
+  const self = solidCache.get(
+    chunkKeyString({ chunkX: cx, chunkY: cy, chunkZ: cz }),
+  );
+  const result = new Uint8Array(E * E);
+  if (!self) return result;
+
+  const nbE = solidCache.get(
+    chunkKeyString({ chunkX: cx + 1, chunkY: cy, chunkZ: cz }),
+  );
+  const nbS = solidCache.get(
+    chunkKeyString({ chunkX: cx, chunkY: cy + 1, chunkZ: cz }),
+  );
+  const nbSE = solidCache.get(
+    chunkKeyString({ chunkX: cx + 1, chunkY: cy + 1, chunkZ: cz }),
+  );
+
+  const isSolid = (tx: number, ty: number): boolean => {
+    if (tx < E && ty < E) return self[ty * E + tx] === 1;
+    if (tx >= E && ty < E) return nbE ? nbE[ty * E] === 1 : true;
+    if (tx < E) return nbS ? nbS[tx] === 1 : true;
+    return nbSE ? nbSE[0] === 1 : true;
+  };
+
+  for (let sy = 0; sy < E; sy++) {
+    for (let sx = 0; sx < E; sx++) {
+      let mask = 0;
+      if (isSolid(sx, sy)) mask |= 1;
+      if (isSolid(sx + 1, sy)) mask |= 2;
+      if (isSolid(sx, sy + 1)) mask |= 4;
+      if (isSolid(sx + 1, sy + 1)) mask |= 8;
+      if (mask > 0 && mask < 15) {
+        result[sy * E + sx] = shadowMaskToAtlasId(mask);
+      }
+    }
+  }
+  return result;
+}
+
+// Dual-grid ceiling shadow: shadow cell (sx,sy) samples the same 2×2 block
+// at the ceiling level (viewZ+1). Drawn only where at least one of the 4 floor
+// positions at viewZ is air. Bits: (0,0)→1, (1,0)→2, (0,1)→4, (1,1)→8.
+// Frame = mask-1 for mask 1–15.
+export function computeCeilingShadowIds(
+  cx: number,
+  cy: number,
+  viewZ: number,
+  solidCache: ReadonlyMap<string, Uint8Array>,
+): Uint8Array {
+  const result = new Uint8Array(E * E);
+
+  const get = (gx: number, gy: number, z: number) =>
+    solidCache.get(chunkKeyString({ chunkX: gx, chunkY: gy, chunkZ: z }));
+
+  const floorSelf = get(cx, cy, viewZ);
+  const ceilSelf = get(cx, cy, viewZ + 1);
+  if (!floorSelf || !ceilSelf) return result;
+
+  const floorNbE = get(cx + 1, cy, viewZ);
+  const floorNbS = get(cx, cy + 1, viewZ);
+  const floorNbSE = get(cx + 1, cy + 1, viewZ);
+  const ceilNbE = get(cx + 1, cy, viewZ + 1);
+  const ceilNbS = get(cx, cy + 1, viewZ + 1);
+  const ceilNbSE = get(cx + 1, cy + 1, viewZ + 1);
+
+  const getSolid = (
+    self: Uint8Array,
+    eNb: Uint8Array | undefined,
+    sNb: Uint8Array | undefined,
+    seNb: Uint8Array | undefined,
+    tx: number,
+    ty: number,
+  ): boolean => {
+    if (tx < E && ty < E) return self[ty * E + tx] === 1;
+    if (tx >= E && ty < E) return eNb ? eNb[ty * E] === 1 : true;
+    if (tx < E) return sNb ? sNb[tx] === 1 : true;
+    return seNb ? seNb[0] === 1 : true;
+  };
+
+  for (let sy = 0; sy < E; sy++) {
+    for (let sx = 0; sx < E; sx++) {
+      let maskCeil = 0;
+      let anyAirFloor = false;
+      if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx, sy)) maskCeil |= 1;
+      if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx + 1, sy)) {
+        maskCeil |= 2;
+      }
+      if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx, sy + 1)) {
+        maskCeil |= 4;
+      }
+      if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx + 1, sy + 1)) {
+        maskCeil |= 8;
+      }
+      if (!getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx, sy)) {
+        anyAirFloor = true;
+      }
+      if (!getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx + 1, sy)) {
+        anyAirFloor = true;
+      }
+      if (!getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx, sy + 1)) {
+        anyAirFloor = true;
+      }
+      if (
+        !getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx + 1, sy + 1)
+      ) {
+        anyAirFloor = true;
+      }
+      if (maskCeil !== 0 && anyAirFloor) {
+        result[sy * E + sx] = shadowMaskToAtlasId(maskCeil);
+      }
+    }
+  }
+  return result;
+}
+
+// Maintains solid mask data for all z-levels needed by the depth stack.
+// Covers viewZ+1 (ceiling check) down to viewZ-Z_LEVELS_BELOW.
+// streamingXYKeys: xy chunks in the streaming window (chunkZ values are ignored).
+export function updateSolidCache(
+  solidCache: Map<string, Uint8Array>,
+  seed: string,
+  streamingXYKeys: ChunkKey[],
+  viewZ: number,
+): boolean {
+  const wanted = new Set<string>();
+  for (const { chunkX, chunkY } of streamingXYKeys) {
+    for (let z = viewZ - Z_LEVELS_BELOW; z <= viewZ + 1; z++) {
+      wanted.add(chunkKeyString({ chunkX, chunkY, chunkZ: z }));
+    }
+  }
+  let changed = false;
+  for (const key of [...solidCache.keys()]) {
+    if (!wanted.has(key)) {
+      solidCache.delete(key);
+      changed = true;
+    }
+  }
+  for (const ks of wanted) {
+    if (!solidCache.has(ks)) {
+      const parts = ks.split(",");
+      solidCache.set(
+        ks,
+        generateChunkSolid(seed, {
+          chunkX: Number(parts[0]),
+          chunkY: Number(parts[1]),
+          chunkZ: Number(parts[2]),
+        }),
+      );
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+// Maintains floor tile-ID data for all z-levels in the depth stack.
+// Covers viewZ down to viewZ-Z_LEVELS_BELOW.
+export function updateFloorCache(
+  floorCache: Map<string, Uint16Array>,
+  seed: string,
+  streamingXYKeys: ChunkKey[],
+  viewZ: number,
+): boolean {
+  const wanted = new Set<string>();
+  for (const { chunkX, chunkY } of streamingXYKeys) {
+    for (let z = viewZ - Z_LEVELS_BELOW; z <= viewZ; z++) {
+      wanted.add(chunkKeyString({ chunkX, chunkY, chunkZ: z }));
+    }
+  }
+  let changed = false;
+  for (const key of [...floorCache.keys()]) {
+    if (!wanted.has(key)) {
+      floorCache.delete(key);
+      changed = true;
+    }
+  }
+  for (const ks of wanted) {
+    if (!floorCache.has(ks)) {
+      const parts = ks.split(",");
+      floorCache.set(
+        ks,
+        generateChunk(seed, {
+          chunkX: Number(parts[0]),
+          chunkY: Number(parts[1]),
+          chunkZ: Number(parts[2]),
+        }),
+      );
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 export function computeVisibleChunks(

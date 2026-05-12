@@ -3,9 +3,11 @@ import {
   CHUNK_EDGE_TILES,
   CHUNK_SIZE_PX,
   chunkKeyString,
+  computeEdgeShadowIds,
   computeStreamingChunks,
   computeVisibleChunks,
   generateChunk,
+  shadowMaskToAtlasId,
   updateChunkCache,
 } from "../../lib/webgl-chunk-gen.ts";
 
@@ -79,6 +81,26 @@ Deno.test("chunkKeyString formats correctly for negative coords", () => {
   );
   assertEquals(chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 0 }), "0,0,0");
   assertEquals(chunkKeyString({ chunkX: 3, chunkY: -2, chunkZ: 1 }), "3,-2,1");
+});
+
+Deno.test("shadowMaskToAtlasId flips north/south atlas rows", () => {
+  assertEquals(shadowMaskToAtlasId(3), 12);
+  assertEquals(shadowMaskToAtlasId(12), 3);
+  assertEquals(shadowMaskToAtlasId(5), 5);
+  assertEquals(shadowMaskToAtlasId(10), 10);
+});
+
+Deno.test("computeEdgeShadowIds returns atlas ids with horizontal shadows on air side", () => {
+  const solid = new Uint8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES);
+  solid[0] = 1;
+  solid[1] = 1;
+  const cache = new Map([
+    [chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 0 }), solid],
+  ]);
+
+  const shadows = computeEdgeShadowIds(0, 0, 0, cache);
+
+  assertEquals(shadows[0], 12);
 });
 
 Deno.test("computeVisibleChunks at origin with 1920x1080 viewport", () => {

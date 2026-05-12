@@ -3,10 +3,17 @@ import type { FlowDescriptor, PerfWindow } from "../lib/webgl-harness-types.ts";
 import {
   CHUNK_EDGE_TILES,
   chunkKeyString,
+  computeCeilingShadowIds,
+  computeEdgeShadowIds,
   computeStreamingChunks,
   computeVisibleChunks,
+  FLOOR_FRAMES,
+  SHADOW_FRAMES,
   TILE_SIZE_PX,
   updateChunkCache,
+  updateFloorCache,
+  updateSolidCache,
+  Z_LEVELS_BELOW,
 } from "../lib/webgl-chunk-gen.ts";
 
 declare global {
@@ -211,7 +218,10 @@ type WebGlTestHarness = {
 
 const FLOW_NAME = "webgl-step1-single-rock";
 const SEED_NAME = "single-rock-step1";
-const TILE_TEXTURE_SRC = "/assets/sprites/SingleRock.png";
+const TILE_TEXTURE_SRC = "/assets/sprites/StackedTextures.png";
+const SHADOW_TEXTURE_SRC = "/assets/atlases/ShadowAtlas.png";
+const CEIL_SHADOW_TEXTURE_SRC = "/assets/atlases/ObscureAtlas.png";
+const SHADOW_ALPHA_MULTIPLIER = 0.55;
 let cameraSpeedPxPerS = 480;
 const STREAM_PADDING = 1;
 const MAX_STREAMING_CHUNKS = 64;
@@ -434,8 +444,17 @@ export default function WebGlGameCanvas() {
   const glRef = useRef<WebGL2RenderingContext | null>(null);
   const programRef = useRef<WebGLProgram | null>(null);
   const textureRef = useRef<WebGLTexture | null>(null);
+  const shadowTextureRef = useRef<WebGLTexture | null>(null);
+  const ceilShadowTextureRef = useRef<WebGLTexture | null>(null);
   const instanceBufferRef = useRef<WebGLBuffer | null>(null);
   const vertexBufferRef = useRef<WebGLBuffer | null>(null);
+  const solidCacheRef = useRef<Map<string, Uint8Array>>(new Map());
+  const layersRef = useRef({
+    floor: true,
+    edgeShadow: true,
+    ceilShadow: true,
+    depthTint: true,
+  });
   const sceneReadyRef = useRef(false);
   const capabilityRef = useRef<WebGlCapabilityReport | null>(null);
   const baselineManifestRef = useRef<WebGlScreenshotBaselineManifest | null>(
@@ -462,7 +481,6 @@ export default function WebGlGameCanvas() {
   const stateArtifactsRef = useRef<Record<string, Blob>>({});
   const frameMetricsRef = useRef<FrameMetric[]>([]);
   const chunkCacheRef = useRef<Map<string, Uint16Array>>(new Map());
-  const instanceCountRef = useRef(0);
   const textureInfoRef = useRef<
     { src: string; width: number; height: number } | null
   >(null);
@@ -492,6 +510,12 @@ export default function WebGlGameCanvas() {
   const [importedReplayInfo, setImportedReplayInfo] = useState<string | null>(
     null,
   );
+  const [layers, setLayers] = useState({
+    floor: true,
+    edgeShadow: true,
+    ceilShadow: true,
+    depthTint: true,
+  });
 
   const appendLog = (text: string) => {
     const id = logIdRef.current++;
@@ -1335,6 +1359,7 @@ export default function WebGlGameCanvas() {
       in vec2 a_uv;
       in vec2 a_instance_offset;
       in vec2 a_instance_size;
+      in vec4 a_instance_uv;
       uniform vec2 u_canvas_size;
       uniform vec2 u_camera;
       out vec2 v_uv;
@@ -1344,18 +1369,27 @@ export default function WebGlGameCanvas() {
         vec2 screen_px = world_px - u_camera + u_canvas_size * 0.5;
         vec2 ndc = (screen_px / u_canvas_size) * 2.0 - 1.0;
         gl_Position = vec4(ndc * vec2(1.0, -1.0), 0.0, 1.0);
-        v_uv = a_uv;
+        v_uv = a_uv * a_instance_uv.zw + a_instance_uv.xy;
       }
     `;
 
     const fragmentSource = `#version 300 es
       precision highp float;
       uniform sampler2D u_texture;
+      uniform vec3 u_tint;
+      uniform float u_alpha_multiplier;
+      uniform int u_render_mode;
       in vec2 v_uv;
       out vec4 out_color;
 
       void main() {
-        out_color = texture(u_texture, v_uv);
+        vec4 texel = texture(u_texture, v_uv);
+        if (u_render_mode == 1) {
+          out_color = vec4(0.0, 0.0, 0.0, texel.a * u_alpha_multiplier);
+        } else {
+          out_color = texel;
+          out_color.rgb *= u_tint;
+        }
       }
     `;
 
@@ -1380,8 +1414,11 @@ export default function WebGlGameCanvas() {
       1,
       1,
     ]);
+    // Instance data: 8 floats per tile (worldX, worldY, sizeW, sizeH, uvX, uvY, uvW, uvH)
     const maxInstances = MAX_STREAMING_CHUNKS * CHUNK_EDGE_TILES *
       CHUNK_EDGE_TILES;
+    // Pre-allocated scratch buffer reused for every draw pass
+    const scratch = new Float32Array(maxInstances * 8);
 
     const vertexBuffer = gl.createBuffer();
     if (!vertexBuffer) {
@@ -1398,7 +1435,7 @@ export default function WebGlGameCanvas() {
     gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
     gl.bufferData(
       gl.ARRAY_BUFFER,
-      maxInstances * 4 * Float32Array.BYTES_PER_ELEMENT,
+      maxInstances * 8 * Float32Array.BYTES_PER_ELEMENT,
       gl.DYNAMIC_DRAW,
     );
     instanceBufferRef.current = instanceBuffer;
@@ -1416,6 +1453,7 @@ export default function WebGlGameCanvas() {
       program,
       "a_instance_size",
     );
+    const instanceUvLocation = gl.getAttribLocation(program, "a_instance_uv");
 
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
     gl.enableVertexAttribArray(positionLocation);
@@ -1423,85 +1461,83 @@ export default function WebGlGameCanvas() {
     gl.enableVertexAttribArray(uvLocation);
     gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, 16, 8);
 
+    // Instance buffer stride: 8 floats × 4 bytes = 32 bytes
     gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
     gl.enableVertexAttribArray(instanceOffsetLocation);
-    gl.vertexAttribPointer(instanceOffsetLocation, 2, gl.FLOAT, false, 16, 0);
+    gl.vertexAttribPointer(instanceOffsetLocation, 2, gl.FLOAT, false, 32, 0);
     gl.vertexAttribDivisor(instanceOffsetLocation, 1);
     gl.enableVertexAttribArray(instanceSizeLocation);
-    gl.vertexAttribPointer(instanceSizeLocation, 2, gl.FLOAT, false, 16, 8);
+    gl.vertexAttribPointer(instanceSizeLocation, 2, gl.FLOAT, false, 32, 8);
     gl.vertexAttribDivisor(instanceSizeLocation, 1);
-
-    const rebuildGlInstances = (cache: Map<string, Uint16Array>) => {
-      const data = new Float32Array(
-        cache.size * CHUNK_EDGE_TILES * CHUNK_EDGE_TILES * 4,
-      );
-      let offset = 0;
-      for (const keyStr of cache.keys()) {
-        const parts = keyStr.split(",");
-        const cx = parseInt(parts[0]);
-        const cy = parseInt(parts[1]);
-        for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
-          for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
-            data[offset++] = (cx * CHUNK_EDGE_TILES + tx) * TILE_SIZE_PX;
-            data[offset++] = (cy * CHUNK_EDGE_TILES + ty) * TILE_SIZE_PX;
-            data[offset++] = TILE_SIZE_PX;
-            data[offset++] = TILE_SIZE_PX;
-          }
-        }
-      }
-      gl.bindBuffer(gl.ARRAY_BUFFER, instanceBufferRef.current!);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
-      instanceCountRef.current = cache.size * CHUNK_EDGE_TILES *
-        CHUNK_EDGE_TILES;
-    };
-
-    const texture = gl.createTexture();
-    if (!texture) {
-      throw new Error("Failed to create texture");
+    if (instanceUvLocation >= 0) {
+      gl.enableVertexAttribArray(instanceUvLocation);
+      gl.vertexAttribPointer(instanceUvLocation, 4, gl.FLOAT, false, 32, 16);
+      gl.vertexAttribDivisor(instanceUvLocation, 1);
     }
-    textureRef.current = texture;
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    const loadRockTexture = async () => {
-      const image = new Image();
-      image.decoding = "async";
-      image.src = TILE_TEXTURE_SRC;
-      await image.decode();
-
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        image,
-      );
-      gl.generateMipmap(gl.TEXTURE_2D);
+    // Create all three atlas textures
+    const createAtlasTexture = (): WebGLTexture => {
+      const tex = gl.createTexture();
+      if (!tex) throw new Error("Failed to create texture");
+      gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return tex;
+    };
+    const floorTex = createAtlasTexture();
+    const shadowTex = createAtlasTexture();
+    const ceilShadowTex = createAtlasTexture();
+    textureRef.current = floorTex;
+    shadowTextureRef.current = shadowTex;
+    ceilShadowTextureRef.current = ceilShadowTex;
+
+    let viewZ = 0;
+
+    const uploadTexImage = (tex: WebGLTexture, img: HTMLImageElement) => {
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    };
+
+    const loadTextures = async () => {
+      const loadImg = (src: string) => {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = src;
+        return img.decode().then(() => img);
+      };
+      const [floorImg, shadowImg, ceilImg] = await Promise.all([
+        loadImg(TILE_TEXTURE_SRC),
+        loadImg(SHADOW_TEXTURE_SRC),
+        loadImg(CEIL_SHADOW_TEXTURE_SRC),
+      ]);
+
+      uploadTexImage(floorTex, floorImg);
+      uploadTexImage(shadowTex, shadowImg);
+      uploadTexImage(ceilShadowTex, ceilImg);
+
       textureInfoRef.current = {
         src: TILE_TEXTURE_SRC,
-        width: image.naturalWidth,
-        height: image.naturalHeight,
+        width: floorImg.naturalWidth,
+        height: floorImg.naturalHeight,
       };
       pushReplayEvent({
         type: "texture_loaded",
         tick: nextTick(),
         src: TILE_TEXTURE_SRC,
-        width: image.naturalWidth,
-        height: image.naturalHeight,
+        width: floorImg.naturalWidth,
+        height: floorImg.naturalHeight,
       });
       appendLog(
-        `texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`,
+        `texture ${TILE_TEXTURE_SRC} ${floorImg.naturalWidth}x${floorImg.naturalHeight}`,
       );
+
       const vpLoad = {
         framebufferWidth: canvas.width,
         framebufferHeight: canvas.height,
@@ -1511,18 +1547,29 @@ export default function WebGlGameCanvas() {
         vpLoad,
         STREAM_PADDING,
       );
-      const cacheLoad = new Map<string, Uint16Array>();
-      updateChunkCache(cacheLoad, flowDescriptorRef.current.seed, skLoad);
-      chunkCacheRef.current = cacheLoad;
-      streamingKeySetRef.current = skLoad.map(chunkKeyString).join("|");
-      rebuildGlInstances(cacheLoad);
-      setStatus("SingleRock texture ready");
+      const seed = flowDescriptorRef.current.seed;
+
+      chunkCacheRef.current = new Map();
+      updateFloorCache(chunkCacheRef.current, seed, skLoad, viewZ);
+      updateSolidCache(solidCacheRef.current, seed, skLoad, viewZ);
+
+      streamingKeySetRef.current = skLoad.map((k) =>
+        chunkKeyString({ ...k, chunkZ: viewZ })
+      ).join("|") +
+        `|z${viewZ}`;
+      setStatus("depth stack ready");
       sceneReadyRef.current = true;
       sceneStateRef.current = {
         ...sceneStateRef.current,
-        assetsLoaded: [...sceneStateRef.current.assetsLoaded, TILE_TEXTURE_SRC],
-        residentChunks: cacheLoad.size,
-        streamingChunks: [...cacheLoad.keys()],
+        assetsLoaded: [
+          TILE_TEXTURE_SRC,
+          SHADOW_TEXTURE_SRC,
+          CEIL_SHADOW_TEXTURE_SRC,
+        ],
+        residentChunks: skLoad.length,
+        streamingChunks: skLoad.map((k) =>
+          chunkKeyString({ ...k, chunkZ: viewZ })
+        ),
         uiMode: "world",
       };
       drawFrame();
@@ -1560,7 +1607,10 @@ export default function WebGlGameCanvas() {
     const drawFrame = (timestamp = performance.now()) => {
       const t0 = performance.now();
 
-      if (!glRef.current || !programRef.current || !textureRef.current) {
+      if (
+        !glRef.current || !programRef.current || !textureRef.current ||
+        !shadowTextureRef.current || !ceilShadowTextureRef.current
+      ) {
         lastFrameTimeRef.current = timestamp;
         frameMetricsRef.current.push({
           cpuMs: performance.now() - t0,
@@ -1587,11 +1637,7 @@ export default function WebGlGameCanvas() {
       if (dxGl !== 0 || dyGl !== 0) {
         sceneStateRef.current = {
           ...sceneStateRef.current,
-          camera: {
-            x: camGl.x + dxGl,
-            y: camGl.y + dyGl,
-            zoom: camGl.zoom,
-          },
+          camera: { x: camGl.x + dxGl, y: camGl.y + dyGl, zoom: camGl.zoom },
         };
       }
 
@@ -1605,22 +1651,21 @@ export default function WebGlGameCanvas() {
           vpGl,
           STREAM_PADDING,
         );
-        const sfpGl = skGl.map(chunkKeyString).join("|");
+        const seed = flowDescriptorRef.current.seed;
+        const sfpGl =
+          skGl.map((k) => chunkKeyString({ ...k, chunkZ: viewZ })).join("|") +
+          `|z${viewZ}`;
         if (sfpGl !== streamingKeySetRef.current) {
           streamingKeySetRef.current = sfpGl;
-          const cacheChanged = updateChunkCache(
-            chunkCacheRef.current,
-            flowDescriptorRef.current.seed,
-            skGl,
-          );
-          if (cacheChanged) {
-            rebuildGlInstances(chunkCacheRef.current);
-            sceneStateRef.current = {
-              ...sceneStateRef.current,
-              residentChunks: chunkCacheRef.current.size,
-              streamingChunks: [...chunkCacheRef.current.keys()],
-            };
-          }
+          updateFloorCache(chunkCacheRef.current, seed, skGl, viewZ);
+          updateSolidCache(solidCacheRef.current, seed, skGl, viewZ);
+          sceneStateRef.current = {
+            ...sceneStateRef.current,
+            residentChunks: skGl.length,
+            streamingChunks: skGl.map((k) =>
+              chunkKeyString({ ...k, chunkZ: viewZ })
+            ),
+          };
         }
       }
 
@@ -1630,50 +1675,227 @@ export default function WebGlGameCanvas() {
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
-      const canvasSizeLocation = gl.getUniformLocation(
-        programRef.current,
-        "u_canvas_size",
+      const prog = programRef.current;
+      const canvasSizeLoc = gl.getUniformLocation(prog, "u_canvas_size");
+      const cameraLoc = gl.getUniformLocation(prog, "u_camera");
+      const textureLoc = gl.getUniformLocation(prog, "u_texture");
+      const tintLoc = gl.getUniformLocation(prog, "u_tint");
+      const alphaMultiplierLoc = gl.getUniformLocation(
+        prog,
+        "u_alpha_multiplier",
       );
-      const cameraLocation = gl.getUniformLocation(
-        programRef.current,
-        "u_camera",
-      );
-      if (canvasSizeLocation) {
-        gl.uniform2f(canvasSizeLocation, canvas.width, canvas.height);
+      const renderModeLoc = gl.getUniformLocation(prog, "u_render_mode");
+
+      if (canvasSizeLoc) {
+        gl.uniform2f(canvasSizeLoc, canvas.width, canvas.height);
       }
-      if (cameraLocation) {
+      if (cameraLoc) {
         gl.uniform2f(
-          cameraLocation,
+          cameraLoc,
           sceneStateRef.current.camera.x,
           sceneStateRef.current.camera.y,
         );
       }
-
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, textureRef.current);
-      const textureLocation = gl.getUniformLocation(
-        programRef.current,
-        "u_texture",
-      );
-      if (textureLocation) {
-        gl.uniform1i(textureLocation, 0);
-      }
+      if (textureLoc) gl.uniform1i(textureLoc, 0);
 
-      sceneStateRef.current.visibleChunks = computeVisibleChunks(
+      const visibleXY = computeVisibleChunks(
         sceneStateRef.current.camera,
         { framebufferWidth: canvas.width, framebufferHeight: canvas.height },
-      )
-        .filter((k) => chunkCacheRef.current.has(chunkKeyString(k)))
-        .map(chunkKeyString);
+      );
+      sceneStateRef.current.visibleChunks = visibleXY
+        .filter((k) =>
+          chunkCacheRef.current.has(chunkKeyString({ ...k, chunkZ: viewZ }))
+        )
+        .map((k) => chunkKeyString({ ...k, chunkZ: viewZ }));
 
-      if (sceneReadyRef.current && instanceCountRef.current > 0) {
-        gl.drawArraysInstanced(
-          gl.TRIANGLE_STRIP,
-          0,
-          4,
-          instanceCountRef.current,
-        );
-        drawCalls = 1;
+      if (sceneReadyRef.current) {
+        const HALF = TILE_SIZE_PX * 0.5;
+        const INV_FLOOR = 1.0 / FLOOR_FRAMES;
+        const INV_SHADOW = 1.0 / SHADOW_FRAMES;
+        // Exact tint colors matching get_depth_tint_tile_color in render.rs
+        const DEPTH_TINTS: [number, number, number][] = [
+          [1.0, 1.0, 1.0],
+          [0.75, 0.75, 0.75],
+          [0.47, 0.49, 0.49],
+          [0.33, 0.35, 0.61],
+          [0.22, 0.24, 0.61],
+          [0.12, 0.15, 0.43],
+        ];
+        // Stone tile atlas frame index (matches stone_tile_index() in Rust)
+        const STONE_FRAME_UV = 5 * INV_FLOOR;
+
+        // Helper: upload scratch[0..count*8] and draw instanced
+        const flushPass = (count: number) => {
+          if (count === 0) return;
+          gl.bindBuffer(gl.ARRAY_BUFFER, instanceBufferRef.current!);
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, scratch.subarray(0, count * 8));
+          gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+          drawCalls++;
+        };
+
+        // --- FLOOR PASSES: z = viewZ-Z_LEVELS_BELOW (back) → viewZ (front) ---
+        // Pre-compute topmost visible solid z-offset per tile per chunk.
+        // topmostOffset[idx] = z-offset (0 to -Z_LEVELS_BELOW) of topmost solid,
+        // or 127 if no solid in the depth stack.
+        const topmostOffsets = new Map<string, Int8Array>();
+        for (const vis of visibleXY) {
+          const chunkKey = chunkKeyString({ ...vis, chunkZ: viewZ });
+          const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(
+            127,
+          );
+          for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
+            for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
+              const idx = ty * CHUNK_EDGE_TILES + tx;
+              for (let zo = 0; zo >= -Z_LEVELS_BELOW; zo--) {
+                const sk = chunkKeyString({
+                  chunkX: vis.chunkX,
+                  chunkY: vis.chunkY,
+                  chunkZ: viewZ + zo,
+                });
+                const solid = solidCacheRef.current.get(sk);
+                if (solid && solid[idx] === 1) {
+                  tmo[idx] = zo;
+                  break;
+                }
+              }
+            }
+          }
+          topmostOffsets.set(chunkKey, tmo);
+        }
+
+        gl.disable(gl.BLEND);
+        gl.bindTexture(gl.TEXTURE_2D, textureRef.current);
+
+        if (layersRef.current.floor) {
+          for (let z = viewZ - Z_LEVELS_BELOW; z <= viewZ; z++) {
+            const zOffset = z - viewZ;
+            const rawTint = DEPTH_TINTS[-zOffset] ??
+              DEPTH_TINTS[DEPTH_TINTS.length - 1];
+            const tint = layersRef.current.depthTint
+              ? rawTint
+              : ([1, 1, 1] as [number, number, number]);
+            if (tintLoc) gl.uniform3f(tintLoc, tint[0], tint[1], tint[2]);
+            if (alphaMultiplierLoc) gl.uniform1f(alphaMultiplierLoc, 1);
+            if (renderModeLoc) gl.uniform1i(renderModeLoc, 0);
+
+            let count = 0;
+            for (const vis of visibleXY) {
+              const solidKey = chunkKeyString({
+                chunkX: vis.chunkX,
+                chunkY: vis.chunkY,
+                chunkZ: z,
+              });
+              const solid = solidCacheRef.current.get(solidKey);
+              if (!solid) continue;
+              const tmo = topmostOffsets.get(
+                chunkKeyString({ ...vis, chunkZ: viewZ }),
+              );
+              if (!tmo) continue;
+              const baseX = vis.chunkX * CHUNK_EDGE_TILES;
+              const baseY = vis.chunkY * CHUNK_EDGE_TILES;
+              for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
+                for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
+                  const idx = ty * CHUNK_EDGE_TILES + tx;
+                  // Only draw at the topmost solid z for this column
+                  if (tmo[idx] !== zOffset) continue;
+                  const off = count * 8;
+                  scratch[off + 0] = (baseX + tx) * TILE_SIZE_PX;
+                  scratch[off + 1] = (baseY + ty) * TILE_SIZE_PX;
+                  scratch[off + 2] = TILE_SIZE_PX;
+                  scratch[off + 3] = TILE_SIZE_PX;
+                  scratch[off + 4] = 0;
+                  scratch[off + 5] = STONE_FRAME_UV;
+                  scratch[off + 6] = 1;
+                  scratch[off + 7] = INV_FLOOR;
+                  count++;
+                }
+              }
+            }
+            flushPass(count);
+          }
+        }
+
+        // --- EDGE SHADOW PASS ---
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.bindTexture(gl.TEXTURE_2D, shadowTextureRef.current!);
+        if (tintLoc) gl.uniform3f(tintLoc, 1, 1, 1);
+        if (alphaMultiplierLoc) {
+          gl.uniform1f(alphaMultiplierLoc, SHADOW_ALPHA_MULTIPLIER);
+        }
+        if (renderModeLoc) gl.uniform1i(renderModeLoc, 1);
+
+        if (layersRef.current.edgeShadow) {
+          let count = 0;
+          for (const vis of visibleXY) {
+            const shadowIds = computeEdgeShadowIds(
+              vis.chunkX,
+              vis.chunkY,
+              viewZ,
+              solidCacheRef.current,
+            );
+            const baseX = vis.chunkX * CHUNK_EDGE_TILES;
+            const baseY = vis.chunkY * CHUNK_EDGE_TILES;
+            for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
+              for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
+                const mask = shadowIds[ty * CHUNK_EDGE_TILES + tx];
+                if (mask === 0) continue;
+                const off = count * 8;
+                scratch[off + 0] = (baseX + tx) * TILE_SIZE_PX + HALF;
+                scratch[off + 1] = (baseY + ty) * TILE_SIZE_PX + HALF;
+                scratch[off + 2] = TILE_SIZE_PX;
+                scratch[off + 3] = TILE_SIZE_PX;
+                scratch[off + 4] = 0;
+                scratch[off + 5] = (mask - 1) * INV_SHADOW;
+                scratch[off + 6] = 1;
+                scratch[off + 7] = INV_SHADOW;
+                count++;
+              }
+            }
+          }
+          flushPass(count);
+        }
+
+        // --- CEILING SHADOW PASS ---
+        gl.bindTexture(gl.TEXTURE_2D, ceilShadowTextureRef.current!);
+        if (alphaMultiplierLoc) {
+          gl.uniform1f(alphaMultiplierLoc, SHADOW_ALPHA_MULTIPLIER);
+        }
+        if (renderModeLoc) gl.uniform1i(renderModeLoc, 1);
+
+        if (layersRef.current.ceilShadow) {
+          let count = 0;
+          for (const vis of visibleXY) {
+            const ceilIds = computeCeilingShadowIds(
+              vis.chunkX,
+              vis.chunkY,
+              viewZ,
+              solidCacheRef.current,
+            );
+            const baseX = vis.chunkX * CHUNK_EDGE_TILES;
+            const baseY = vis.chunkY * CHUNK_EDGE_TILES;
+            for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
+              for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
+                const mask = ceilIds[ty * CHUNK_EDGE_TILES + tx];
+                if (mask === 0) continue;
+                const off = count * 8;
+                scratch[off + 0] = (baseX + tx) * TILE_SIZE_PX + HALF;
+                scratch[off + 1] = (baseY + ty) * TILE_SIZE_PX + HALF;
+                scratch[off + 2] = TILE_SIZE_PX;
+                scratch[off + 3] = TILE_SIZE_PX;
+                scratch[off + 4] = 0;
+                scratch[off + 5] = (mask - 1) * INV_SHADOW;
+                scratch[off + 6] = 1;
+                scratch[off + 7] = INV_SHADOW;
+                count++;
+              }
+            }
+          }
+          flushPass(count);
+        }
+
+        gl.disable(gl.BLEND);
       }
 
       frameMetricsRef.current.push({
@@ -1730,6 +1952,56 @@ export default function WebGlGameCanvas() {
         event.preventDefault();
         keysHeldRef.current.add(event.code);
       }
+      if (event.code === "KeyR") {
+        event.preventDefault();
+        viewZ++;
+        streamingKeySetRef.current = "";
+        appendLog(`z-level: ${viewZ}`);
+      }
+      if (event.code === "KeyV") {
+        event.preventDefault();
+        viewZ--;
+        streamingKeySetRef.current = "";
+        appendLog(`z-level: ${viewZ}`);
+      }
+      if (event.code === "Digit6") {
+        event.preventDefault();
+        layersRef.current = {
+          ...layersRef.current,
+          floor: !layersRef.current.floor,
+        };
+        setLayers({ ...layersRef.current });
+        appendLog(`floor: ${layersRef.current.floor ? "on" : "off"}`);
+      }
+      if (event.code === "Digit7") {
+        event.preventDefault();
+        layersRef.current = {
+          ...layersRef.current,
+          edgeShadow: !layersRef.current.edgeShadow,
+        };
+        setLayers({ ...layersRef.current });
+        appendLog(`edgeShadow: ${layersRef.current.edgeShadow ? "on" : "off"}`);
+      }
+      if (event.code === "Digit8") {
+        event.preventDefault();
+        layersRef.current = {
+          ...layersRef.current,
+          ceilShadow: !layersRef.current.ceilShadow,
+        };
+        setLayers({ ...layersRef.current });
+        appendLog(
+          `ceilShadow: ${layersRef.current.ceilShadow ? "on" : "off"}`,
+        );
+      }
+      if (event.code === "Digit9") {
+        event.preventDefault();
+        layersRef.current = {
+          ...layersRef.current,
+          depthTint: !layersRef.current.depthTint,
+        };
+        setLayers({ ...layersRef.current });
+        appendLog(`depthTint: ${layersRef.current.depthTint ? "on" : "off"}`);
+      }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -1777,15 +2049,19 @@ export default function WebGlGameCanvas() {
             vpFlow,
             STREAM_PADDING,
           );
-          const cacheFlow = new Map<string, Uint16Array>();
-          updateChunkCache(cacheFlow, descriptor.seed, skFlow);
-          chunkCacheRef.current = cacheFlow;
-          streamingKeySetRef.current = skFlow.map(chunkKeyString).join("|");
-          rebuildGlInstances(cacheFlow);
+          const seed = descriptor.seed;
+          chunkCacheRef.current = new Map();
+          updateFloorCache(chunkCacheRef.current, seed, skFlow, viewZ);
+          updateSolidCache(solidCacheRef.current, seed, skFlow, viewZ);
+          streamingKeySetRef.current = skFlow.map((k) =>
+            chunkKeyString({ ...k, chunkZ: viewZ })
+          ).join("|") + `|z${viewZ}`;
           sceneStateRef.current = {
             ...sceneStateRef.current,
-            residentChunks: cacheFlow.size,
-            streamingChunks: [...cacheFlow.keys()],
+            residentChunks: skFlow.length,
+            streamingChunks: skFlow.map((k) =>
+              chunkKeyString({ ...k, chunkZ: viewZ })
+            ),
           };
           if (textureInfoRef.current) {
             pushReplayEvent({
@@ -1821,7 +2097,7 @@ export default function WebGlGameCanvas() {
     drawFrame();
     pushReplayEvent({ type: "boot", tick: nextTick() });
     appendLog("boot");
-    void loadRockTexture().catch((error) => {
+    void loadTextures().catch((error) => {
       setStatus(`texture load failed: ${String(error)}`);
       appendLog(`texture load failed: ${String(error)}`);
     });
@@ -1843,6 +2119,8 @@ export default function WebGlGameCanvas() {
       glRef.current = null;
       programRef.current = null;
       textureRef.current = null;
+      shadowTextureRef.current = null;
+      ceilShadowTextureRef.current = null;
       instanceBufferRef.current = null;
       vertexBufferRef.current = null;
       sceneReadyRef.current = false;
@@ -1915,11 +2193,17 @@ export default function WebGlGameCanvas() {
       <div class="absolute left-4 top-4 z-10 max-w-[min(31rem,calc(100%-2rem))] rounded-2xl border border-amber-200/15 bg-black/55 px-4 py-3 text-xs text-amber-50/90 backdrop-blur">
         <div class="flex flex-wrap items-center gap-3">
           <span class="rounded-full bg-amber-300/20 px-2 py-1 font-semibold uppercase tracking-[0.18em] text-amber-100">
-            Step 1 Single Rock
+            Step 4 Depth Stack
           </span>
           <span class="text-white/70">{status}</span>
         </div>
         <div class="mt-2 space-y-1 font-mono text-[11px] leading-5 text-white/75">
+          <div>
+            [6] floor:{layers.floor ? "on" : "OFF"}{" "}
+            [7] edge:{layers.edgeShadow ? "on" : "OFF"}{" "}
+            [8] ceil:{layers.ceilShadow ? "on" : "OFF"}{" "}
+            [9] tint:{layers.depthTint ? "on" : "OFF"}
+          </div>
           <div>fullscreen: {fullscreen ? "yes" : "no"}</div>
           <div>
             framebuffer: {capability?.framebufferSize.width ?? 0} x{" "}
