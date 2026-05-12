@@ -11,6 +11,11 @@ export type HarnessCheckpoint = {
   ordinal: number;
   tick: number;
   frame: number;
+  camera: { x: number; y: number; zoom: number };
+  viewMode: "entity" | "master";
+  uiMode: "world" | "chat";
+  player: { tileX: number; tileY: number; tileZ: number };
+  chatBuffer: string;
   screenshotFilename: string;
   stateFilename: string;
   stateHash: string;
@@ -19,6 +24,9 @@ export type HarnessCheckpoint = {
   perf: PerfWindow;
   visibleChunks: string[];
   residentChunks: number;
+  visibleTileCount: number;
+  rememberedTileCount: number;
+  drawOrderLabels: string[];
 };
 
 type BrowserHarness = {
@@ -26,6 +34,8 @@ type BrowserHarness = {
   stepTick(n: number): Promise<void>;
   captureCheckpoint(name: string): Promise<HarnessCheckpoint | null>;
   setCamera(x: number, y: number, zoom: number): Promise<void>;
+  setPlayer(tileX: number, tileY: number, tileZ?: number): Promise<void>;
+  setViewMode(mode: "entity" | "master"): Promise<void>;
   setCameraSpeed(pxPerS: number): void;
   exportReplay(): { events: { type: string }[] };
   exportBundleData(): Promise<{
@@ -85,6 +95,28 @@ export function setCamera(page: Page, x: number, y: number, zoom = 1) {
     },
     [x, y, zoom] as [number, number, number],
   );
+}
+
+export function setPlayer(
+  page: Page,
+  tileX: number,
+  tileY: number,
+  tileZ = 0,
+) {
+  return page.evaluate(
+    ([tileX, tileY, tileZ]) => {
+      return (self as unknown as BrowserGlobal)
+        .__openDwarfWebGlHarness!.setPlayer(tileX, tileY, tileZ);
+    },
+    [tileX, tileY, tileZ] as [number, number, number],
+  );
+}
+
+export function setViewMode(page: Page, mode: "entity" | "master") {
+  return page.evaluate((mode) => {
+    return (self as unknown as BrowserGlobal)
+      .__openDwarfWebGlHarness!.setViewMode(mode);
+  }, mode);
 }
 
 export function setCameraSpeed(page: Page, pxPerS: number) {

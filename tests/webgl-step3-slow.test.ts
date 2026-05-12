@@ -4,6 +4,7 @@ import {
   loadFlow,
   setCamera,
   setCameraSpeed,
+  setViewMode,
   startCanvasRecording,
   stepTick,
   stopAndSaveCanvasRecording,
@@ -13,14 +14,14 @@ import {
 import { flow } from "./flows/webgl-step1-single-rock.ts";
 
 const OCTANTS: Array<{ name: string; keys: string[] }> = [
-  { name: "north", keys: ["KeyE"] },
-  { name: "northeast", keys: ["KeyE", "KeyF"] },
-  { name: "east", keys: ["KeyF"] },
-  { name: "southeast", keys: ["KeyD", "KeyF"] },
-  { name: "south", keys: ["KeyD"] },
-  { name: "southwest", keys: ["KeyD", "KeyS"] },
-  { name: "west", keys: ["KeyS"] },
-  { name: "northwest", keys: ["KeyE", "KeyS"] },
+  { name: "north", keys: ["KeyI"] },
+  { name: "northeast", keys: ["KeyI", "KeyL"] },
+  { name: "east", keys: ["KeyL"] },
+  { name: "southeast", keys: ["KeyK", "KeyL"] },
+  { name: "south", keys: ["KeyK"] },
+  { name: "southwest", keys: ["KeyK", "KeyJ"] },
+  { name: "west", keys: ["KeyJ"] },
+  { name: "northwest", keys: ["KeyI", "KeyJ"] },
 ];
 
 // 120px/s = quarter of the default 480px/s.
@@ -34,6 +35,7 @@ test("webgl step3 slow visual — keypresses in all 8 octants", async ({ page })
   await page.goto("/webgl");
   await waitForHarness(page);
   await loadFlow(page, flow);
+  await setViewMode(page, "master");
   await waitForEvent(page, "texture_loaded");
   await stepTick(page, 4);
 
@@ -42,6 +44,7 @@ test("webgl step3 slow visual — keypresses in all 8 octants", async ({ page })
 
   const cpOrigin = await captureCheckpoint(page, "origin");
   const originChunks = new Set(cpOrigin?.visibleChunks ?? []);
+  const originCamera = cpOrigin?.camera ?? { x: 0, y: 0, zoom: 1 };
 
   for (const { name, keys } of OCTANTS) {
     await setCamera(page, 0, 0, 1);
@@ -57,6 +60,9 @@ test("webgl step3 slow visual — keypresses in all 8 octants", async ({ page })
       cpEnd?.residentChunks,
       `${name}: streaming window leads camera`,
     ).toBeGreaterThan(cpEnd?.visibleChunks.length ?? 0);
+    expect.soft(cpEnd?.camera, `${name}: camera moved`).not.toEqual(
+      originCamera,
+    );
 
     if (cpEnd) {
       const after = new Set(cpEnd.visibleChunks);

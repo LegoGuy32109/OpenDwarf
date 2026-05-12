@@ -32,7 +32,7 @@ export default {
   testMatch: "**/*.test.ts",
   testIgnore: "**/unit/**",
   outputDir: "./exports/playwright-results",
-  workers: 2,
+  workers: 16,
   reporter: [["html", {
     outputFolder: "exports/playwright-report",
     open: "never",

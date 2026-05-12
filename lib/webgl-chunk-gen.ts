@@ -18,6 +18,23 @@ export function chunkKeyString(key: ChunkKey): string {
   return `${key.chunkX},${key.chunkY},${key.chunkZ}`;
 }
 
+export type TileKey = {
+  tileX: number;
+  tileY: number;
+  tileZ: number;
+};
+
+export function tileKeyString(key: TileKey): string {
+  return `${key.tileX},${key.tileY},${key.tileZ}`;
+}
+
+export function chunkOfTile(tileX: number, tileY: number) {
+  return {
+    chunkX: Math.floor(tileX / CHUNK_EDGE_TILES),
+    chunkY: Math.floor(tileY / CHUNK_EDGE_TILES),
+  };
+}
+
 function fnv32a(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -116,6 +133,85 @@ export function computeEdgeShadowIds(
     }
   }
   return result;
+}
+
+function bresenhamLine(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): Array<[number, number]> {
+  const points: Array<[number, number]> = [];
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const sx = x0 < x1 ? 1 : -1;
+  const dy = -Math.abs(y1 - y0);
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  while (true) {
+    points.push([x, y]);
+    if (x === x1 && y === y1) break;
+    const e2 = err * 2;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+  return points;
+}
+
+function tileSolidAt(
+  tileX: number,
+  tileY: number,
+  tileZ: number,
+  solidCache: ReadonlyMap<string, Uint8Array>,
+): boolean {
+  const { chunkX, chunkY } = chunkOfTile(tileX, tileY);
+  const chunk = solidCache.get(
+    chunkKeyString({ chunkX, chunkY, chunkZ: tileZ }),
+  );
+  if (!chunk) return true;
+  const localX = tileX - chunkX * CHUNK_EDGE_TILES;
+  const localY = tileY - chunkY * CHUNK_EDGE_TILES;
+  return chunk[localY * CHUNK_EDGE_TILES + localX] === 1;
+}
+
+export function computeVisibleTilesFromPlayer(
+  player: { tileX: number; tileY: number; tileZ: number },
+  radius: number,
+  solidCache: ReadonlyMap<string, Uint8Array>,
+): Set<string> {
+  const visible = new Set<string>();
+  const radiusSquared = radius * radius;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy > radiusSquared) continue;
+      const targetX = player.tileX + dx;
+      const targetY = player.tileY + dy;
+      const line = bresenhamLine(player.tileX, player.tileY, targetX, targetY);
+      let blocked = false;
+      for (let i = 1; i < line.length - 1; i++) {
+        const [lx, ly] = line[i];
+        if (tileSolidAt(lx, ly, player.tileZ, solidCache)) {
+          blocked = true;
+          break;
+        }
+      }
+      if (!blocked) {
+        visible.add(tileKeyString({
+          tileX: targetX,
+          tileY: targetY,
+          tileZ: player.tileZ,
+        }));
+      }
+    }
+  }
+  return visible;
 }
 
 // Dual-grid edge shadow from precomputed visible surface elevations.
