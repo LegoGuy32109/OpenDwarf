@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import type { FlowDescriptor, PerfWindow } from "../lib/webgl-harness-types.ts";
 
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
@@ -69,9 +70,17 @@ type ReplayEvent =
     baselineConfigured: boolean;
   };
 
+type FrameMetric = {
+  cpuMs: number;
+  drawCalls: number;
+  uploadBytes: number;
+  visibleChunks: number;
+};
+
 type WebGlSceneSnapshot = {
   tick: number;
   frame: number;
+  seed: string;
   camera: { x: number; y: number; zoom: number };
   fullscreen: boolean;
   viewport: {
@@ -87,6 +96,7 @@ type WebGlSceneSnapshot = {
   assetsLoaded: string[];
   uiMode: string;
   sceneHash: string;
+  perf: PerfWindow;
 };
 
 type WebGlCheckpointRecord = {
@@ -99,6 +109,7 @@ type WebGlCheckpointRecord = {
   stateHash: string;
   baselineConfigured: boolean;
   baselineSource: string | null;
+  perf: PerfWindow;
 };
 
 type WebGlScreenshotBaselineManifest = {
@@ -174,7 +185,8 @@ type WebGlExportBundleData = {
 };
 
 type WebGlTestHarness = {
-  loadFlow: (flowName: string) => void;
+  loadFlow: (descriptor: FlowDescriptor) => void;
+  stepTick: (n: number) => Promise<void>;
   captureCheckpoint: (name: string) => Promise<WebGlCheckpointRecord | null>;
   setCamera: (x: number, y: number, zoom?: number) => Promise<void>;
   exportReplay: () => ReplayDocument;
@@ -250,8 +262,42 @@ function createJsonBlob(value: unknown) {
   });
 }
 
-function buildSceneHash(snapshot: Omit<WebGlSceneSnapshot, "sceneHash">) {
+function buildSceneHash(
+  snapshot: Omit<WebGlSceneSnapshot, "sceneHash" | "perf">,
+) {
   return hashJson(snapshot);
+}
+
+function computePerfWindow(metrics: FrameMetric[]): PerfWindow {
+  if (metrics.length === 0) {
+    return {
+      frames: 0,
+      cpuMs: { p50: 0, p95: 0, max: 0 },
+      drawCalls: { p50: 0, p95: 0, max: 0 },
+      uploadBytes: 0,
+    };
+  }
+  const sortedAsc = (arr: number[]) => [...arr].sort((a, b) => a - b);
+  const percentile = (sorted: number[], pct: number) =>
+    sorted[Math.min(Math.floor(sorted.length * pct), sorted.length - 1)];
+
+  const cpuSorted = sortedAsc(metrics.map((m) => m.cpuMs));
+  const dcSorted = sortedAsc(metrics.map((m) => m.drawCalls));
+
+  return {
+    frames: metrics.length,
+    cpuMs: {
+      p50: percentile(cpuSorted, 0.5),
+      p95: percentile(cpuSorted, 0.95),
+      max: cpuSorted[cpuSorted.length - 1],
+    },
+    drawCalls: {
+      p50: percentile(dcSorted, 0.5),
+      p95: percentile(dcSorted, 0.95),
+      max: dcSorted[dcSorted.length - 1],
+    },
+    uploadBytes: metrics.reduce((s, m) => s + m.uploadBytes, 0),
+  };
 }
 
 function waitForAnimationFrame() {
@@ -395,6 +441,12 @@ export default function WebGlGameCanvas() {
   });
   const screenshotArtifactsRef = useRef<Record<string, Blob>>({});
   const stateArtifactsRef = useRef<Record<string, Blob>>({});
+  const frameMetricsRef = useRef<FrameMetric[]>([]);
+  const flowDescriptorRef = useRef<FlowDescriptor>({
+    name: FLOW_NAME,
+    seed: SEED_NAME,
+    camera: { x: 0, y: 0, zoom: 1 },
+  });
   const replayEventsRef = useRef<ReplayEvent[]>([]);
 
   const [status, setStatus] = useState("booting");
@@ -516,10 +568,13 @@ export default function WebGlGameCanvas() {
     };
   };
 
-  const buildSceneSnapshot = async (): Promise<WebGlSceneSnapshot> => {
+  const buildSceneSnapshot = async (
+    perf: PerfWindow,
+  ): Promise<WebGlSceneSnapshot> => {
     const snapshotBase = {
       tick: eventTickRef.current,
       frame: frameRef.current,
+      seed: flowDescriptorRef.current.seed,
       camera: sceneStateRef.current.camera,
       fullscreen: sceneStateRef.current.fullscreen,
       viewport: sceneStateRef.current.viewport,
@@ -532,6 +587,7 @@ export default function WebGlGameCanvas() {
     return {
       ...snapshotBase,
       sceneHash: await buildSceneHash(snapshotBase),
+      perf,
     };
   };
 
@@ -592,13 +648,16 @@ export default function WebGlGameCanvas() {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
+    const perf = computePerfWindow(frameMetricsRef.current);
+    frameMetricsRef.current = [];
+
     const blob = await captureCanvasBlob();
     if (!blob) return null;
 
     const ordinal = checkpointsRef.current.length;
     const screenshotFilename = makeArtifactFilename(ordinal, name, "png");
     const stateFilename = makeStateFilename(ordinal, name);
-    const snapshot = await buildSceneSnapshot();
+    const snapshot = await buildSceneSnapshot(perf);
     const statePayload = {
       ...snapshot,
       checkpoint: name,
@@ -619,6 +678,7 @@ export default function WebGlGameCanvas() {
       stateHash,
       baselineConfigured: Boolean(baselineSource),
       baselineSource,
+      perf,
     };
 
     checkpointsRef.current = [...checkpointsRef.current, record];
@@ -844,6 +904,7 @@ export default function WebGlGameCanvas() {
       fallbackImage.decoding = "async";
 
       const drawFrame = () => {
+        const t0 = performance.now();
         frameRef.current += 1;
         fallbackContext.fillStyle = "#14161c";
         fallbackContext.fillRect(0, 0, canvas.width, canvas.height);
@@ -871,6 +932,12 @@ export default function WebGlGameCanvas() {
           }
         }
 
+        frameMetricsRef.current.push({
+          cpuMs: performance.now() - t0,
+          drawCalls: 0,
+          uploadBytes: 0,
+          visibleChunks: sceneStateRef.current.visibleChunks.length,
+        });
         rafRef.current = globalThis.requestAnimationFrame(drawFrame);
       };
 
@@ -1029,11 +1096,33 @@ export default function WebGlGameCanvas() {
       document.addEventListener("fullscreenchange", handleFullscreenChange);
 
       const harness: WebGlTestHarness = {
-        loadFlow: (flowName: string) => {
-          if (flowName !== FLOW_NAME) {
-            throw new Error(`Unsupported flow: ${flowName}`);
+        loadFlow: (descriptor: FlowDescriptor) => {
+          if (descriptor.name !== FLOW_NAME) {
+            throw new Error(`Unsupported flow: ${descriptor.name}`);
           }
-          appendLog(`load flow ${flowName}`);
+          flowDescriptorRef.current = descriptor;
+          const cam = descriptor.camera ?? { x: 0, y: 0, zoom: 1 };
+          sceneStateRef.current = {
+            ...sceneStateRef.current,
+            camera: { x: cam.x, y: cam.y, zoom: cam.zoom ?? 1 },
+          };
+          replayEventsRef.current = [];
+          checkpointsRef.current = [];
+          screenshotArtifactsRef.current = {};
+          stateArtifactsRef.current = {};
+          frameMetricsRef.current = [];
+          eventTickRef.current = 0;
+          setCheckpointRecords([]);
+          setReplayPreview(summarizeReplay([]));
+          setImportedReplayInfo(null);
+          pushReplayEvent({ type: "boot", tick: nextTick() });
+          appendLog(`load flow ${descriptor.name} seed=${descriptor.seed}`);
+        },
+        stepTick: async (n: number) => {
+          for (let i = 0; i < n; i++) {
+            eventTickRef.current += 1;
+            await waitForAnimationFrame();
+          }
         },
         captureCheckpoint,
         setCamera,
@@ -1264,11 +1353,20 @@ export default function WebGlGameCanvas() {
     };
 
     const drawFrame = () => {
+      const t0 = performance.now();
+
       if (!glRef.current || !programRef.current || !textureRef.current) {
+        frameMetricsRef.current.push({
+          cpuMs: performance.now() - t0,
+          drawCalls: 0,
+          uploadBytes: 0,
+          visibleChunks: sceneStateRef.current.visibleChunks.length,
+        });
         rafRef.current = globalThis.requestAnimationFrame(drawFrame);
         return;
       }
 
+      let drawCalls = 0;
       frameRef.current += 1;
       gl.useProgram(programRef.current);
       gl.viewport(0, 0, canvas.width, canvas.height);
@@ -1310,8 +1408,15 @@ export default function WebGlGameCanvas() {
           4,
           GRID_COLUMNS * GRID_ROWS,
         );
+        drawCalls = 1;
       }
 
+      frameMetricsRef.current.push({
+        cpuMs: performance.now() - t0,
+        drawCalls,
+        uploadBytes: 0,
+        visibleChunks: sceneStateRef.current.visibleChunks.length,
+      });
       rafRef.current = globalThis.requestAnimationFrame(drawFrame);
     };
 
@@ -1360,11 +1465,33 @@ export default function WebGlGameCanvas() {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
     const harness: WebGlTestHarness = {
-      loadFlow: (flowName: string) => {
-        if (flowName !== FLOW_NAME) {
-          throw new Error(`Unsupported flow: ${flowName}`);
+      loadFlow: (descriptor: FlowDescriptor) => {
+        if (descriptor.name !== FLOW_NAME) {
+          throw new Error(`Unsupported flow: ${descriptor.name}`);
         }
-        appendLog(`load flow ${flowName}`);
+        flowDescriptorRef.current = descriptor;
+        const cam = descriptor.camera ?? { x: 0, y: 0, zoom: 1 };
+        sceneStateRef.current = {
+          ...sceneStateRef.current,
+          camera: { x: cam.x, y: cam.y, zoom: cam.zoom ?? 1 },
+        };
+        replayEventsRef.current = [];
+        checkpointsRef.current = [];
+        screenshotArtifactsRef.current = {};
+        stateArtifactsRef.current = {};
+        frameMetricsRef.current = [];
+        eventTickRef.current = 0;
+        setCheckpointRecords([]);
+        setReplayPreview(summarizeReplay([]));
+        setImportedReplayInfo(null);
+        pushReplayEvent({ type: "boot", tick: nextTick() });
+        appendLog(`load flow ${descriptor.name} seed=${descriptor.seed}`);
+      },
+      stepTick: async (n: number) => {
+        for (let i = 0; i < n; i++) {
+          eventTickRef.current += 1;
+          await waitForAnimationFrame();
+        }
       },
       captureCheckpoint,
       setCamera,

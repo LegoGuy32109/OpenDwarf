@@ -9,18 +9,39 @@ import {
   resolve,
 } from "$std/path/mod.ts";
 import { chromium } from "npm:playwright@1.52.0";
+import type { FlowDescriptor } from "../lib/webgl-harness-types.ts";
 
 type JsonObject = Record<string, unknown>;
 
 type ReviewRunConfig = {
-  flow: string;
+  flow: FlowDescriptor;
   url: string;
   outDir: string;
   browserBin: string;
   serve: boolean;
 };
 
-const FLOW_NAME = "webgl-step1-single-rock";
+type BrowserGlobal = {
+  __openDwarfWebGlHarness: {
+    loadFlow(d: FlowDescriptor): void;
+    stepTick(n: number): Promise<void>;
+    captureCheckpoint(name: string): Promise<unknown>;
+    setCamera(x: number, y: number, zoom: number): Promise<void>;
+    exportReplay(): { events: { type: string }[] };
+    exportBundleData(): Promise<{
+      replayJson: string;
+      manifestJson: string;
+      screenshots: { filename: string; dataUrl: string }[];
+      states: { filename: string; dataUrl: string }[];
+    }>;
+  };
+};
+
+const REVIEW_FLOW: FlowDescriptor = {
+  name: "webgl-step1-single-rock",
+  seed: "single-rock-step1",
+  camera: { x: 0, y: 0, zoom: 1 },
+};
 const REVIEW_VIEWPORT = { width: 1920, height: 1080 };
 const REVIEW_CAMERA_STEPS = [
   { x: 0, y: 0 },
@@ -70,12 +91,10 @@ function dataUrlToBytes(dataUrl: string) {
 
 async function runReview(config: ReviewRunConfig) {
   const runId = createRunId();
-  const runDir = join(config.outDir, config.flow, runId);
+  const runDir = join(config.outDir, config.flow.name, runId);
   const screenshotDir = join(runDir, "screenshots");
-  const frameDir = join(runDir, "frames");
   const stateDir = join(runDir, "state");
   await ensureDir(screenshotDir);
-  await ensureDir(frameDir);
   await ensureDir(stateDir);
 
   console.log(`review run: ${runId}`);
@@ -84,7 +103,7 @@ async function runReview(config: ReviewRunConfig) {
 
   const serverProcess = config.serve
     ? new Deno.Command(Deno.execPath(), {
-      args: ["run", "-A", "main.ts"],
+      args: ["run", "-A", "dev.ts"],
       cwd: repoRoot,
       stdout: "inherit",
       stderr: "inherit",
@@ -126,92 +145,79 @@ async function runReview(config: ReviewRunConfig) {
 
       await page.waitForFunction(
         () =>
-          !!(globalThis as unknown as { __openDwarfWebGlHarness?: unknown })
+          !!(self as unknown as { __openDwarfWebGlHarness?: unknown })
             .__openDwarfWebGlHarness,
         { timeout: 15_000 },
       );
       console.log("harness ready");
 
-      await page.evaluate((flow) => {
-        (globalThis as unknown as {
-          __openDwarfWebGlHarness: { loadFlow(f: string): void };
-        })
-          .__openDwarfWebGlHarness.loadFlow(flow);
+      await page.evaluate((d) => {
+        (self as unknown as BrowserGlobal).__openDwarfWebGlHarness.loadFlow(d);
       }, config.flow);
       console.log("flow loaded");
 
-      // fullscreen the canvas shell so the framebuffer is the full 1920x1080 viewport
       await page.evaluate(() => {
-        // deno-lint-ignore no-explicit-any
-        const shell = (globalThis as any).document?.querySelector(
-          ".webgl-experiment-shell",
-        );
-        // deno-lint-ignore no-explicit-any
-        return shell?.requestFullscreen({ navigationUI: "hide" as any });
+        const shell = document.querySelector(".webgl-experiment-shell");
+        return shell?.requestFullscreen({ navigationUI: "hide" });
       });
       await page.waitForTimeout(300);
-      console.log("fullscreen requested");
+      console.log("fullscreen ready");
 
-      // boot checkpoint
-      const bootPath = join(screenshotDir, "000_boot.png");
-      await page.screenshot({ path: bootPath });
-      await Deno.copyFile(bootPath, join(frameDir, "000_boot.png"));
-      console.log("boot checkpoint captured");
+      // boot: let fullscreen resize settle then capture
+      await page.evaluate(() =>
+        (self as unknown as BrowserGlobal).__openDwarfWebGlHarness.stepTick(2)
+      );
+      await page.evaluate(
+        (name) =>
+          (self as unknown as BrowserGlobal).__openDwarfWebGlHarness
+            .captureCheckpoint(name),
+        "boot",
+      );
+      console.log("boot captured");
 
       // wait for texture
       await page.waitForFunction(() => {
-        const h = (globalThis as unknown as {
-          __openDwarfWebGlHarness?: {
-            exportReplay(): { events: { type: string }[] };
-          };
-        }).__openDwarfWebGlHarness;
-        return h?.exportReplay().events.some((e) =>
-          e.type === "texture_loaded"
-        ) ?? false;
+        const h = (self as unknown as BrowserGlobal).__openDwarfWebGlHarness;
+        return h.exportReplay().events.some((e) => e.type === "texture_loaded");
       }, { timeout: 15_000 });
       console.log("texture loaded");
 
-      const rockPath = join(screenshotDir, "010_single_rock_loaded.png");
-      await page.screenshot({ path: rockPath });
-      await Deno.copyFile(
-        rockPath,
-        join(frameDir, "010_single_rock_loaded.png"),
+      // step a few frames so the rock grid is drawn before capturing
+      await page.evaluate(() =>
+        (self as unknown as BrowserGlobal).__openDwarfWebGlHarness.stepTick(4)
       );
-      console.log("single rock checkpoint captured");
+      await page.evaluate(
+        (name) =>
+          (self as unknown as BrowserGlobal).__openDwarfWebGlHarness
+            .captureCheckpoint(name),
+        "single_rock_loaded",
+      );
+      console.log("single rock captured");
 
       // camera pan
       for (const [i, step] of REVIEW_CAMERA_STEPS.entries()) {
         await page.evaluate(
-          ([x, y]: [number, number]) => {
-            (globalThis as unknown as {
-              __openDwarfWebGlHarness: {
-                setCamera(x: number, y: number, z: number): void;
-              };
-            })
-              .__openDwarfWebGlHarness.setCamera(x, y, 1);
-          },
+          ([x, y]: [number, number]) =>
+            (self as unknown as BrowserGlobal).__openDwarfWebGlHarness
+              .setCamera(x, y, 1),
           [step.x, step.y] as [number, number],
         );
-        await page.waitForTimeout(120);
-        const label = `camera_pan_${String(i).padStart(2, "0")}`;
-        const ordinal = String(20 + i * 10).padStart(3, "0");
-        const panPath = join(screenshotDir, `${ordinal}_${label}.png`);
-        await page.screenshot({ path: panPath });
-        await Deno.copyFile(panPath, join(frameDir, `${ordinal}_${label}.png`));
+        await page.evaluate(() =>
+          (self as unknown as BrowserGlobal).__openDwarfWebGlHarness.stepTick(4)
+        );
+        await page.evaluate(
+          (name) =>
+            (self as unknown as BrowserGlobal).__openDwarfWebGlHarness
+              .captureCheckpoint(name),
+          `camera_pan_${String(i).padStart(2, "0")}`,
+        );
       }
       console.log("camera pan captured");
 
-      // get replay/manifest/state from harness
+      // export bundle — screenshots and states come from harness captures above
       const bundleData = await page.evaluate(() =>
-        (globalThis as unknown as {
-          __openDwarfWebGlHarness: {
-            exportBundleData(): Promise<{
-              replayJson: string;
-              manifestJson: string;
-              states: { filename: string; dataUrl: string }[];
-            }>;
-          };
-        }).__openDwarfWebGlHarness.exportBundleData()
+        (self as unknown as BrowserGlobal).__openDwarfWebGlHarness
+          .exportBundleData()
       );
       console.log("bundle data exported");
 
@@ -224,6 +230,13 @@ async function runReview(config: ReviewRunConfig) {
         bundleData.manifestJson,
       );
 
+      for (const artifact of bundleData.screenshots) {
+        await Deno.writeFile(
+          join(screenshotDir, basename(artifact.filename)),
+          dataUrlToBytes(artifact.dataUrl),
+        );
+      }
+
       for (const artifact of bundleData.states) {
         const parsed = JSON.parse(
           new TextDecoder().decode(dataUrlToBytes(artifact.dataUrl)),
@@ -234,7 +247,6 @@ async function runReview(config: ReviewRunConfig) {
         );
       }
 
-      // close context to finalize video recording
       const video = page.video();
       await context.close();
 
@@ -252,8 +264,9 @@ async function runReview(config: ReviewRunConfig) {
       await Deno.writeTextFile(
         join(runDir, "notes.md"),
         [
-          `# ${config.flow}`,
+          `# ${config.flow.name}`,
           "",
+          `- seed: ${config.flow.seed}`,
           `- url: ${config.url}`,
           `- viewport: ${REVIEW_VIEWPORT.width}x${REVIEW_VIEWPORT.height}`,
           `- runId: ${runId}`,
@@ -265,6 +278,8 @@ async function runReview(config: ReviewRunConfig) {
               ? manifest.checkpoints.length
               : 0
           }`,
+          `- screenshots: ${bundleData.screenshots.length}`,
+          `- states: ${bundleData.states.length}`,
           `- video: ${video ? "present" : "unavailable"}`,
           "",
           "Outputs:",
@@ -272,7 +287,6 @@ async function runReview(config: ReviewRunConfig) {
           "- manifest.json",
           "- screenshots/",
           "- state/",
-          "- frames/",
           "- video.webm",
         ].join("\n"),
       );
@@ -289,10 +303,9 @@ async function runReview(config: ReviewRunConfig) {
 if (import.meta.main) {
   const cliArgs = Deno.args[0] === "--" ? Deno.args.slice(1) : Deno.args;
   const args = parse(cliArgs, {
-    string: ["flow", "out-dir", "url", "browser"],
+    string: ["out-dir", "url", "browser"],
     boolean: ["serve"],
     default: {
-      flow: FLOW_NAME,
       "out-dir": join(repoRoot, "exports"),
       url: "http://127.0.0.1:8000/webgl",
       browser: Deno.env.get("CHROMIUM_BIN") ?? "/usr/bin/chromium",
@@ -301,7 +314,7 @@ if (import.meta.main) {
   });
 
   await runReview({
-    flow: String(args.flow),
+    flow: REVIEW_FLOW,
     url: String(args.url),
     outDir: String(args["out-dir"]),
     browserBin: String(args.browser),

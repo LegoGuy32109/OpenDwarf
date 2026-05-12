@@ -11,7 +11,8 @@
     "local": "cargo run --manifest-path ./game_library/Cargo.toml",
     "web-release": "bash scripts/bash/web-release.sh",
     "web-dev": "bash scripts/bash/web-dev.sh",
-    "ui-test": "deno run -A scripts/webgl_review.ts"
+    "ui-test": "deno run -A scripts/webgl_review.ts",
+    "test": "npx playwright test"
   },
   "lint": {
     "rules": {
