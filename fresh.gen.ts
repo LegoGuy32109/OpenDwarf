@@ -13,6 +13,7 @@ import * as $Counter from "./islands/Counter.tsx";
 import * as $FullscreenButton from "./islands/FullscreenButton.tsx";
 import * as $GameCanvas from "./islands/GameCanvas.tsx";
 import * as $MultiplayerSidebar from "./islands/MultiplayerSidebar.tsx";
+import * as $WebGlFullscreenButton from "./islands/WebGlFullscreenButton.tsx";
 import * as $WebGlGameCanvas from "./islands/WebGlGameCanvas.tsx";
 import * as $webgl_ui_text from "./islands/webgl-ui-text.ts";
 import type { Manifest } from "$fresh/server.ts";
@@ -32,6 +33,7 @@ const manifest = {
     "./islands/FullscreenButton.tsx": $FullscreenButton,
     "./islands/GameCanvas.tsx": $GameCanvas,
     "./islands/MultiplayerSidebar.tsx": $MultiplayerSidebar,
+    "./islands/WebGlFullscreenButton.tsx": $WebGlFullscreenButton,
     "./islands/WebGlGameCanvas.tsx": $WebGlGameCanvas,
     "./islands/webgl-ui-text.ts": $webgl_ui_text,
   },

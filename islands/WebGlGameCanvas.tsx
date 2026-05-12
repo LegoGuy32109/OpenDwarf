@@ -2915,29 +2915,21 @@ export default function WebGlGameCanvas() {
               : 0;
             const loadedTiles = solidCacheRef.current.size * CHUNK_EDGE_TILES * CHUNK_EDGE_TILES;
             const visibleTiles = viewModeRef.current === "entity" ? worldRef.current.visible.size : 0;
+            const cam = sceneStateRef.current.camera;
             const statusLines = [
-              `STEP 6 WEBGL UI  ${statusRef.current}`,
-              `[1] ui:${uiOverlayVisibleRef.current ? "on" : "OFF"} [6] floor:${
+              `[1] ui:on [6] floor:${
                 layersRef.current.floor ? "on" : "OFF"
-              } [7] edge:${layersRef.current.edgeShadow ? "on" : "OFF"}`,
-              `[8] ceil:${
-                layersRef.current.ceilShadow ? "on" : "OFF"
+              } [7] edge:${layersRef.current.edgeShadow ? "on" : "OFF"
+              } [8] ceil:${layersRef.current.ceilShadow ? "on" : "OFF"
               } [9] tint:${layersRef.current.depthTint ? "on" : "OFF"}`,
-              `fullscreen: ${fullscreenRef.current ? "yes" : "no"}  z:${viewZ}`,
               `framebuffer: ${cap?.framebufferSize.width ?? 0} x ${
                 cap?.framebufferSize.height ?? 0
               }`,
-              `css: ${cap?.canvasCssSize.width.toFixed(0) ?? "0"} x ${
-                cap?.canvasCssSize.height.toFixed(0) ?? "0"
-              } dpr:${cap?.devicePixelRatio.toFixed(2) ?? "0.00"}`,
               `replay:${preview.eventCount} tex:${preview.textureCount} shots:${preview.screenshotCount} checks:${preview.checkpointCount}`,
-              `baseline: ${
-                baselineConfiguredRef.current ? "configured" : "unset"
-              }`,
               `fps: ${avgFps}  sim: ${simTpsDisplayRef.current}tps`,
               `tiles: ${loadedTiles} loaded  ${visibleTiles} visible`,
               `draws: ${frameDrawCallsRef.current}  instances: ${frameInstancesRef.current}`,
-              `fov: ${fovDirtyRef.current ? "dirty" : "cached"}`,
+              `cam x:${(cam.x / TILE_SIZE_PX).toFixed(1)} y:${(cam.y / TILE_SIZE_PX).toFixed(1)} z:${viewZ} zoom:${cam.zoom.toFixed(2)}`,
             ];
             drawLines(statusLines, 32, 28, [1.0, 0.86, 0.56], 0.95);
 
