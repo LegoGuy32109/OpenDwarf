@@ -2,12 +2,12 @@ const UI_FONT_SRC_PATH = "/assets/ui/TinyPixie2.ttf";
 const UI_FONT_FAMILY = "TinyPixie2WebGl";
 const UI_FONT_FIRST_CHAR = 32;
 const UI_FONT_LAST_CHAR = 126;
-const UI_FONT_COLS = 16;
-const UI_FONT_RENDER_PX = 24;
-const UI_FONT_PADDING = 2;
+const UI_FONT_COLS = 20;
+const UI_FONT_RENDER_PX = 16;
+const UI_FONT_PADDING = 0;
 const UI_FONT_SCALE = 1;
-const UI_FONT_TRACKING_PX = 1;
-const UI_FONT_LINE_GAP = 2;
+const UI_FONT_TRACKING_PX = -5;
+const UI_FONT_LINE_GAP = 0;
 
 export type UiFontAtlas = {
   texture: WebGLTexture;
