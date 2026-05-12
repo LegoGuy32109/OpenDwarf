@@ -59,3 +59,46 @@ export function computeVisibleChunks(
   }
   return visible;
 }
+
+export function computeStreamingChunks(
+  camera: { x: number; y: number; zoom: number },
+  viewport: { framebufferWidth: number; framebufferHeight: number },
+  padding = 1,
+): ChunkKey[] {
+  const halfW = viewport.framebufferWidth / (2 * camera.zoom);
+  const halfH = viewport.framebufferHeight / (2 * camera.zoom);
+  const minChunkX = Math.floor((camera.x - halfW) / CHUNK_SIZE_PX) - padding;
+  const maxChunkX = Math.floor((camera.x + halfW) / CHUNK_SIZE_PX) + padding;
+  const minChunkY = Math.floor((camera.y - halfH) / CHUNK_SIZE_PX) - padding;
+  const maxChunkY = Math.floor((camera.y + halfH) / CHUNK_SIZE_PX) + padding;
+  const keys: ChunkKey[] = [];
+  for (let cy = minChunkY; cy <= maxChunkY; cy++) {
+    for (let cx = minChunkX; cx <= maxChunkX; cx++) {
+      keys.push({ chunkX: cx, chunkY: cy, chunkZ: 0 });
+    }
+  }
+  return keys;
+}
+
+export function updateChunkCache(
+  cache: Map<string, Uint16Array>,
+  seed: string,
+  streamingKeys: ChunkKey[],
+): boolean {
+  const wanted = new Set(streamingKeys.map(chunkKeyString));
+  let changed = false;
+  for (const key of [...cache.keys()]) {
+    if (!wanted.has(key)) {
+      cache.delete(key);
+      changed = true;
+    }
+  }
+  for (const key of streamingKeys) {
+    const ks = chunkKeyString(key);
+    if (!cache.has(ks)) {
+      cache.set(ks, generateChunk(seed, key));
+      changed = true;
+    }
+  }
+  return changed;
+}

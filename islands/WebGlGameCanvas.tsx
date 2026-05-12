@@ -4,9 +4,10 @@ import {
   CHUNK_EDGE_TILES,
   type ChunkKey,
   chunkKeyString,
+  computeStreamingChunks,
   computeVisibleChunks,
-  generateChunk,
   TILE_SIZE_PX,
+  updateChunkCache,
 } from "../lib/webgl-chunk-gen.ts";
 
 declare global {
@@ -211,18 +212,19 @@ type WebGlTestHarness = {
 const FLOW_NAME = "webgl-step1-single-rock";
 const SEED_NAME = "single-rock-step1";
 const TILE_TEXTURE_SRC = "/assets/sprites/SingleRock.png";
-const CHUNK_WINDOW = 2;
-
-function buildChunkCache(seed: string): Map<string, Uint16Array> {
-  const cache = new Map<string, Uint16Array>();
-  for (let cy = -CHUNK_WINDOW; cy <= CHUNK_WINDOW; cy++) {
-    for (let cx = -CHUNK_WINDOW; cx <= CHUNK_WINDOW; cx++) {
-      const key: ChunkKey = { chunkX: cx, chunkY: cy, chunkZ: 0 };
-      cache.set(chunkKeyString(key), generateChunk(seed, key));
-    }
-  }
-  return cache;
-}
+const CAMERA_PX_PER_S = 480;
+const STREAM_PADDING = 1;
+const MAX_STREAMING_CHUNKS = 64;
+const GAME_KEYS = new Set([
+  "KeyE",
+  "KeyS",
+  "KeyD",
+  "KeyF",
+  "KeyI",
+  "KeyJ",
+  "KeyK",
+  "KeyL",
+]);
 function createRunId() {
   const stamp = new Date().toISOString().replaceAll(":", "-");
   const entropy = globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
@@ -464,6 +466,9 @@ export default function WebGlGameCanvas() {
   const textureInfoRef = useRef<
     { src: string; width: number; height: number } | null
   >(null);
+  const keysHeldRef = useRef<Set<string>>(new Set());
+  const streamingKeySetRef = useRef<string>("");
+  const lastFrameTimeRef = useRef<number | null>(null);
   const flowDescriptorRef = useRef<FlowDescriptor>({
     name: FLOW_NAME,
     seed: SEED_NAME,
@@ -927,9 +932,59 @@ export default function WebGlGameCanvas() {
       const fallbackImage = new Image();
       fallbackImage.decoding = "async";
 
-      const drawFrame = () => {
+      const drawFrame = (timestamp = performance.now()) => {
         const t0 = performance.now();
         frameRef.current += 1;
+
+        const last2d = lastFrameTimeRef.current ?? timestamp;
+        const dt2d = Math.min(timestamp - last2d, 100) / 1000;
+        lastFrameTimeRef.current = timestamp;
+
+        const cam2d = sceneStateRef.current.camera;
+        const step2d = CAMERA_PX_PER_S * dt2d;
+        let dx2d = 0, dy2d = 0;
+        const k2d = keysHeldRef.current;
+        if (k2d.has("KeyE") || k2d.has("KeyI")) dy2d -= step2d;
+        if (k2d.has("KeyD") || k2d.has("KeyK")) dy2d += step2d;
+        if (k2d.has("KeyS") || k2d.has("KeyJ")) dx2d -= step2d;
+        if (k2d.has("KeyF") || k2d.has("KeyL")) dx2d += step2d;
+        if (dx2d !== 0 || dy2d !== 0) {
+          sceneStateRef.current = {
+            ...sceneStateRef.current,
+            camera: {
+              x: cam2d.x + dx2d,
+              y: cam2d.y + dy2d,
+              zoom: cam2d.zoom,
+            },
+          };
+        }
+
+        if (sceneReadyRef.current) {
+          const vp2d = {
+            framebufferWidth: canvas.width,
+            framebufferHeight: canvas.height,
+          };
+          const sk2d = computeStreamingChunks(
+            sceneStateRef.current.camera,
+            vp2d,
+            STREAM_PADDING,
+          );
+          const sfp2d = sk2d.map(chunkKeyString).join("|");
+          if (sfp2d !== streamingKeySetRef.current) {
+            streamingKeySetRef.current = sfp2d;
+            updateChunkCache(
+              chunkCacheRef.current,
+              flowDescriptorRef.current.seed,
+              sk2d,
+            );
+            sceneStateRef.current = {
+              ...sceneStateRef.current,
+              residentChunks: chunkCacheRef.current.size,
+              streamingChunks: [...chunkCacheRef.current.keys()],
+            };
+          }
+        }
+
         fallbackContext.fillStyle = "#14161c";
         fallbackContext.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1086,8 +1141,19 @@ export default function WebGlGameCanvas() {
         appendLog(
           `texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`,
         );
-        const cache = buildChunkCache(flowDescriptorRef.current.seed);
-        chunkCacheRef.current = cache;
+        const vp2dLoad = {
+          framebufferWidth: canvas.width,
+          framebufferHeight: canvas.height,
+        };
+        const sk2dLoad = computeStreamingChunks(
+          sceneStateRef.current.camera,
+          vp2dLoad,
+          STREAM_PADDING,
+        );
+        const cache2d = new Map<string, Uint16Array>();
+        updateChunkCache(cache2d, flowDescriptorRef.current.seed, sk2dLoad);
+        chunkCacheRef.current = cache2d;
+        streamingKeySetRef.current = sk2dLoad.map(chunkKeyString).join("|");
         setStatus("SingleRock texture ready");
         sceneReadyRef.current = true;
         sceneStateRef.current = {
@@ -1096,14 +1162,16 @@ export default function WebGlGameCanvas() {
             ...sceneStateRef.current.assetsLoaded,
             TILE_TEXTURE_SRC,
           ],
-          residentChunks: cache.size,
-          streamingChunks: [...cache.keys()],
+          residentChunks: cache2d.size,
+          streamingChunks: [...cache2d.keys()],
           uiMode: "world",
         };
         drawFrame();
       };
 
       const handleFullscreenChange = () => {
+        keysHeldRef.current.clear();
+        lastFrameTimeRef.current = null;
         const isFullscreen = document.fullscreenElement === host;
         setFullscreen(isFullscreen);
         sceneStateRef.current = {
@@ -1123,6 +1191,10 @@ export default function WebGlGameCanvas() {
         canvas.focus();
       };
 
+      const handleBlur = () => {
+        keysHeldRef.current.clear();
+      };
+
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === "F11") {
           event.preventDefault();
@@ -1136,12 +1208,22 @@ export default function WebGlGameCanvas() {
           event.preventDefault();
           void document.exitFullscreen();
         }
+        if (GAME_KEYS.has(event.code)) {
+          event.preventDefault();
+          keysHeldRef.current.add(event.code);
+        }
+      };
+
+      const handleKeyUp = (event: KeyboardEvent) => {
+        keysHeldRef.current.delete(event.code);
       };
 
       const resizeObserver = new ResizeObserver(() => resizeCanvas());
       resizeObserver.observe(host);
       globalThis.addEventListener("resize", resizeCanvas);
       globalThis.addEventListener("keydown", handleKeyDown);
+      globalThis.addEventListener("keyup", handleKeyUp);
+      globalThis.addEventListener("blur", handleBlur);
       canvas.addEventListener("pointerdown", handlePointerDown);
       document.addEventListener("fullscreenchange", handleFullscreenChange);
 
@@ -1165,13 +1247,26 @@ export default function WebGlGameCanvas() {
           setCheckpointRecords([]);
           setReplayPreview(summarizeReplay([]));
           setImportedReplayInfo(null);
+          keysHeldRef.current.clear();
+          streamingKeySetRef.current = "";
           if (sceneReadyRef.current) {
-            const cache = buildChunkCache(descriptor.seed);
-            chunkCacheRef.current = cache;
+            const vp2dFlow = {
+              framebufferWidth: canvas.width,
+              framebufferHeight: canvas.height,
+            };
+            const sk2dFlow = computeStreamingChunks(
+              sceneStateRef.current.camera,
+              vp2dFlow,
+              STREAM_PADDING,
+            );
+            const cache2dFlow = new Map<string, Uint16Array>();
+            updateChunkCache(cache2dFlow, descriptor.seed, sk2dFlow);
+            chunkCacheRef.current = cache2dFlow;
+            streamingKeySetRef.current = sk2dFlow.map(chunkKeyString).join("|");
             sceneStateRef.current = {
               ...sceneStateRef.current,
-              residentChunks: cache.size,
-              streamingChunks: [...cache.keys()],
+              residentChunks: cache2dFlow.size,
+              streamingChunks: [...cache2dFlow.keys()],
             };
             if (textureInfoRef.current) {
               pushReplayEvent({
@@ -1213,6 +1308,8 @@ export default function WebGlGameCanvas() {
         resizeObserver.disconnect();
         globalThis.removeEventListener("resize", resizeCanvas);
         globalThis.removeEventListener("keydown", handleKeyDown);
+        globalThis.removeEventListener("keyup", handleKeyUp);
+        globalThis.removeEventListener("blur", handleBlur);
         canvas.removeEventListener("pointerdown", handlePointerDown);
         document.removeEventListener(
           "fullscreenchange",
@@ -1280,8 +1377,8 @@ export default function WebGlGameCanvas() {
       1,
       1,
     ]);
-    const maxInstances = Math.pow(2 * CHUNK_WINDOW + 1, 2) *
-      CHUNK_EDGE_TILES * CHUNK_EDGE_TILES;
+    const maxInstances = MAX_STREAMING_CHUNKS * CHUNK_EDGE_TILES *
+      CHUNK_EDGE_TILES;
 
     const vertexBuffer = gl.createBuffer();
     if (!vertexBuffer) {
@@ -1402,16 +1499,27 @@ export default function WebGlGameCanvas() {
       appendLog(
         `texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`,
       );
-      const cache = buildChunkCache(flowDescriptorRef.current.seed);
-      chunkCacheRef.current = cache;
-      rebuildGlInstances(cache);
+      const vpLoad = {
+        framebufferWidth: canvas.width,
+        framebufferHeight: canvas.height,
+      };
+      const skLoad = computeStreamingChunks(
+        sceneStateRef.current.camera,
+        vpLoad,
+        STREAM_PADDING,
+      );
+      const cacheLoad = new Map<string, Uint16Array>();
+      updateChunkCache(cacheLoad, flowDescriptorRef.current.seed, skLoad);
+      chunkCacheRef.current = cacheLoad;
+      streamingKeySetRef.current = skLoad.map(chunkKeyString).join("|");
+      rebuildGlInstances(cacheLoad);
       setStatus("SingleRock texture ready");
       sceneReadyRef.current = true;
       sceneStateRef.current = {
         ...sceneStateRef.current,
         assetsLoaded: [...sceneStateRef.current.assetsLoaded, TILE_TEXTURE_SRC],
-        residentChunks: cache.size,
-        streamingChunks: [...cache.keys()],
+        residentChunks: cacheLoad.size,
+        streamingChunks: [...cacheLoad.keys()],
         uiMode: "world",
       };
       drawFrame();
@@ -1446,10 +1554,11 @@ export default function WebGlGameCanvas() {
       drawFrame();
     };
 
-    const drawFrame = () => {
+    const drawFrame = (timestamp = performance.now()) => {
       const t0 = performance.now();
 
       if (!glRef.current || !programRef.current || !textureRef.current) {
+        lastFrameTimeRef.current = timestamp;
         frameMetricsRef.current.push({
           cpuMs: performance.now() - t0,
           drawCalls: 0,
@@ -1458,6 +1567,58 @@ export default function WebGlGameCanvas() {
         });
         rafRef.current = globalThis.requestAnimationFrame(drawFrame);
         return;
+      }
+
+      const lastGl = lastFrameTimeRef.current ?? timestamp;
+      const dtGl = Math.min(timestamp - lastGl, 100) / 1000;
+      lastFrameTimeRef.current = timestamp;
+
+      const camGl = sceneStateRef.current.camera;
+      const stepGl = CAMERA_PX_PER_S * dtGl;
+      let dxGl = 0, dyGl = 0;
+      const kGl = keysHeldRef.current;
+      if (kGl.has("KeyE") || kGl.has("KeyI")) dyGl -= stepGl;
+      if (kGl.has("KeyD") || kGl.has("KeyK")) dyGl += stepGl;
+      if (kGl.has("KeyS") || kGl.has("KeyJ")) dxGl -= stepGl;
+      if (kGl.has("KeyF") || kGl.has("KeyL")) dxGl += stepGl;
+      if (dxGl !== 0 || dyGl !== 0) {
+        sceneStateRef.current = {
+          ...sceneStateRef.current,
+          camera: {
+            x: camGl.x + dxGl,
+            y: camGl.y + dyGl,
+            zoom: camGl.zoom,
+          },
+        };
+      }
+
+      if (sceneReadyRef.current) {
+        const vpGl = {
+          framebufferWidth: canvas.width,
+          framebufferHeight: canvas.height,
+        };
+        const skGl = computeStreamingChunks(
+          sceneStateRef.current.camera,
+          vpGl,
+          STREAM_PADDING,
+        );
+        const sfpGl = skGl.map(chunkKeyString).join("|");
+        if (sfpGl !== streamingKeySetRef.current) {
+          streamingKeySetRef.current = sfpGl;
+          const cacheChanged = updateChunkCache(
+            chunkCacheRef.current,
+            flowDescriptorRef.current.seed,
+            skGl,
+          );
+          if (cacheChanged) {
+            rebuildGlInstances(chunkCacheRef.current);
+            sceneStateRef.current = {
+              ...sceneStateRef.current,
+              residentChunks: chunkCacheRef.current.size,
+              streamingChunks: [...chunkCacheRef.current.keys()],
+            };
+          }
+        }
       }
 
       let drawCalls = 0;
@@ -1522,6 +1683,8 @@ export default function WebGlGameCanvas() {
     };
 
     const handleFullscreenChange = () => {
+      keysHeldRef.current.clear();
+      lastFrameTimeRef.current = null;
       const isFullscreen = document.fullscreenElement === host;
       setFullscreen(isFullscreen);
       sceneStateRef.current = {
@@ -1543,6 +1706,10 @@ export default function WebGlGameCanvas() {
       canvas.focus();
     };
 
+    const handleBlur = () => {
+      keysHeldRef.current.clear();
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "F11") {
         event.preventDefault();
@@ -1556,12 +1723,22 @@ export default function WebGlGameCanvas() {
         event.preventDefault();
         void document.exitFullscreen();
       }
+      if (GAME_KEYS.has(event.code)) {
+        event.preventDefault();
+        keysHeldRef.current.add(event.code);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      keysHeldRef.current.delete(event.code);
     };
 
     const resizeObserver = new ResizeObserver(() => resizeCanvas());
     resizeObserver.observe(host);
     globalThis.addEventListener("resize", resizeCanvas);
     globalThis.addEventListener("keydown", handleKeyDown);
+    globalThis.addEventListener("keyup", handleKeyUp);
+    globalThis.addEventListener("blur", handleBlur);
     canvas.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
@@ -1585,14 +1762,27 @@ export default function WebGlGameCanvas() {
         setCheckpointRecords([]);
         setReplayPreview(summarizeReplay([]));
         setImportedReplayInfo(null);
+        keysHeldRef.current.clear();
+        streamingKeySetRef.current = "";
         if (sceneReadyRef.current) {
-          const cache = buildChunkCache(descriptor.seed);
-          chunkCacheRef.current = cache;
-          rebuildGlInstances(cache);
+          const vpFlow = {
+            framebufferWidth: canvas.width,
+            framebufferHeight: canvas.height,
+          };
+          const skFlow = computeStreamingChunks(
+            sceneStateRef.current.camera,
+            vpFlow,
+            STREAM_PADDING,
+          );
+          const cacheFlow = new Map<string, Uint16Array>();
+          updateChunkCache(cacheFlow, descriptor.seed, skFlow);
+          chunkCacheRef.current = cacheFlow;
+          streamingKeySetRef.current = skFlow.map(chunkKeyString).join("|");
+          rebuildGlInstances(cacheFlow);
           sceneStateRef.current = {
             ...sceneStateRef.current,
-            residentChunks: cache.size,
-            streamingChunks: [...cache.keys()],
+            residentChunks: cacheFlow.size,
+            streamingChunks: [...cacheFlow.keys()],
           };
           if (textureInfoRef.current) {
             pushReplayEvent({
@@ -1634,6 +1824,8 @@ export default function WebGlGameCanvas() {
       resizeObserver.disconnect();
       globalThis.removeEventListener("resize", resizeCanvas);
       globalThis.removeEventListener("keydown", handleKeyDown);
+      globalThis.removeEventListener("keyup", handleKeyUp);
+      globalThis.removeEventListener("blur", handleBlur);
       canvas.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       if (globalThis.__openDwarfWebGlHarness === harness) {

@@ -1,9 +1,12 @@
 import { assertEquals, assertNotEquals } from "$std/assert/mod.ts";
 import {
   CHUNK_EDGE_TILES,
+  CHUNK_SIZE_PX,
   chunkKeyString,
+  computeStreamingChunks,
   computeVisibleChunks,
   generateChunk,
+  updateChunkCache,
 } from "../../lib/webgl-chunk-gen.ts";
 
 Deno.test("generateChunk length is CHUNK_EDGE_TILES²", () => {
@@ -102,4 +105,81 @@ Deno.test("computeVisibleChunks shifts correctly when camera pans right", () => 
   // At x=960 the leftmost column shifts from -1 to 0
   assertEquals(at960.includes("-1,-1,0"), false);
   assertEquals(at960.includes("1,0,0"), true);
+});
+
+Deno.test("computeStreamingChunks is superset of computeVisibleChunks", () => {
+  const cam = { x: 0, y: 0, zoom: 1 };
+  const vp = { framebufferWidth: 1920, framebufferHeight: 1080 };
+  const visible = new Set(computeVisibleChunks(cam, vp).map(chunkKeyString));
+  const streaming = new Set(
+    computeStreamingChunks(cam, vp, 1).map(chunkKeyString),
+  );
+  for (const k of visible) {
+    assertEquals(
+      streaming.has(k),
+      true,
+      `visible chunk ${k} missing from streaming`,
+    );
+  }
+  // streaming must be strictly larger
+  assertEquals(streaming.size > visible.size, true);
+});
+
+Deno.test("computeStreamingChunks padding=1 extends by one chunk in each direction", () => {
+  const cam = { x: 0, y: 0, zoom: 1 };
+  const vp = { framebufferWidth: 1920, framebufferHeight: 1080 };
+  const p0 = computeStreamingChunks(cam, vp, 0).map(chunkKeyString).sort();
+  const p1 = computeStreamingChunks(cam, vp, 1).map(chunkKeyString).sort();
+  // visible(1920, 1080): 2 cols × 2 rows = 4; padding=0 streaming = same; padding=1: +2 cols, +2 rows
+  assertEquals(p0.length, 4);
+  assertEquals(p1.length, (2 + 2) * (2 + 2));
+});
+
+Deno.test("computeStreamingChunks works at chunk boundaries", () => {
+  // Camera exactly at chunk boundary x = CHUNK_SIZE_PX
+  const cam = { x: CHUNK_SIZE_PX, y: 0, zoom: 1 };
+  const vp = { framebufferWidth: 1920, framebufferHeight: 1080 };
+  const streaming = computeStreamingChunks(cam, vp, 1).map(chunkKeyString);
+  // chunk x=1 must be in streaming window
+  assertEquals(streaming.some((k) => k.startsWith("1,")), true);
+  // chunk x=-1 (padding behind) must be in streaming window
+  assertEquals(streaming.some((k) => k.startsWith("-1,")), true);
+});
+
+Deno.test("updateChunkCache loads new chunks", () => {
+  const cache = new Map<string, Uint16Array>();
+  const keys = [
+    { chunkX: 0, chunkY: 0, chunkZ: 0 },
+    { chunkX: 1, chunkY: 0, chunkZ: 0 },
+  ];
+  const changed = updateChunkCache(cache, "test-seed", keys);
+  assertEquals(changed, true);
+  assertEquals(cache.size, 2);
+  assertEquals(cache.has("0,0,0"), true);
+  assertEquals(cache.has("1,0,0"), true);
+});
+
+Deno.test("updateChunkCache evicts chunks outside streaming window", () => {
+  const cache = new Map<string, Uint16Array>();
+  updateChunkCache(cache, "s", [
+    { chunkX: 0, chunkY: 0, chunkZ: 0 },
+    { chunkX: 1, chunkY: 0, chunkZ: 0 },
+  ]);
+  // Shift window — evict (1,0), keep (0,0), add (-1,0)
+  const changed = updateChunkCache(cache, "s", [
+    { chunkX: -1, chunkY: 0, chunkZ: 0 },
+    { chunkX: 0, chunkY: 0, chunkZ: 0 },
+  ]);
+  assertEquals(changed, true);
+  assertEquals(cache.has("-1,0,0"), true);
+  assertEquals(cache.has("0,0,0"), true);
+  assertEquals(cache.has("1,0,0"), false);
+});
+
+Deno.test("updateChunkCache returns false when window is unchanged", () => {
+  const cache = new Map<string, Uint16Array>();
+  const keys = [{ chunkX: 0, chunkY: 0, chunkZ: 0 }];
+  updateChunkCache(cache, "s", keys);
+  const changed = updateChunkCache(cache, "s", keys);
+  assertEquals(changed, false);
 });

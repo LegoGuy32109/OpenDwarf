@@ -15,6 +15,7 @@ test("webgl step1 single rock — boot and texture load", async ({ page }) => {
   await loadFlow(page, flow);
 
   await waitForEvent(page, "texture_loaded");
+  await stepTick(page, 4);
 
   const cp = await captureCheckpoint(page, "texture_loaded");
   expect.soft(cp, "texture_loaded checkpoint").not.toBeNull();

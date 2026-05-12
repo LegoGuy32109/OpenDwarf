@@ -16,9 +16,9 @@ export default {
     baseURL: "http://127.0.0.1:8000",
     browserName: "chromium",
     headless: true,
-    viewport: { width: 1920, height: 1080 },
+    viewport: { width: 1280, height: 720 },
     deviceScaleFactor: 1,
-    video: "on",
+    video: { mode: "on", size: { width: 1280, height: 720 } },
     screenshot: "on",
     launchOptions: {
       executablePath: "/usr/bin/chromium",
