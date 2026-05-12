@@ -599,6 +599,7 @@ export default function WebGlGameCanvas() {
   const playerKeysJustPressedRef = useRef<Set<string>>(new Set());
   const wasMovingLastTickRef = useRef(false);
   const smoothPlayerWorldPosRef = useRef<[number, number] | null>(null);
+  const simAccumulatorRef = useRef(0);
   const streamingKeySetRef = useRef<string>("");
   const lastFrameTimeRef = useRef<number | null>(null);
   const simTickRef = useRef(0);
@@ -1750,6 +1751,7 @@ export default function WebGlGameCanvas() {
           const cam = descriptor.camera ?? { x: 0, y: 0, zoom: 1 };
           worldRef.current = createWorldSim(descriptor.seed);
           smoothPlayerWorldPosRef.current = null;
+          simAccumulatorRef.current = 0;
           const player = worldPlayerSnapshot();
           sceneStateRef.current = {
             ...sceneStateRef.current,
@@ -2175,12 +2177,22 @@ export default function WebGlGameCanvas() {
 
       const lastGl = lastFrameTimeRef.current ?? timestamp;
       lastFrameTimeRef.current = timestamp;
-      advanceSimulationTick();
+      // Cap delta to avoid spiral of death if tab was backgrounded.
+      const deltaMs = Math.min(timestamp - lastGl, 100);
+
+      // Simulation runs at 20 TPS (50ms/tick) — matching Rust's FixedUpdate schedule.
+      // Input just_pressed events accumulate in playerKeysJustPressedRef across render
+      // frames and are consumed once per simulation tick, exactly like Rust's command queue.
+      const SIM_TICK_MS = 1000 / 20;
+      simAccumulatorRef.current += deltaMs;
+      while (simAccumulatorRef.current >= SIM_TICK_MS) {
+        advanceSimulationTick();
+        simAccumulatorRef.current -= SIM_TICK_MS;
+      }
 
       // Smooth player render position — mirrors Rust's smooth_player_render_transform.
-      // entityRenderPosition gives the tick-LERP target; we exponentially decay toward it
-      // each frame so the sprite eases into each tile rather than sliding mechanically.
-      const deltaS = Math.min((timestamp - lastGl) / 1000, 0.1);
+      // Runs every render frame (not per sim tick) so the ease is frame-rate independent.
+      const deltaS = Math.min(deltaMs / 1000, 0.1);
       const [spTargetX, spTargetY] = entityRenderPosition(worldRef.current.entity);
       if (!smoothPlayerWorldPosRef.current) {
         smoothPlayerWorldPosRef.current = [spTargetX, spTargetY];
