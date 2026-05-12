@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 
 declare global {
-  interface Window {
-    __openDwarfWebGlHarness?: WebGlTestHarness;
-  }
+  var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
 }
 
 type WebGlCapabilityReport = {
@@ -69,17 +67,6 @@ type ReplayEvent =
     stateFilename: string;
     stateHash: string;
     baselineConfigured: boolean;
-  }
-  | {
-    type: "recording_started";
-    tick: number;
-    mimeType: string;
-  }
-  | {
-    type: "recording_stopped";
-    tick: number;
-    filename: string | null;
-    bytes: number | null;
   };
 
 type WebGlSceneSnapshot = {
@@ -173,14 +160,6 @@ type WebGlArtifactManifest = {
   checkpoints: WebGlCheckpointRecord[];
 };
 
-type WebGlReplayBundle = {
-  replay: ReplayDocument;
-  manifest: WebGlArtifactManifest;
-  screenshots: Array<{ filename: string; blob: Blob }>;
-  states: Array<{ filename: string; blob: Blob }>;
-  video: Blob | null;
-};
-
 type WebGlSerializableArtifact = {
   filename: string;
   dataUrl: string;
@@ -195,18 +174,12 @@ type WebGlExportBundleData = {
 };
 
 type WebGlTestHarness = {
-  loadFlow: (flowName: string) => Promise<void>;
-  startRecording: () => Promise<void>;
-  stopRecording: () => Promise<WebGlReplayBundle | null>;
+  loadFlow: (flowName: string) => void;
   captureCheckpoint: (name: string) => Promise<WebGlCheckpointRecord | null>;
   setCamera: (x: number, y: number, zoom?: number) => Promise<void>;
   exportReplay: () => ReplayDocument;
-  exportReviewArtifacts: () => Promise<string>;
-  exportBundle: () => Promise<WebGlReplayBundle>;
   exportBundleData: () => Promise<WebGlExportBundleData>;
-  importReplay: (doc: ReplayDocument) => Promise<void>;
-  exportScreenshot: (name: string) => Promise<Blob | null>;
-  exportVideo: () => Promise<Blob | null>;
+  importReplay: (doc: ReplayDocument) => void;
   setScreenshotBaselineManifest: (
     manifest: WebGlScreenshotBaselineManifest | null,
   ) => void;
@@ -221,8 +194,6 @@ const GRID_ROWS = 36;
 const GRID_SPACING_PX = 64;
 const GRID_OFFSET_X = -((GRID_COLUMNS - 1) * GRID_SPACING_PX) / 2;
 const GRID_OFFSET_Y = -((GRID_ROWS - 1) * GRID_SPACING_PX) / 2;
-const DEFAULT_CAPTURE_DELAY_FRAMES = 1;
-
 function createRunId() {
   const stamp = new Date().toISOString().replaceAll(":", "-");
   const entropy = globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
@@ -232,15 +203,26 @@ function createRunId() {
 }
 
 function slugifyName(name: string) {
-  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
+    /_+/g,
+    "_",
+  ).replace(/^_|_$/g, "");
 }
 
-function makeArtifactFilename(ordinal: number, name: string, extension: string) {
-  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${slugifyName(name)}.${extension}`;
+function makeArtifactFilename(
+  ordinal: number,
+  name: string,
+  extension: string,
+) {
+  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${
+    slugifyName(name)
+  }.${extension}`;
 }
 
 function makeStateFilename(ordinal: number, name: string) {
-  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${slugifyName(name)}.json`;
+  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${
+    slugifyName(name)
+  }.json`;
 }
 
 function browserVersionFromUserAgent(userAgent: string) {
@@ -274,7 +256,7 @@ function buildSceneHash(snapshot: Omit<WebGlSceneSnapshot, "sceneHash">) {
 
 function waitForAnimationFrame() {
   return new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => resolve());
+    globalThis.requestAnimationFrame(() => resolve());
   });
 }
 
@@ -344,25 +326,6 @@ function createProgram(
   return program;
 }
 
-function downloadTextFile(filename: string, text: string) {
-  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
 function summarizeReplay(events: ReplayEvent[]): ReplayPreview {
   let lastResize: ReplayEvent | null = null;
   let fullscreenActive = false;
@@ -397,7 +360,6 @@ function summarizeReplay(events: ReplayEvent[]): ReplayPreview {
 export default function WebGlGameCanvas() {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const recordCanvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rafRef = useRef<number | null>(null);
   const logIdRef = useRef(0);
@@ -411,10 +373,6 @@ export default function WebGlGameCanvas() {
   const vertexBufferRef = useRef<WebGLBuffer | null>(null);
   const sceneReadyRef = useRef(false);
   const capabilityRef = useRef<WebGlCapabilityReport | null>(null);
-  const recordingContextRef = useRef<CanvasRenderingContext2D | null>(null);
-  const recordingTrackRef = useRef<
-    (CanvasCaptureMediaStreamTrack & { requestFrame?: () => void }) | null
-  >(null);
   const baselineManifestRef = useRef<WebGlScreenshotBaselineManifest | null>(
     null,
   );
@@ -437,17 +395,6 @@ export default function WebGlGameCanvas() {
   });
   const screenshotArtifactsRef = useRef<Record<string, Blob>>({});
   const stateArtifactsRef = useRef<Record<string, Blob>>({});
-  const recordingStateRef = useRef<{
-    recorder: MediaRecorder | null;
-    chunks: BlobPart[];
-    mimeType: string | null;
-    videoBlob: Blob | null;
-  }>({
-    recorder: null,
-    chunks: [],
-    mimeType: null,
-    videoBlob: null,
-  });
   const replayEventsRef = useRef<ReplayEvent[]>([]);
 
   const [status, setStatus] = useState("booting");
@@ -463,7 +410,6 @@ export default function WebGlGameCanvas() {
     WebGlCheckpointRecord[]
   >([]);
   const [baselineConfigured, setBaselineConfigured] = useState(false);
-  const [videoStatus, setVideoStatus] = useState("idle");
   const [importedReplayInfo, setImportedReplayInfo] = useState<string | null>(
     null,
   );
@@ -490,7 +436,7 @@ export default function WebGlGameCanvas() {
     fullscreenElement: Element | null,
   ) => {
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = globalThis.devicePixelRatio || 1;
     const maxViewportDims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
 
     setCapability({
@@ -498,8 +444,14 @@ export default function WebGlGameCanvas() {
       platform: navigator.platform,
       hardwareConcurrency: navigator.hardwareConcurrency ?? null,
       devicePixelRatio: dpr,
-      innerSize: { width: window.innerWidth, height: window.innerHeight },
-      screenSize: { width: window.screen.width, height: window.screen.height },
+      innerSize: {
+        width: globalThis.innerWidth,
+        height: globalThis.innerHeight,
+      },
+      screenSize: {
+        width: globalThis.screen.width,
+        height: globalThis.screen.height,
+      },
       maxTouchPoints: navigator.maxTouchPoints ?? null,
       fullscreen: fullscreenElement === hostRef.current,
       canvasCssSize: { width: rect.width, height: rect.height },
@@ -520,8 +472,14 @@ export default function WebGlGameCanvas() {
       platform: navigator.platform,
       hardwareConcurrency: navigator.hardwareConcurrency ?? null,
       devicePixelRatio: dpr,
-      innerSize: { width: window.innerWidth, height: window.innerHeight },
-      screenSize: { width: window.screen.width, height: window.screen.height },
+      innerSize: {
+        width: globalThis.innerWidth,
+        height: globalThis.innerHeight,
+      },
+      screenSize: {
+        width: globalThis.screen.width,
+        height: globalThis.screen.height,
+      },
       maxTouchPoints: navigator.maxTouchPoints ?? null,
       fullscreen: fullscreenElement === hostRef.current,
       canvasCssSize: { width: rect.width, height: rect.height },
@@ -544,7 +502,7 @@ export default function WebGlGameCanvas() {
     fullscreenElement: Element | null,
   ) => {
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = globalThis.devicePixelRatio || 1;
     sceneStateRef.current = {
       ...sceneStateRef.current,
       fullscreen: fullscreenElement === hostRef.current,
@@ -590,7 +548,7 @@ export default function WebGlGameCanvas() {
     capture: {
       fullscreenRequired: true,
       screenshots: true,
-      video: Boolean(recordingStateRef.current.videoBlob),
+      video: false,
     },
     createdAt: new Date().toISOString(),
     capability: capabilityRef.current,
@@ -616,24 +574,12 @@ export default function WebGlGameCanvas() {
     },
     baseline: {
       configured: Boolean(baselineManifestRef.current),
-      source: baselineManifestRef.current ? "in-memory-baseline-manifest" : null,
+      source: baselineManifestRef.current
+        ? "in-memory-baseline-manifest"
+        : null,
     },
     checkpoints: checkpointsRef.current,
   });
-
-  const downloadReplayAndManifest = () => {
-    const replay = buildReplayDocument();
-    const manifest = buildArtifactManifest();
-    downloadTextFile(
-      `${FLOW_NAME}-replay.json`,
-      JSON.stringify(replay, null, 2),
-    );
-    downloadTextFile(
-      `${FLOW_NAME}-manifest.json`,
-      JSON.stringify(manifest, null, 2),
-    );
-    appendLog(`export replay ${replay.events.length} events / ${manifest.checkpoints.length} checkpoints`);
-  };
 
   const captureCanvasBlob = async () => {
     const canvas = canvasRef.current;
@@ -660,8 +606,9 @@ export default function WebGlGameCanvas() {
       screenshotFilename,
     };
     const stateHash = await hashJson(statePayload);
-    const baselineSource = baselineManifestRef.current?.screenshots[name]?.path ??
-      null;
+    const baselineSource =
+      baselineManifestRef.current?.screenshots[name]?.path ??
+        null;
     const record: WebGlCheckpointRecord = {
       name,
       ordinal,
@@ -678,8 +625,6 @@ export default function WebGlGameCanvas() {
     setCheckpointRecords(checkpointsRef.current);
     screenshotArtifactsRef.current[screenshotFilename] = blob;
     stateArtifactsRef.current[stateFilename] = createJsonBlob(statePayload);
-    downloadBlob(screenshotFilename, blob);
-    downloadTextFile(stateFilename, JSON.stringify(statePayload, null, 2));
     pushReplayEvent({
       type: "checkpoint",
       tick: nextTick(),
@@ -705,104 +650,7 @@ export default function WebGlGameCanvas() {
     return record;
   };
 
-  const exportScreenshot = async (name: string) => {
-    const blob = await captureCanvasBlob();
-    if (!blob) return null;
-    const filename = makeArtifactFilename(checkpointsRef.current.length, name, "png");
-    downloadBlob(filename, blob);
-    appendLog(`screenshot ${filename} (${blob.size} bytes)`);
-    return blob;
-  };
-
-  const buildRecordingMimeType = () => {
-    const candidates = [
-      "video/webm;codecs=vp8,opus",
-      "video/webm;codecs=vp9,opus",
-      "video/webm",
-    ];
-    return candidates.find((candidate) =>
-      typeof MediaRecorder !== "undefined" &&
-      MediaRecorder.isTypeSupported(candidate)
-    ) ?? "video/webm";
-  };
-
-  const startRecording = async () => {
-    const canvas = canvasRef.current;
-    const recordCanvas = recordCanvasRef.current;
-    if (
-      !canvas || !recordCanvas || typeof recordCanvas.captureStream !== "function"
-    ) {
-      setVideoStatus("captureStream unavailable");
-      return;
-    }
-    if (recordingStateRef.current.recorder) {
-      return;
-    }
-
-    syncRecordingCanvasSize(canvas.width, canvas.height);
-    const mimeType = buildRecordingMimeType();
-    const stream = recordCanvas.captureStream(0);
-    const track = stream.getVideoTracks()[0] as
-      | (CanvasCaptureMediaStreamTrack & { requestFrame?: () => void })
-      | undefined;
-    recordingTrackRef.current = track ?? null;
-    const recorder = new MediaRecorder(stream, { mimeType });
-    recordingStateRef.current = {
-      recorder,
-      chunks: [],
-      mimeType,
-      videoBlob: null,
-    };
-    setVideoStatus(`recording ${mimeType}`);
-    pushReplayEvent({
-      type: "recording_started",
-      tick: nextTick(),
-      mimeType,
-    });
-    appendLog(`recording start ${mimeType}`);
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordingStateRef.current.chunks.push(event.data);
-      }
-    };
-
-    recorder.start();
-    requestRecordingFrame();
-  };
-
-  const stopRecording = async (): Promise<WebGlReplayBundle | null> => {
-    const recording = recordingStateRef.current.recorder;
-    if (!recording) return null;
-
-    const mimeType = recordingStateRef.current.mimeType ?? "video/webm";
-    requestRecordingFrame();
-    const blob = await new Promise<Blob | null>((resolve) => {
-      recording.onstop = () => {
-        const videoBlob = new Blob(recordingStateRef.current.chunks, {
-          type: mimeType,
-        });
-        recordingStateRef.current.videoBlob = videoBlob;
-        recordingStateRef.current.recorder = null;
-        recordingStateRef.current.chunks = [];
-        recordingTrackRef.current = null;
-        resolve(videoBlob);
-      };
-      recording.stop();
-    });
-
-    pushReplayEvent({
-      type: "recording_stopped",
-      tick: nextTick(),
-      filename: blob ? `${FLOW_NAME}-review.webm` : null,
-      bytes: blob?.size ?? null,
-    });
-    setVideoStatus(blob ? `video ready (${blob.size} bytes)` : "video stopped");
-    appendLog(blob ? `recording stop ${blob.size} bytes` : "recording stop");
-    return blob ? await exportBundle() : null;
-  };
-
-  const importReplayDocument = async (doc: ReplayDocument) => {
+  const importReplayDocument = (doc: ReplayDocument) => {
     if (doc.version !== 1 || doc.flow !== FLOW_NAME) {
       throw new Error("Unsupported replay document");
     }
@@ -822,52 +670,21 @@ export default function WebGlGameCanvas() {
     appendLog(`imported replay ${doc.createdAt}`);
   };
 
-  const exportBundle = async (): Promise<WebGlReplayBundle> => {
-    const replay = buildReplayDocument();
-    const manifest = buildArtifactManifest();
-    const screenshots = Object.entries(screenshotArtifactsRef.current).map(
-      ([filename, blob]) => ({ filename, blob }),
-    );
-    const states = Object.entries(stateArtifactsRef.current).map(
-      ([filename, blob]) => ({ filename, blob }),
-    );
-    const video = recordingStateRef.current.videoBlob;
-    const bundle: WebGlReplayBundle = {
-      replay,
-      manifest,
-      screenshots,
-      states,
-      video,
-    };
-
-    downloadTextFile(
-      `${FLOW_NAME}-replay.json`,
-      JSON.stringify(replay, null, 2),
-    );
-    downloadTextFile(
-      `${FLOW_NAME}-manifest.json`,
-      JSON.stringify(manifest, null, 2),
-    );
-    if (video) {
-      downloadBlob(`${FLOW_NAME}-review.webm`, video);
-    }
-    appendLog(
-      `export bundle replay=${replay.events.length} checkpoints=${manifest.checkpoints.length} screenshots=${screenshots.length} states=${states.length}`,
-    );
-    return bundle;
-  };
-
   const exportBundleData = async (): Promise<WebGlExportBundleData> => {
     const replay = buildReplayDocument();
     const manifest = buildArtifactManifest();
     const screenshots = await Promise.all(
-      Object.entries(screenshotArtifactsRef.current).map(async ([filename, blob]) => ({
+      Object.entries(screenshotArtifactsRef.current).map(async (
+        [filename, blob],
+      ) => ({
         filename,
         dataUrl: await blobToDataUrl(blob),
       })),
     );
     const states = await Promise.all(
-      Object.entries(stateArtifactsRef.current).map(async ([filename, blob]) => ({
+      Object.entries(stateArtifactsRef.current).map(async (
+        [filename, blob],
+      ) => ({
         filename,
         dataUrl: await blobToDataUrl(blob),
       })),
@@ -887,7 +704,9 @@ export default function WebGlGameCanvas() {
   ) => {
     baselineManifestRef.current = manifest;
     setBaselineConfigured(Boolean(manifest));
-    appendLog(manifest ? "baseline manifest configured" : "baseline manifest cleared");
+    appendLog(
+      manifest ? "baseline manifest configured" : "baseline manifest cleared",
+    );
   };
 
   const blobToDataUrl = (blob: Blob) =>
@@ -898,32 +717,6 @@ export default function WebGlGameCanvas() {
         reject(reader.error ?? new Error("Failed to read blob"));
       reader.readAsDataURL(blob);
     });
-
-  const requestRecordingFrame = () => {
-    const track = recordingTrackRef.current;
-    if (track && typeof track.requestFrame === "function") {
-      track.requestFrame();
-    }
-  };
-
-  const syncRecordingCanvasSize = (width: number, height: number) => {
-    const recordCanvas = recordCanvasRef.current;
-    if (!recordCanvas) return;
-
-    if (recordCanvas.width !== width) recordCanvas.width = width;
-    if (recordCanvas.height !== height) recordCanvas.height = height;
-    const context = recordCanvas.getContext("2d", {
-      alpha: false,
-      desynchronized: true,
-      willReadFrequently: false,
-    });
-    recordingContextRef.current = context;
-    if (context) {
-      context.imageSmoothingEnabled = false;
-      context.fillStyle = "#000000";
-      context.fillRect(0, 0, width, height);
-    }
-  };
 
   const setCamera = async (x: number, y: number, zoom = 1) => {
     sceneStateRef.current = {
@@ -964,11 +757,14 @@ export default function WebGlGameCanvas() {
           userAgent: navigator.userAgent,
           platform: navigator.platform,
           hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-          devicePixelRatio: window.devicePixelRatio || 1,
-          innerSize: { width: window.innerWidth, height: window.innerHeight },
+          devicePixelRatio: globalThis.devicePixelRatio || 1,
+          innerSize: {
+            width: globalThis.innerWidth,
+            height: globalThis.innerHeight,
+          },
           screenSize: {
-            width: window.screen.width,
-            height: window.screen.height,
+            width: globalThis.screen.width,
+            height: globalThis.screen.height,
           },
           maxTouchPoints: navigator.maxTouchPoints ?? null,
           fullscreen: false,
@@ -993,11 +789,14 @@ export default function WebGlGameCanvas() {
         userAgent: navigator.userAgent,
         platform: navigator.platform,
         hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-        devicePixelRatio: window.devicePixelRatio || 1,
-        innerSize: { width: window.innerWidth, height: window.innerHeight },
+        devicePixelRatio: globalThis.devicePixelRatio || 1,
+        innerSize: {
+          width: globalThis.innerWidth,
+          height: globalThis.innerHeight,
+        },
         screenSize: {
-          width: window.screen.width,
-          height: window.screen.height,
+          width: globalThis.screen.width,
+          height: globalThis.screen.height,
         },
         maxTouchPoints: navigator.maxTouchPoints ?? null,
         fullscreen: false,
@@ -1017,11 +816,14 @@ export default function WebGlGameCanvas() {
         userAgent: navigator.userAgent,
         platform: navigator.platform,
         hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-        devicePixelRatio: window.devicePixelRatio || 1,
-        innerSize: { width: window.innerWidth, height: window.innerHeight },
+        devicePixelRatio: globalThis.devicePixelRatio || 1,
+        innerSize: {
+          width: globalThis.innerWidth,
+          height: globalThis.innerHeight,
+        },
         screenSize: {
-          width: window.screen.width,
-          height: window.screen.height,
+          width: globalThis.screen.width,
+          height: globalThis.screen.height,
         },
         maxTouchPoints: navigator.maxTouchPoints ?? null,
         fullscreen: false,
@@ -1051,12 +853,12 @@ export default function WebGlGameCanvas() {
           if (image) {
             for (let row = 0; row < GRID_ROWS; row += 1) {
               for (let column = 0; column < GRID_COLUMNS; column += 1) {
-                const x = GRID_OFFSET_X + column * GRID_SPACING_PX
-                  - sceneStateRef.current.camera.x
-                  + canvas.width * 0.5;
-                const y = GRID_OFFSET_Y + row * GRID_SPACING_PX
-                  - sceneStateRef.current.camera.y
-                  + canvas.height * 0.5;
+                const x = GRID_OFFSET_X + column * GRID_SPACING_PX -
+                  sceneStateRef.current.camera.x +
+                  canvas.width * 0.5;
+                const y = GRID_OFFSET_Y + row * GRID_SPACING_PX -
+                  sceneStateRef.current.camera.y +
+                  canvas.height * 0.5;
                 fallbackContext.drawImage(
                   image,
                   x,
@@ -1069,35 +871,17 @@ export default function WebGlGameCanvas() {
           }
         }
 
-        if (recordingStateRef.current.recorder && recordingContextRef.current) {
-          const recordCanvas = recordCanvasRef.current;
-          if (
-            recordCanvas && recordCanvas.width === canvas.width &&
-            recordCanvas.height === canvas.height
-          ) {
-            recordingContextRef.current.clearRect(
-              0,
-              0,
-              recordCanvas.width,
-              recordCanvas.height,
-            );
-            recordingContextRef.current.drawImage(canvas, 0, 0);
-            requestRecordingFrame();
-          }
-        }
-
-        rafRef.current = window.requestAnimationFrame(drawFrame);
+        rafRef.current = globalThis.requestAnimationFrame(drawFrame);
       };
 
       const resizeCanvas = () => {
         const rect = host.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = globalThis.devicePixelRatio || 1;
         const width = Math.max(1, Math.round(rect.width * dpr));
         const height = Math.max(1, Math.round(rect.height * dpr));
 
         if (canvas.width !== width) canvas.width = width;
         if (canvas.height !== height) canvas.height = height;
-        syncRecordingCanvasSize(width, height);
 
         fallbackContext.imageSmoothingEnabled = false;
         setCapability({
@@ -1105,10 +889,13 @@ export default function WebGlGameCanvas() {
           platform: navigator.platform,
           hardwareConcurrency: navigator.hardwareConcurrency ?? null,
           devicePixelRatio: dpr,
-          innerSize: { width: window.innerWidth, height: window.innerHeight },
+          innerSize: {
+            width: globalThis.innerWidth,
+            height: globalThis.innerHeight,
+          },
           screenSize: {
-            width: window.screen.width,
-            height: window.screen.height,
+            width: globalThis.screen.width,
+            height: globalThis.screen.height,
           },
           maxTouchPoints: navigator.maxTouchPoints ?? null,
           fullscreen: document.fullscreenElement === host,
@@ -1129,10 +916,13 @@ export default function WebGlGameCanvas() {
           platform: navigator.platform,
           hardwareConcurrency: navigator.hardwareConcurrency ?? null,
           devicePixelRatio: dpr,
-          innerSize: { width: window.innerWidth, height: window.innerHeight },
+          innerSize: {
+            width: globalThis.innerWidth,
+            height: globalThis.innerHeight,
+          },
           screenSize: {
-            width: window.screen.width,
-            height: window.screen.height,
+            width: globalThis.screen.width,
+            height: globalThis.screen.height,
           },
           maxTouchPoints: navigator.maxTouchPoints ?? null,
           fullscreen: document.fullscreenElement === host,
@@ -1158,7 +948,11 @@ export default function WebGlGameCanvas() {
           framebufferWidth: width,
           framebufferHeight: height,
         });
-        appendLog(`resize ${Math.round(rect.width)}x${Math.round(rect.height)} @ ${dpr.toFixed(2)}x`);
+        appendLog(
+          `resize ${Math.round(rect.width)}x${Math.round(rect.height)} @ ${
+            dpr.toFixed(2)
+          }x`,
+        );
         drawFrame();
       };
 
@@ -1175,12 +969,17 @@ export default function WebGlGameCanvas() {
           width: image.naturalWidth,
           height: image.naturalHeight,
         });
-        appendLog(`texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`);
+        appendLog(
+          `texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`,
+        );
         setStatus("SingleRock texture ready");
         sceneReadyRef.current = true;
         sceneStateRef.current = {
           ...sceneStateRef.current,
-          assetsLoaded: [...sceneStateRef.current.assetsLoaded, TILE_TEXTURE_SRC],
+          assetsLoaded: [
+            ...sceneStateRef.current.assetsLoaded,
+            TILE_TEXTURE_SRC,
+          ],
           residentChunks: 1,
           uiMode: "world",
         };
@@ -1224,36 +1023,27 @@ export default function WebGlGameCanvas() {
 
       const resizeObserver = new ResizeObserver(() => resizeCanvas());
       resizeObserver.observe(host);
-      window.addEventListener("resize", resizeCanvas);
-      window.addEventListener("keydown", handleKeyDown);
+      globalThis.addEventListener("resize", resizeCanvas);
+      globalThis.addEventListener("keydown", handleKeyDown);
       canvas.addEventListener("pointerdown", handlePointerDown);
       document.addEventListener("fullscreenchange", handleFullscreenChange);
 
       const harness: WebGlTestHarness = {
-        loadFlow: async (flowName: string) => {
+        loadFlow: (flowName: string) => {
           if (flowName !== FLOW_NAME) {
             throw new Error(`Unsupported flow: ${flowName}`);
           }
           appendLog(`load flow ${flowName}`);
         },
-        startRecording,
-        stopRecording,
         captureCheckpoint,
         setCamera,
         exportReplay: buildReplayDocument,
-        exportReviewArtifacts: async () => {
-          downloadReplayAndManifest();
-          return "review artifacts queued";
-        },
-        exportBundle,
         exportBundleData,
         importReplay: importReplayDocument,
-        exportScreenshot,
-        exportVideo: async () => recordingStateRef.current.videoBlob,
         setScreenshotBaselineManifest: setBaselineManifest,
         getManifest: buildArtifactManifest,
       };
-      window.__openDwarfWebGlHarness = harness;
+      globalThis.__openDwarfWebGlHarness = harness;
 
       resizeCanvas();
       drawFrame();
@@ -1266,15 +1056,18 @@ export default function WebGlGameCanvas() {
 
       return () => {
         resizeObserver.disconnect();
-        window.removeEventListener("resize", resizeCanvas);
-        window.removeEventListener("keydown", handleKeyDown);
+        globalThis.removeEventListener("resize", resizeCanvas);
+        globalThis.removeEventListener("keydown", handleKeyDown);
         canvas.removeEventListener("pointerdown", handlePointerDown);
-        document.removeEventListener("fullscreenchange", handleFullscreenChange);
-        if (window.__openDwarfWebGlHarness === harness) {
-          delete window.__openDwarfWebGlHarness;
+        document.removeEventListener(
+          "fullscreenchange",
+          handleFullscreenChange,
+        );
+        if (globalThis.__openDwarfWebGlHarness === harness) {
+          delete globalThis.__openDwarfWebGlHarness;
         }
         if (rafRef.current !== null) {
-          window.cancelAnimationFrame(rafRef.current);
+          globalThis.cancelAnimationFrame(rafRef.current);
         }
       };
     }
@@ -1315,16 +1108,29 @@ export default function WebGlGameCanvas() {
     programRef.current = program;
 
     const vertexData = new Float32Array([
-      0, 0, 0, 0,
-      1, 0, 1, 0,
-      0, 1, 0, 1,
-      1, 1, 1, 1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
     ]);
     const instanceData = new Float32Array(GRID_COLUMNS * GRID_ROWS * 4);
     let instanceOffset = 0;
     for (let row = 0; row < GRID_ROWS; row += 1) {
       for (let column = 0; column < GRID_COLUMNS; column += 1) {
-        instanceData[instanceOffset++] = GRID_OFFSET_X + column * GRID_SPACING_PX;
+        instanceData[instanceOffset++] = GRID_OFFSET_X +
+          column * GRID_SPACING_PX;
         instanceData[instanceOffset++] = GRID_OFFSET_Y + row * GRID_SPACING_PX;
         instanceData[instanceOffset++] = GRID_SPACING_PX;
         instanceData[instanceOffset++] = GRID_SPACING_PX;
@@ -1394,7 +1200,14 @@ export default function WebGlGameCanvas() {
 
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        image,
+      );
       gl.generateMipmap(gl.TEXTURE_2D);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -1407,7 +1220,9 @@ export default function WebGlGameCanvas() {
         width: image.naturalWidth,
         height: image.naturalHeight,
       });
-      appendLog(`texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`);
+      appendLog(
+        `texture ${TILE_TEXTURE_SRC} ${image.naturalWidth}x${image.naturalHeight}`,
+      );
       setStatus("SingleRock texture ready");
       sceneReadyRef.current = true;
       sceneStateRef.current = {
@@ -1421,13 +1236,12 @@ export default function WebGlGameCanvas() {
 
     const resizeCanvas = () => {
       const rect = host.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = globalThis.devicePixelRatio || 1;
       const width = Math.max(1, Math.round(rect.width * dpr));
       const height = Math.max(1, Math.round(rect.height * dpr));
 
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
-      syncRecordingCanvasSize(width, height);
 
       gl.viewport(0, 0, width, height);
       refreshCapability(gl, canvas, document.fullscreenElement);
@@ -1441,13 +1255,17 @@ export default function WebGlGameCanvas() {
         framebufferWidth: width,
         framebufferHeight: height,
       });
-      appendLog(`resize ${Math.round(rect.width)}x${Math.round(rect.height)} @ ${dpr.toFixed(2)}x`);
+      appendLog(
+        `resize ${Math.round(rect.width)}x${Math.round(rect.height)} @ ${
+          dpr.toFixed(2)
+        }x`,
+      );
       drawFrame();
     };
 
     const drawFrame = () => {
       if (!glRef.current || !programRef.current || !textureRef.current) {
-        rafRef.current = window.requestAnimationFrame(drawFrame);
+        rafRef.current = globalThis.requestAnimationFrame(drawFrame);
         return;
       }
 
@@ -1477,34 +1295,24 @@ export default function WebGlGameCanvas() {
 
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, textureRef.current);
-      const textureLocation = gl.getUniformLocation(programRef.current, "u_texture");
+      const textureLocation = gl.getUniformLocation(
+        programRef.current,
+        "u_texture",
+      );
       if (textureLocation) {
         gl.uniform1i(textureLocation, 0);
       }
 
       if (sceneReadyRef.current) {
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, GRID_COLUMNS * GRID_ROWS);
+        gl.drawArraysInstanced(
+          gl.TRIANGLE_STRIP,
+          0,
+          4,
+          GRID_COLUMNS * GRID_ROWS,
+        );
       }
 
-      if (recordingStateRef.current.recorder && recordingContextRef.current) {
-        gl.flush();
-        const recordCanvas = recordCanvasRef.current;
-        if (
-          recordCanvas && recordCanvas.width === canvas.width &&
-          recordCanvas.height === canvas.height
-        ) {
-          recordingContextRef.current.clearRect(
-            0,
-            0,
-            recordCanvas.width,
-            recordCanvas.height,
-          );
-          recordingContextRef.current.drawImage(canvas, 0, 0);
-          requestRecordingFrame();
-        }
-      }
-
-      rafRef.current = window.requestAnimationFrame(drawFrame);
+      rafRef.current = globalThis.requestAnimationFrame(drawFrame);
     };
 
     const handleFullscreenChange = () => {
@@ -1546,36 +1354,27 @@ export default function WebGlGameCanvas() {
 
     const resizeObserver = new ResizeObserver(() => resizeCanvas());
     resizeObserver.observe(host);
-    window.addEventListener("resize", resizeCanvas);
-    window.addEventListener("keydown", handleKeyDown);
+    globalThis.addEventListener("resize", resizeCanvas);
+    globalThis.addEventListener("keydown", handleKeyDown);
     canvas.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
 
     const harness: WebGlTestHarness = {
-      loadFlow: async (flowName: string) => {
+      loadFlow: (flowName: string) => {
         if (flowName !== FLOW_NAME) {
           throw new Error(`Unsupported flow: ${flowName}`);
         }
         appendLog(`load flow ${flowName}`);
       },
-      startRecording,
-      stopRecording,
       captureCheckpoint,
       setCamera,
       exportReplay: buildReplayDocument,
-      exportReviewArtifacts: async () => {
-        downloadReplayAndManifest();
-        return "review artifacts queued";
-      },
-      exportBundle,
       exportBundleData,
       importReplay: importReplayDocument,
-      exportScreenshot,
-      exportVideo: async () => recordingStateRef.current.videoBlob,
       setScreenshotBaselineManifest: setBaselineManifest,
       getManifest: buildArtifactManifest,
     };
-    window.__openDwarfWebGlHarness = harness;
+    globalThis.__openDwarfWebGlHarness = harness;
 
     resizeCanvas();
     drawFrame();
@@ -1588,19 +1387,15 @@ export default function WebGlGameCanvas() {
 
     return () => {
       resizeObserver.disconnect();
-      window.removeEventListener("resize", resizeCanvas);
-      window.removeEventListener("keydown", handleKeyDown);
+      globalThis.removeEventListener("resize", resizeCanvas);
+      globalThis.removeEventListener("keydown", handleKeyDown);
       canvas.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      if (window.__openDwarfWebGlHarness === harness) {
-        delete window.__openDwarfWebGlHarness;
+      if (globalThis.__openDwarfWebGlHarness === harness) {
+        delete globalThis.__openDwarfWebGlHarness;
       }
-      recordingStateRef.current.recorder = null;
-      recordingStateRef.current.chunks = [];
-      recordingStateRef.current.mimeType = null;
-      recordingTrackRef.current = null;
       if (rafRef.current !== null) {
-        window.cancelAnimationFrame(rafRef.current);
+        globalThis.cancelAnimationFrame(rafRef.current);
       }
       glRef.current = null;
       programRef.current = null;
@@ -1628,36 +1423,16 @@ export default function WebGlGameCanvas() {
         throw new Error("Unsupported replay document");
       }
 
-      await importReplayDocument(parsed);
+      importReplayDocument(parsed);
     } catch (error) {
       setImportedReplayInfo(
-        `import failed: ${error instanceof Error ? error.message : String(error)}`,
+        `import failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     } finally {
       if (input) input.value = "";
-      }
-    };
-
-  const handleCaptureCheckpoint = async () => {
-    await captureCheckpoint(
-      sceneReadyRef.current ? "single_rock_loaded" : "boot",
-    );
-  };
-
-  const handleExportReplay = () => {
-    downloadReplayAndManifest();
-  };
-
-  const handleExportBundle = async () => {
-    await exportBundle();
-  };
-
-  const handleStartRecording = async () => {
-    await startRecording();
-  };
-
-  const handleStopRecording = async () => {
-    await stopRecording();
+    }
   };
 
   return (
@@ -1694,11 +1469,6 @@ export default function WebGlGameCanvas() {
         class="hidden"
         onChange={handleReplayFileInputChange}
       />
-      <canvas
-        ref={recordCanvasRef}
-        aria-hidden="true"
-        class="pointer-events-none absolute left-[-10000px] top-0 h-px w-px opacity-0"
-      />
       <div class="absolute left-4 top-4 z-10 max-w-[min(31rem,calc(100%-2rem))] rounded-2xl border border-amber-200/15 bg-black/55 px-4 py-3 text-xs text-amber-50/90 backdrop-blur">
         <div class="flex flex-wrap items-center gap-3">
           <span class="rounded-full bg-amber-300/20 px-2 py-1 font-semibold uppercase tracking-[0.18em] text-amber-100">
@@ -1730,8 +1500,9 @@ export default function WebGlGameCanvas() {
             {replayPreview.screenshotCount} | checkpoints:{" "}
             {replayPreview.checkpointCount}
           </div>
-          <div>baseline manifest: {baselineConfigured ? "configured" : "unset"}</div>
-          <div>video: {videoStatus}</div>
+          <div>
+            baseline manifest: {baselineConfigured ? "configured" : "unset"}
+          </div>
           <div>
             import: {importedReplayInfo ?? "none"}
           </div>
@@ -1758,41 +1529,6 @@ export default function WebGlGameCanvas() {
           <button
             type="button"
             class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
-            onClick={handleCaptureCheckpoint}
-          >
-            Capture Checkpoint
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
-            onClick={handleExportReplay}
-          >
-            Export Replay JSON
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
-            onClick={handleExportBundle}
-          >
-            Export Bundle
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
-            onClick={handleStartRecording}
-          >
-            Start Video
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
-            onClick={handleStopRecording}
-          >
-            Stop Video
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70 transition hover:bg-white/10 hover:text-white"
             onClick={openImportDialog}
           >
             Import Replay JSON
@@ -1809,7 +1545,11 @@ export default function WebGlGameCanvas() {
         </div>
         <div class="mt-2 max-h-40 space-y-1 overflow-hidden font-mono leading-5">
           {logs.length === 0
-            ? <div class="text-white/45">waiting for resize or fullscreen...</div>
+            ? (
+              <div class="text-white/45">
+                waiting for resize or fullscreen...
+              </div>
+            )
             : logs.map((entry) => <div key={entry}>{entry}</div>)}
         </div>
       </div>

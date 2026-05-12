@@ -1,8 +1,14 @@
 #!/usr/bin/env -S deno run -A
 
 import { parse } from "$std/flags/mod.ts";
-import { basename, dirname, fromFileUrl, join, resolve } from "$std/path/mod.ts";
-import { chromium } from "npm:playwright";
+import {
+  basename,
+  dirname,
+  fromFileUrl,
+  join,
+  resolve,
+} from "$std/path/mod.ts";
+import { chromium } from "npm:playwright@1.52.0";
 
 type JsonObject = Record<string, unknown>;
 
@@ -14,8 +20,8 @@ type ReviewRunConfig = {
   serve: boolean;
 };
 
-const FLOW_NAME = "webgl-step1-single-rock-review";
-const REVIEW_VIEWPORT = { width: 1280, height: 720 };
+const FLOW_NAME = "webgl-step1-single-rock";
+const REVIEW_VIEWPORT = { width: 1920, height: 1080 };
 const REVIEW_CAMERA_STEPS = [
   { x: 0, y: 0 },
   { x: 192, y: 0 },
@@ -53,7 +59,9 @@ async function waitForHttp(url: string, timeoutMs = 30_000) {
 
 function dataUrlToBytes(dataUrl: string) {
   const match = dataUrl.match(/^data:([^;,]+)?(?:;[^,]+)?;base64,(.*)$/s);
-  if (!match) throw new Error(`Expected base64 data URL, got: ${dataUrl.slice(0, 80)}`);
+  if (!match) {
+    throw new Error(`Expected base64 data URL, got: ${dataUrl.slice(0, 80)}`);
+  }
   const binary = atob(match[2]);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -97,8 +105,12 @@ async function runReview(config: ReviewRunConfig) {
         "--disable-dev-shm-usage",
         "--no-first-run",
         "--no-default-browser-check",
+        "--use-angle=swiftshader",
+        "--enable-webgl",
         "--enable-unsafe-swiftshader",
         "--ignore-gpu-blocklist",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
       ],
     });
 
@@ -113,16 +125,32 @@ async function runReview(config: ReviewRunConfig) {
       console.log("page navigated");
 
       await page.waitForFunction(
-        () => !!(globalThis as unknown as { __openDwarfWebGlHarness?: unknown }).__openDwarfWebGlHarness,
+        () =>
+          !!(globalThis as unknown as { __openDwarfWebGlHarness?: unknown })
+            .__openDwarfWebGlHarness,
         { timeout: 15_000 },
       );
       console.log("harness ready");
 
       await page.evaluate((flow) => {
-        (globalThis as unknown as { __openDwarfWebGlHarness: { loadFlow(f: string): void } })
+        (globalThis as unknown as {
+          __openDwarfWebGlHarness: { loadFlow(f: string): void };
+        })
           .__openDwarfWebGlHarness.loadFlow(flow);
       }, config.flow);
       console.log("flow loaded");
+
+      // fullscreen the canvas shell so the framebuffer is the full 1920x1080 viewport
+      await page.evaluate(() => {
+        // deno-lint-ignore no-explicit-any
+        const shell = (globalThis as any).document?.querySelector(
+          ".webgl-experiment-shell",
+        );
+        // deno-lint-ignore no-explicit-any
+        return shell?.requestFullscreen({ navigationUI: "hide" as any });
+      });
+      await page.waitForTimeout(300);
+      console.log("fullscreen requested");
 
       // boot checkpoint
       const bootPath = join(screenshotDir, "000_boot.png");
@@ -132,21 +160,34 @@ async function runReview(config: ReviewRunConfig) {
 
       // wait for texture
       await page.waitForFunction(() => {
-        const h = (globalThis as unknown as { __openDwarfWebGlHarness?: { exportReplay(): { events: { type: string }[] } } }).__openDwarfWebGlHarness;
-        return h?.exportReplay().events.some((e) => e.type === "texture_loaded") ?? false;
+        const h = (globalThis as unknown as {
+          __openDwarfWebGlHarness?: {
+            exportReplay(): { events: { type: string }[] };
+          };
+        }).__openDwarfWebGlHarness;
+        return h?.exportReplay().events.some((e) =>
+          e.type === "texture_loaded"
+        ) ?? false;
       }, { timeout: 15_000 });
       console.log("texture loaded");
 
       const rockPath = join(screenshotDir, "010_single_rock_loaded.png");
       await page.screenshot({ path: rockPath });
-      await Deno.copyFile(rockPath, join(frameDir, "010_single_rock_loaded.png"));
+      await Deno.copyFile(
+        rockPath,
+        join(frameDir, "010_single_rock_loaded.png"),
+      );
       console.log("single rock checkpoint captured");
 
       // camera pan
       for (const [i, step] of REVIEW_CAMERA_STEPS.entries()) {
         await page.evaluate(
           ([x, y]: [number, number]) => {
-            (globalThis as unknown as { __openDwarfWebGlHarness: { setCamera(x: number, y: number, z: number): void } })
+            (globalThis as unknown as {
+              __openDwarfWebGlHarness: {
+                setCamera(x: number, y: number, z: number): void;
+              };
+            })
               .__openDwarfWebGlHarness.setCamera(x, y, 1);
           },
           [step.x, step.y] as [number, number],
@@ -174,8 +215,14 @@ async function runReview(config: ReviewRunConfig) {
       );
       console.log("bundle data exported");
 
-      await Deno.writeTextFile(join(runDir, "replay.json"), bundleData.replayJson);
-      await Deno.writeTextFile(join(runDir, "manifest.json"), bundleData.manifestJson);
+      await Deno.writeTextFile(
+        join(runDir, "replay.json"),
+        bundleData.replayJson,
+      );
+      await Deno.writeTextFile(
+        join(runDir, "manifest.json"),
+        bundleData.manifestJson,
+      );
 
       for (const artifact of bundleData.states) {
         const parsed = JSON.parse(
@@ -210,8 +257,14 @@ async function runReview(config: ReviewRunConfig) {
           `- url: ${config.url}`,
           `- viewport: ${REVIEW_VIEWPORT.width}x${REVIEW_VIEWPORT.height}`,
           `- runId: ${runId}`,
-          `- replay events: ${Array.isArray(replay.events) ? replay.events.length : 0}`,
-          `- checkpoints: ${Array.isArray(manifest.checkpoints) ? manifest.checkpoints.length : 0}`,
+          `- replay events: ${
+            Array.isArray(replay.events) ? replay.events.length : 0
+          }`,
+          `- checkpoints: ${
+            Array.isArray(manifest.checkpoints)
+              ? manifest.checkpoints.length
+              : 0
+          }`,
           `- video: ${video ? "present" : "unavailable"}`,
           "",
           "Outputs:",

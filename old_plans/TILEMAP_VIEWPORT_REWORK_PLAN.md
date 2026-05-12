@@ -2,21 +2,20 @@
 
 ## Context
 
-The current tile render pipeline rebuilds **every chunk in the streaming
-window across every visible z-level and every layer** on every player
-movement. The warn `Tilemap rebuild slow: ~32ms across 475 chunks` fires
-each tick because:
+The current tile render pipeline rebuilds **every chunk in the streaming window
+across every visible z-level and every layer** on every player movement. The
+warn `Tilemap rebuild slow: ~32ms across 475 chunks` fires each tick because:
 
 - `apply_snapshot` recomputes FOV visibility every move → sets
   `fog.dirty = true` and `terrain.dirty = true`
-- `project_world_to_tilemap` treats the dirty bits as global flags and
-  loops over `active_chunks_xy` (streaming window) × all rendered
-  z-levels × all layers
+- `project_world_to_tilemap` treats the dirty bits as global flags and loops
+  over `active_chunks_xy` (streaming window) × all rendered z-levels × all
+  layers
 
-This plan rewrites the pipeline so work scope is bounded by **what the
-camera can see** instead of what's loaded. Streaming becomes
-viewport-aware (rectangular, not radial). Master mode skips visibility
-processing entirely. Replay benefits automatically.
+This plan rewrites the pipeline so work scope is bounded by **what the camera
+can see** instead of what's loaded. Streaming becomes viewport-aware
+(rectangular, not radial). Master mode skips visibility processing entirely.
+Replay benefits automatically.
 
 All file paths are relative to repo root. The main pipeline lives in
 `game_library/src/domain/simulation.rs` (despite the name — it's render
@@ -26,18 +25,17 @@ projection, not simulation).
 
 Three new resources replace today's coarse dirty bits:
 
-1. **`RenderViewport`** — what the camera can see. Computed each frame
-   from camera transform + projection + view state. Has
+1. **`RenderViewport`** — what the camera can see. Computed each frame from
+   camera transform + projection + view state. Has
    `visible_chunks_xy: HashSet<IVec2>`, `visible_z_levels: Vec<i32>`,
    `viewport_changed: bool`, `newly_visible_chunks_xy: HashSet<IVec2>`.
 
 2. **`TilemapInvalidation`** — precise per-chunk-layer-z dirty set. Has
    `dirty: HashSet<(IVec2, i32, TileLayer)>` and `view_invalidated: bool`.
-   Persists across frames so off-viewport stale chunks rebuild on
-   re-entry.
+   Persists across frames so off-viewport stale chunks rebuild on re-entry.
 
-3. **`StreamingWindow`** (Phase 4) — viewport-derived rectangular
-   streaming policy. Replaces `CHUNK_STREAM_RADIUS_XY/Z`.
+3. **`StreamingWindow`** (Phase 4) — viewport-derived rectangular streaming
+   policy. Replaces `CHUNK_STREAM_RADIUS_XY/Z`.
 
 The consumer (`project_world_to_tilemap`) does:
 
@@ -49,18 +47,17 @@ to_rebuild = if view_invalidated:
 + newly_visible_chunks (all layers)
 ```
 
-That's it. Rebuild only what's both stale and visible. Off-viewport
-dirty entries persist until the camera reaches them.
+That's it. Rebuild only what's both stale and visible. Off-viewport dirty
+entries persist until the camera reaches them.
 
 ## Constraints
 
-- **WASM single-threaded.** Do not add `par_iter_mut` or rayon.
-  Optimize for sequential.
-- **Bevy-WASM client only.** This plan touches the render-projection
-  pipeline in the Bevy app. The future `world_sim` server split is
-  irrelevant here.
-- **Each phase is one PR.** Phases ship independently. The user
-  validates perf + UI after each phase before the next starts.
+- **WASM single-threaded.** Do not add `par_iter_mut` or rayon. Optimize for
+  sequential.
+- **Bevy-WASM client only.** This plan touches the render-projection pipeline in
+  the Bevy app. The future `world_sim` server split is irrelevant here.
+- **Each phase is one PR.** Phases ship independently. The user validates perf +
+  UI after each phase before the next starts.
 - **Do not rename `simulation.rs`.** It's misnamed but renaming = noise.
 - **Do not introduce parallel anything.**
 
@@ -70,8 +67,8 @@ dirty entries persist until the camera reaches them.
 - Sim-server FOV gating.
 - File renames.
 - Per-chunk content hashing.
-- Phase 7 (lifecycle/build split) — listed at the end but deferred
-  unless something forces it.
+- Phase 7 (lifecycle/build split) — listed at the end but deferred unless
+  something forces it.
 
 ---
 
@@ -84,13 +81,12 @@ Single source of truth for what the camera sees. Nothing reads it yet.
 ### Files to touch
 
 - **New:** `game_library/src/resources/render_viewport.rs`
-- `game_library/src/resources/mod.rs` — add `pub mod render_viewport;`
-  and re-export
-- The system registration site (search for where `ViewZLevel` /
-  `ViewMode` resources are inserted, e.g. `setup_simulation_state` or a
-  plugin builder) — insert `RenderViewport::default()` and register
-  `update_render_viewport` in `PreUpdate` **before** any render
-  pipeline systems
+- `game_library/src/resources/mod.rs` — add `pub mod render_viewport;` and
+  re-export
+- The system registration site (search for where `ViewZLevel` / `ViewMode`
+  resources are inserted, e.g. `setup_simulation_state` or a plugin builder) —
+  insert `RenderViewport::default()` and register `update_render_viewport` in
+  `PreUpdate` **before** any render pipeline systems
 
 ### Resource shape
 
@@ -111,6 +107,7 @@ pub struct RenderViewport {
 ### Computation
 
 Read these inputs:
+
 - `Query<(&Camera2d, &Transform, &Projection)>` for camera AABB
 - `Res<ViewZLevel>` for current z
 - `Res<ViewMode>`
@@ -120,15 +117,15 @@ Read these inputs:
 Steps:
 
 1. Get the orthographic projection's world-space rect from
-   `OrthographicProjection::area` (this accounts for zoom). Add camera
-   position. Expand by **1 chunk of padding** on every side.
+   `OrthographicProjection::area` (this accounts for zoom). Add camera position.
+   Expand by **1 chunk of padding** on every side.
 2. Convert rect corners to chunk-XY coordinates using
-   `chunk_edge * f32::from(TILE_SIZE_IN_PX)`. Build the `HashSet<IVec2>`
-   of all chunks the rect overlaps.
+   `chunk_edge * f32::from(TILE_SIZE_IN_PX)`. Build the `HashSet<IVec2>` of all
+   chunks the rect overlaps.
 3. Z-levels: if `tile_layer_debug_state.show_depth_stack` then
-   `z_levels_to_render(view_z.current)` (helper exists at
-   `simulation.rs:465`), else `vec![view_z.current]`. Move that helper
-   into `RenderViewport` impl or keep it where it is and call it.
+   `z_levels_to_render(view_z.current)` (helper exists at `simulation.rs:465`),
+   else `vec![view_z.current]`. Move that helper into `RenderViewport` impl or
+   keep it where it is and call it.
 4. Diff against `last_*` snapshots:
    - `viewport_changed = visible_chunks_xy != last_visible_chunks_xy
      || visible_z_levels != last_visible_z_levels
@@ -138,13 +135,13 @@ Steps:
 
 ### Validation gate
 
-- Add a temporary debug `info!` printing
-  `visible_chunks_xy.len()` and bounds when `viewport_changed`.
-- Run game. Default zoom Entity mode: ~9–16 chunks. Master mode: similar
-  at default zoom, scales up at lower zoom. Wide-aspect window: chunk
-  count higher on the wide axis.
-- Pan camera: `viewport_changed` fires; `newly_visible_chunks_xy`
-  non-empty in the pan direction.
+- Add a temporary debug `info!` printing `visible_chunks_xy.len()` and bounds
+  when `viewport_changed`.
+- Run game. Default zoom Entity mode: ~9–16 chunks. Master mode: similar at
+  default zoom, scales up at lower zoom. Wide-aspect window: chunk count higher
+  on the wide axis.
+- Pan camera: `viewport_changed` fires; `newly_visible_chunks_xy` non-empty in
+  the pan direction.
 - No frame time change — nothing reads the resource yet.
 - Remove the debug `info!` before merging.
 
@@ -164,18 +161,18 @@ Steps:
 
 ### Goal
 
-Add precise invalidation tracking alongside the existing
-`TerrainData.dirty` / `FogData.dirty` bools. Producers double-write so
-the consumer can flip safely in Phase 3. Stop processing visibility
-data in Master mode (saves work in `apply_snapshot`).
+Add precise invalidation tracking alongside the existing `TerrainData.dirty` /
+`FogData.dirty` bools. Producers double-write so the consumer can flip safely in
+Phase 3. Stop processing visibility data in Master mode (saves work in
+`apply_snapshot`).
 
 ### Files to touch
 
 - **New:** `game_library/src/domain/tilemap_invalidation.rs`
 - `game_library/src/domain/mod.rs` — add `pub mod tilemap_invalidation;`
-- `game_library/src/domain/simulation.rs` — at every `terrain.dirty = true`
-  and `fog.dirty = true` site, also call invalidation helpers; gate
-  visibility processing in `apply_snapshot` on `ViewMode::Entity`
+- `game_library/src/domain/simulation.rs` — at every `terrain.dirty = true` and
+  `fog.dirty = true` site, also call invalidation helpers; gate visibility
+  processing in `apply_snapshot` on `ViewMode::Entity`
 
 ### Resource shape
 
@@ -200,31 +197,31 @@ impl TilemapInvalidation {
 
 `mark_all_visible_layers` enumerates
 `viewport.visible_chunks_xy × viewport.visible_z_levels × enabled_layers`
-filtered by `TileLayerDebugState`. Same scope as today's "global
-rebuild," so the consumer behaves identically when this is called.
+filtered by `TileLayerDebugState`. Same scope as today's "global rebuild," so
+the consumer behaves identically when this is called.
 
 ### Producer touch sites
 
-Search `simulation.rs` for all `terrain.dirty = true` and
-`fog.dirty = true` (or `fog_data.dirty = true`) writes. Current
-locations (verify with grep — line numbers may shift):
+Search `simulation.rs` for all `terrain.dirty = true` and `fog.dirty = true` (or
+`fog_data.dirty = true`) writes. Current locations (verify with grep — line
+numbers may shift):
 
-| Site | Action |
-|---|---|
-| `toggle_tile_layers` ~239 | also `invalidation.invalidate_view()` |
-| `update_view_z_level` ~1355, ~1360, ~1367 | also `invalidation.invalidate_view()` |
-| `apply_snapshot` ~1461, ~1468, ~1470 | also `invalidation.mark_all_visible_layers(&viewport, &layers)` |
-| `apply_update` Delta block_changes ~1517 | also `invalidation.mark_all_visible_layers(...)` (precise marking comes in Phase 5) |
-| `stream_chunks_around_player` ~1240 | also `invalidation.mark_all_visible_layers(...)` |
-| `sync_camera_z_to_player` ~1263, ~1270 | also `invalidation.invalidate_view()` |
-| `drive_replay_playback` ~388 | also `invalidation.mark_all_visible_layers(...)` |
-| `project_world_to_tilemap` view_z/mode/debug `is_changed` ~508–522 | also `invalidation.invalidate_view()` |
+| Site                                                               | Action                                                                              |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `toggle_tile_layers` ~239                                          | also `invalidation.invalidate_view()`                                               |
+| `update_view_z_level` ~1355, ~1360, ~1367                          | also `invalidation.invalidate_view()`                                               |
+| `apply_snapshot` ~1461, ~1468, ~1470                               | also `invalidation.mark_all_visible_layers(&viewport, &layers)`                     |
+| `apply_update` Delta block_changes ~1517                           | also `invalidation.mark_all_visible_layers(...)` (precise marking comes in Phase 5) |
+| `stream_chunks_around_player` ~1240                                | also `invalidation.mark_all_visible_layers(...)`                                    |
+| `sync_camera_z_to_player` ~1263, ~1270                             | also `invalidation.invalidate_view()`                                               |
+| `drive_replay_playback` ~388                                       | also `invalidation.mark_all_visible_layers(...)`                                    |
+| `project_world_to_tilemap` view_z/mode/debug `is_changed` ~508–522 | also `invalidation.invalidate_view()`                                               |
 
-Add `Res<RenderViewport>` and `Res<TileLayerDebugState>` to system
-signatures where needed.
+Add `Res<RenderViewport>` and `Res<TileLayerDebugState>` to system signatures
+where needed.
 
-**Rule:** if the existing trigger represents a view-level change (z-level,
-mode, debug toggle) → `invalidate_view()`. Otherwise → `mark_all_visible_layers`.
+**Rule:** if the existing trigger represents a view-level change (z-level, mode,
+debug toggle) → `invalidate_view()`. Otherwise → `mark_all_visible_layers`.
 
 ### Master-mode visibility gate
 
@@ -270,12 +267,12 @@ This means in Master mode, `apply_snapshot` no longer touches `fog.visible`,
 - Add a debug-build assert at the top of `project_world_to_tilemap`:
   `debug_assert_eq!(invalidation.is_empty() && !invalidation.view_invalidated(), !terrain.dirty && !fog.dirty);`
   Catches missed producer sites.
-- Run game in Entity mode: behavior identical to before. Warn still
-  fires (Phase 3 fixes that). Tests pass.
-- Run game in Master mode: behavior identical visually. Frame profiler
-  shows `apply_snapshot` no longer in `clone`/`HashMap` rebuild work.
-- Run scenario regression: `cargo test -p game_library --lib`
-  (or however tests are run; check `mise.toml` / scripts).
+- Run game in Entity mode: behavior identical to before. Warn still fires (Phase
+  3 fixes that). Tests pass.
+- Run game in Master mode: behavior identical visually. Frame profiler shows
+  `apply_snapshot` no longer in `clone`/`HashMap` rebuild work.
+- Run scenario regression: `cargo test -p game_library --lib` (or however tests
+  are run; check `mise.toml` / scripts).
 - Tests in `game_library/world_sim/tests/` should also pass.
 
 ### Estimated diff
@@ -286,8 +283,8 @@ This means in Master mode, `apply_snapshot` no longer touches `fog.visible`,
 
 - Don't change consumer behavior. Producers double-write only.
 - Don't rip out the debug assert until Phase 6.
-- Don't add `mark_all_visible_layers` calls where there isn't already a
-  matching `dirty = true`. The mapping is 1:1 in this phase.
+- Don't add `mark_all_visible_layers` calls where there isn't already a matching
+  `dirty = true`. The mapping is 1:1 in this phase.
 - Don't precision-mark in this phase. Even block changes call
   `mark_all_visible_layers`. Phase 5 makes that precise.
 
@@ -302,14 +299,14 @@ This means in Master mode, `apply_snapshot` no longer touches `fog.visible`,
 
 ### Files to touch
 
-- `game_library/src/domain/simulation.rs` — `project_world_to_tilemap`
-  only (~lines 481–899). Plus `draw_depth_labels` (~line 901) for the
-  same viewport bounding.
+- `game_library/src/domain/simulation.rs` — `project_world_to_tilemap` only
+  (~lines 481–899). Plus `draw_depth_labels` (~line 901) for the same viewport
+  bounding.
 
 ### Changes inside `project_world_to_tilemap`
 
-Add `Res<RenderViewport>` and `ResMut<TilemapInvalidation>` to the
-system signature.
+Add `Res<RenderViewport>` and `ResMut<TilemapInvalidation>` to the system
+signature.
 
 1. **Early-return check.** Replace
    `if !terrain.dirty && !fog_data.dirty { return; }` with
@@ -321,10 +318,9 @@ system signature.
    }
    ```
 2. **Lifecycle stays as-is for now.** The spawn loop still iterates
-   `active_chunks_xy` (streaming window). Off-viewport entities continue
-   to exist with stale data — Bevy's renderer culls them. **Don't
-   change spawn/despawn iteration in this phase.** Phase 4 reshapes
-   streaming.
+   `active_chunks_xy` (streaming window). Off-viewport entities continue to
+   exist with stale data — Bevy's renderer culls them. **Don't change
+   spawn/despawn iteration in this phase.** Phase 4 reshapes streaming.
 3. **Build scope shrinks.** Compute the rebuild set:
    ```rust
    let mut to_rebuild: HashSet<(IVec2, i32, TileLayer)> = HashSet::new();
@@ -352,15 +348,15 @@ system signature.
        }
    }
    ```
-4. **Spawn loop (~lines 570–754).** Inside each `if !existing_chunks.contains(...)`
-   block, only do the per-tile build (`build_chunk_tile_data`,
-   `build_edge_shadow_tile_data`, etc.) when
-   `to_rebuild.contains(&key)`. **Always spawn the entity** when missing
-   — but if not in `to_rebuild`, spawn with empty
-   `TilemapChunkTileData` (an all-`None` Vec of correct length). The
-   chunk will fill in next time it's marked dirty.
-5. **Update loop (~line 790).** After the existing `layer_needs_update`
-   check, add:
+4. **Spawn loop (~lines 570–754).** Inside each
+   `if !existing_chunks.contains(...)` block, only do the per-tile build
+   (`build_chunk_tile_data`, `build_edge_shadow_tile_data`, etc.) when
+   `to_rebuild.contains(&key)`. **Always spawn the entity** when missing — but
+   if not in `to_rebuild`, spawn with empty `TilemapChunkTileData` (an
+   all-`None` Vec of correct length). The chunk will fill in next time it's
+   marked dirty.
+5. **Update loop (~line 790).** After the existing `layer_needs_update` check,
+   add:
    ```rust
    if !to_rebuild.contains(&(world_chunk.chunk_xy, world_chunk.world_z, world_chunk.layer)) {
        continue;
@@ -370,42 +366,41 @@ system signature.
    `invalidation.dirty` (or do this in bulk after the loop using the
    `drain_visible_into` API).
 7. **Clear flags at end.** `invalidation.clear_view_invalidated()`. Keep
-   `terrain.dirty = false` and `fog_data.dirty = false` — old flags
-   still maintained until Phase 6.
+   `terrain.dirty = false` and `fog_data.dirty = false` — old flags still
+   maintained until Phase 6.
 
 ### Changes inside `draw_depth_labels`
 
 Replace `active_chunks_xy(...)` (~line 944) with iteration over
-`viewport.visible_chunks_xy`. The depth labels system also gets bounded
-to viewport.
+`viewport.visible_chunks_xy`. The depth labels system also gets bounded to
+viewport.
 
 ### Boundary correctness note
 
-EdgeShadow and CeilingShadow read `wp + 1` in x/y. A chunk's east/north
-boundary depends on the next chunk over. Because `terrain.blocks` is a
-global HashMap (and Phase 4 ensures the next chunk is loaded via
-streaming margin), boundary correctness is independent of which
-chunks rebuild. **No special handling needed in this phase.**
+EdgeShadow and CeilingShadow read `wp + 1` in x/y. A chunk's east/north boundary
+depends on the next chunk over. Because `terrain.blocks` is a global HashMap
+(and Phase 4 ensures the next chunk is loaded via streaming margin), boundary
+correctness is independent of which chunks rebuild. **No special handling needed
+in this phase.**
 
 ### Validation gate
 
-- **Single-tile move in Entity mode:** `last_rebuild_micros` drops from
-  ~32 ms to <3 ms. The `Tilemap rebuild slow` warn does not fire.
+- **Single-tile move in Entity mode:** `last_rebuild_micros` drops from ~32 ms
+  to <3 ms. The `Tilemap rebuild slow` warn does not fire.
 - **Held movement:** no warn at any point during a long traversal.
-- **Z-level toggle (`Z`/`X` or whatever the keys are):** `to_rebuild`
-  size ≈ visible_chunks × visible_z × enabled_layers. Time scales with
-  zoom, not streaming radius.
-- **Fast camera pan, especially Master mode at low zoom:** chunks
-  appear filled as they enter viewport. No 1-frame flicker. If
-  flicker occurs → bump Phase 1 viewport padding from 1 → 2 chunks.
+- **Z-level toggle (`Z`/`X` or whatever the keys are):** `to_rebuild` size ≈
+  visible_chunks × visible_z × enabled_layers. Time scales with zoom, not
+  streaming radius.
+- **Fast camera pan, especially Master mode at low zoom:** chunks appear filled
+  as they enter viewport. No 1-frame flicker. If flicker occurs → bump Phase 1
+  viewport padding from 1 → 2 chunks.
 - **View-mode toggle Master ↔ Entity:** correct in one frame.
-- **Replay mode:** scrubbing through events does not hitch. Open a
-  large replay to test.
+- **Replay mode:** scrubbing through events does not hitch. Open a large replay
+  to test.
 - **All regression tests pass** (`scenario_regression`,
   `sim_diagnostics_regression`).
 - **Frame time profile** in Entity mode at default zoom:
-  `project_world_to_tilemap` should be <1 ms in steady state, <3 ms on
-  movement.
+  `project_world_to_tilemap` should be <1 ms in steady state, <3 ms on movement.
 
 ### Estimated diff
 
@@ -424,9 +419,9 @@ chunks rebuild. **No special handling needed in this phase.**
 
 ### Goal
 
-Streaming follows viewport shape (rectangular AABB) instead of a
-radius. Wide-aspect screens stop wasting top/bottom rows and stop
-missing right-side columns. Replaces `CHUNK_STREAM_RADIUS_XY/Z`.
+Streaming follows viewport shape (rectangular AABB) instead of a radius.
+Wide-aspect screens stop wasting top/bottom rows and stop missing right-side
+columns. Replaces `CHUNK_STREAM_RADIUS_XY/Z`.
 
 ### Files to touch
 
@@ -459,17 +454,18 @@ fn desired_streaming_window(
 ```
 
 Z range extends `±1` because:
+
 - EdgeShadow needs `z - 1` neighbor for `has_edge_above` check
 - CeilingShadow at `z` reads `z + 1` for ceiling input
 
 ### Rewrite `stream_chunks_around_player`
 
-Rename to `stream_chunks_for_viewport` (or keep the old name; not
-critical). Replace radius computation with `desired_streaming_window`.
-Read `Res<RenderViewport>` instead of computing chunk_window from
-player position.
+Rename to `stream_chunks_for_viewport` (or keep the old name; not critical).
+Replace radius computation with `desired_streaming_window`. Read
+`Res<RenderViewport>` instead of computing chunk_window from player position.
 
 Diff logic stays the same:
+
 ```rust
 let desired = desired_streaming_window(&viewport, config.world_chunks);
 // Convert to HashSet<Vec3i> matching today's loaded_chunks shape.
@@ -486,36 +482,35 @@ let to_unload: Vec<Vec3i> = chunk_streaming_state.loaded_chunks
 for &chunk in &to_unload { world_command_queue.set_chunk_loaded(chunk, false); }
 ```
 
-**Mark `invalidation.invalidate_view()` only when *new chunks load***
-(at least one entry in `desired - loaded`). Unload-only deltas do not
-need a render rebuild.
+**Mark `invalidation.invalidate_view()` only when _new chunks load_** (at least
+one entry in `desired - loaded`). Unload-only deltas do not need a render
+rebuild.
 
 ### Delete
 
 - `CHUNK_STREAM_RADIUS_XY` constant
 - `CHUNK_STREAM_RADIUS_Z` constant
-- `chunk_window` helper if no longer used (check usages — it may be
-  used elsewhere; if so, leave it but mark unused)
+- `chunk_window` helper if no longer used (check usages — it may be used
+  elsewhere; if so, leave it but mark unused)
 
 ### Replay mode
 
-Replay loads the entire world at startup and doesn't stream. **Skip
-this phase for replay** — it has no effect on replay rendering because
-Phase 3 already bounds replay render to viewport. No replay-specific
-code changes needed.
+Replay loads the entire world at startup and doesn't stream. **Skip this phase
+for replay** — it has no effect on replay rendering because Phase 3 already
+bounds replay render to viewport. No replay-specific code changes needed.
 
 ### Validation gate
 
-- **Resize window to ultra-wide aspect:** streaming covers full visible
-  width. Pan to right edge: no missing right-edge chunks.
-- **Resize to tall portrait:** streaming covers full height. Pan to top:
-  no missing rows.
-- **Zoom out in Master mode:** streaming window grows. Zoom back in:
-  shrinks. No "missing tile" gaps at any zoom transition.
-- **Player movement at default zoom:** behavior matches today (window
-  ~5×5 around player, since viewport is ~5×5 + margin).
-- **Sim diagnostics** (`world_sim_diagnostics.loaded_chunk_count`)
-  reflects new policy. Should be approximately
+- **Resize window to ultra-wide aspect:** streaming covers full visible width.
+  Pan to right edge: no missing right-edge chunks.
+- **Resize to tall portrait:** streaming covers full height. Pan to top: no
+  missing rows.
+- **Zoom out in Master mode:** streaming window grows. Zoom back in: shrinks. No
+  "missing tile" gaps at any zoom transition.
+- **Player movement at default zoom:** behavior matches today (window ~5×5
+  around player, since viewport is ~5×5 + margin).
+- **Sim diagnostics** (`world_sim_diagnostics.loaded_chunk_count`) reflects new
+  policy. Should be approximately
   `viewport.visible_chunks_xy.len() * (z_max - z_min + 1)`.
 - **Movement frame time:** unchanged or slightly better.
 - **Tests pass.**
@@ -527,8 +522,8 @@ code changes needed.
 ### Don'ts
 
 - Don't try to make replay use streaming.
-- Don't make viewport ⊃ streaming. Streaming should always ⊇ viewport
-  (with ≥1 chunk margin) for boundary correctness.
+- Don't make viewport ⊃ streaming. Streaming should always ⊇ viewport (with ≥1
+  chunk margin) for boundary correctness.
 - Don't trigger `invalidate_view` on unload-only deltas.
 
 ---
@@ -537,16 +532,16 @@ code changes needed.
 
 ### Goal
 
-Producers mark only chunks that actually changed. Movement rebuild
-drops from "all visible" to "FOV-affected ∩ visible" (≤ ~20 chunks).
-Mining drops to 1–4 chunks.
+Producers mark only chunks that actually changed. Movement rebuild drops from
+"all visible" to "FOV-affected ∩ visible" (≤ ~20 chunks). Mining drops to 1–4
+chunks.
 
 ### Files to touch
 
 - `game_library/src/domain/simulation.rs` — `apply_update` Delta path,
   `apply_snapshot` Entity branch.
-- `game_library/src/domain/tilemap_invalidation.rs` — add
-  `mark_block_change` helper.
+- `game_library/src/domain/tilemap_invalidation.rs` — add `mark_block_change`
+  helper.
 
 Split into three sub-commits **in this order**.
 
@@ -611,10 +606,9 @@ fn chunk_of_xy(p: Vec3i, chunk_edge: u32) -> IVec2 {
 }
 ```
 
-**Verify `chunk_of_xy` against `world_pos_in_chunk`** (`simulation.rs:1678`)
-— they must be inverses. Add a unit test in
-`tilemap_invalidation.rs` that round-trips a few positions through
-both.
+**Verify `chunk_of_xy` against `world_pos_in_chunk`** (`simulation.rs:1678`) —
+they must be inverses. Add a unit test in `tilemap_invalidation.rs` that
+round-trips a few positions through both.
 
 In `apply_update` Delta path (~line 1503), for each `change` in
 `delta.block_changes`, call
@@ -623,7 +617,8 @@ Replace the existing `mark_all_visible_layers` call from Phase 2.
 
 ### 5b — Visibility delta (Entity mode only)
 
-In `apply_snapshot`, replace the wholesale `terrain.blocks =
+In `apply_snapshot`, replace the wholesale
+`terrain.blocks =
 build_render_terrain_blocks(...)` (~line 1466) with a delta:
 
 ```rust
@@ -666,30 +661,26 @@ Master mode branch is unchanged from Phase 2.
 
 ### 5c — View changes stay coarse
 
-`update_view_z_level`, `view_mode` change, and `tile_layer_debug` change
-keep using `invalidate_view()`. Correct semantics; no precision benefit
-because every visible chunk's depth tint changes when z-level changes.
+`update_view_z_level`, `view_mode` change, and `tile_layer_debug` change keep
+using `invalidate_view()`. Correct semantics; no precision benefit because every
+visible chunk's depth tint changes when z-level changes.
 
-Phase 2 already wired these as `invalidate_view()`. **Don't change
-them.**
+Phase 2 already wired these as `invalidate_view()`. **Don't change them.**
 
 ### Validation gate
 
-- **Entity mode single-tile move:** `to_rebuild.len() ≤ ~20`.
-  Movement rebuild micros < 1 ms.
+- **Entity mode single-tile move:** `to_rebuild.len() ≤ ~20`. Movement rebuild
+  micros < 1 ms.
 - **Mine a single block:** `to_rebuild.len() ≤ 8` (1 chunk × 4 layers
-  + boundary chunks if mined block is on an edge).
-- **Boundary mining test:** mine a block exactly at the chunk edge.
-  Verify shadows on the neighboring chunk update correctly (no stale
-  shadow geometry).
-- **Pan camera to unexplored area in Entity mode:** chunks fill in
-  correctly via Phase 3's newly-visible mechanism. Phase 5 doesn't
-  break this.
-- **Mode switch Master ↔ Entity:** `invalidate_view` path; correct in
-  one frame.
+  - boundary chunks if mined block is on an edge).
+- **Boundary mining test:** mine a block exactly at the chunk edge. Verify
+  shadows on the neighboring chunk update correctly (no stale shadow geometry).
+- **Pan camera to unexplored area in Entity mode:** chunks fill in correctly via
+  Phase 3's newly-visible mechanism. Phase 5 doesn't break this.
+- **Mode switch Master ↔ Entity:** `invalidate_view` path; correct in one frame.
 - **Run scenario_regression, sim_diagnostics_regression.** Pass.
-- **Long-running play test:** 5+ minutes of movement and mining. No
-  warns. Profile shows tilemap rebuild as a thin sliver.
+- **Long-running play test:** 5+ minutes of movement and mining. No warns.
+  Profile shows tilemap rebuild as a thin sliver.
 
 ### Estimated diff
 
@@ -697,11 +688,11 @@ them.**
 
 ### Don'ts
 
-- Don't skip the boundary-chunk marking in `mark_block_change`. It's
-  the most-likely-to-be-wrong piece. Test it.
-- Don't rebuild `terrain.blocks` from scratch even on first snapshot —
-  the initial `apply_snapshot` should populate it incrementally too
-  (treat the empty prev state as `prev_visible/memory = {}`).
+- Don't skip the boundary-chunk marking in `mark_block_change`. It's the
+  most-likely-to-be-wrong piece. Test it.
+- Don't rebuild `terrain.blocks` from scratch even on first snapshot — the
+  initial `apply_snapshot` should populate it incrementally too (treat the empty
+  prev state as `prev_visible/memory = {}`).
 - Don't precision-mark in Master mode. Master uses `terrain.source_blocks`
   directly; visibility deltas don't apply.
 
@@ -718,18 +709,16 @@ Cleanup. Single source of truth.
 - Remove `pub dirty: bool` from `TerrainData` and `FogData` structs
   (`simulation.rs:67`, `simulation.rs:97`).
 - Remove all `terrain.dirty = true`, `terrain.dirty = false`,
-  `fog.dirty = true`, `fog.dirty = false`, `fog_data.dirty = ...`
-  writes.
+  `fog.dirty = true`, `fog.dirty = false`, `fog_data.dirty = ...` writes.
 - Remove the debug assert added in Phase 2.
-- Remove the early-return reads of these flags (already replaced by
-  invalidation reads in Phase 3).
+- Remove the early-return reads of these flags (already replaced by invalidation
+  reads in Phase 3).
 
 ### Validation gate
 
 - `cargo build` clean.
 - All tests pass.
-- Full play session in both modes: behavior identical to end of
-  Phase 5.
+- Full play session in both modes: behavior identical to end of Phase 5.
 - Replay scrub.
 
 ### Estimated diff
@@ -748,25 +737,24 @@ Cleanup. Single source of truth.
 ### Goal
 
 Separate `manage_tilemap_chunk_lifecycle` (spawn/despawn `TilemapChunk`
-entities) from `project_world_to_tilemap` (rebuild tile data). Streaming
-policy and viewport policy become formally independent in code.
+entities) from `project_world_to_tilemap` (rebuild tile data). Streaming policy
+and viewport policy become formally independent in code.
 
 ### Changes (sketch)
 
 - New system `manage_tilemap_chunk_lifecycle` runs in `Update` before
   `project_world_to_tilemap`.
-- It iterates `(streaming_window × rendered_z_levels × enabled_layers)`
-  and spawns missing `TilemapChunk` entities with empty
-  `TilemapChunkTileData`. Despawns entities outside the window or with
-  disabled layers.
-- New chunks get inserted into `invalidation.dirty` so the build pass
-  fills them.
+- It iterates `(streaming_window × rendered_z_levels × enabled_layers)` and
+  spawns missing `TilemapChunk` entities with empty `TilemapChunkTileData`.
+  Despawns entities outside the window or with disabled layers.
+- New chunks get inserted into `invalidation.dirty` so the build pass fills
+  them.
 - `project_world_to_tilemap` no longer spawns or despawns. Pure build.
 
 ### When to do this
 
-Defer unless something forces it. Phases 1–6 already deliver the perf
-and correctness payoff. Track on backlog only.
+Defer unless something forces it. Phases 1–6 already deliver the perf and
+correctness payoff. Track on backlog only.
 
 ---
 
@@ -787,6 +775,6 @@ and correctness payoff. Track on backlog only.
 - `simulation.rs:465` — `z_levels_to_render` (helper used by viewport)
 - `world_sim/src/fov.rs:7` — `compute_fov` (sim-side; out of scope)
 
-The warn message lives at `simulation.rs:884–891`. After Phase 3 it
-should rarely if ever fire. Leave the warn in place — it's a useful
-canary if a future change regresses scope.
+The warn message lives at `simulation.rs:884–891`. After Phase 3 it should
+rarely if ever fire. Leave the warn in place — it's a useful canary if a future
+change regresses scope.

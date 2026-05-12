@@ -8,9 +8,11 @@ Refactor the browser and native runtime architecture so that:
 - the main thread remains smooth for input, menus, and typing
 - native and web share the same logical runtime model
 - telemetry is first-class and useful for both humans and LLMs
-- the current snapshot-driven, broad dirty-rebuild render path is replaced with a chunk/layer patch-driven runtime
+- the current snapshot-driven, broad dirty-rebuild render path is replaced with
+  a chunk/layer patch-driven runtime
 
-This plan treats performance architecture as a product feature, not a cleanup pass.
+This plan treats performance architecture as a product feature, not a cleanup
+pass.
 
 ## Final Architecture
 
@@ -45,10 +47,12 @@ This plan treats performance architecture as a product feature, not a cleanup pa
 - startup uses progressive near-first full visible snapshot
 - steady state uses incremental whole-chunk layer patches
 - resync uses the same full visible snapshot path as startup
-- layer toggles (`6-0`) are sent into runtime so unnecessary layers stop being generated
+- layer toggles (`6-0`) are sent into runtime so unnecessary layers stop being
+  generated
 - camera center is patch priority input #1
 - desired world bounds are patch priority input #2
-- overfetch is dynamic and collapses to zero before more important work is sacrificed
+- overfetch is dynamic and collapses to zero before more important work is
+  sacrificed
 - stale visuals are allowed to remain for `250 ms`
 
 ### Render Model
@@ -121,7 +125,8 @@ Keep packet headers shared, but layer payloads specialized.
 - ceiling shadow: minimal layer-specific payload
 - fog: visibility-specific payload
 
-If a layer later needs more information, rewrite the runtime protocol with the next runtime change. Do not over-generalize v1.
+If a layer later needs more information, rewrite the runtime protocol with the
+next runtime change. Do not over-generalize v1.
 
 ## Telemetry and Reports
 
@@ -175,7 +180,8 @@ Long report:
 
 ### Persistence
 
-- browser `/?perf`: automatic `localStorage` persistence for every session, including short-lived sessions
+- browser `/?perf`: automatic `localStorage` persistence for every session,
+  including short-lived sessions
 - native: automatic repo-local persistence in `.perf_sessions/`
 - native should also print a useful stdout summary on exit or major fault
 
@@ -217,7 +223,8 @@ Runtime scheduling should be budgeted and priority-driven.
 3. collect terrain/FOV/visibility invalidations
 4. merge invalidations into chunk/layer work items
 5. sort by camera distance first, desired bounds second
-6. spend budget on `critical`, then `visible`, then `prefetch`, then `maintenance`
+6. spend budget on `critical`, then `visible`, then `prefetch`, then
+   `maintenance`
 7. emit patches progressively
 8. emit telemetry
 
@@ -383,9 +390,11 @@ Approach:
 
 ### Default Runtime
 
-Native multithreaded runtime should become the default local path as soon as functional.
+Native multithreaded runtime should become the default local path as soon as
+functional.
 
-Old single-threaded native path should be replaced, not kept as the primary path.
+Old single-threaded native path should be replaced, not kept as the primary
+path.
 
 ### Telemetry
 
@@ -403,7 +412,8 @@ This is required so browser and native telemetry can be compared directly.
 
 ### Purpose
 
-Establish baseline measurements and create the repo structure needed for the refactor.
+Establish baseline measurements and create the repo structure needed for the
+refactor.
 
 ### Tasks
 
@@ -427,7 +437,8 @@ Establish baseline measurements and create the repo structure needed for the ref
 
 ### Purpose
 
-Move telemetry, reports, session lifecycle, and protocol/event definitions into `world_runtime`.
+Move telemetry, reports, session lifecycle, and protocol/event definitions into
+`world_runtime`.
 
 ### Tasks
 
@@ -445,7 +456,8 @@ Move telemetry, reports, session lifecycle, and protocol/event definitions into 
 
 ### Exit Criteria
 
-- main client can import runtime types instead of defining ad hoc runtime/debug structures
+- main client can import runtime types instead of defining ad hoc runtime/debug
+  structures
 
 ## Phase 2: Native Threaded Runtime Default
 
@@ -468,7 +480,8 @@ Make native local builds use the new runtime model first.
 
 ### Exit Criteria
 
-- `deno task local` equivalent native path runs on threaded runtime and produces perf artifacts
+- `deno task local` equivalent native path runs on threaded runtime and produces
+  perf artifacts
 
 ## Phase 3: `web-perf` and Perf Session Infrastructure
 
@@ -494,17 +507,20 @@ Create a realistic browser perf path that is safe to optimize against.
 
 ### Exit Criteria
 
-- browser perf investigations can use `/?perf` with persisted sessions and copyable reports
+- browser perf investigations can use `/?perf` with persisted sessions and
+  copyable reports
 
 ## Phase 4: ECS Chunk Cache and Runtime Bridge
 
 ### Purpose
 
-Replace snapshot-driven render ownership with ECS-owned cache and runtime event ingestion.
+Replace snapshot-driven render ownership with ECS-owned cache and runtime event
+ingestion.
 
 ### Tasks
 
-- add ECS resources for runtime bridge, cache state, cache map, patch queue, viewport intent
+- add ECS resources for runtime bridge, cache state, cache map, patch queue,
+  viewport intent
 - add chunk-layer render entity model
 - implement cache residency logic hot/warm/cold
 - implement stale grace rules
@@ -523,7 +539,8 @@ Replace snapshot-driven render ownership with ECS-owned cache and runtime event 
 
 ### Purpose
 
-Replace the current broad tilemap rebuild path with a chunk/layer renderer designed for runtime patches.
+Replace the current broad tilemap rebuild path with a chunk/layer renderer
+designed for runtime patches.
 
 ### Tasks
 
@@ -546,7 +563,8 @@ Replace the current broad tilemap rebuild path with a chunk/layer renderer desig
 
 ### Purpose
 
-Move browser sim/FOV/patch generation off the main thread while keeping the same public runtime handle.
+Move browser sim/FOV/patch generation off the main thread while keeping the same
+public runtime handle.
 
 ### Tasks
 
@@ -586,13 +604,15 @@ Stop generating unnecessary work and finalize progressive snapshot behavior.
 
 ### Exit Criteria
 
-- layer toggle cost is visible in telemetry and runtime no longer computes disabled layers
+- layer toggle cost is visible in telemetry and runtime no longer computes
+  disabled layers
 
 ## Phase 8: Backpressure, Overfetch, and Cache Tuning
 
 ### Purpose
 
-Tune the runtime for chain reactions, camera outrun, and real-world browser/native stress.
+Tune the runtime for chain reactions, camera outrun, and real-world
+browser/native stress.
 
 ### Tasks
 
@@ -605,18 +625,21 @@ Tune the runtime for chain reactions, camera outrun, and real-world browser/nati
 
 ### Deliverables
 
-- runtime behaves predictably under heavy terrain churn and rapid camera movement
+- runtime behaves predictably under heavy terrain churn and rapid camera
+  movement
 - telemetry clearly shows why work was deferred or dropped
 
 ### Exit Criteria
 
-- chain-reaction scenarios and greedy camera movement remain debuggable and locally responsive
+- chain-reaction scenarios and greedy camera movement remain debuggable and
+  locally responsive
 
 ## Phase 9: Cleanup and Release Convergence
 
 ### Purpose
 
-Collapse proven perf settings into the standard release-oriented browser path and remove obsolete code.
+Collapse proven perf settings into the standard release-oriented browser path
+and remove obsolete code.
 
 ### Tasks
 
@@ -669,13 +692,15 @@ If executing this as code work, use this order:
 9. Phase 8
 10. Phase 9
 
-This order gets telemetry and native convergence first, then the browser worker and renderer cutover, then tuning.
+This order gets telemetry and native convergence first, then the browser worker
+and renderer cutover, then tuning.
 
 ## Risks
 
 ### Risk: Runtime and renderer are refactored simultaneously
 
-This is intentional, but risky. The mitigation is keeping startup/resync blunt and measurable.
+This is intentional, but risky. The mitigation is keeping startup/resync blunt
+and measurable.
 
 ### Risk: ECS cache growth creates new memory pressure
 

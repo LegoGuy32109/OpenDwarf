@@ -201,10 +201,8 @@ impl TileDataCache {
 
     /// Remove all cache entries (geometry + fog) for a specific (chunk, z).
     fn remove_chunk_z(&mut self, chunk_xy: IVec2, z: i32) {
-        self.geometry
-            .remove(&(chunk_xy, z, TileLayer::Floor));
-        self.geometry
-            .remove(&(chunk_xy, z, TileLayer::EdgeShadow));
+        self.geometry.remove(&(chunk_xy, z, TileLayer::Floor));
+        self.geometry.remove(&(chunk_xy, z, TileLayer::EdgeShadow));
         self.geometry
             .remove(&(chunk_xy, z, TileLayer::CeilingShadow));
         self.fog.remove(&(chunk_xy, z));

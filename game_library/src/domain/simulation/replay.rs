@@ -1,16 +1,15 @@
 use bevy::prelude::*;
 use std::sync::Arc;
 
-use super::{
-    FogData, ReplayHudState, ReplayMode, ReplayPlayback,
-    RenderEntityData, TerrainConfig, TerrainData, TileDataCache, TileLayerDebugState,
-    REPLAY_PATH_ENV,
-};
 use super::sync::{apply_snapshot, apply_update};
+use super::{
+    FogData, REPLAY_PATH_ENV, RenderEntityData, ReplayHudState, ReplayMode, ReplayPlayback,
+    TerrainConfig, TerrainData, TileDataCache, TileLayerDebugState,
+};
 use crate::resources::render_viewport::RenderViewport;
 use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
-use world_sim::replay::{load_replay, ReplayEvent};
+use world_sim::replay::{ReplayEvent, load_replay};
 use world_sim::world_api::{Vec3u, WorldCommand, WorldUpdate};
 
 pub fn drive_replay_playback(

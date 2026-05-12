@@ -1,11 +1,11 @@
-use bevy::prelude::*;
 use bevy::platform::collections::HashSet;
+use bevy::prelude::*;
 use std::sync::Arc;
 
 use super::coords::render_movement_state;
 use super::{
-    FogData, ReplayMode, RenderEntityData, RenderEntityState, TerrainConfig, TileDataCache,
-    TileLayerDebugState, TerrainData,
+    FogData, RenderEntityData, RenderEntityState, ReplayMode, TerrainConfig, TerrainData,
+    TileDataCache, TileLayerDebugState,
 };
 use crate::resources::render_viewport::RenderViewport;
 use crate::resources::view_mode::ViewMode;

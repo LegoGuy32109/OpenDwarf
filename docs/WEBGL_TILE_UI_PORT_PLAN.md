@@ -57,8 +57,8 @@ Out of scope for the first pass:
 - World shape: infinite X/Y from deterministic chunk generation
 - First asset smoke test: `static/assets/sprites/SingleRock.png`
 - Biome/variety test asset: `static/assets/sprites/StackedTextures.png`
-- Pixel font: `game_library/assets/ui/TinyPixie2.ttf`, copied or served into
-  the web experiment asset path before the UI/text step
+- Pixel font: `game_library/assets/ui/TinyPixie2.ttf`, copied or served into the
+  web experiment asset path before the UI/text step
 - Canvas resolution: native device-pixel-ratio framebuffer resolution. A 4k
   display should get a 4k framebuffer, while assets stay pixelated through
   nearest-neighbor sampling and pixel-scale controls.
@@ -72,8 +72,8 @@ Out of scope for the first pass:
   enough that the visual result can match the existing native renderer.
 - UI text scale: independent from world zoom.
 - Menu style: translucent, matching the current Bevy chat/menu direction.
-- Controls: physical `KeyboardEvent.code` bindings, initially `ESDF` and
-  `IJKL`. Future settings UI can remap these.
+- Controls: physical `KeyboardEvent.code` bindings, initially `ESDF` and `IJKL`.
+  Future settings UI can remap these.
 - Text input: basic ASCII is enough for v0.
 - Paste: not required in the first custom text field.
 - Browser shortcuts: preserve browser shortcuts generally. In fullscreen, only
@@ -82,8 +82,8 @@ Out of scope for the first pass:
 - Interactive target: stable 60 Hz
 - Benchmark target: include an uncapped/synthetic throughput mode to discover
   renderer limits beyond normal display-vsynced interaction
-- Compatibility target: capture browser/GPU capability from `navigator` and WebGL
-  context diagnostics in every perf/debug report.
+- Compatibility target: capture browser/GPU capability from `navigator` and
+  WebGL context diagnostics in every perf/debug report.
 - First stress target: one chunk radius around the visible window.
 - Visual regression: screenshot testing is worth adding early.
 - Replay format: JSON metadata first, with compact binary payloads later for
@@ -180,12 +180,24 @@ Store raw input as an append-only event log:
 
 ```ts
 type InputLogEvent =
-  | { type: "key_down"; code: string; key: string; repeat: boolean; tick: number }
+  | {
+    type: "key_down";
+    code: string;
+    key: string;
+    repeat: boolean;
+    tick: number;
+  }
   | { type: "key_up"; code: string; key: string; tick: number }
   | { type: "text"; value: string; tick: number }
   | { type: "paste"; value: string; tick: number }
   | { type: "fullscreen"; active: boolean; tick: number }
-  | { type: "resize"; width: number; height: number; dpr: number; tick: number };
+  | {
+    type: "resize";
+    width: number;
+    height: number;
+    dpr: number;
+    tick: number;
+  };
 ```
 
 Rules:
@@ -206,8 +218,8 @@ be deterministic and separately tested.
 
 ## Coordinate Model
 
-The JS experiment should use simpler origin-based chunks. This deliberately
-does not preserve the current centered chunk mapping from the Bevy/Rust path.
+The JS experiment should use simpler origin-based chunks. This deliberately does
+not preserve the current centered chunk mapping from the Bevy/Rust path.
 
 Definitions:
 
@@ -402,8 +414,8 @@ Programmatic test:
 
 Pass criteria:
 
-- The renderer can switch from `SingleRock.png` to `StackedTextures.png`
-  without changing the chunk streaming logic.
+- The renderer can switch from `SingleRock.png` to `StackedTextures.png` without
+  changing the chunk streaming logic.
 
 ### Step 2: Deterministic JS Rock World
 
@@ -583,9 +595,9 @@ Pass criteria:
 
 Known limitation:
 
-- Full IME/mobile/autocorrect text correctness likely needs a hidden
-  `textarea` or `contenteditable` bridge later. The visible UI can still remain
-  fully WebGL-rendered.
+- Full IME/mobile/autocorrect text correctness likely needs a hidden `textarea`
+  or `contenteditable` bridge later. The visible UI can still remain fully
+  WebGL-rendered.
 - Paste support is intentionally deferred until the base editor is stable.
 
 ### Step 7: Menu Primitives
@@ -617,8 +629,8 @@ Programmatic test:
 
 Pass criteria:
 
-- Menu behavior is deterministic and does not depend on DOM focus except for
-  the canvas owning keyboard focus.
+- Menu behavior is deterministic and does not depend on DOM focus except for the
+  canvas owning keyboard focus.
 
 ### Step 8: Worker-Free Stress Test
 
@@ -649,9 +661,9 @@ Programmatic test:
 
 Pass criteria:
 
-- Define an explicit budget after observing real numbers. Initial target:
-  Chrome interactive p95 frame CPU time under 8 ms for the rock-field sweep on
-  the primary dev machine.
+- Define an explicit budget after observing real numbers. Initial target: Chrome
+  interactive p95 frame CPU time under 8 ms for the rock-field sweep on the
+  primary dev machine.
 
 ### Step 9: JS Sim Player Traversal
 
@@ -690,9 +702,9 @@ Pass criteria:
 The artifact format and run lifecycle are defined in
 [WEBGL_TEST_ARTIFACT_SPEC.md](/home/josh/Projects/OpenDwarf/docs/WEBGL_TEST_ARTIFACT_SPEC.md).
 Screenshot baselines are optional for now; CI can supply a baseline manifest
-later without changing the step1 harness contract.
-The review flow is frame-dump based: screenshots at semantic checkpoints are
-the canonical review frames, and any stitched video is optional.
+later without changing the step1 harness contract. The review flow is frame-dump
+based: screenshots at semantic checkpoints are the canonical review frames, and
+any stitched video is optional.
 
 Add a debug overlay from the first working route:
 
@@ -751,7 +763,7 @@ emit frame-dump PNGs for review
 keep screenshot baselines optional for CI
 ```
 
-This answers the most important near-term question: can the new renderer
-display the single-rock smoke test, capture deterministic artifacts, and keep
-the artifact contract readable enough for CI to adopt later without rewriting
-the flow?
+This answers the most important near-term question: can the new renderer display
+the single-rock smoke test, capture deterministic artifacts, and keep the
+artifact contract readable enough for CI to adopt later without rewriting the
+flow?

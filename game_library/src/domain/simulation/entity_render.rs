@@ -4,9 +4,7 @@ use super::coords::{
     get_depth_tint_sprite_color, terrain_block_for_shadow, world_to_pixel_translation,
     world_to_pixel_translation_f32,
 };
-use super::{
-    ChunkBorderDebugState, RenderEntityData, TerrainConfig, TerrainData,
-};
+use super::{ChunkBorderDebugState, RenderEntityData, TerrainConfig, TerrainData};
 use crate::domain::visuals::{Player, PlayerRenderTarget, TilemapAssets};
 use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;

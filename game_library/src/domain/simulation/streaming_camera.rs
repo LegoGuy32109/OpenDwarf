@@ -1,14 +1,12 @@
 use bevy::prelude::*;
 
 use super::coords::desired_streaming_window;
-use super::{
-    ChunkStreamingState, FogData, ReplayMode, RenderEntityData, TerrainConfig,
-};
+use super::{ChunkStreamingState, FogData, RenderEntityData, ReplayMode, TerrainConfig};
+use crate::domain::visuals::Player;
 use crate::resources::input_state::InputState;
 use crate::resources::render_viewport::RenderViewport;
 use crate::resources::view_mode::ViewMode;
 use crate::resources::view_z_level::ViewZLevel;
-use crate::domain::visuals::Player;
 use world_sim::bevy_app::{PrimarySimulationEntityId, WorldCommandQueue, WorldView};
 use world_sim::world_api::Vec3i;
 

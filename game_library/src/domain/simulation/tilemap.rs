@@ -1,11 +1,7 @@
+use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use bevy::sprite_render::{TilemapChunk, TilemapChunkTileData};
-use bevy::platform::collections::HashSet;
 
-use crate::domain::visuals::TilemapAssets;
-use crate::resources::render_viewport::RenderViewport;
-use crate::resources::view_mode::ViewMode;
-use crate::resources::view_z_level::ViewZLevel;
 use super::coords::*;
 use super::tile_builders::{
     build_ceiling_shadow_geometry, build_edge_shadow_geometry, build_floor_geometry,
@@ -13,9 +9,13 @@ use super::tile_builders::{
     fog_tile_data_from_cache, shadow_tile_data_from_geometry,
 };
 use super::{
-    ChunkStreamingState, FogData, ReplayMode, TerrainConfig, TerrainData, TileDataCache,
-    TileLayer, TileLayerDebugState, TilemapRenderMetrics, WorldTileChunk,
+    ChunkStreamingState, FogData, ReplayMode, TerrainConfig, TerrainData, TileDataCache, TileLayer,
+    TileLayerDebugState, TilemapRenderMetrics, WorldTileChunk,
 };
+use crate::domain::visuals::TilemapAssets;
+use crate::resources::render_viewport::RenderViewport;
+use crate::resources::view_mode::ViewMode;
+use crate::resources::view_z_level::ViewZLevel;
 
 /// Max (chunk_xy, z, layer) entries rebuilt per frame. Spreading the work prevents
 /// single-frame stalls on WASM where all work runs on one thread.
@@ -378,17 +378,21 @@ pub fn project_world_to_tilemap(
     // We skip building the (expensive) topmost cache entirely when all dirty entries hit the cache.
     let needs_false_topmost = to_rebuild.iter().any(|&(c, z, l)| match l {
         TileLayer::Floor => !tile_cache.geometry.contains_key(&(c, z, TileLayer::Floor)),
-        TileLayer::EdgeShadow => false, // uses true cache
+        TileLayer::EdgeShadow => false,    // uses true cache
         TileLayer::CeilingShadow => false, // uses true cache
         TileLayer::FogShadow => !tile_cache.fog.contains_key(&(c, z)),
     });
     let needs_true_topmost = entity_mode
         && to_rebuild.iter().any(|&(c, z, l)| match l {
             TileLayer::EdgeShadow => {
-                !tile_cache.geometry.contains_key(&(c, z, TileLayer::EdgeShadow))
+                !tile_cache
+                    .geometry
+                    .contains_key(&(c, z, TileLayer::EdgeShadow))
             }
             TileLayer::CeilingShadow => {
-                !tile_cache.geometry.contains_key(&(c, z, TileLayer::CeilingShadow))
+                !tile_cache
+                    .geometry
+                    .contains_key(&(c, z, TileLayer::CeilingShadow))
             }
             _ => false,
         });
@@ -467,7 +471,10 @@ pub fn project_world_to_tilemap(
                 } else {
                     let topmost = topmost_cache_false.as_ref().expect("topmost_false needed");
                     let geom = build_floor_geometry(
-                        world_chunk.chunk_xy, world_chunk.world_z, chunk_edge, topmost,
+                        world_chunk.chunk_xy,
+                        world_chunk.world_z,
+                        chunk_edge,
+                        topmost,
                     );
                     let td = floor_tile_data_from_geometry(&geom, z_off, render_depth_stack);
                     tile_cache.geometry.insert(key, geom);
@@ -475,7 +482,11 @@ pub fn project_world_to_tilemap(
                 }
             }
             TileLayer::EdgeShadow => {
-                let key = (world_chunk.chunk_xy, world_chunk.world_z, TileLayer::EdgeShadow);
+                let key = (
+                    world_chunk.chunk_xy,
+                    world_chunk.world_z,
+                    TileLayer::EdgeShadow,
+                );
                 if let Some(geom) = tile_cache.geometry.get(&key) {
                     shadow_tile_data_from_geometry(geom)
                 } else {
@@ -484,7 +495,10 @@ pub fn project_world_to_tilemap(
                         .or(topmost_cache_false.as_ref())
                         .expect("topmost needed for edge shadow");
                     let geom = build_edge_shadow_geometry(
-                        world_chunk.chunk_xy, world_chunk.world_z, chunk_edge, topmost,
+                        world_chunk.chunk_xy,
+                        world_chunk.world_z,
+                        chunk_edge,
+                        topmost,
                     );
                     let td = shadow_tile_data_from_geometry(&geom);
                     tile_cache.geometry.insert(key, geom);
@@ -492,7 +506,11 @@ pub fn project_world_to_tilemap(
                 }
             }
             TileLayer::CeilingShadow => {
-                let key = (world_chunk.chunk_xy, world_chunk.world_z, TileLayer::CeilingShadow);
+                let key = (
+                    world_chunk.chunk_xy,
+                    world_chunk.world_z,
+                    TileLayer::CeilingShadow,
+                );
                 if let Some(geom) = tile_cache.geometry.get(&key) {
                     shadow_tile_data_from_geometry(geom)
                 } else {
@@ -548,8 +566,7 @@ pub fn project_world_to_tilemap(
     let elapsed_us = ((js_sys::Date::now() - start_ms) * 1000.0) as u128;
 
     tilemap_render_metrics.last_rebuild_micros = elapsed_us;
-    tilemap_render_metrics.rebuild_count =
-        tilemap_render_metrics.rebuild_count.saturating_add(1);
+    tilemap_render_metrics.rebuild_count = tilemap_render_metrics.rebuild_count.saturating_add(1);
     if elapsed_us > 8_000 {
         warn!(
             "Tilemap rebuild slow: {}us across {} chunks ({} pending) and {} non-empty tiles",
@@ -611,7 +628,11 @@ pub fn pre_build_adjacent_z_levels(
         return;
     }
 
-    let geometry_layers = [TileLayer::Floor, TileLayer::EdgeShadow, TileLayer::CeilingShadow];
+    let geometry_layers = [
+        TileLayer::Floor,
+        TileLayer::EdgeShadow,
+        TileLayer::CeilingShadow,
+    ];
     let mut built = 0;
 
     'outer: for &z in &upcoming {
@@ -654,35 +675,52 @@ pub fn pre_build_adjacent_z_levels(
 
         for &chunk_xy in &miss_chunks {
             if tile_layer_debug_state.show_floor
-                && !tile_cache.geometry.contains_key(&(chunk_xy, z, TileLayer::Floor))
+                && !tile_cache
+                    .geometry
+                    .contains_key(&(chunk_xy, z, TileLayer::Floor))
             {
                 if built >= PRE_BUILD_BUDGET {
                     break 'outer;
                 }
                 let geom = build_floor_geometry(chunk_xy, z, chunk_edge, &topmost_false);
-                tile_cache.geometry.insert((chunk_xy, z, TileLayer::Floor), geom);
+                tile_cache
+                    .geometry
+                    .insert((chunk_xy, z, TileLayer::Floor), geom);
                 built += 1;
             }
             if tile_layer_debug_state.show_edge_shadow
-                && !tile_cache.geometry.contains_key(&(chunk_xy, z, TileLayer::EdgeShadow))
+                && !tile_cache
+                    .geometry
+                    .contains_key(&(chunk_xy, z, TileLayer::EdgeShadow))
             {
                 if built >= PRE_BUILD_BUDGET {
                     break 'outer;
                 }
                 let geom = build_edge_shadow_geometry(chunk_xy, z, chunk_edge, &topmost_true);
-                tile_cache.geometry.insert((chunk_xy, z, TileLayer::EdgeShadow), geom);
+                tile_cache
+                    .geometry
+                    .insert((chunk_xy, z, TileLayer::EdgeShadow), geom);
                 built += 1;
             }
             if tile_layer_debug_state.show_ceiling_shadow
-                && !tile_cache.geometry.contains_key(&(chunk_xy, z, TileLayer::CeilingShadow))
+                && !tile_cache
+                    .geometry
+                    .contains_key(&(chunk_xy, z, TileLayer::CeilingShadow))
             {
                 if built >= PRE_BUILD_BUDGET {
                     break 'outer;
                 }
                 let geom = build_ceiling_shadow_geometry(
-                    chunk_xy, z, chunk_edge, render_blocks, entity_mode, &topmost_true,
+                    chunk_xy,
+                    z,
+                    chunk_edge,
+                    render_blocks,
+                    entity_mode,
+                    &topmost_true,
                 );
-                tile_cache.geometry.insert((chunk_xy, z, TileLayer::CeilingShadow), geom);
+                tile_cache
+                    .geometry
+                    .insert((chunk_xy, z, TileLayer::CeilingShadow), geom);
                 built += 1;
             }
         }

@@ -1,13 +1,13 @@
 use bevy::prelude::*;
 
-use crate::domain::simulation::RenderEntityData;
+#[cfg(not(target_arch = "wasm32"))]
+use super::replay::{apply_first_checkpoint, try_load_replay_playback};
 use super::{
     ChunkBorderDebugState, ChunkStreamingState, FogData, HeldMovementState, ReplayHudState,
     ReplayMode, TerrainConfig, TerrainData, TileDataCache, TileLayerDebugState,
     TilemapRenderMetrics,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use super::replay::{apply_first_checkpoint, try_load_replay_playback};
+use crate::domain::simulation::RenderEntityData;
 
 pub fn setup_simulation_state(mut commands: Commands) {
     #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]

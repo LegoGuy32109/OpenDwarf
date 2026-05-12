@@ -333,7 +333,9 @@ impl CommandBinding {
         if self.require_alt && !alt_pressed(pressed_keys) {
             return false;
         }
-        if let Some(required_typing) = self.require_typing && typing != required_typing {
+        if let Some(required_typing) = self.require_typing
+            && typing != required_typing
+        {
             return false;
         }
         true

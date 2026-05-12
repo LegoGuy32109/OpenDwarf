@@ -35,7 +35,8 @@ pub(super) fn build_floor_geometry(
         for local_x in 0..chunk_edge {
             let wp = world_pos_in_chunk(chunk_coord, chunk_edge, local_x, local_y, world_z);
             if topmost_from_cache(wp.x, wp.y, topmost_cache) == Some(world_z) {
-                geom[chunk_local_tile_index(local_x, local_y, chunk_edge)] = Some(stone_tile_index());
+                geom[chunk_local_tile_index(local_x, local_y, chunk_edge)] =
+                    Some(stone_tile_index());
             }
         }
     }
@@ -84,10 +85,18 @@ pub(super) fn build_edge_shadow_geometry(
                 topmost_from_cache(wp.x + dx, wp.y + dy, topmost_cache) == Some(world_z)
             };
             let mut mask: u8 = 0;
-            if is_solid(0, 0) { mask |= 1; }
-            if is_solid(1, 0) { mask |= 2; }
-            if is_solid(0, 1) { mask |= 4; }
-            if is_solid(1, 1) { mask |= 8; }
+            if is_solid(0, 0) {
+                mask |= 1;
+            }
+            if is_solid(1, 0) {
+                mask |= 2;
+            }
+            if is_solid(0, 1) {
+                mask |= 4;
+            }
+            if is_solid(1, 1) {
+                mask |= 8;
+            }
             if mask > 0 && mask < 15 {
                 geom[idx] = Some((mask - 1) as u16);
             }
@@ -123,10 +132,18 @@ pub(super) fn build_ceiling_shadow_geometry(
                     && terrain_block_for_shadow(above, blocks, unknown_is_solid)
                         == BlockType::SolidStone
             };
-            if check_corner(0, 0) { mask |= 1; }
-            if check_corner(1, 0) { mask |= 2; }
-            if check_corner(0, 1) { mask |= 4; }
-            if check_corner(1, 1) { mask |= 8; }
+            if check_corner(0, 0) {
+                mask |= 1;
+            }
+            if check_corner(1, 0) {
+                mask |= 2;
+            }
+            if check_corner(0, 1) {
+                mask |= 4;
+            }
+            if check_corner(1, 1) {
+                mask |= 8;
+            }
             if mask != 0 {
                 geom[idx] = Some((mask - 1) as u16);
             }
@@ -228,4 +245,3 @@ pub(super) fn build_topmost_cache(
 fn topmost_from_cache(wx: i32, wy: i32, cache: &HashMap<(i32, i32), Option<i32>>) -> Option<i32> {
     cache.get(&(wx, wy)).copied().flatten()
 }
-

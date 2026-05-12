@@ -27,8 +27,8 @@ export default function WebGlRoute() {
           </div>
           <p class="max-w-3xl text-sm leading-6 text-white/70">
             Step 1: render the single-rock smoke test, capture deterministic
-            checkpoints, and keep replay/frame-dump artifacts readable before any
-            wasm or world-simulation work is added.
+            checkpoints, and keep replay/frame-dump artifacts readable before
+            any wasm or world-simulation work is added.
           </p>
         </header>
         <WebGlGameCanvas />

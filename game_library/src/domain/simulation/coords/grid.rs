@@ -1,6 +1,6 @@
+use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use bevy::sprite_render::TileData;
-use bevy::platform::collections::HashSet;
 
 use crate::domain::simulation::ChunkStreamingState;
 use crate::resources::render_viewport::RenderViewport;
@@ -38,9 +38,7 @@ pub(crate) fn active_chunks_xy(
 }
 
 pub(crate) fn z_levels_to_render(view_z_current: i32, depth: i32) -> Vec<i32> {
-    (0..=depth)
-        .map(|offset| view_z_current - offset)
-        .collect()
+    (0..=depth).map(|offset| view_z_current - offset).collect()
 }
 
 pub(crate) fn chunk_local_tile_index(local_x: u32, local_y: u32, chunk_edge: u32) -> usize {

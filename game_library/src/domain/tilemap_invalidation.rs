@@ -155,8 +155,7 @@ impl TilemapInvalidation {
     /// expanding a view invalidation so stale z-level entries don't accumulate when the
     /// player moves up or down a slope.
     pub fn retain_z_levels(&mut self, rendered_z_levels: &[i32]) {
-        self.dirty
-            .retain(|(_, z, _)| rendered_z_levels.contains(z));
+        self.dirty.retain(|(_, z, _)| rendered_z_levels.contains(z));
     }
 
     pub fn view_invalidated(&self) -> bool {

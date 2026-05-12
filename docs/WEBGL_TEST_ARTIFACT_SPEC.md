@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Define a concrete, human-readable artifact model for the WebGL experiment.
-This spec is the contract for replay-driven UI review bundles.
+Define a concrete, human-readable artifact model for the WebGL experiment. This
+spec is the contract for replay-driven UI review bundles.
 
 The goal is:
 
@@ -99,7 +99,13 @@ Example shape:
     { "tick": 0, "type": "boot" },
     { "tick": 1, "type": "fullscreen", "active": true },
     { "tick": 2, "type": "resize", "width": 1920, "height": 1080, "dpr": 2 },
-    { "tick": 4, "type": "key_down", "code": "KeyE", "key": "e", "repeat": false },
+    {
+      "tick": 4,
+      "type": "key_down",
+      "code": "KeyE",
+      "key": "e",
+      "repeat": false
+    },
     { "tick": 12, "type": "key_up", "code": "KeyE", "key": "e" }
   ],
   "checkpoints": [
@@ -238,8 +244,8 @@ Rules:
 
 - baselines are optional for local runs
 - capture/export should still work when no baseline manifest is configured
-- when a baseline is configured, the harness may report whether a checkpoint
-  has a matching reference
+- when a baseline is configured, the harness may report whether a checkpoint has
+  a matching reference
 - the baseline manifest should stay human-readable and flow-specific
 
 ## Review Frames
@@ -251,7 +257,8 @@ Rules:
 
 - frame dumps are generated from the same replay used for screenshots
 - frame dumps should be PNG files
-- frame dumps should be deterministic enough for human review, not pixel-equality
+- frame dumps should be deterministic enough for human review, not
+  pixel-equality
 - frame dumps are optional when the flow is being used only for quick visual
   sanity checks
 
