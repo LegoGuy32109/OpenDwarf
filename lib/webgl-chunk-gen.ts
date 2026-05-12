@@ -118,10 +118,11 @@ export function computeEdgeShadowIds(
   return result;
 }
 
-// Dual-grid ceiling shadow: shadow cell (sx,sy) samples the same 2×2 block
-// at the ceiling level (viewZ+1). Drawn only where at least one of the 4 floor
-// positions at viewZ is air. Bits: (0,0)→1, (1,0)→2, (0,1)→4, (1,1)→8.
-// Frame = mask-1 for mask 1–15.
+// Dual-grid ceiling shadow: shadow cell (sx,sy) samples the same 2×2 block.
+// A corner contributes when the block directly above it is solid, even if the
+// current viewZ tile is air. This intentionally differs from the Rust renderer
+// so ceiling silhouettes can communicate overhead terrain to the player.
+// Bits: (0,0)→1, (1,0)→2, (0,1)→4, (1,1)→8. Frame = mask-1 for mask 1–15.
 export function computeCeilingShadowIds(
   cx: number,
   cy: number,
@@ -133,13 +134,9 @@ export function computeCeilingShadowIds(
   const get = (gx: number, gy: number, z: number) =>
     solidCache.get(chunkKeyString({ chunkX: gx, chunkY: gy, chunkZ: z }));
 
-  const floorSelf = get(cx, cy, viewZ);
   const ceilSelf = get(cx, cy, viewZ + 1);
-  if (!floorSelf || !ceilSelf) return result;
+  if (!ceilSelf) return result;
 
-  const floorNbE = get(cx + 1, cy, viewZ);
-  const floorNbS = get(cx, cy + 1, viewZ);
-  const floorNbSE = get(cx + 1, cy + 1, viewZ);
   const ceilNbE = get(cx + 1, cy, viewZ + 1);
   const ceilNbS = get(cx, cy + 1, viewZ + 1);
   const ceilNbSE = get(cx + 1, cy + 1, viewZ + 1);
@@ -161,8 +158,9 @@ export function computeCeilingShadowIds(
   for (let sy = 0; sy < E; sy++) {
     for (let sx = 0; sx < E; sx++) {
       let maskCeil = 0;
-      let anyAirFloor = false;
-      if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx, sy)) maskCeil |= 1;
+      if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx, sy)) {
+        maskCeil |= 1;
+      }
       if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx + 1, sy)) {
         maskCeil |= 2;
       }
@@ -172,21 +170,7 @@ export function computeCeilingShadowIds(
       if (getSolid(ceilSelf, ceilNbE, ceilNbS, ceilNbSE, sx + 1, sy + 1)) {
         maskCeil |= 8;
       }
-      if (!getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx, sy)) {
-        anyAirFloor = true;
-      }
-      if (!getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx + 1, sy)) {
-        anyAirFloor = true;
-      }
-      if (!getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx, sy + 1)) {
-        anyAirFloor = true;
-      }
-      if (
-        !getSolid(floorSelf, floorNbE, floorNbS, floorNbSE, sx + 1, sy + 1)
-      ) {
-        anyAirFloor = true;
-      }
-      if (maskCeil !== 0 && anyAirFloor) {
+      if (maskCeil !== 0) {
         result[sy * E + sx] = shadowMaskToAtlasId(maskCeil);
       }
     }

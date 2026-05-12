@@ -3,6 +3,7 @@ import {
   CHUNK_EDGE_TILES,
   CHUNK_SIZE_PX,
   chunkKeyString,
+  computeCeilingShadowIds,
   computeEdgeShadowIds,
   computeStreamingChunks,
   computeVisibleChunks,
@@ -101,6 +102,44 @@ Deno.test("computeEdgeShadowIds returns atlas ids with horizontal shadows on air
   const shadows = computeEdgeShadowIds(0, 0, 0, cache);
 
   assertEquals(shadows[0], 12);
+});
+
+Deno.test("computeCeilingShadowIds emits filled mask when floor and ceiling are solid", () => {
+  const floor = new Uint8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES);
+  const ceiling = new Uint8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES);
+  floor[0] = 1;
+  floor[1] = 1;
+  floor[CHUNK_EDGE_TILES] = 1;
+  floor[CHUNK_EDGE_TILES + 1] = 1;
+  ceiling[0] = 1;
+  ceiling[1] = 1;
+  ceiling[CHUNK_EDGE_TILES] = 1;
+  ceiling[CHUNK_EDGE_TILES + 1] = 1;
+  const cache = new Map([
+    [chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 0 }), floor],
+    [chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 1 }), ceiling],
+  ]);
+
+  const shadows = computeCeilingShadowIds(0, 0, 0, cache);
+
+  assertEquals(shadows[0], 15);
+});
+
+Deno.test("computeCeilingShadowIds emits ceiling-only silhouettes over air", () => {
+  const floor = new Uint8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES);
+  const ceiling = new Uint8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES);
+  ceiling[0] = 1;
+  ceiling[1] = 1;
+  ceiling[CHUNK_EDGE_TILES] = 1;
+  ceiling[CHUNK_EDGE_TILES + 1] = 1;
+  const cache = new Map([
+    [chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 0 }), floor],
+    [chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 1 }), ceiling],
+  ]);
+
+  const shadows = computeCeilingShadowIds(0, 0, 0, cache);
+
+  assertEquals(shadows[0], 15);
 });
 
 Deno.test("computeVisibleChunks at origin with 1920x1080 viewport", () => {
