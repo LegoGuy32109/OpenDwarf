@@ -118,6 +118,65 @@ export function computeEdgeShadowIds(
   return result;
 }
 
+// Dual-grid edge shadow from precomputed visible surface elevations.
+// topmostOffset values are relative to viewZ: 0 is current level, negatives are
+// lower visible levels, and 127 means no visible solid in the depth stack.
+export function computeElevationEdgeShadowIds(
+  cx: number,
+  cy: number,
+  viewZ: number,
+  topmostOffsetCache: ReadonlyMap<string, Int8Array>,
+): Uint8Array {
+  const self = topmostOffsetCache.get(
+    chunkKeyString({ chunkX: cx, chunkY: cy, chunkZ: viewZ }),
+  );
+  const result = new Uint8Array(E * E);
+  if (!self) return result;
+
+  const nbE = topmostOffsetCache.get(
+    chunkKeyString({ chunkX: cx + 1, chunkY: cy, chunkZ: viewZ }),
+  );
+  const nbS = topmostOffsetCache.get(
+    chunkKeyString({ chunkX: cx, chunkY: cy + 1, chunkZ: viewZ }),
+  );
+  const nbSE = topmostOffsetCache.get(
+    chunkKeyString({ chunkX: cx + 1, chunkY: cy + 1, chunkZ: viewZ }),
+  );
+
+  const getOffset = (tx: number, ty: number): number => {
+    if (tx < E && ty < E) return self[ty * E + tx];
+    if (tx >= E && ty < E) return nbE ? nbE[ty * E] : 127;
+    if (tx < E) return nbS ? nbS[tx] : 127;
+    return nbSE ? nbSE[0] : 127;
+  };
+
+  for (let sy = 0; sy < E; sy++) {
+    for (let sx = 0; sx < E; sx++) {
+      const z00 = getOffset(sx, sy);
+      const z10 = getOffset(sx + 1, sy);
+      const z01 = getOffset(sx, sy + 1);
+      const z11 = getOffset(sx + 1, sy + 1);
+      const highest = Math.max(
+        z00 === 127 ? -128 : z00,
+        z10 === 127 ? -128 : z10,
+        z01 === 127 ? -128 : z01,
+        z11 === 127 ? -128 : z11,
+      );
+      if (highest === -128) continue;
+
+      let mask = 0;
+      if (z00 === highest) mask |= 1;
+      if (z10 === highest) mask |= 2;
+      if (z01 === highest) mask |= 4;
+      if (z11 === highest) mask |= 8;
+      if (mask > 0 && mask < 15) {
+        result[sy * E + sx] = shadowMaskToAtlasId(mask);
+      }
+    }
+  }
+  return result;
+}
+
 // Dual-grid ceiling shadow: shadow cell (sx,sy) samples the same 2×2 block.
 // A corner contributes when the block directly above it is solid, even if the
 // current viewZ tile is air. This intentionally differs from the Rust renderer

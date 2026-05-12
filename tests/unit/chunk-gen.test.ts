@@ -5,6 +5,7 @@ import {
   chunkKeyString,
   computeCeilingShadowIds,
   computeEdgeShadowIds,
+  computeElevationEdgeShadowIds,
   computeStreamingChunks,
   computeVisibleChunks,
   generateChunk,
@@ -102,6 +103,36 @@ Deno.test("computeEdgeShadowIds returns atlas ids with horizontal shadows on air
   const shadows = computeEdgeShadowIds(0, 0, 0, cache);
 
   assertEquals(shadows[0], 12);
+});
+
+Deno.test("computeElevationEdgeShadowIds casts from highest visible surface", () => {
+  const topmost = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(127);
+  topmost[0] = -1;
+  topmost[1] = -1;
+  topmost[CHUNK_EDGE_TILES] = -3;
+  topmost[CHUNK_EDGE_TILES + 1] = -3;
+  const cache = new Map([
+    [chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 0 }), topmost],
+  ]);
+
+  const shadows = computeElevationEdgeShadowIds(0, 0, 0, cache);
+
+  assertEquals(shadows[0], 12);
+});
+
+Deno.test("computeElevationEdgeShadowIds skips equal visible elevation", () => {
+  const topmost = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(127);
+  topmost[0] = -2;
+  topmost[1] = -2;
+  topmost[CHUNK_EDGE_TILES] = -2;
+  topmost[CHUNK_EDGE_TILES + 1] = -2;
+  const cache = new Map([
+    [chunkKeyString({ chunkX: 0, chunkY: 0, chunkZ: 0 }), topmost],
+  ]);
+
+  const shadows = computeElevationEdgeShadowIds(0, 0, 0, cache);
+
+  assertEquals(shadows[0], 0);
 });
 
 Deno.test("computeCeilingShadowIds emits filled mask when floor and ceiling are solid", () => {

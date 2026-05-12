@@ -4,7 +4,6 @@ import {
   CHUNK_EDGE_TILES,
   chunkKeyString,
   computeCeilingShadowIds,
-  computeEdgeShadowIds,
   computeStreamingChunks,
   computeVisibleChunks,
   FLOOR_FRAMES,
@@ -222,6 +221,9 @@ const TILE_TEXTURE_SRC = "/assets/sprites/StackedTextures.png";
 const SHADOW_TEXTURE_SRC = "/assets/atlases/ShadowAtlas.png";
 const CEIL_SHADOW_TEXTURE_SRC = "/assets/atlases/ObscureAtlas.png";
 const SHADOW_ALPHA_MULTIPLIER = 0.55;
+const EDGE_SEGMENT_DARK_ALPHA = 0.28;
+const EDGE_SEGMENT_LIGHT_ALPHA = 0.11;
+const EDGE_SEGMENT_BAND_PX = 4;
 let cameraSpeedPxPerS = 480;
 const STREAM_PADDING = 1;
 const MAX_STREAMING_CHUNKS = 64;
@@ -1363,6 +1365,7 @@ export default function WebGlGameCanvas() {
       uniform vec2 u_canvas_size;
       uniform vec2 u_camera;
       out vec2 v_uv;
+      out float v_instance_alpha;
 
       void main() {
         vec2 world_px = a_instance_offset + a_position * a_instance_size;
@@ -1370,6 +1373,7 @@ export default function WebGlGameCanvas() {
         vec2 ndc = (screen_px / u_canvas_size) * 2.0 - 1.0;
         gl_Position = vec4(ndc * vec2(1.0, -1.0), 0.0, 1.0);
         v_uv = a_uv * a_instance_uv.zw + a_instance_uv.xy;
+        v_instance_alpha = a_instance_uv.x;
       }
     `;
 
@@ -1380,12 +1384,15 @@ export default function WebGlGameCanvas() {
       uniform float u_alpha_multiplier;
       uniform int u_render_mode;
       in vec2 v_uv;
+      in float v_instance_alpha;
       out vec4 out_color;
 
       void main() {
         vec4 texel = texture(u_texture, v_uv);
         if (u_render_mode == 1) {
           out_color = vec4(0.0, 0.0, 0.0, texel.a * u_alpha_multiplier);
+        } else if (u_render_mode == 2) {
+          out_color = vec4(0.0, 0.0, 0.0, v_instance_alpha);
         } else {
           out_color = texel;
           out_color.rgb *= u_tint;
@@ -1739,8 +1746,20 @@ export default function WebGlGameCanvas() {
         // topmostOffset[idx] = z-offset (0 to -Z_LEVELS_BELOW) of topmost solid,
         // or 127 if no solid in the depth stack.
         const topmostOffsets = new Map<string, Int8Array>();
+        const topmostXY = new Map<string, { chunkX: number; chunkY: number }>();
         for (const vis of visibleXY) {
-          const chunkKey = chunkKeyString({ ...vis, chunkZ: viewZ });
+          for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+            const chunkX = vis.chunkX + dx;
+            const chunkY = vis.chunkY + dy;
+            topmostXY.set(`${chunkX},${chunkY}`, { chunkX, chunkY });
+          }
+        }
+        for (const vis of topmostXY.values()) {
+          const chunkKey = chunkKeyString({
+            chunkX: vis.chunkX,
+            chunkY: vis.chunkY,
+            chunkZ: viewZ,
+          });
           const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(
             127,
           );
@@ -1763,6 +1782,23 @@ export default function WebGlGameCanvas() {
           }
           topmostOffsets.set(chunkKey, tmo);
         }
+        const getTopmostOffset = (
+          chunkX: number,
+          chunkY: number,
+          tx: number,
+          ty: number,
+        ): number => {
+          const cx = chunkX + Math.floor(tx / CHUNK_EDGE_TILES);
+          const cy = chunkY + Math.floor(ty / CHUNK_EDGE_TILES);
+          const lx = ((tx % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
+            CHUNK_EDGE_TILES;
+          const ly = ((ty % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
+            CHUNK_EDGE_TILES;
+          const tmo = topmostOffsets.get(
+            chunkKeyString({ chunkX: cx, chunkY: cy, chunkZ: viewZ }),
+          );
+          return tmo ? tmo[ly * CHUNK_EDGE_TILES + lx] : 127;
+        };
 
         gl.disable(gl.BLEND);
         gl.bindTexture(gl.TEXTURE_2D, textureRef.current);
@@ -1821,36 +1857,116 @@ export default function WebGlGameCanvas() {
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.bindTexture(gl.TEXTURE_2D, shadowTextureRef.current!);
         if (tintLoc) gl.uniform3f(tintLoc, 1, 1, 1);
-        if (alphaMultiplierLoc) {
-          gl.uniform1f(alphaMultiplierLoc, SHADOW_ALPHA_MULTIPLIER);
-        }
-        if (renderModeLoc) gl.uniform1i(renderModeLoc, 1);
 
         if (layersRef.current.edgeShadow) {
           let count = 0;
-          for (const vis of visibleXY) {
-            const shadowIds = computeEdgeShadowIds(
-              vis.chunkX,
-              vis.chunkY,
-              viewZ,
-              solidCacheRef.current,
+          const addSegmentRect = (
+            x: number,
+            y: number,
+            w: number,
+            h: number,
+            alpha: number,
+          ) => {
+            if (count >= maxInstances) {
+              flushPass(count);
+              count = 0;
+            }
+            if (renderModeLoc) gl.uniform1i(renderModeLoc, 2);
+            const off = count * 8;
+            scratch[off + 0] = x;
+            scratch[off + 1] = y;
+            scratch[off + 2] = w;
+            scratch[off + 3] = h;
+            scratch[off + 4] = alpha;
+            scratch[off + 5] = 0;
+            scratch[off + 6] = 1;
+            scratch[off + 7] = 1;
+            count++;
+          };
+          const addVerticalShadow = (
+            edgeX: number,
+            topY: number,
+            lowerIsRight: boolean,
+          ) => {
+            const darkX = lowerIsRight ? edgeX : edgeX - EDGE_SEGMENT_BAND_PX;
+            const lightX = lowerIsRight
+              ? edgeX + EDGE_SEGMENT_BAND_PX
+              : edgeX - EDGE_SEGMENT_BAND_PX * 2;
+            addSegmentRect(
+              darkX,
+              topY,
+              EDGE_SEGMENT_BAND_PX,
+              TILE_SIZE_PX,
+              EDGE_SEGMENT_DARK_ALPHA,
             );
+            addSegmentRect(
+              lightX,
+              topY,
+              EDGE_SEGMENT_BAND_PX,
+              TILE_SIZE_PX,
+              EDGE_SEGMENT_LIGHT_ALPHA,
+            );
+          };
+          const addHorizontalShadow = (
+            leftX: number,
+            edgeY: number,
+            lowerIsDown: boolean,
+          ) => {
+            const darkY = lowerIsDown ? edgeY : edgeY - EDGE_SEGMENT_BAND_PX;
+            const lightY = lowerIsDown
+              ? edgeY + EDGE_SEGMENT_BAND_PX
+              : edgeY - EDGE_SEGMENT_BAND_PX * 2;
+            addSegmentRect(
+              leftX,
+              darkY,
+              TILE_SIZE_PX,
+              EDGE_SEGMENT_BAND_PX,
+              EDGE_SEGMENT_DARK_ALPHA,
+            );
+            addSegmentRect(
+              leftX,
+              lightY,
+              TILE_SIZE_PX,
+              EDGE_SEGMENT_BAND_PX,
+              EDGE_SEGMENT_LIGHT_ALPHA,
+            );
+          };
+
+          for (const vis of visibleXY) {
             const baseX = vis.chunkX * CHUNK_EDGE_TILES;
             const baseY = vis.chunkY * CHUNK_EDGE_TILES;
             for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
               for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
-                const mask = shadowIds[ty * CHUNK_EDGE_TILES + tx];
-                if (mask === 0) continue;
-                const off = count * 8;
-                scratch[off + 0] = (baseX + tx) * TILE_SIZE_PX + HALF;
-                scratch[off + 1] = (baseY + ty) * TILE_SIZE_PX + HALF;
-                scratch[off + 2] = TILE_SIZE_PX;
-                scratch[off + 3] = TILE_SIZE_PX;
-                scratch[off + 4] = 0;
-                scratch[off + 5] = (mask - 1) * INV_SHADOW;
-                scratch[off + 6] = 1;
-                scratch[off + 7] = INV_SHADOW;
-                count++;
+                const here = getTopmostOffset(vis.chunkX, vis.chunkY, tx, ty);
+                if (here === 127) continue;
+
+                const right = getTopmostOffset(
+                  vis.chunkX,
+                  vis.chunkY,
+                  tx + 1,
+                  ty,
+                );
+                if (right !== 127 && right !== here) {
+                  addVerticalShadow(
+                    (baseX + tx + 1) * TILE_SIZE_PX,
+                    (baseY + ty) * TILE_SIZE_PX,
+                    right < here,
+                  );
+                }
+
+                const down = getTopmostOffset(
+                  vis.chunkX,
+                  vis.chunkY,
+                  tx,
+                  ty + 1,
+                );
+                if (down !== 127 && down !== here) {
+                  addHorizontalShadow(
+                    (baseX + tx) * TILE_SIZE_PX,
+                    (baseY + ty + 1) * TILE_SIZE_PX,
+                    down < here,
+                  );
+                }
               }
             }
           }
