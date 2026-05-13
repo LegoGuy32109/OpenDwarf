@@ -30,17 +30,20 @@ import {
   type WorldSimState,
 } from "../lib/webgl-world-sim.ts";
 import {
-  createUiFontAtlas,
-  UI_FONT_SRC,
-  type UiFontAtlas,
-} from "./webgl-ui-text.ts";
-import {
   createVgaFontAtlas,
-  drawVgaTextLines,
+  VGA_FONT_SRC,
   type VgaFontAtlas,
-  vgaTextLineHeight,
-  vgaTextWidth,
 } from "./webgl-ui-text-vga.ts";
+import { TILE_FRAGMENT_SHADER, TILE_VERTEX_SHADER } from "./webgl/shaders.ts";
+import {
+  createAtlasTexture,
+  createInstancedQuadBuffers,
+  getTileUniformLocations,
+  uploadTexImage,
+  uploadWhiteTexture,
+} from "./webgl/gl-resources.ts";
+import { flushInstanceBatch } from "./webgl/render-batch.ts";
+import { renderVgaUi } from "./webgl/render-ui.ts";
 
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
@@ -320,10 +323,6 @@ const EDGE_SEGMENT_DARK_ALPHA = 0.28;
 const EDGE_SEGMENT_LIGHT_ALPHA = 0.11;
 const EDGE_SEGMENT_BAND_PX = 4;
 let cameraSpeedPxPerS = 480;
-const CAMERA_RETURN_PER_TICK = 0.08;
-const CHAT_BUBBLE_VISIBLE_TICKS = Math.round(5.0 * 60);
-const CHAT_BUBBLE_FADE_IN_TICKS = Math.round(0.2 * 60);
-const CHAT_BUBBLE_FADE_OUT_TICKS = Math.round(0.4 * 60);
 const STREAM_PADDING = 1;
 const MAX_STREAMING_CHUNKS = 64;
 const PLAYER_KEYS = new Set([
@@ -550,7 +549,6 @@ export default function WebGlGameCanvas() {
   const textureRef = useRef<WebGLTexture | null>(null);
   const shadowTextureRef = useRef<WebGLTexture | null>(null);
   const ceilShadowTextureRef = useRef<WebGLTexture | null>(null);
-  const uiFontAtlasRef = useRef<UiFontAtlas | null>(null);
   const vgaFontAtlasRef = useRef<VgaFontAtlas | null>(null);
   const instanceBufferRef = useRef<WebGLBuffer | null>(null);
   const vertexBufferRef = useRef<WebGLBuffer | null>(null);
@@ -619,7 +617,9 @@ export default function WebGlGameCanvas() {
   const fovDirtyRef = useRef(true);
   // Fix 2: topmostOffsets cache
   const topmostOffsetsCacheRef = useRef<Map<string, Int8Array>>(new Map());
-  const shadowVisibleXYCacheRef = useRef<Array<{ chunkX: number; chunkY: number }>>([]);
+  const shadowVisibleXYCacheRef = useRef<
+    Array<{ chunkX: number; chunkY: number }>
+  >([]);
   const topmostCacheDirtyRef = useRef(true);
   // Part 2 perf metrics
   const fpsHistoryRef = useRef<number[]>([]);
@@ -1119,7 +1119,11 @@ export default function WebGlGameCanvas() {
       pos.y !== sceneStateRef.current.player.tileY ||
       pos.z !== sceneStateRef.current.player.tileZ
     ) {
-      sceneStateRef.current.player = { tileX: pos.x, tileY: pos.y, tileZ: pos.z };
+      sceneStateRef.current.player = {
+        tileX: pos.x,
+        tileY: pos.y,
+        tileZ: pos.z,
+      };
       fovDirtyRef.current = true;
     }
   };
@@ -1154,10 +1158,16 @@ export default function WebGlGameCanvas() {
     // just-pressed: non-repeat keydowns since last tick, cleared after reading
     const jp = playerKeysJustPressedRef.current;
     const justPressedDir: Vec3i = {
-      x: (jp.has("KeyS") && !jp.has("KeyF")) ? -1
-        : (jp.has("KeyF") && !jp.has("KeyS")) ? 1 : 0,
-      y: (jp.has("KeyE") && !jp.has("KeyD")) ? -1
-        : (jp.has("KeyD") && !jp.has("KeyE")) ? 1 : 0,
+      x: (jp.has("KeyS") && !jp.has("KeyF"))
+        ? -1
+        : (jp.has("KeyF") && !jp.has("KeyS"))
+        ? 1
+        : 0,
+      y: (jp.has("KeyE") && !jp.has("KeyD"))
+        ? -1
+        : (jp.has("KeyD") && !jp.has("KeyE"))
+        ? 1
+        : 0,
       z: 0,
     };
     playerKeysJustPressedRef.current.clear();
@@ -1166,10 +1176,16 @@ export default function WebGlGameCanvas() {
     // held direction
     const h = playerKeysHeldRef.current;
     const heldDir: Vec3i = {
-      x: (h.has("KeyS") && !h.has("KeyF")) ? -1
-        : (h.has("KeyF") && !h.has("KeyS")) ? 1 : 0,
-      y: (h.has("KeyE") && !h.has("KeyD")) ? -1
-        : (h.has("KeyD") && !h.has("KeyE")) ? 1 : 0,
+      x: (h.has("KeyS") && !h.has("KeyF"))
+        ? -1
+        : (h.has("KeyF") && !h.has("KeyS"))
+        ? 1
+        : 0,
+      y: (h.has("KeyE") && !h.has("KeyD"))
+        ? -1
+        : (h.has("KeyD") && !h.has("KeyE"))
+        ? 1
+        : 0,
       z: 0,
     };
     const heldNonZero = heldDir.x !== 0 || heldDir.y !== 0;
@@ -1255,7 +1271,8 @@ export default function WebGlGameCanvas() {
       if (worldRef.current.visible.size > 0) {
         worldRef.current.visible = new Set();
         sceneStateRef.current.visibleTileCount = 0;
-        sceneStateRef.current.rememberedTileCount = worldRef.current.memory.size;
+        sceneStateRef.current.rememberedTileCount =
+          worldRef.current.memory.size;
       }
       return;
     }
@@ -1263,13 +1280,19 @@ export default function WebGlGameCanvas() {
       // Pass solidCacheRef as a fast O(1) lookup so recomputeFov avoids noise recomputation.
       // Returns undefined for uncached chunks; recomputeFov falls back to worldBlockAt.
       const solidCache = solidCacheRef.current;
-      const solidCheck = (x: number, y: number, z: number): boolean | undefined => {
+      const solidCheck = (
+        x: number,
+        y: number,
+        z: number,
+      ): boolean | undefined => {
         const { chunkX, chunkY } = chunkOfTile(x, y);
         const key = `${chunkX},${chunkY},${z}`;
         const chunk = solidCache.get(key);
         if (!chunk) return undefined;
-        const lx = ((x % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) % CHUNK_EDGE_TILES;
-        const ly = ((y % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) % CHUNK_EDGE_TILES;
+        const lx = ((x % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
+          CHUNK_EDGE_TILES;
+        const ly = ((y % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
+          CHUNK_EDGE_TILES;
         return chunk[ly * CHUNK_EDGE_TILES + lx] !== 0;
       };
       recomputeFov(worldRef.current, solidCheck);
@@ -1337,9 +1360,10 @@ export default function WebGlGameCanvas() {
     }
     // Rebuild pending queue: drop no-longer-wanted keys, add newly missing ones.
     const pendingSet = new Set(pendingChunkGenerationRef.current);
-    pendingChunkGenerationRef.current = pendingChunkGenerationRef.current.filter(
-      (k) => wanted.has(k),
-    );
+    pendingChunkGenerationRef.current = pendingChunkGenerationRef.current
+      .filter(
+        (k) => wanted.has(k),
+      );
     for (const key of wanted) {
       if (!solidCacheRef.current.has(key) && !pendingSet.has(key)) {
         pendingChunkGenerationRef.current.push(key);
@@ -1509,7 +1533,9 @@ export default function WebGlGameCanvas() {
               sk2d,
             );
             sceneStateRef.current.residentChunks = chunkCacheRef.current.size;
-            sceneStateRef.current.streamingChunks = [...chunkCacheRef.current.keys()];
+            sceneStateRef.current.streamingChunks = [
+              ...chunkCacheRef.current.keys(),
+            ];
           }
         }
 
@@ -1756,7 +1782,11 @@ export default function WebGlGameCanvas() {
           smoothPlayerWorldPosRef.current = null;
           simAccumulatorRef.current = 0;
           const player = worldPlayerSnapshot();
-          sceneStateRef.current.camera = { x: cam.x, y: cam.y, zoom: cam.zoom ?? 1 };
+          sceneStateRef.current.camera = {
+            x: cam.x,
+            y: cam.y,
+            zoom: cam.zoom ?? 1,
+          };
           sceneStateRef.current.player = player;
           sceneStateRef.current.viewMode = "entity";
           sceneStateRef.current.uiMode = "world";
@@ -1862,195 +1892,35 @@ export default function WebGlGameCanvas() {
 
     glRef.current = gl;
 
-    const vertexSource = `#version 300 es
-      precision highp float;
-      precision highp int;
-      in vec2 a_position;
-      in vec2 a_uv;
-      in vec2 a_instance_offset;
-      in vec2 a_instance_size;
-      in vec4 a_instance_uv;
-      uniform vec2 u_canvas_size;
-      uniform vec2 u_camera;
-      uniform float u_zoom;
-      uniform int u_render_mode;
-      out vec2 v_uv;
-      out float v_instance_alpha;
-
-      void main() {
-        vec2 world_px = a_instance_offset + a_position * a_instance_size;
-        vec2 screen_px = u_render_mode == 3
-          ? world_px
-          : (world_px - u_camera) * u_zoom + u_canvas_size * 0.5;
-        vec2 ndc = (screen_px / u_canvas_size) * 2.0 - 1.0;
-        gl_Position = vec4(ndc * vec2(1.0, -1.0), 0.0, 1.0);
-        v_uv = a_uv * a_instance_uv.zw + a_instance_uv.xy;
-        v_instance_alpha = a_instance_uv.x;
-      }
-    `;
-
-    const fragmentSource = `#version 300 es
-      precision highp float;
-      precision highp int;
-      uniform sampler2D u_texture;
-      uniform vec3 u_tint;
-      uniform float u_alpha_multiplier;
-      uniform int u_render_mode;
-      in vec2 v_uv;
-      in float v_instance_alpha;
-      out vec4 out_color;
-
-      void main() {
-        vec4 texel = texture(u_texture, v_uv);
-        if (u_render_mode == 1) {
-          out_color = vec4(0.0, 0.0, 0.0, texel.a * u_alpha_multiplier);
-        } else if (u_render_mode == 2) {
-          out_color = vec4(0.0, 0.0, 0.0, v_instance_alpha);
-        } else if (u_render_mode == 3) {
-          out_color = vec4(u_tint, texel.a * u_alpha_multiplier);
-        } else if (u_render_mode == 5) {
-          out_color = vec4(u_tint, u_alpha_multiplier);
-        } else {
-          out_color = texel;
-          out_color.rgb *= u_tint;
-        }
-      }
-    `;
-
-    const program = createProgram(gl, vertexSource, fragmentSource);
+    const program = createProgram(gl, TILE_VERTEX_SHADER, TILE_FRAGMENT_SHADER);
     programRef.current = program;
 
-    const vertexData = new Float32Array([
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      1,
-      0,
-      0,
-      1,
-      0,
-      1,
-      1,
-      1,
-      1,
-      1,
-    ]);
     // Instance data: 8 floats per tile (worldX, worldY, sizeW, sizeH, uvX, uvY, uvW, uvH)
     const maxInstances = MAX_STREAMING_CHUNKS * CHUNK_EDGE_TILES *
       CHUNK_EDGE_TILES;
     // Pre-allocated scratch buffer reused for every draw pass
     const scratch = new Float32Array(maxInstances * 8);
 
-    const vertexBuffer = gl.createBuffer();
-    if (!vertexBuffer) {
-      throw new Error("Failed to create vertex buffer");
-    }
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
-    vertexBufferRef.current = vertexBuffer;
-
-    const instanceBuffer = gl.createBuffer();
-    if (!instanceBuffer) {
-      throw new Error("Failed to create instance buffer");
-    }
-    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      maxInstances * 8 * Float32Array.BYTES_PER_ELEMENT,
-      gl.DYNAMIC_DRAW,
+    const { vertexBuffer, instanceBuffer } = createInstancedQuadBuffers(
+      gl,
+      program,
+      maxInstances,
     );
+    vertexBufferRef.current = vertexBuffer;
     instanceBufferRef.current = instanceBuffer;
 
-    gl.useProgram(program);
-    gl.clearColor(0.08, 0.09, 0.11, 1.0);
-
-    const positionLocation = gl.getAttribLocation(program, "a_position");
-    const uvLocation = gl.getAttribLocation(program, "a_uv");
-    const instanceOffsetLocation = gl.getAttribLocation(
-      program,
-      "a_instance_offset",
-    );
-    const instanceSizeLocation = gl.getAttribLocation(
-      program,
-      "a_instance_size",
-    );
-    const instanceUvLocation = gl.getAttribLocation(program, "a_instance_uv");
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.enableVertexAttribArray(positionLocation);
-    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 16, 0);
-    gl.enableVertexAttribArray(uvLocation);
-    gl.vertexAttribPointer(uvLocation, 2, gl.FLOAT, false, 16, 8);
-
-    // Instance buffer stride: 8 floats × 4 bytes = 32 bytes
-    gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
-    gl.enableVertexAttribArray(instanceOffsetLocation);
-    gl.vertexAttribPointer(instanceOffsetLocation, 2, gl.FLOAT, false, 32, 0);
-    gl.vertexAttribDivisor(instanceOffsetLocation, 1);
-    gl.enableVertexAttribArray(instanceSizeLocation);
-    gl.vertexAttribPointer(instanceSizeLocation, 2, gl.FLOAT, false, 32, 8);
-    gl.vertexAttribDivisor(instanceSizeLocation, 1);
-    if (instanceUvLocation >= 0) {
-      gl.enableVertexAttribArray(instanceUvLocation);
-      gl.vertexAttribPointer(instanceUvLocation, 4, gl.FLOAT, false, 32, 16);
-      gl.vertexAttribDivisor(instanceUvLocation, 1);
-    }
-
-    // Create all three atlas textures
-    const createAtlasTexture = (): WebGLTexture => {
-      const tex = gl.createTexture();
-      if (!tex) throw new Error("Failed to create texture");
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      return tex;
-    };
-    const floorTex = createAtlasTexture();
-    const shadowTex = createAtlasTexture();
-    const ceilShadowTex = createAtlasTexture();
-    const playerTex = createAtlasTexture();
-    const whiteTex = createAtlasTexture();
+    // Create all atlas textures
+    const floorTex = createAtlasTexture(gl);
+    const shadowTex = createAtlasTexture(gl);
+    const ceilShadowTex = createAtlasTexture(gl);
+    const playerTex = createAtlasTexture(gl);
+    const whiteTex = createAtlasTexture(gl);
     textureRef.current = floorTex;
     shadowTextureRef.current = shadowTex;
     ceilShadowTextureRef.current = ceilShadowTex;
     whiteTextureRef.current = whiteTex;
 
     let viewZ = 0;
-
-    const uploadTexImage = (tex: WebGLTexture, img: HTMLImageElement) => {
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    };
-
-    const uploadWhiteTexture = (tex: WebGLTexture) => {
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        1,
-        1,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        new Uint8Array([255, 255, 255, 255]),
-      );
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    };
 
     const loadTextures = async () => {
       const loadImg = (src: string) => {
@@ -2059,27 +1929,24 @@ export default function WebGlGameCanvas() {
         img.src = src;
         return img.decode().then(() => img);
       };
-      const [floorImg, shadowImg, ceilImg, playerImg, uiFontAtlas] =
-        await Promise.all([
-          loadImg(TILE_TEXTURE_SRC),
-          loadImg(SHADOW_TEXTURE_SRC),
-          loadImg(CEIL_SHADOW_TEXTURE_SRC),
-          loadImg(PLAYER_TEXTURE_SRC),
-          createUiFontAtlas(gl),
-        ]);
+      const [floorImg, shadowImg, ceilImg, playerImg] = await Promise.all([
+        loadImg(TILE_TEXTURE_SRC),
+        loadImg(SHADOW_TEXTURE_SRC),
+        loadImg(CEIL_SHADOW_TEXTURE_SRC),
+        loadImg(PLAYER_TEXTURE_SRC),
+      ]);
 
-      uploadTexImage(floorTex, floorImg);
-      uploadTexImage(shadowTex, shadowImg);
-      uploadTexImage(ceilShadowTex, ceilImg);
-      uploadTexImage(playerTex, playerImg);
-      uploadWhiteTexture(whiteTex);
+      uploadTexImage(gl, floorTex, floorImg);
+      uploadTexImage(gl, shadowTex, shadowImg);
+      uploadTexImage(gl, ceilShadowTex, ceilImg);
+      uploadTexImage(gl, playerTex, playerImg);
+      uploadWhiteTexture(gl, whiteTex);
       playerTextureRef.current = playerTex;
       playerTextureInfoRef.current = {
         src: PLAYER_TEXTURE_SRC,
         width: playerImg.naturalWidth,
         height: playerImg.naturalHeight,
       };
-      uiFontAtlasRef.current = uiFontAtlas;
       try {
         vgaFontAtlasRef.current = await createVgaFontAtlas(gl);
       } catch (error) {
@@ -2124,7 +1991,7 @@ export default function WebGlGameCanvas() {
         SHADOW_TEXTURE_SRC,
         CEIL_SHADOW_TEXTURE_SRC,
         PLAYER_TEXTURE_SRC,
-        UI_FONT_SRC,
+        VGA_FONT_SRC,
       ];
       sceneStateRef.current.residentChunks = skLoad.length;
       sceneStateRef.current.streamingChunks = skLoad.map((k) =>
@@ -2208,7 +2075,9 @@ export default function WebGlGameCanvas() {
 
       // Smooth player render position — mirrors Rust's smooth_player_render_transform.
       // Runs every render frame (not per sim tick) so the ease is frame-rate independent.
-      const [spTargetX, spTargetY] = entityRenderPosition(worldRef.current.entity);
+      const [spTargetX, spTargetY] = entityRenderPosition(
+        worldRef.current.entity,
+      );
       if (!smoothPlayerWorldPosRef.current) {
         smoothPlayerWorldPosRef.current = [spTargetX, spTargetY];
       } else {
@@ -2257,7 +2126,11 @@ export default function WebGlGameCanvas() {
               const [cx, cy, cz] = key.split(",").map(Number);
               solidCacheRef.current.set(
                 key,
-                generateWorldSolidChunk(seed, { chunkX: cx, chunkY: cy, chunkZ: cz }),
+                generateWorldSolidChunk(seed, {
+                  chunkX: cx,
+                  chunkY: cy,
+                  chunkZ: cz,
+                }),
               );
             }
           }
@@ -2284,23 +2157,20 @@ export default function WebGlGameCanvas() {
         }
       }
 
-      let drawCalls = 0;
-      let totalInstances = 0;
+      const batchStats = { drawCalls: 0, instances: 0 };
       gl.useProgram(programRef.current);
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
-      const prog = programRef.current;
-      const canvasSizeLoc = gl.getUniformLocation(prog, "u_canvas_size");
-      const cameraLoc = gl.getUniformLocation(prog, "u_camera");
-      const zoomLoc = gl.getUniformLocation(prog, "u_zoom");
-      const textureLoc = gl.getUniformLocation(prog, "u_texture");
-      const tintLoc = gl.getUniformLocation(prog, "u_tint");
-      const alphaMultiplierLoc = gl.getUniformLocation(
-        prog,
-        "u_alpha_multiplier",
-      );
-      const renderModeLoc = gl.getUniformLocation(prog, "u_render_mode");
+      const {
+        canvasSizeLoc,
+        cameraLoc,
+        zoomLoc,
+        textureLoc,
+        tintLoc,
+        alphaMultiplierLoc,
+        renderModeLoc,
+      } = getTileUniformLocations(gl, programRef.current);
 
       if (canvasSizeLoc) {
         gl.uniform2f(canvasSizeLoc, canvas.width, canvas.height);
@@ -2319,18 +2189,30 @@ export default function WebGlGameCanvas() {
       if (textureLoc) gl.uniform1i(textureLoc, 0);
 
       // Fix 8: uniform state tracking to avoid redundant gl calls
-      let curRenderMode = -1, curTintR = -1, curTintG = -1, curTintB = -1, curAlpha = -1;
+      let curRenderMode = -1,
+        curTintR = -1,
+        curTintG = -1,
+        curTintB = -1,
+        curAlpha = -1;
       const setRenderMode = (m: number) => {
-        if (m !== curRenderMode) { if (renderModeLoc) gl.uniform1i(renderModeLoc, m); curRenderMode = m; }
+        if (m !== curRenderMode) {
+          if (renderModeLoc) gl.uniform1i(renderModeLoc, m);
+          curRenderMode = m;
+        }
       };
       const setTint = (r: number, g: number, b: number) => {
         if (r !== curTintR || g !== curTintG || b !== curTintB) {
           if (tintLoc) gl.uniform3f(tintLoc, r, g, b);
-          curTintR = r; curTintG = g; curTintB = b;
+          curTintR = r;
+          curTintG = g;
+          curTintB = b;
         }
       };
       const setAlpha = (a: number) => {
-        if (a !== curAlpha) { if (alphaMultiplierLoc) gl.uniform1f(alphaMultiplierLoc, a); curAlpha = a; }
+        if (a !== curAlpha) {
+          if (alphaMultiplierLoc) gl.uniform1f(alphaMultiplierLoc, a);
+          curAlpha = a;
+        }
       };
 
       const visibleXY = computeVisibleChunks(
@@ -2341,7 +2223,9 @@ export default function WebGlGameCanvas() {
       const visibleChunkKeys = visibleXY
         .map((k) => ({ k, key: chunkKeyString({ ...k, chunkZ: viewZ }) }))
         .filter(({ key }) => chunkCacheRef.current.has(key));
-      sceneStateRef.current.visibleChunks = visibleChunkKeys.map(({ key }) => key);
+      sceneStateRef.current.visibleChunks = visibleChunkKeys.map(({ key }) =>
+        key
+      );
 
       // Fix 2: only rebuild shadowVisibleXY when cache is dirty
       if (topmostCacheDirtyRef.current) {
@@ -2435,15 +2319,15 @@ export default function WebGlGameCanvas() {
         // Stone tile atlas frame index (matches stone_tile_index() in Rust)
         const STONE_FRAME_UV = 5 * INV_FLOOR;
 
-        // Helper: upload scratch[0..count*8] and draw instanced
-        const flushPass = (count: number) => {
-          if (count === 0) return;
-          gl.bindBuffer(gl.ARRAY_BUFFER, instanceBufferRef.current!);
-          gl.bufferSubData(gl.ARRAY_BUFFER, 0, scratch.subarray(0, count * 8));
-          gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
-          drawCalls++;
-          totalInstances += count;
-        };
+        // Helper: upload scratch[0..count*8] and draw instanced.
+        const flushPass = (count: number) =>
+          flushInstanceBatch(
+            gl,
+            instanceBufferRef.current!,
+            scratch,
+            count,
+            batchStats,
+          );
 
         // --- FLOOR PASSES: z = viewZ-Z_LEVELS_BELOW (back) → viewZ (front) ---
         // Pre-compute topmost visible solid z-offset per tile per chunk.
@@ -2451,9 +2335,17 @@ export default function WebGlGameCanvas() {
         // or 127 if no solid in the depth stack.
         // Fix 2: cache topmostOffsets — only recompute when dirty
         if (topmostCacheDirtyRef.current) {
-          const topmostXY = new Map<string, { chunkX: number; chunkY: number }>();
+          const topmostXY = new Map<
+            string,
+            { chunkX: number; chunkY: number }
+          >();
           for (const vis of shadowVisibleXY) {
-            for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as [number, number][]) {
+            for (
+              const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as [
+                number,
+                number,
+              ][]
+            ) {
               const chunkX = vis.chunkX + dx;
               const chunkY = vis.chunkY + dy;
               topmostXY.set(`${chunkX},${chunkY}`, { chunkX, chunkY });
@@ -2466,12 +2358,16 @@ export default function WebGlGameCanvas() {
               chunkY: vis.chunkY,
               chunkZ: viewZ,
             });
-            const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(127);
+            const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(
+              127,
+            );
             for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
               for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
                 const idx = ty * CHUNK_EDGE_TILES + tx;
                 for (let zo = 0; zo >= -Z_LEVELS_BELOW; zo--) {
-                  if (renderSolidAt(vis.chunkX, vis.chunkY, tx, ty, viewZ + zo)) {
+                  if (
+                    renderSolidAt(vis.chunkX, vis.chunkY, tx, ty, viewZ + zo)
+                  ) {
                     tmo[idx] = zo;
                     break;
                   }
@@ -2838,193 +2734,52 @@ export default function WebGlGameCanvas() {
 
         // --- VGA FONT PASS: chat input + spoken bubbles ---
         if (vgaFontAtlasRef.current) {
-          const vgaAtlas = vgaFontAtlasRef.current;
-          const drawVga = (
-            text: string,
-            x: number,
-            y: number,
-            rgb: [number, number, number],
-            alpha = 1,
-            scale?: number,
-          ) => {
-            drawVgaTextLines(
-              {
-                gl,
-                fontAtlas: vgaAtlas,
-                scratch,
-                maxInstances,
-                flushPass,
-                tintLoc,
-                alphaMultiplierLoc,
-                renderModeLoc,
-              },
-              text,
-              x,
-              y,
-              rgb,
-              alpha,
-              scale,
-            );
-          };
-          // Scale so the rendered glyph height matches the original ~21px chat line height.
-          const chatScale = 2;
-          const vgaLineH = vgaTextLineHeight(vgaAtlas, chatScale);
-          const vgaW = (text: string) => vgaTextWidth(vgaAtlas, text, chatScale);
-          const vgaPad = 6;
-
-          if (uiOverlayVisibleRef.current) {
-            const cap = capabilityStateRef.current;
-            const preview = replayPreviewRef.current;
-            const avgFps = fpsHistoryRef.current.length > 0
-              ? Math.round(fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length)
-              : 0;
-            const loadedTiles = solidCacheRef.current.size * CHUNK_EDGE_TILES * CHUNK_EDGE_TILES;
-            const visibleTiles = viewModeRef.current === "entity" ? worldRef.current.visible.size : 0;
-            const cam = sceneStateRef.current.camera;
-            const overlayScale = 1;
-            const overlayLineH = vgaTextLineHeight(vgaAtlas, overlayScale);
-            const drawVgaLines = (
-              lines: string[],
-              x: number,
-              y: number,
-              rgb: [number, number, number],
-              alpha = 1,
-            ) => {
-              for (let i = 0; i < lines.length; i++) {
-                drawVga(
-                  lines[i],
-                  x,
-                  y + i * overlayLineH,
-                  rgb,
-                  alpha,
-                  overlayScale,
-                );
-              }
-            };
-            const statusLines = [
-              `[1] ui:on [6] floor:${
-                layersRef.current.floor ? "on" : "OFF"
-              } [7] edge:${layersRef.current.edgeShadow ? "on" : "OFF"
-              } [8] ceil:${layersRef.current.ceilShadow ? "on" : "OFF"
-              } [9] tint:${layersRef.current.depthTint ? "on" : "OFF"}`,
-              `framebuffer: ${cap?.framebufferSize.width ?? 0} x ${
-                cap?.framebufferSize.height ?? 0
-              }`,
-              `replay:${preview.eventCount} tex:${preview.textureCount} shots:${preview.screenshotCount} checks:${preview.checkpointCount}`,
-              `fps: ${avgFps}  sim: ${simTpsDisplayRef.current}tps`,
-              `tiles: ${loadedTiles} loaded  ${visibleTiles} visible`,
-              `draws: ${frameDrawCallsRef.current}  instances: ${frameInstancesRef.current}`,
-              `cam x:${(cam.x / TILE_SIZE_PX).toFixed(1)} y:${(cam.y / TILE_SIZE_PX).toFixed(1)} z:${viewZ} zoom:${cam.zoom.toFixed(2)}`,
-            ];
-            drawVgaLines(statusLines, 32, 28, [1.0, 0.86, 0.56], 0.95);
-
-            const logLines = logsRef.current.length === 0
-              ? ["waiting for resize or fullscreen..."]
-              : ["EVENT LOG", ...logsRef.current.slice(0, 7)];
-            const logW = Math.min(560, canvas.width - 32);
-            drawVgaLines(
-              logLines,
-              canvas.width - logW,
-              canvas.height - 202,
-              [0.82, 0.9, 1.0],
-              0.88,
-            );
-
-            const checkpoints = checkpointRecordsRef.current.slice(-6)
-              .reverse();
-            const checkpointLines = checkpoints.length === 0
-              ? ["CHECKPOINTS", "no checkpoints captured yet"]
-              : [
-                "CHECKPOINTS",
-                ...checkpoints.map((entry) =>
-                  `${String(entry.ordinal).padStart(3, "0")} ${entry.name} ${
-                    entry.baselineConfigured ? "base" : "new"
-                  }`
-                ),
-              ];
-            drawVgaLines(
-              checkpointLines,
-              32,
-              canvas.height - 162,
-              [0.7, 1.0, 0.82],
-              0.88,
-            );
-          }
-
-          // Chat input panel + typed text
-          const bubbleText = sceneStateRef.current.uiMode === "chat"
-            ? `${sceneStateRef.current.chatBuffer}_`
-            : "";
-          if (bubbleText.length > 0 && whiteTextureRef.current) {
-            const panelW = Math.min(vgaW(bubbleText) + vgaPad * 2, canvas.width - 40);
-            const panelH = vgaLineH + vgaPad * 2;
-            const panelY = canvas.height - panelH - 18;
-            const panelX = 20;
-            setRenderMode(5);
-            setTint(0.1725, 0.1725, 0.1725);
-            setAlpha(0.65);
-            scratch[0] = panelX; scratch[1] = panelY;
-            scratch[2] = panelW; scratch[3] = panelH;
-            scratch[4] = 1; scratch[5] = 0;
-            scratch[6] = 1; scratch[7] = 1;
-            flushPass(1);
-            drawVga(bubbleText, panelX + vgaPad, panelY + vgaPad, [0.98, 0.95, 0.88], 1, chatScale);
-          }
-
-          // Spoken word bubbles
-          const playerScreenX = (sceneStateRef.current.player.tileX + 0.5) *
-              TILE_SIZE_PX -
-            sceneStateRef.current.camera.x +
-            canvas.width * 0.5;
-          const playerScreenY = (sceneStateRef.current.player.tileY + 0.5) *
-              TILE_SIZE_PX -
-            sceneStateRef.current.camera.y +
-            canvas.height * 0.5;
-          const liveBubbles = chatBubblesRef.current
-            .map((bubble) => ({ ...bubble, age: simTickRef.current - bubble.tick }))
-            .filter((bubble) =>
-              bubble.age <= CHAT_BUBBLE_FADE_IN_TICKS +
-                CHAT_BUBBLE_VISIBLE_TICKS +
-                CHAT_BUBBLE_FADE_OUT_TICKS
-            )
-            .sort((a, b) => b.tick - a.tick);
-          chatBubblesRef.current = liveBubbles.map(({ age: _age, ...bubble }) => bubble);
-          let bubbleOffsetY = 30;
-          for (const bubble of liveBubbles) {
-            const fadeOutStart = CHAT_BUBBLE_FADE_IN_TICKS + CHAT_BUBBLE_VISIBLE_TICKS;
-            const alpha = bubble.age < CHAT_BUBBLE_FADE_IN_TICKS
-              ? bubble.age / CHAT_BUBBLE_FADE_IN_TICKS
-              : bubble.age > fadeOutStart
-              ? 1 - (bubble.age - fadeOutStart) / CHAT_BUBBLE_FADE_OUT_TICKS
-              : 1;
-            const msgW = Math.min(vgaW(bubble.message), canvas.width - 32);
-            const bubbleW = msgW + vgaPad * 2;
-            const bubbleH = vgaLineH + vgaPad * 2;
-            const bubbleX = Math.max(8, Math.min(playerScreenX - bubbleW * 0.5, canvas.width - bubbleW - 8));
-            const bubbleY = Math.max(8, playerScreenY - bubbleOffsetY - bubbleH);
-            if (whiteTextureRef.current) {
-              setRenderMode(5);
-              setTint(0.1, 0.1, 0.1);
-              setAlpha(0.55 * alpha);
-              scratch[0] = bubbleX; scratch[1] = bubbleY;
-              scratch[2] = bubbleW; scratch[3] = bubbleH;
-              scratch[4] = 1; scratch[5] = 0;
-              scratch[6] = 1; scratch[7] = 1;
-              flushPass(1);
-            }
-            drawVga(bubble.message, bubbleX + vgaPad, bubbleY + vgaPad, [1, 1, 1], alpha, chatScale);
-            bubbleOffsetY += bubbleH + 8;
-          }
+          renderVgaUi({
+            gl,
+            canvas,
+            vgaAtlas: vgaFontAtlasRef.current,
+            whiteTexture: whiteTextureRef.current,
+            scratch,
+            maxInstances,
+            flushPass,
+            tintLoc,
+            alphaMultiplierLoc,
+            renderModeLoc,
+            setRenderMode,
+            setTint,
+            setAlpha,
+            sceneState: sceneStateRef.current,
+            uiOverlayVisible: uiOverlayVisibleRef.current,
+            capability: capabilityStateRef.current,
+            replayPreview: replayPreviewRef.current,
+            fpsHistory: fpsHistoryRef.current,
+            simTpsDisplay: simTpsDisplayRef.current,
+            solidChunkCount: solidCacheRef.current.size,
+            visibleTileCount: viewModeRef.current === "entity"
+              ? worldRef.current.visible.size
+              : 0,
+            layers: layersRef.current,
+            viewMode: viewModeRef.current,
+            viewZ,
+            frameDrawCalls: frameDrawCallsRef.current,
+            frameInstances: frameInstancesRef.current,
+            logs: logsRef.current,
+            checkpoints: checkpointRecordsRef.current,
+            chatBubbles: chatBubblesRef.current,
+            simTick: simTickRef.current,
+            setChatBubbles: (bubbles) => {
+              chatBubblesRef.current = bubbles;
+            },
+          });
         }
-
         gl.disable(gl.BLEND);
       }
 
-      frameDrawCallsRef.current = drawCalls;
-      frameInstancesRef.current = totalInstances;
+      frameDrawCallsRef.current = batchStats.drawCalls;
+      frameInstancesRef.current = batchStats.instances;
       frameMetricsRef.current.push({
         cpuMs: performance.now() - t0,
-        drawCalls,
+        drawCalls: batchStats.drawCalls,
         uploadBytes: 0,
         visibleChunks: sceneStateRef.current.visibleChunks.length,
       });
@@ -3181,7 +2936,10 @@ export default function WebGlGameCanvas() {
         const next = event.code === "KeyU"
           ? ZOOM_LEVELS[Math.max(0, idx - 1)]
           : ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)];
-        sceneStateRef.current.camera = { ...sceneStateRef.current.camera, zoom: next };
+        sceneStateRef.current.camera = {
+          ...sceneStateRef.current.camera,
+          zoom: next,
+        };
         appendLog(`zoom: ${next}`);
       }
       if (event.code === "Digit6") {
@@ -3254,7 +3012,11 @@ export default function WebGlGameCanvas() {
         const cam = descriptor.camera ?? { x: 0, y: 0, zoom: 1 };
         worldRef.current = createWorldSim(descriptor.seed);
         const player = worldPlayerSnapshot();
-        sceneStateRef.current.camera = { x: cam.x, y: cam.y, zoom: cam.zoom ?? 1 };
+        sceneStateRef.current.camera = {
+          x: cam.x,
+          y: cam.y,
+          zoom: cam.zoom ?? 1,
+        };
         sceneStateRef.current.player = player;
         sceneStateRef.current.viewMode = "entity";
         sceneStateRef.current.uiMode = "world";
