@@ -31,10 +31,8 @@ import {
 } from "../lib/webgl-world-sim.ts";
 import {
   createUiFontAtlas,
-  drawUiTextLines,
   UI_FONT_SRC,
   type UiFontAtlas,
-  uiTextLineHeight,
 } from "./webgl-ui-text.ts";
 import {
   createVgaFontAtlas,
@@ -2838,121 +2836,6 @@ export default function WebGlGameCanvas() {
           }
         }
 
-        // --- WEBGL UI PASS ---
-        if (uiFontAtlasRef.current) {
-          const fontAtlas = uiFontAtlasRef.current;
-          const drawText = (
-            text: string,
-            x: number,
-            y: number,
-            rgb: [number, number, number],
-            alpha = 1,
-          ) => {
-            drawUiTextLines(
-              {
-                gl,
-                fontAtlas,
-                scratch,
-                maxInstances,
-                flushPass,
-                tintLoc,
-                alphaMultiplierLoc,
-                renderModeLoc,
-              },
-              text,
-              x,
-              y,
-              rgb,
-              alpha,
-            );
-          };
-          const drawLines = (
-            lines: string[],
-            x: number,
-            y: number,
-            rgb: [number, number, number],
-            alpha = 1,
-          ) => {
-            for (let i = 0; i < lines.length; i++) {
-              drawText(
-                lines[i],
-                x,
-                y + i * uiTextLineHeight(fontAtlas),
-                rgb,
-                alpha,
-              );
-            }
-          };
-          if (uiOverlayVisibleRef.current) {
-            const cap = capabilityStateRef.current;
-            const preview = replayPreviewRef.current;
-            // Part 2: compute rolling FPS average
-            const avgFps = fpsHistoryRef.current.length > 0
-              ? Math.round(fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length)
-              : 0;
-            const loadedTiles = solidCacheRef.current.size * CHUNK_EDGE_TILES * CHUNK_EDGE_TILES;
-            const visibleTiles = viewModeRef.current === "entity" ? worldRef.current.visible.size : 0;
-            const cam = sceneStateRef.current.camera;
-            const statusLines = [
-              `[1] ui:on [6] floor:${
-                layersRef.current.floor ? "on" : "OFF"
-              } [7] edge:${layersRef.current.edgeShadow ? "on" : "OFF"
-              } [8] ceil:${layersRef.current.ceilShadow ? "on" : "OFF"
-              } [9] tint:${layersRef.current.depthTint ? "on" : "OFF"}`,
-              `framebuffer: ${cap?.framebufferSize.width ?? 0} x ${
-                cap?.framebufferSize.height ?? 0
-              }`,
-              `replay:${preview.eventCount} tex:${preview.textureCount} shots:${preview.screenshotCount} checks:${preview.checkpointCount}`,
-              `fps: ${avgFps}  sim: ${simTpsDisplayRef.current}tps`,
-              `tiles: ${loadedTiles} loaded  ${visibleTiles} visible`,
-              `draws: ${frameDrawCallsRef.current}  instances: ${frameInstancesRef.current}`,
-              `cam x:${(cam.x / TILE_SIZE_PX).toFixed(1)} y:${(cam.y / TILE_SIZE_PX).toFixed(1)} z:${viewZ} zoom:${cam.zoom.toFixed(2)}`,
-            ];
-            drawLines(statusLines, 32, 28, [1.0, 0.86, 0.56], 0.95);
-
-            const logLines = logsRef.current.length === 0
-              ? ["waiting for resize or fullscreen..."]
-              : ["EVENT LOG", ...logsRef.current.slice(0, 7)];
-            const logW = Math.min(560, canvas.width - 32);
-            drawLines(
-              logLines,
-              canvas.width - logW,
-              canvas.height - 202,
-              [0.82, 0.9, 1.0],
-              0.88,
-            );
-
-            const checkpoints = checkpointRecordsRef.current.slice(-6)
-              .reverse();
-            const checkpointLines = checkpoints.length === 0
-              ? ["CHECKPOINTS", "no checkpoints captured yet"]
-              : [
-                "CHECKPOINTS",
-                ...checkpoints.map((entry) =>
-                  `${String(entry.ordinal).padStart(3, "0")} ${entry.name} ${
-                    entry.baselineConfigured ? "base" : "new"
-                  }`
-                ),
-              ];
-            drawLines(
-              checkpointLines,
-              32,
-              canvas.height - 162,
-              [0.7, 1.0, 0.82],
-              0.88,
-            );
-          }
-
-          const playerScreenX = (sceneStateRef.current.player.tileX + 0.5) *
-              TILE_SIZE_PX -
-            sceneStateRef.current.camera.x +
-            canvas.width * 0.5;
-          const playerScreenY = (sceneStateRef.current.player.tileY + 0.5) *
-              TILE_SIZE_PX -
-            sceneStateRef.current.camera.y +
-            canvas.height * 0.5;
-        }
-
         // --- VGA FONT PASS: chat input + spoken bubbles ---
         if (vgaFontAtlasRef.current) {
           const vgaAtlas = vgaFontAtlasRef.current;
@@ -2988,6 +2871,85 @@ export default function WebGlGameCanvas() {
           const vgaLineH = vgaTextLineHeight(vgaAtlas, chatScale);
           const vgaW = (text: string) => vgaTextWidth(vgaAtlas, text, chatScale);
           const vgaPad = 6;
+
+          if (uiOverlayVisibleRef.current) {
+            const cap = capabilityStateRef.current;
+            const preview = replayPreviewRef.current;
+            const avgFps = fpsHistoryRef.current.length > 0
+              ? Math.round(fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length)
+              : 0;
+            const loadedTiles = solidCacheRef.current.size * CHUNK_EDGE_TILES * CHUNK_EDGE_TILES;
+            const visibleTiles = viewModeRef.current === "entity" ? worldRef.current.visible.size : 0;
+            const cam = sceneStateRef.current.camera;
+            const overlayScale = 1;
+            const overlayLineH = vgaTextLineHeight(vgaAtlas, overlayScale);
+            const drawVgaLines = (
+              lines: string[],
+              x: number,
+              y: number,
+              rgb: [number, number, number],
+              alpha = 1,
+            ) => {
+              for (let i = 0; i < lines.length; i++) {
+                drawVga(
+                  lines[i],
+                  x,
+                  y + i * overlayLineH,
+                  rgb,
+                  alpha,
+                  overlayScale,
+                );
+              }
+            };
+            const statusLines = [
+              `[1] ui:on [6] floor:${
+                layersRef.current.floor ? "on" : "OFF"
+              } [7] edge:${layersRef.current.edgeShadow ? "on" : "OFF"
+              } [8] ceil:${layersRef.current.ceilShadow ? "on" : "OFF"
+              } [9] tint:${layersRef.current.depthTint ? "on" : "OFF"}`,
+              `framebuffer: ${cap?.framebufferSize.width ?? 0} x ${
+                cap?.framebufferSize.height ?? 0
+              }`,
+              `replay:${preview.eventCount} tex:${preview.textureCount} shots:${preview.screenshotCount} checks:${preview.checkpointCount}`,
+              `fps: ${avgFps}  sim: ${simTpsDisplayRef.current}tps`,
+              `tiles: ${loadedTiles} loaded  ${visibleTiles} visible`,
+              `draws: ${frameDrawCallsRef.current}  instances: ${frameInstancesRef.current}`,
+              `cam x:${(cam.x / TILE_SIZE_PX).toFixed(1)} y:${(cam.y / TILE_SIZE_PX).toFixed(1)} z:${viewZ} zoom:${cam.zoom.toFixed(2)}`,
+            ];
+            drawVgaLines(statusLines, 32, 28, [1.0, 0.86, 0.56], 0.95);
+
+            const logLines = logsRef.current.length === 0
+              ? ["waiting for resize or fullscreen..."]
+              : ["EVENT LOG", ...logsRef.current.slice(0, 7)];
+            const logW = Math.min(560, canvas.width - 32);
+            drawVgaLines(
+              logLines,
+              canvas.width - logW,
+              canvas.height - 202,
+              [0.82, 0.9, 1.0],
+              0.88,
+            );
+
+            const checkpoints = checkpointRecordsRef.current.slice(-6)
+              .reverse();
+            const checkpointLines = checkpoints.length === 0
+              ? ["CHECKPOINTS", "no checkpoints captured yet"]
+              : [
+                "CHECKPOINTS",
+                ...checkpoints.map((entry) =>
+                  `${String(entry.ordinal).padStart(3, "0")} ${entry.name} ${
+                    entry.baselineConfigured ? "base" : "new"
+                  }`
+                ),
+              ];
+            drawVgaLines(
+              checkpointLines,
+              32,
+              canvas.height - 162,
+              [0.7, 1.0, 0.82],
+              0.88,
+            );
+          }
 
           // Chat input panel + typed text
           const bubbleText = sceneStateRef.current.uiMode === "chat"
