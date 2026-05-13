@@ -1897,15 +1897,10 @@ export default function WebGlGameCanvas() {
       uniform sampler2D u_texture;
       uniform vec3 u_tint;
       uniform float u_alpha_multiplier;
-      uniform float u_msdf_px_range;
       uniform int u_render_mode;
       in vec2 v_uv;
       in float v_instance_alpha;
       out vec4 out_color;
-
-      float median(float r, float g, float b) {
-        return max(min(r, g), min(max(r, g), b));
-      }
 
       void main() {
         vec4 texel = texture(u_texture, v_uv);
@@ -1915,14 +1910,6 @@ export default function WebGlGameCanvas() {
           out_color = vec4(0.0, 0.0, 0.0, v_instance_alpha);
         } else if (u_render_mode == 3) {
           out_color = vec4(u_tint, texel.a * u_alpha_multiplier);
-        } else if (u_render_mode == 4) {
-          vec2 texture_size = vec2(textureSize(u_texture, 0));
-          vec2 unit_range = vec2(u_msdf_px_range) / texture_size;
-          vec2 screen_tex_size = vec2(1.0) / fwidth(v_uv);
-          float screen_px_range = max(0.5 * dot(unit_range, screen_tex_size), 1.0);
-          float signed_distance = median(texel.r, texel.g, texel.b) - 0.5;
-          float opacity = clamp(screen_px_range * signed_distance + 0.5, 0.0, 1.0);
-          out_color = vec4(u_tint, opacity * u_alpha_multiplier);
         } else if (u_render_mode == 5) {
           out_color = vec4(u_tint, u_alpha_multiplier);
         } else {
@@ -2099,7 +2086,7 @@ export default function WebGlGameCanvas() {
         vgaFontAtlasRef.current = await createVgaFontAtlas(gl);
       } catch (error) {
         vgaFontAtlasRef.current = null;
-        appendLog(`MSDF font atlas unavailable: ${String(error)}`);
+        appendLog(`VGA bitmap font unavailable: ${String(error)}`);
       }
 
       textureInfoRef.current = {
@@ -2315,7 +2302,6 @@ export default function WebGlGameCanvas() {
         prog,
         "u_alpha_multiplier",
       );
-      const msdfPxRangeLoc = gl.getUniformLocation(prog, "u_msdf_px_range");
       const renderModeLoc = gl.getUniformLocation(prog, "u_render_mode");
 
       if (canvasSizeLoc) {
@@ -2988,7 +2974,6 @@ export default function WebGlGameCanvas() {
                 tintLoc,
                 alphaMultiplierLoc,
                 renderModeLoc,
-                msdfPxRangeLoc,
               },
               text,
               x,
