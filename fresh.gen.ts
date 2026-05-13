@@ -15,6 +15,7 @@ import * as $GameCanvas from "./islands/GameCanvas.tsx";
 import * as $MultiplayerSidebar from "./islands/MultiplayerSidebar.tsx";
 import * as $WebGlFullscreenButton from "./islands/WebGlFullscreenButton.tsx";
 import * as $WebGlGameCanvas from "./islands/WebGlGameCanvas.tsx";
+import * as $webgl_ui_text_vga from "./islands/webgl-ui-text-vga.ts";
 import * as $webgl_ui_text from "./islands/webgl-ui-text.ts";
 import type { Manifest } from "$fresh/server.ts";
 
@@ -35,6 +36,7 @@ const manifest = {
     "./islands/MultiplayerSidebar.tsx": $MultiplayerSidebar,
     "./islands/WebGlFullscreenButton.tsx": $WebGlFullscreenButton,
     "./islands/WebGlGameCanvas.tsx": $WebGlGameCanvas,
+    "./islands/webgl-ui-text-vga.ts": $webgl_ui_text_vga,
     "./islands/webgl-ui-text.ts": $webgl_ui_text,
   },
   baseUrl: import.meta.url,

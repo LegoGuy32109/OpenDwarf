@@ -36,6 +36,13 @@ import {
   type UiFontAtlas,
   uiTextLineHeight,
 } from "./webgl-ui-text.ts";
+import {
+  createVgaFontAtlas,
+  drawVgaTextLines,
+  type VgaFontAtlas,
+  vgaTextLineHeight,
+  vgaTextWidth,
+} from "./webgl-ui-text-vga.ts";
 
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
@@ -546,6 +553,7 @@ export default function WebGlGameCanvas() {
   const shadowTextureRef = useRef<WebGLTexture | null>(null);
   const ceilShadowTextureRef = useRef<WebGLTexture | null>(null);
   const uiFontAtlasRef = useRef<UiFontAtlas | null>(null);
+  const vgaFontAtlasRef = useRef<VgaFontAtlas | null>(null);
   const instanceBufferRef = useRef<WebGLBuffer | null>(null);
   const vertexBufferRef = useRef<WebGLBuffer | null>(null);
   const solidCacheRef = useRef<Map<string, Uint8Array>>(new Map());
@@ -615,8 +623,6 @@ export default function WebGlGameCanvas() {
   const topmostOffsetsCacheRef = useRef<Map<string, Int8Array>>(new Map());
   const shadowVisibleXYCacheRef = useRef<Array<{ chunkX: number; chunkY: number }>>([]);
   const topmostCacheDirtyRef = useRef(true);
-  // Fix 6: text width cache
-  const textWidthCacheRef = useRef<Map<string, number>>(new Map());
   // Part 2 perf metrics
   const fpsHistoryRef = useRef<number[]>([]);
   const simTicksThisSecondRef = useRef(0);
@@ -630,7 +636,7 @@ export default function WebGlGameCanvas() {
     camera: { x: 0, y: 0, zoom: 1 },
   });
   const replayEventsRef = useRef<ReplayEvent[]>([]);
-  const uiOverlayVisibleRef = useRef(true);
+  const uiOverlayVisibleRef = useRef(false);
   const statusRef = useRef("booting");
   const fullscreenRef = useRef(false);
   const capabilityStateRef = useRef<WebGlCapabilityReport | null>(null);
@@ -666,7 +672,7 @@ export default function WebGlGameCanvas() {
     ceilShadow: true,
     depthTint: true,
   });
-  const [_uiOverlayVisible, setUiOverlayVisible] = useState(true);
+  const [_uiOverlayVisible, setUiOverlayVisible] = useState(false);
 
   const appendLog = (text: string) => {
     const id = logIdRef.current++;
@@ -1891,10 +1897,15 @@ export default function WebGlGameCanvas() {
       uniform sampler2D u_texture;
       uniform vec3 u_tint;
       uniform float u_alpha_multiplier;
+      uniform float u_msdf_px_range;
       uniform int u_render_mode;
       in vec2 v_uv;
       in float v_instance_alpha;
       out vec4 out_color;
+
+      float median(float r, float g, float b) {
+        return max(min(r, g), min(max(r, g), b));
+      }
 
       void main() {
         vec4 texel = texture(u_texture, v_uv);
@@ -1902,8 +1913,18 @@ export default function WebGlGameCanvas() {
           out_color = vec4(0.0, 0.0, 0.0, texel.a * u_alpha_multiplier);
         } else if (u_render_mode == 2) {
           out_color = vec4(0.0, 0.0, 0.0, v_instance_alpha);
-        } else if (u_render_mode == 3 || u_render_mode == 4) {
+        } else if (u_render_mode == 3) {
           out_color = vec4(u_tint, texel.a * u_alpha_multiplier);
+        } else if (u_render_mode == 4) {
+          vec2 texture_size = vec2(textureSize(u_texture, 0));
+          vec2 unit_range = vec2(u_msdf_px_range) / texture_size;
+          vec2 screen_tex_size = vec2(1.0) / fwidth(v_uv);
+          float screen_px_range = max(0.5 * dot(unit_range, screen_tex_size), 1.0);
+          float signed_distance = median(texel.r, texel.g, texel.b) - 0.5;
+          float opacity = clamp(screen_px_range * signed_distance + 0.5, 0.0, 1.0);
+          out_color = vec4(u_tint, opacity * u_alpha_multiplier);
+        } else if (u_render_mode == 5) {
+          out_color = vec4(u_tint, u_alpha_multiplier);
         } else {
           out_color = texel;
           out_color.rgb *= u_tint;
@@ -2074,6 +2095,12 @@ export default function WebGlGameCanvas() {
         height: playerImg.naturalHeight,
       };
       uiFontAtlasRef.current = uiFontAtlas;
+      try {
+        vgaFontAtlasRef.current = await createVgaFontAtlas(gl);
+      } catch (error) {
+        vgaFontAtlasRef.current = null;
+        appendLog(`MSDF font atlas unavailable: ${String(error)}`);
+      }
 
       textureInfoRef.current = {
         src: TILE_TEXTURE_SRC,
@@ -2288,6 +2315,7 @@ export default function WebGlGameCanvas() {
         prog,
         "u_alpha_multiplier",
       );
+      const msdfPxRangeLoc = gl.getUniformLocation(prog, "u_msdf_px_range");
       const renderModeLoc = gl.getUniformLocation(prog, "u_render_mode");
 
       if (canvasSizeLoc) {
@@ -2732,12 +2760,11 @@ export default function WebGlGameCanvas() {
 
         // --- MEMORY OVERLAY / PLAYER PASS ---
         if (viewModeRef.current === "entity" && whiteTextureRef.current) {
-          gl.bindTexture(gl.TEXTURE_2D, whiteTextureRef.current);
           gl.enable(gl.BLEND);
           gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-          setRenderMode(4);
+          setRenderMode(5);
           setTint(1.0, 0.78, 0.18);
-          setAlpha(0.18);
+          setAlpha(0.06);
 
           let count = 0;
           for (const { k: vis, key } of visibleChunkKeys) {
@@ -2870,42 +2897,6 @@ export default function WebGlGameCanvas() {
               );
             }
           };
-          // Fix 6: text width cache
-          const textWidth = (text: string) => {
-            const cached = textWidthCacheRef.current.get(text);
-            if (cached !== undefined) return cached;
-            let width = 0;
-            for (let i = 0; i < text.length; i++) {
-              const glyph = text.charCodeAt(i) - 32;
-              width += (fontAtlas.advances[glyph] || fontAtlas.advance) + 1;
-            }
-            textWidthCacheRef.current.set(text, width);
-            return width;
-          };
-
-          if (
-            whiteTextureRef.current && sceneStateRef.current.uiMode === "chat"
-          ) {
-            gl.bindTexture(gl.TEXTURE_2D, whiteTextureRef.current);
-            setRenderMode(3);
-            setTint(0.1725, 0.1725, 0.1725);
-            setAlpha(0.65);
-            const panelH = 46;
-            const panelY = canvas.height - panelH - 18;
-            const panelX = 20;
-            const panelW = canvas.width - 40;
-            const off = 0;
-            scratch[off + 0] = panelX;
-            scratch[off + 1] = panelY;
-            scratch[off + 2] = panelW;
-            scratch[off + 3] = panelH;
-            scratch[off + 4] = 1;
-            scratch[off + 5] = 0;
-            scratch[off + 6] = 1;
-            scratch[off + 7] = 1;
-            flushPass(1);
-          }
-
           if (uiOverlayVisibleRef.current) {
             const cap = capabilityStateRef.current;
             const preview = replayPreviewRef.current;
@@ -2974,75 +2965,108 @@ export default function WebGlGameCanvas() {
               TILE_SIZE_PX -
             sceneStateRef.current.camera.y +
             canvas.height * 0.5;
-          const bubbleText = sceneStateRef.current.chatBuffer.length > 0
+        }
+
+        // --- VGA FONT PASS: chat input + spoken bubbles ---
+        if (vgaFontAtlasRef.current) {
+          const vgaAtlas = vgaFontAtlasRef.current;
+          const drawVga = (
+            text: string,
+            x: number,
+            y: number,
+            rgb: [number, number, number],
+            alpha = 1,
+            scale?: number,
+          ) => {
+            drawVgaTextLines(
+              {
+                gl,
+                fontAtlas: vgaAtlas,
+                scratch,
+                maxInstances,
+                flushPass,
+                tintLoc,
+                alphaMultiplierLoc,
+                renderModeLoc,
+                msdfPxRangeLoc,
+              },
+              text,
+              x,
+              y,
+              rgb,
+              alpha,
+              scale,
+            );
+          };
+          // Scale so the rendered glyph height matches the original ~21px chat line height.
+          const chatScale = 2;
+          const vgaLineH = vgaTextLineHeight(vgaAtlas, chatScale);
+          const vgaW = (text: string) => vgaTextWidth(vgaAtlas, text, chatScale);
+          const vgaPad = 6;
+
+          // Chat input panel + typed text
+          const bubbleText = sceneStateRef.current.uiMode === "chat"
             ? `${sceneStateRef.current.chatBuffer}_`
             : "";
-          if (bubbleText.length > 0) {
-            drawText(
-              bubbleText,
-              32,
-              canvas.height - 52,
-              [0.98, 0.95, 0.88],
-              1,
-            );
+          if (bubbleText.length > 0 && whiteTextureRef.current) {
+            const panelW = Math.min(vgaW(bubbleText) + vgaPad * 2, canvas.width - 40);
+            const panelH = vgaLineH + vgaPad * 2;
+            const panelY = canvas.height - panelH - 18;
+            const panelX = 20;
+            setRenderMode(5);
+            setTint(0.1725, 0.1725, 0.1725);
+            setAlpha(0.65);
+            scratch[0] = panelX; scratch[1] = panelY;
+            scratch[2] = panelW; scratch[3] = panelH;
+            scratch[4] = 1; scratch[5] = 0;
+            scratch[6] = 1; scratch[7] = 1;
+            flushPass(1);
+            drawVga(bubbleText, panelX + vgaPad, panelY + vgaPad, [0.98, 0.95, 0.88], 1, chatScale);
           }
+
+          // Spoken word bubbles
+          const playerScreenX = (sceneStateRef.current.player.tileX + 0.5) *
+              TILE_SIZE_PX -
+            sceneStateRef.current.camera.x +
+            canvas.width * 0.5;
+          const playerScreenY = (sceneStateRef.current.player.tileY + 0.5) *
+              TILE_SIZE_PX -
+            sceneStateRef.current.camera.y +
+            canvas.height * 0.5;
           const liveBubbles = chatBubblesRef.current
-            .map((bubble) => ({
-              ...bubble,
-              age: simTickRef.current - bubble.tick,
-            }))
+            .map((bubble) => ({ ...bubble, age: simTickRef.current - bubble.tick }))
             .filter((bubble) =>
               bubble.age <= CHAT_BUBBLE_FADE_IN_TICKS +
-                  CHAT_BUBBLE_VISIBLE_TICKS +
-                  CHAT_BUBBLE_FADE_OUT_TICKS
+                CHAT_BUBBLE_VISIBLE_TICKS +
+                CHAT_BUBBLE_FADE_OUT_TICKS
             )
             .sort((a, b) => b.tick - a.tick);
-          chatBubblesRef.current = liveBubbles.map(({ age: _age, ...bubble }) =>
-            bubble
-          );
+          chatBubblesRef.current = liveBubbles.map(({ age: _age, ...bubble }) => bubble);
           let bubbleOffsetY = 30;
           for (const bubble of liveBubbles) {
-            const fadeOutStart = CHAT_BUBBLE_FADE_IN_TICKS +
-              CHAT_BUBBLE_VISIBLE_TICKS;
+            const fadeOutStart = CHAT_BUBBLE_FADE_IN_TICKS + CHAT_BUBBLE_VISIBLE_TICKS;
             const alpha = bubble.age < CHAT_BUBBLE_FADE_IN_TICKS
               ? bubble.age / CHAT_BUBBLE_FADE_IN_TICKS
               : bubble.age > fadeOutStart
               ? 1 - (bubble.age - fadeOutStart) / CHAT_BUBBLE_FADE_OUT_TICKS
               : 1;
-            const messageWidth = Math.min(
-              200,
-              Math.max(32, textWidth(bubble.message)),
-            );
-            const bubbleW = messageWidth + 8;
-            const bubbleH = 26;
-            const bubbleX = Math.max(8, playerScreenX - bubbleW * 0.5);
-            const bubbleY = Math.max(
-              8,
-              playerScreenY - bubbleOffsetY - bubbleH,
-            );
+            const msgW = Math.min(vgaW(bubble.message), canvas.width - 32);
+            const bubbleW = msgW + vgaPad * 2;
+            const bubbleH = vgaLineH + vgaPad * 2;
+            const bubbleX = Math.max(8, Math.min(playerScreenX - bubbleW * 0.5, canvas.width - bubbleW - 8));
+            const bubbleY = Math.max(8, playerScreenY - bubbleOffsetY - bubbleH);
             if (whiteTextureRef.current) {
-              gl.bindTexture(gl.TEXTURE_2D, whiteTextureRef.current);
-              setRenderMode(3);
+              setRenderMode(5);
               setTint(0.1, 0.1, 0.1);
               setAlpha(0.55 * alpha);
-              scratch[0] = bubbleX;
-              scratch[1] = bubbleY;
-              scratch[2] = bubbleW;
-              scratch[3] = bubbleH;
-              scratch[4] = 1;
-              scratch[5] = 0;
-              scratch[6] = 1;
-              scratch[7] = 1;
+              scratch[0] = bubbleX; scratch[1] = bubbleY;
+              scratch[2] = bubbleW; scratch[3] = bubbleH;
+              scratch[4] = 1; scratch[5] = 0;
+              scratch[6] = 1; scratch[7] = 1;
               flushPass(1);
             }
-            drawText(
-              bubble.message,
-              bubbleX + 4,
-              bubbleY + 4,
-              [1, 1, 1],
-              alpha,
-            );
-            bubbleOffsetY += bubbleH + 6;
+            drawVga(bubble.message, bubbleX + vgaPad, bubbleY + vgaPad, [1, 1, 1], alpha, chatScale);
+            bubbleOffsetY += bubbleH + 8;
           }
         }
 

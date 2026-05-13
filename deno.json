@@ -11,6 +11,7 @@
     "local": "cargo run --manifest-path ./game_library/Cargo.toml",
     "web-release": "bash scripts/bash/web-release.sh",
     "web-dev": "bash scripts/bash/web-dev.sh",
+    "font:msdf": "deno run -A scripts/generate_vga_msdf.ts",
     "ui-test": "deno run -A scripts/webgl_review.ts",
     "unit": "deno test tests/unit/",
     "test": "npx playwright test",
