@@ -3,29 +3,13 @@ import type { FlowDescriptor, PerfWindow } from "../lib/webgl-harness-types.ts";
 import {
   CHUNK_EDGE_TILES,
   chunkKeyString,
-  chunkOfTile,
-  computeCeilingShadowIds,
-  computeStreamingChunks,
   computeVisibleChunks,
-  FLOOR_FRAMES,
-  SHADOW_FRAMES,
-  shadowMaskToAtlasId,
   TILE_SIZE_PX,
-  tileKeyString,
   updateChunkCache,
   updateFloorCache,
-  Z_LEVELS_BELOW,
 } from "../lib/webgl-chunk-gen.ts";
 import {
-  advanceWorldMovement,
   createWorldSim,
-  entityRenderPosition,
-  entityVisibilityPosition,
-  generateWorldSolidChunk,
-  isTileRemembered,
-  isTileVisible,
-  recomputeFov,
-  startEntityMove,
   type WorldSimState,
 } from "../lib/webgl-world-sim.ts";
 import {
@@ -38,6 +22,7 @@ import {
   updateWorldSolidCache as updateWorldSolidCacheRuntime,
   worldPlayerSnapshot as worldPlayerSnapshotRuntime,
 } from "./webgl/world-runtime.ts";
+import { createInputController } from "./webgl/input-controller.ts";
 import {
   createVgaFontAtlas,
   VGA_FONT_SRC,
@@ -46,16 +31,12 @@ import {
 import {
   browserVersionFromUserAgent,
   buildSceneHash,
-  CAMERA_KEYS,
   CameraLookOffset,
   CEIL_SHADOW_TEXTURE_SRC,
   ChatBubbleRecord,
   computePerfWindow,
   createJsonBlob,
   createRunId,
-  EDGE_SEGMENT_BAND_PX,
-  EDGE_SEGMENT_DARK_ALPHA,
-  EDGE_SEGMENT_LIGHT_ALPHA,
   FLOW_NAME,
   FrameMetric,
   hashJson,
@@ -70,9 +51,7 @@ import {
   ReplayEvent,
   ReplayPreview,
   SEED_NAME,
-  SHADOW_ALPHA_MULTIPLIER,
   SHADOW_TEXTURE_SRC,
-  STREAM_PADDING,
   summarizeReplay,
   TILE_TEXTURE_SRC,
   waitForAnimationFrame,
@@ -90,13 +69,11 @@ import {
   createAtlasTexture,
   createInstancedQuadBuffers,
   createProgram,
-  getTileUniformLocations,
   readGpuStrings,
   uploadTexImage,
   uploadWhiteTexture,
 } from "./webgl/gl-resources.ts";
-import { flushInstanceBatch } from "./webgl/render-batch.ts";
-import { renderVgaUi } from "./webgl/render-ui.ts";
+import { renderWebGlFrame } from "./webgl/render-loop.ts";
 import {
   TILE_FRAGMENT_SHADER,
   TILE_VERTEX_SHADER,
@@ -106,17 +83,6 @@ declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
 }
 let cameraSpeedPxPerS = 480;
-void [
-  computeStreamingChunks,
-  advanceWorldMovement,
-  entityVisibilityPosition,
-  generateWorldSolidChunk,
-  isTileRemembered,
-  isTileVisible,
-  recomputeFov,
-  startEntityMove,
-  STREAM_PADDING,
-];
 
 export default function WebGlGameCanvas() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -209,8 +175,6 @@ export default function WebGlGameCanvas() {
   const simTicksThisSecondRef = useRef(0);
   const simTickSecondStartRef = useRef(0);
   const simTpsDisplayRef = useRef(0);
-  const frameDrawCallsRef = useRef(0);
-  const frameInstancesRef = useRef(0);
   const flowDescriptorRef = useRef<FlowDescriptor>({
     name: FLOW_NAME,
     seed: SEED_NAME,
@@ -261,6 +225,82 @@ export default function WebGlGameCanvas() {
     logsRef.current = [next, ...logsRef.current].slice(0, 10);
     setLogs(logsRef.current);
   };
+
+  const syncScenePlayerFromWorld = () =>
+    syncScenePlayerFromWorldRuntime(
+      worldRef,
+      sceneStateRef,
+      fovDirtyRef,
+    );
+
+  const processPlayerMovement = () =>
+    processPlayerMovementRuntime({
+      worldRef,
+      sceneStateRef,
+      solidCacheRef,
+      pendingChunkGenerationRef,
+      playerKeysHeldRef,
+      playerKeysJustPressedRef,
+      cameraKeysHeldRef,
+      wasMovingLastTickRef,
+      cameraLookOffsetRef,
+      fovDirtyRef,
+      topmostCacheDirtyRef,
+      streamingKeySetRef,
+      viewModeRef,
+      uiModeRef,
+      simTickRef,
+      eventTickRef,
+      simTicksThisSecondRef,
+      simTickSecondStartRef,
+      appendLog,
+    });
+
+  const processCameraMovement = (deltaS: number) =>
+    processCameraMovementRuntime(deltaS, {
+      uiModeRef,
+      viewModeRef,
+      cameraKeysHeldRef,
+      cameraLookOffsetRef,
+      sceneStateRef,
+      cameraSpeedPxPerS,
+    });
+
+  const processVisibility = () =>
+    processVisibilityRuntime({
+      worldRef,
+      sceneStateRef,
+      viewModeRef,
+      fovDirtyRef,
+      solidCacheRef,
+      topmostCacheDirtyRef,
+    });
+
+  const buildStreamingChunkKeys = (currentViewZ: number) =>
+    buildStreamingChunkKeysRuntime(sceneStateRef, viewModeRef, currentViewZ);
+
+  const updateWorldSolidCache = (
+    streamingXYKeys: Array<{ chunkX: number; chunkY: number }>,
+    currentViewZ: number,
+  ) =>
+    updateWorldSolidCacheRuntime(
+      worldRef,
+      solidCacheRef,
+      pendingChunkGenerationRef,
+      streamingXYKeys,
+      currentViewZ,
+    );
+
+  const advanceSimulationTick = () =>
+    advanceSimulationTickRuntime({
+      simTickRef,
+      eventTickRef,
+      simTicksThisSecondRef,
+      worldRef,
+      processPlayerMovement,
+      processVisibility,
+      syncScenePlayerFromWorld,
+    });
 
   const pushReplayEvent = (event: ReplayEvent) => {
     replayEventsRef.current = [...replayEventsRef.current, event];
@@ -616,173 +656,6 @@ export default function WebGlGameCanvas() {
     inputLogRef.current = [...inputLogRef.current, event];
     recordReplayEvent(event);
   };
-
-  const openChat = (initialValue: string) => {
-    uiModeRef.current = "chat";
-    activeTypingRef.current = true;
-    sceneStateRef.current.uiMode = "chat";
-    sceneStateRef.current.chatBuffer = initialValue;
-    if (initialValue.length > 0) {
-      recordInputEvent({
-        type: "text",
-        value: initialValue,
-        tick: simTickRef.current,
-      });
-    }
-    appendLog(`chat open ${JSON.stringify(initialValue)}`);
-  };
-
-  const updateChatBuffer = (value: string) => {
-    sceneStateRef.current.chatBuffer = value;
-  };
-
-  const deleteLastWord = (value: string) => {
-    const trimmed = value.trimEnd();
-    if (trimmed.length === 0) return "";
-    const splitIndex = Math.max(
-      trimmed.lastIndexOf(" "),
-      trimmed.lastIndexOf("\t"),
-      trimmed.lastIndexOf("\n"),
-    );
-    if (splitIndex < 0) return "";
-    let nextValue = trimmed.slice(0, splitIndex + 1);
-    if (nextValue.length > 0 && !nextValue.endsWith(" ")) {
-      nextValue += " ";
-    }
-    return nextValue;
-  };
-
-  const handleChatSubmission = (input: string) => {
-    const trimmed = input.trim();
-    if (trimmed.length === 0) {
-      return;
-    }
-    if (trimmed.startsWith("/")) {
-      const command = trimmed.slice(1).toLowerCase();
-      if (command === "master") {
-        viewModeRef.current = "master";
-        sceneStateRef.current.viewMode = "master";
-        fovDirtyRef.current = true;
-        topmostCacheDirtyRef.current = true;
-        appendLog("chat command /master");
-      } else if (command === "entity") {
-        viewModeRef.current = "entity";
-        sceneStateRef.current.viewMode = "entity";
-        fovDirtyRef.current = true;
-        topmostCacheDirtyRef.current = true;
-        appendLog("chat command /entity");
-      } else {
-        appendLog(`chat command ignored /${command}`);
-      }
-      return;
-    }
-
-    const bubble: ChatBubbleRecord = {
-      message: trimmed,
-      target: { ...sceneStateRef.current.player },
-      tick: simTickRef.current,
-    };
-    chatBubblesRef.current = [...chatBubblesRef.current, bubble].slice(-6);
-    sceneStateRef.current.submittedChatMessages = [
-      ...sceneStateRef.current.submittedChatMessages,
-      trimmed,
-    ].slice(-20);
-    appendLog(`chat message ${JSON.stringify(trimmed)}`);
-  };
-
-  const closeChat = () => {
-    uiModeRef.current = "world";
-    activeTypingRef.current = false;
-    sceneStateRef.current.uiMode = "world";
-    sceneStateRef.current.chatBuffer = "";
-    appendLog("chat close");
-  };
-
-  const submitChat = () => {
-    const current = sceneStateRef.current.chatBuffer;
-    handleChatSubmission(current);
-    closeChat();
-  };
-
-  const worldPlayerSnapshot = () => worldPlayerSnapshotRuntime(worldRef.current);
-
-  const syncScenePlayerFromWorld = () =>
-    syncScenePlayerFromWorldRuntime(
-      worldRef,
-      sceneStateRef,
-      fovDirtyRef,
-    );
-
-  const processPlayerMovement = () =>
-    processPlayerMovementRuntime({
-      worldRef,
-      sceneStateRef,
-      solidCacheRef,
-      pendingChunkGenerationRef,
-      playerKeysHeldRef,
-      playerKeysJustPressedRef,
-      cameraKeysHeldRef,
-      wasMovingLastTickRef,
-      cameraLookOffsetRef,
-      fovDirtyRef,
-      topmostCacheDirtyRef,
-      streamingKeySetRef,
-      viewModeRef,
-      uiModeRef,
-      simTickRef,
-      eventTickRef,
-      simTicksThisSecondRef,
-      simTickSecondStartRef,
-      appendLog,
-    });
-
-  // deltaS: seconds since last frame. Must run every render frame, not per sim tick,
-  // so camera movement stays smooth regardless of simulation TPS.
-  const processCameraMovement = (deltaS: number) =>
-    processCameraMovementRuntime(deltaS, {
-      uiModeRef,
-      viewModeRef,
-      cameraKeysHeldRef,
-      cameraLookOffsetRef,
-      sceneStateRef,
-      cameraSpeedPxPerS,
-    });
-
-  const processVisibility = () =>
-    processVisibilityRuntime({
-      worldRef,
-      sceneStateRef,
-      viewModeRef,
-      fovDirtyRef,
-      solidCacheRef,
-      topmostCacheDirtyRef,
-    });
-
-  const buildStreamingChunkKeys = (currentViewZ: number) =>
-    buildStreamingChunkKeysRuntime(sceneStateRef, viewModeRef, currentViewZ);
-
-  const updateWorldSolidCache = (
-    streamingXYKeys: Array<{ chunkX: number; chunkY: number }>,
-    currentViewZ: number,
-  ) =>
-    updateWorldSolidCacheRuntime(
-      worldRef,
-      solidCacheRef,
-      pendingChunkGenerationRef,
-      streamingXYKeys,
-      currentViewZ,
-    );
-
-  const advanceSimulationTick = () =>
-    advanceSimulationTickRuntime({
-      simTickRef,
-      eventTickRef,
-      simTicksThisSecondRef,
-      worldRef,
-      processPlayerMovement,
-      processVisibility,
-      syncScenePlayerFromWorld,
-    });
 
   useEffect(() => {
     const host = hostRef.current;
@@ -1183,7 +1056,7 @@ export default function WebGlGameCanvas() {
           worldRef.current = createWorldSim(descriptor.seed);
           smoothPlayerWorldPosRef.current = null;
           simAccumulatorRef.current = 0;
-          const player = worldPlayerSnapshot();
+          const player = worldPlayerSnapshotRuntime(worldRef.current);
           sceneStateRef.current.camera = {
             x: cam.x,
             y: cam.y,
@@ -1324,6 +1197,104 @@ export default function WebGlGameCanvas() {
 
     let viewZ = 0;
 
+    const inputHandlers = createInputController({
+      hostRef,
+      canvasRef,
+      sceneStateRef,
+      uiModeRef,
+      viewModeRef,
+      activeTypingRef,
+      chatBubblesRef,
+      playerKeysHeldRef,
+      playerKeysJustPressedRef,
+      cameraKeysHeldRef,
+      keysHeldRef,
+      uiOverlayVisibleRef,
+      layersRef,
+      fovDirtyRef,
+      topmostCacheDirtyRef,
+      getViewZ: () => viewZ,
+      setViewZ: (next: number) => {
+        viewZ = next;
+        streamingKeySetRef.current = "";
+        topmostCacheDirtyRef.current = true;
+      },
+      simTickRef,
+      setLayers: (next) => {
+        layersRef.current = next;
+        setLayers(next);
+      },
+      setUiOverlayVisible: (next) => {
+        uiOverlayVisibleRef.current = next;
+        setUiOverlayVisible(next);
+      },
+      appendLog,
+      recordInputEvent,
+      setImportedReplayInfo,
+      importReplayDocument,
+      setFullscreenState,
+    });
+
+    const scheduleNextFrame = () => {
+      rafRef.current = globalThis.requestAnimationFrame(renderFrame);
+    };
+
+    function renderFrame() {
+      void renderWebGlFrame({
+        gl: gl!,
+        program: programRef.current!,
+        canvas: canvas!,
+        scratch,
+        maxInstances,
+        instanceBuffer: instanceBufferRef.current!,
+        viewZ,
+        sceneReadyRef,
+        worldRef,
+        sceneStateRef,
+        frameRef,
+        lastFrameTimeRef,
+        simAccumulatorRef,
+        simTickRef,
+        simTicksThisSecondRef,
+        simTickSecondStartRef,
+        simTpsDisplayRef,
+        fpsHistoryRef,
+        frameMetricsRef,
+        pendingChunkGenerationRef,
+        streamingKeySetRef,
+        smoothPlayerWorldPosRef,
+        cameraLookOffsetRef,
+        topmostCacheDirtyRef,
+        topmostOffsetsCacheRef,
+        shadowVisibleXYCacheRef,
+        solidCacheRef,
+        chunkCacheRef,
+        layersRef,
+        viewModeRef,
+        wasMovingLastTickRef,
+        textureRef,
+        shadowTextureRef,
+        ceilShadowTextureRef,
+        playerTextureRef,
+        whiteTextureRef,
+        playerTextureInfoRef,
+        vgaFontAtlasRef,
+        textureInfoRef,
+        capabilityStateRef,
+        replayPreviewRef,
+        checkpointRecordsRef,
+        logsRef,
+        chatBubblesRef,
+        uiOverlayVisibleRef,
+        getViewZ: () => viewZ,
+        buildStreamingChunkKeys,
+        updateWorldSolidCache,
+        processCameraMovement,
+        advanceSimulationTick,
+        scheduleNextFrame,
+      });
+    }
+
     const loadTextures = async () => {
       const loadImg = (src: string) => {
         const img = new Image();
@@ -1432,969 +1403,17 @@ export default function WebGlGameCanvas() {
       // RAF loop is already running — no need to force a frame here.
     };
 
-    const drawFrame = (timestamp = performance.now()) => {
-      const t0 = performance.now();
-
-      if (
-        !glRef.current || !programRef.current || !textureRef.current ||
-        !shadowTextureRef.current || !ceilShadowTextureRef.current
-      ) {
-        lastFrameTimeRef.current = timestamp;
-        frameMetricsRef.current.push({
-          cpuMs: performance.now() - t0,
-          drawCalls: 0,
-          uploadBytes: 0,
-          visibleChunks: sceneStateRef.current.visibleChunks.length,
-        });
-        rafRef.current = globalThis.requestAnimationFrame(drawFrame);
-        return;
-      }
-
-      const lastGl = lastFrameTimeRef.current;
-      lastFrameTimeRef.current = timestamp;
-      // Raw delta for FPS — not capped so background-resume spikes are visible/skippable.
-      const rawDeltaMs = lastGl !== null ? timestamp - lastGl : 0;
-      // Cap delta for simulation so a background tab can't spiral.
-      const deltaMs = Math.min(rawDeltaMs, 100);
-
-      // Simulation runs at 20 TPS (50ms/tick) — matching Rust's FixedUpdate schedule.
-      // Input just_pressed events accumulate in playerKeysJustPressedRef across render
-      // frames and are consumed once per simulation tick, exactly like Rust's command queue.
-      const SIM_TICK_MS = 1000 / 20;
-      simAccumulatorRef.current += deltaMs;
-      // Cap to 3 ticks to prevent spiral of death on slow frames.
-      let ticksThisFrame = 0;
-      while (simAccumulatorRef.current >= SIM_TICK_MS && ticksThisFrame < 3) {
-        advanceSimulationTick();
-        simAccumulatorRef.current -= SIM_TICK_MS;
-        ticksThisFrame++;
-      }
-
-      const deltaS = Math.min(deltaMs / 1000, 0.1);
-
-      // Camera runs every frame — smooth panning regardless of sim TPS.
-      processCameraMovement(deltaS);
-
-      // Smooth player render position — mirrors Rust's smooth_player_render_transform.
-      // Runs every render frame (not per sim tick) so the ease is frame-rate independent.
-      const [spTargetX, spTargetY] = entityRenderPosition(
-        worldRef.current.entity,
-      );
-      if (!smoothPlayerWorldPosRef.current) {
-        smoothPlayerWorldPosRef.current = [spTargetX, spTargetY];
-      } else {
-        const sf = 1 - Math.exp(-10 * deltaS);
-        const sp = smoothPlayerWorldPosRef.current;
-        sp[0] += (spTargetX - sp[0]) * sf;
-        sp[1] += (spTargetY - sp[1]) * sf;
-      }
-      if (viewModeRef.current === "entity") {
-        const [sx, sy] = smoothPlayerWorldPosRef.current;
-        const lkOff = cameraLookOffsetRef.current;
-        sceneStateRef.current.camera = {
-          x: (sx + 0.5) * TILE_SIZE_PX + lkOff.x,
-          y: (sy + 0.5) * TILE_SIZE_PX + lkOff.y,
-          zoom: sceneStateRef.current.camera.zoom,
-        };
-      }
-      frameRef.current += 1;
-
-      if (sceneReadyRef.current) {
-        const skGl = buildStreamingChunkKeys(viewZ);
-        const seed = flowDescriptorRef.current.seed;
-        const sfpGl =
-          skGl.map((k) => chunkKeyString({ ...k, chunkZ: viewZ })).join("|") +
-          `|z${viewZ}`;
-        if (sfpGl !== streamingKeySetRef.current) {
-          streamingKeySetRef.current = sfpGl;
-          updateFloorCache(chunkCacheRef.current, seed, skGl, viewZ);
-          updateWorldSolidCache(skGl, viewZ);
-          sceneStateRef.current.residentChunks = skGl.length;
-          sceneStateRef.current.streamingChunks = skGl.map((k) =>
-            chunkKeyString({ ...k, chunkZ: viewZ })
-          );
-          topmostCacheDirtyRef.current = true;
-        }
-      }
-
-      // Drain up to 5 pending solid-chunk generations per frame to avoid startup stalls.
-      {
-        const pending = pendingChunkGenerationRef.current;
-        if (pending.length > 0) {
-          const batch = pending.splice(0, 5);
-          const seed = worldRef.current.seed;
-          for (const key of batch) {
-            if (!solidCacheRef.current.has(key)) {
-              const [cx, cy, cz] = key.split(",").map(Number);
-              solidCacheRef.current.set(
-                key,
-                generateWorldSolidChunk(seed, {
-                  chunkX: cx,
-                  chunkY: cy,
-                  chunkZ: cz,
-                }),
-              );
-            }
-          }
-          topmostCacheDirtyRef.current = true;
-          // New solid data doesn't invalidate FOV — recomputeFov calls worldBlockAt directly.
-          // FOV only re-runs when the player actually moves (syncScenePlayerFromWorld).
-        }
-      }
-
-      // Part 2: FPS rolling average — use raw delta, skip first frame and resume spikes.
-      {
-        if (rawDeltaMs > 0 && rawDeltaMs < 250) {
-          fpsHistoryRef.current.push(1000 / rawDeltaMs);
-          if (fpsHistoryRef.current.length > 60) fpsHistoryRef.current.shift();
-        }
-      }
-      // Part 2: sim TPS tracking — latch last complete second's count for stable display
-      {
-        const now = timestamp;
-        if (now - simTickSecondStartRef.current >= 1000) {
-          simTpsDisplayRef.current = simTicksThisSecondRef.current;
-          simTicksThisSecondRef.current = 0;
-          simTickSecondStartRef.current = now;
-        }
-      }
-
-      const batchStats = { drawCalls: 0, instances: 0 };
-      gl.useProgram(programRef.current);
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-
-      const {
-        canvasSizeLoc,
-        cameraLoc,
-        zoomLoc,
-        textureLoc,
-        tintLoc,
-        alphaMultiplierLoc,
-        renderModeLoc,
-      } = getTileUniformLocations(gl, programRef.current);
-
-      if (canvasSizeLoc) {
-        gl.uniform2f(canvasSizeLoc, canvas.width, canvas.height);
-      }
-      if (cameraLoc) {
-        gl.uniform2f(
-          cameraLoc,
-          sceneStateRef.current.camera.x,
-          sceneStateRef.current.camera.y,
-        );
-      }
-      if (zoomLoc) {
-        gl.uniform1f(zoomLoc, sceneStateRef.current.camera.zoom);
-      }
-      gl.activeTexture(gl.TEXTURE0);
-      if (textureLoc) gl.uniform1i(textureLoc, 0);
-
-      // Fix 8: uniform state tracking to avoid redundant gl calls
-      let curRenderMode = -1,
-        curTintR = -1,
-        curTintG = -1,
-        curTintB = -1,
-        curAlpha = -1;
-      const setRenderMode = (m: number) => {
-        if (m !== curRenderMode) {
-          if (renderModeLoc) gl.uniform1i(renderModeLoc, m);
-          curRenderMode = m;
-        }
-      };
-      const setTint = (r: number, g: number, b: number) => {
-        if (r !== curTintR || g !== curTintG || b !== curTintB) {
-          if (tintLoc) gl.uniform3f(tintLoc, r, g, b);
-          curTintR = r;
-          curTintG = g;
-          curTintB = b;
-        }
-      };
-      const setAlpha = (a: number) => {
-        if (a !== curAlpha) {
-          if (alphaMultiplierLoc) gl.uniform1f(alphaMultiplierLoc, a);
-          curAlpha = a;
-        }
-      };
-
-      const visibleXY = computeVisibleChunks(
-        sceneStateRef.current.camera,
-        { framebufferWidth: canvas.width, framebufferHeight: canvas.height },
-      );
-      // Fix 7: compute chunk key once per visible chunk
-      const visibleChunkKeys = visibleXY
-        .map((k) => ({ k, key: chunkKeyString({ ...k, chunkZ: viewZ }) }))
-        .filter(({ key }) => chunkCacheRef.current.has(key));
-      sceneStateRef.current.visibleChunks = visibleChunkKeys.map(({ key }) =>
-        key
-      );
-
-      // Fix 2: only rebuild shadowVisibleXY when cache is dirty
-      if (topmostCacheDirtyRef.current) {
-        const shadowXY = new Map<string, { chunkX: number; chunkY: number }>();
-        for (const vis of visibleXY) {
-          shadowXY.set(`${vis.chunkX},${vis.chunkY}`, vis);
-          shadowXY.set(`${vis.chunkX},${vis.chunkY - 1}`, {
-            chunkX: vis.chunkX,
-            chunkY: vis.chunkY - 1,
-          });
-        }
-        shadowVisibleXYCacheRef.current = [...shadowXY.values()];
-      }
-      const shadowVisibleXY = shadowVisibleXYCacheRef.current;
-      const drawOrderLabels: string[] = [
-        "floor",
-        "edgeShadow",
-        "ceilingShadow",
-      ];
-      if (viewModeRef.current === "entity") {
-        drawOrderLabels.push("fog");
-      }
-      drawOrderLabels.push("player", "chat", "ui");
-      sceneStateRef.current.drawOrderLabels = drawOrderLabels;
-
-      if (sceneReadyRef.current) {
-        const HALF = TILE_SIZE_PX * 0.5;
-        const INV_FLOOR = 1.0 / FLOOR_FRAMES;
-        const INV_SHADOW = 1.0 / SHADOW_FRAMES;
-        // Exact tint colors matching get_depth_tint_tile_color in render.rs
-        const DEPTH_TINTS: [number, number, number][] = [
-          [1.0, 1.0, 1.0],
-          [0.75, 0.75, 0.75],
-          [0.65, 0.65, 0.8],
-          [0.43, 0.45, 0.61],
-          [0.32, 0.34, 0.61],
-          [0.2, 0.2, 0.4],
-        ];
-        const REMEMBERED_TINT: [number, number, number] = [1.0, 0.86, 0.34];
-        const entityMode = viewModeRef.current === "entity";
-        const world = worldRef.current;
-        const localSolidAt = (
-          chunkX: number,
-          chunkY: number,
-          tx: number,
-          ty: number,
-          z: number,
-        ) => {
-          const cx = chunkX + Math.floor(tx / CHUNK_EDGE_TILES);
-          const cy = chunkY + Math.floor(ty / CHUNK_EDGE_TILES);
-          const lx = ((tx % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-            CHUNK_EDGE_TILES;
-          const ly = ((ty % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-            CHUNK_EDGE_TILES;
-          const solid = solidCacheRef.current.get(
-            chunkKeyString({ chunkX: cx, chunkY: cy, chunkZ: z }),
-          );
-          return solid ? solid[ly * CHUNK_EDGE_TILES + lx] === 1 : true;
-        };
-        const visibilityState = (x: number, y: number, z: number) => {
-          if (!entityMode) return "visible" as const;
-          const pos = { x, y, z };
-          if (isTileVisible(world, pos)) return "visible" as const;
-          if (isTileRemembered(world, pos)) return "remembered" as const;
-          return "unseen" as const;
-        };
-        const renderSolidAt = (
-          chunkX: number,
-          chunkY: number,
-          tx: number,
-          ty: number,
-          z: number,
-        ) => {
-          const cx = chunkX + Math.floor(tx / CHUNK_EDGE_TILES);
-          const cy = chunkY + Math.floor(ty / CHUNK_EDGE_TILES);
-          const lx = ((tx % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-            CHUNK_EDGE_TILES;
-          const ly = ((ty % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-            CHUNK_EDGE_TILES;
-          const worldX = cx * CHUNK_EDGE_TILES + lx;
-          const worldY = cy * CHUNK_EDGE_TILES + ly;
-          const key = tileKeyString({ tileX: worldX, tileY: worldY, tileZ: z });
-          if (entityMode) {
-            if (world.visible.has(key)) {
-              return localSolidAt(chunkX, chunkY, tx, ty, z);
-            }
-            return world.memory.get(key)?.block === "solid";
-          }
-          return localSolidAt(chunkX, chunkY, tx, ty, z);
-        };
-        // Stone tile atlas frame index (matches stone_tile_index() in Rust)
-        const STONE_FRAME_UV = 5 * INV_FLOOR;
-
-        // Helper: upload scratch[0..count*8] and draw instanced.
-        const flushPass = (count: number) =>
-          flushInstanceBatch(
-            gl,
-            instanceBufferRef.current!,
-            scratch,
-            count,
-            batchStats,
-          );
-
-        // --- FLOOR PASSES: z = viewZ-Z_LEVELS_BELOW (back) → viewZ (front) ---
-        // Pre-compute topmost visible solid z-offset per tile per chunk.
-        // topmostOffset[idx] = z-offset (0 to -Z_LEVELS_BELOW) of topmost solid,
-        // or 127 if no solid in the depth stack.
-        // Fix 2: cache topmostOffsets — only recompute when dirty
-        if (topmostCacheDirtyRef.current) {
-          const topmostXY = new Map<
-            string,
-            { chunkX: number; chunkY: number }
-          >();
-          for (const vis of shadowVisibleXY) {
-            for (
-              const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as [
-                number,
-                number,
-              ][]
-            ) {
-              const chunkX = vis.chunkX + dx;
-              const chunkY = vis.chunkY + dy;
-              topmostXY.set(`${chunkX},${chunkY}`, { chunkX, chunkY });
-            }
-          }
-          topmostOffsetsCacheRef.current = new Map();
-          for (const vis of topmostXY.values()) {
-            const chunkKey = chunkKeyString({
-              chunkX: vis.chunkX,
-              chunkY: vis.chunkY,
-              chunkZ: viewZ,
-            });
-            const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(
-              127,
-            );
-            for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
-              for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
-                const idx = ty * CHUNK_EDGE_TILES + tx;
-                for (let zo = 0; zo >= -Z_LEVELS_BELOW; zo--) {
-                  if (
-                    renderSolidAt(vis.chunkX, vis.chunkY, tx, ty, viewZ + zo)
-                  ) {
-                    tmo[idx] = zo;
-                    break;
-                  }
-                }
-              }
-            }
-            topmostOffsetsCacheRef.current.set(chunkKey, tmo);
-          }
-          topmostCacheDirtyRef.current = false;
-        }
-        const topmostOffsets = topmostOffsetsCacheRef.current;
-        const getTopmostOffset = (
-          chunkX: number,
-          chunkY: number,
-          tx: number,
-          ty: number,
-        ): number => {
-          const cx = chunkX + Math.floor(tx / CHUNK_EDGE_TILES);
-          const cy = chunkY + Math.floor(ty / CHUNK_EDGE_TILES);
-          const lx = ((tx % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-            CHUNK_EDGE_TILES;
-          const ly = ((ty % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-            CHUNK_EDGE_TILES;
-          const tmo = topmostOffsets.get(
-            chunkKeyString({ chunkX: cx, chunkY: cy, chunkZ: viewZ }),
-          );
-          return tmo ? tmo[ly * CHUNK_EDGE_TILES + lx] : 127;
-        };
-
-        gl.disable(gl.BLEND);
-        gl.bindTexture(gl.TEXTURE_2D, textureRef.current);
-
-        if (layersRef.current.floor) {
-          for (let z = viewZ - Z_LEVELS_BELOW; z <= viewZ; z++) {
-            const zOffset = z - viewZ;
-            const rawTint = DEPTH_TINTS[-zOffset] ??
-              DEPTH_TINTS[DEPTH_TINTS.length - 1];
-            const drawFloorState = (
-              state: "visible" | "remembered",
-              tint: [number, number, number],
-              alpha: number,
-            ) => {
-              setTint(tint[0], tint[1], tint[2]);
-              setAlpha(alpha);
-              setRenderMode(0);
-              let count = 0;
-              for (const { k: vis, key } of visibleChunkKeys) {
-                const tmo = topmostOffsets.get(key);
-                if (!tmo) continue;
-                const baseX = vis.chunkX * CHUNK_EDGE_TILES;
-                const baseY = vis.chunkY * CHUNK_EDGE_TILES;
-                for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
-                  for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
-                    const idx = ty * CHUNK_EDGE_TILES + tx;
-                    if (tmo[idx] !== zOffset) continue;
-                    if (entityMode) {
-                      const tileState = visibilityState(
-                        baseX + tx,
-                        baseY + ty,
-                        z,
-                      );
-                      if (tileState !== state) continue;
-                    } else if (state !== "visible") {
-                      continue;
-                    }
-                    const off = count * 8;
-                    scratch[off + 0] = (baseX + tx) * TILE_SIZE_PX;
-                    scratch[off + 1] = (baseY + ty) * TILE_SIZE_PX;
-                    scratch[off + 2] = TILE_SIZE_PX;
-                    scratch[off + 3] = TILE_SIZE_PX;
-                    scratch[off + 4] = 0;
-                    scratch[off + 5] = STONE_FRAME_UV;
-                    scratch[off + 6] = 1;
-                    scratch[off + 7] = INV_FLOOR;
-                    count++;
-                  }
-                }
-              }
-              flushPass(count);
-            };
-            const tint = layersRef.current.depthTint
-              ? rawTint
-              : ([1, 1, 1] as [number, number, number]);
-            drawFloorState("visible", tint, 1);
-            if (entityMode) {
-              drawFloorState("remembered", REMEMBERED_TINT, 0.95);
-            }
-          }
-        }
-
-        // --- EDGE SHADOW PASS ---
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.bindTexture(gl.TEXTURE_2D, shadowTextureRef.current!);
-        setTint(1, 1, 1);
-
-        if (layersRef.current.edgeShadow) {
-          let count = 0;
-          const addSegmentRect = (
-            x: number,
-            y: number,
-            w: number,
-            h: number,
-            alpha: number,
-          ) => {
-            if (count >= maxInstances) {
-              flushPass(count);
-              count = 0;
-            }
-            setRenderMode(2);
-            const off = count * 8;
-            scratch[off + 0] = x;
-            scratch[off + 1] = y;
-            scratch[off + 2] = w;
-            scratch[off + 3] = h;
-            scratch[off + 4] = alpha;
-            scratch[off + 5] = 0;
-            scratch[off + 6] = 1;
-            scratch[off + 7] = 1;
-            count++;
-          };
-          const addVerticalShadow = (
-            edgeX: number,
-            topY: number,
-            lowerIsRight: boolean,
-          ) => {
-            const darkX = lowerIsRight ? edgeX : edgeX - EDGE_SEGMENT_BAND_PX;
-            const lightX = lowerIsRight
-              ? edgeX + EDGE_SEGMENT_BAND_PX
-              : edgeX - EDGE_SEGMENT_BAND_PX * 2;
-            addSegmentRect(
-              darkX,
-              topY,
-              EDGE_SEGMENT_BAND_PX,
-              TILE_SIZE_PX,
-              EDGE_SEGMENT_DARK_ALPHA,
-            );
-            addSegmentRect(
-              lightX,
-              topY,
-              EDGE_SEGMENT_BAND_PX,
-              TILE_SIZE_PX,
-              EDGE_SEGMENT_LIGHT_ALPHA,
-            );
-          };
-          const addHorizontalShadow = (
-            leftX: number,
-            edgeY: number,
-            lowerIsDown: boolean,
-          ) => {
-            const darkY = lowerIsDown ? edgeY : edgeY - EDGE_SEGMENT_BAND_PX;
-            const lightY = lowerIsDown
-              ? edgeY + EDGE_SEGMENT_BAND_PX
-              : edgeY - EDGE_SEGMENT_BAND_PX * 2;
-            addSegmentRect(
-              leftX,
-              darkY,
-              TILE_SIZE_PX,
-              EDGE_SEGMENT_BAND_PX,
-              EDGE_SEGMENT_DARK_ALPHA,
-            );
-            addSegmentRect(
-              leftX,
-              lightY,
-              TILE_SIZE_PX,
-              EDGE_SEGMENT_BAND_PX,
-              EDGE_SEGMENT_LIGHT_ALPHA,
-            );
-          };
-
-          for (const vis of shadowVisibleXY) {
-            const baseX = vis.chunkX * CHUNK_EDGE_TILES;
-            const baseY = vis.chunkY * CHUNK_EDGE_TILES;
-            for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
-              for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
-                const here = getTopmostOffset(vis.chunkX, vis.chunkY, tx, ty);
-                if (here === 127) continue;
-
-                const right = getTopmostOffset(
-                  vis.chunkX,
-                  vis.chunkY,
-                  tx + 1,
-                  ty,
-                );
-                if (right !== here) {
-                  addVerticalShadow(
-                    (baseX + tx + 1) * TILE_SIZE_PX,
-                    (baseY + ty) * TILE_SIZE_PX,
-                    right === 127 || right < here,
-                  );
-                }
-
-                const down = getTopmostOffset(
-                  vis.chunkX,
-                  vis.chunkY,
-                  tx,
-                  ty + 1,
-                );
-                if (down !== here) {
-                  addHorizontalShadow(
-                    (baseX + tx) * TILE_SIZE_PX,
-                    (baseY + ty + 1) * TILE_SIZE_PX,
-                    down === 127 || down < here,
-                  );
-                }
-              }
-            }
-          }
-          flushPass(count);
-        }
-
-        // --- CEILING SHADOW PASS ---
-        gl.bindTexture(gl.TEXTURE_2D, ceilShadowTextureRef.current!);
-        setAlpha(SHADOW_ALPHA_MULTIPLIER);
-        setRenderMode(1);
-
-        if (layersRef.current.ceilShadow) {
-          let count = 0;
-          for (const vis of shadowVisibleXY) {
-            const baseX = vis.chunkX * CHUNK_EDGE_TILES;
-            const baseY = vis.chunkY * CHUNK_EDGE_TILES;
-            for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
-              for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
-                let mask = 0;
-                if (entityMode) {
-                  const checkCorner = (dx: number, dy: number) =>
-                    getTopmostOffset(
-                        vis.chunkX,
-                        vis.chunkY,
-                        tx + dx,
-                        ty + dy,
-                      ) === 0 &&
-                    renderSolidAt(
-                      vis.chunkX,
-                      vis.chunkY,
-                      tx + dx,
-                      ty + dy,
-                      viewZ + 1,
-                    );
-                  if (checkCorner(0, 0)) mask |= 1;
-                  if (checkCorner(1, 0)) mask |= 2;
-                  if (checkCorner(0, 1)) mask |= 4;
-                  if (checkCorner(1, 1)) mask |= 8;
-                  mask = mask === 0 ? 0 : shadowMaskToAtlasId(mask);
-                } else {
-                  const ceilIds = computeCeilingShadowIds(
-                    vis.chunkX,
-                    vis.chunkY,
-                    viewZ,
-                    solidCacheRef.current,
-                  );
-                  mask = ceilIds[ty * CHUNK_EDGE_TILES + tx];
-                }
-                if (mask === 0) continue;
-                const off = count * 8;
-                scratch[off + 0] = (baseX + tx) * TILE_SIZE_PX + HALF;
-                scratch[off + 1] = (baseY + ty) * TILE_SIZE_PX + HALF;
-                scratch[off + 2] = TILE_SIZE_PX;
-                scratch[off + 3] = TILE_SIZE_PX;
-                scratch[off + 4] = 0;
-                scratch[off + 5] = (mask - 1) * INV_SHADOW;
-                scratch[off + 6] = 1;
-                scratch[off + 7] = INV_SHADOW;
-                count++;
-              }
-            }
-          }
-          flushPass(count);
-        }
-
-        // --- MEMORY OVERLAY / PLAYER PASS ---
-        if (viewModeRef.current === "entity" && whiteTextureRef.current) {
-          gl.enable(gl.BLEND);
-          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-          setRenderMode(5);
-          setTint(1.0, 0.78, 0.18);
-          setAlpha(0.06);
-
-          let count = 0;
-          for (const { k: vis, key } of visibleChunkKeys) {
-            const tmo = topmostOffsets.get(key);
-            if (!tmo) continue;
-            const baseX = vis.chunkX * CHUNK_EDGE_TILES;
-            const baseY = vis.chunkY * CHUNK_EDGE_TILES;
-            for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
-              for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
-                const zOffset = tmo[ty * CHUNK_EDGE_TILES + tx];
-                if (zOffset === 127) continue;
-                const tileX = baseX + tx;
-                const tileY = baseY + ty;
-                if (
-                  visibilityState(tileX, tileY, viewZ + zOffset) !==
-                    "remembered"
-                ) {
-                  continue;
-                }
-                const off = count * 8;
-                scratch[off + 0] = tileX * TILE_SIZE_PX;
-                scratch[off + 1] = tileY * TILE_SIZE_PX;
-                scratch[off + 2] = TILE_SIZE_PX;
-                scratch[off + 3] = TILE_SIZE_PX;
-                scratch[off + 4] = 1;
-                scratch[off + 5] = 0;
-                scratch[off + 6] = 1;
-                scratch[off + 7] = 1;
-                count++;
-              }
-            }
-          }
-          flushPass(count);
-        }
-
-        if (playerTextureInfoRef.current && playerTextureRef.current) {
-          const player = worldRef.current.entity.position;
-          const zOffset = player.z - viewZ;
-          const inZRange = zOffset >= -Z_LEVELS_BELOW;
-          let occluded = false;
-          if (zOffset !== 0) {
-            const lo = zOffset < 0 ? player.z + 1 : viewZ + 1;
-            const hi = zOffset < 0 ? viewZ : player.z;
-            const playerChunk = chunkOfTile(player.x, player.y);
-            const lx = player.x - playerChunk.chunkX * CHUNK_EDGE_TILES;
-            const ly = player.y - playerChunk.chunkY * CHUNK_EDGE_TILES;
-            for (let checkZ = lo; checkZ <= hi; checkZ++) {
-              if (
-                localSolidAt(
-                  playerChunk.chunkX,
-                  playerChunk.chunkY,
-                  lx,
-                  ly,
-                  checkZ,
-                )
-              ) {
-                occluded = true;
-                break;
-              }
-            }
-          }
-          const visibleToEntity = !entityMode ||
-            isTileVisible(worldRef.current, player);
-          if (inZRange && !occluded && visibleToEntity) {
-            gl.bindTexture(gl.TEXTURE_2D, playerTextureRef.current);
-            setRenderMode(0);
-            const playerTint = layersRef.current.depthTint && zOffset < 0
-              ? DEPTH_TINTS[Math.min(-zOffset, DEPTH_TINTS.length - 1)]
-              : ([1, 1, 1] as [number, number, number]);
-            setTint(playerTint[0], playerTint[1], playerTint[2]);
-            setAlpha(1);
-            const [rx, ry] = smoothPlayerWorldPosRef.current ??
-              entityRenderPosition(worldRef.current.entity);
-            const facingLeft = worldRef.current.entity.facingLeft;
-            const off = 0;
-            scratch[off + 0] = rx * TILE_SIZE_PX;
-            scratch[off + 1] = ry * TILE_SIZE_PX;
-            scratch[off + 2] = TILE_SIZE_PX;
-            scratch[off + 3] = TILE_SIZE_PX;
-            scratch[off + 4] = facingLeft ? 1 : 0;
-            scratch[off + 5] = 0;
-            scratch[off + 6] = facingLeft ? -1 : 1;
-            scratch[off + 7] = 1;
-            flushPass(1);
-          }
-        }
-
-        // --- VGA FONT PASS: chat input + spoken bubbles ---
-        if (vgaFontAtlasRef.current) {
-          renderVgaUi({
-            gl,
-            canvas,
-            vgaAtlas: vgaFontAtlasRef.current,
-            whiteTexture: whiteTextureRef.current,
-            scratch,
-            maxInstances,
-            flushPass,
-            tintLoc,
-            alphaMultiplierLoc,
-            renderModeLoc,
-            setRenderMode,
-            setTint,
-            setAlpha,
-            sceneState: sceneStateRef.current,
-            uiOverlayVisible: uiOverlayVisibleRef.current,
-            capability: capabilityStateRef.current,
-            replayPreview: replayPreviewRef.current,
-            fpsHistory: fpsHistoryRef.current,
-            simTpsDisplay: simTpsDisplayRef.current,
-            solidChunkCount: solidCacheRef.current.size,
-            visibleTileCount: viewModeRef.current === "entity"
-              ? worldRef.current.visible.size
-              : 0,
-            layers: layersRef.current,
-            viewMode: viewModeRef.current,
-            viewZ,
-            frameDrawCalls: frameDrawCallsRef.current,
-            frameInstances: frameInstancesRef.current,
-            logs: logsRef.current,
-            checkpoints: checkpointRecordsRef.current,
-            chatBubbles: chatBubblesRef.current,
-            simTick: simTickRef.current,
-            setChatBubbles: (bubbles) => {
-              chatBubblesRef.current = bubbles;
-            },
-          });
-        }
-        gl.disable(gl.BLEND);
-      }
-
-      frameDrawCallsRef.current = batchStats.drawCalls;
-      frameInstancesRef.current = batchStats.instances;
-      frameMetricsRef.current.push({
-        cpuMs: performance.now() - t0,
-        drawCalls: batchStats.drawCalls,
-        uploadBytes: 0,
-        visibleChunks: sceneStateRef.current.visibleChunks.length,
-      });
-      rafRef.current = globalThis.requestAnimationFrame(drawFrame);
-    };
-
     const handleFullscreenChange = () => {
-      keysHeldRef.current.clear();
-      cameraKeysHeldRef.current.clear();
-      playerKeysHeldRef.current.clear();
-      lastFrameTimeRef.current = null;
-      const isFullscreen = document.fullscreenElement === host;
-      setFullscreenState(isFullscreen);
-      sceneStateRef.current.fullscreen = isFullscreen;
-      pushReplayEvent({
-        type: "fullscreen",
-        tick: nextTick(),
-        active: isFullscreen,
-      });
-      appendLog(isFullscreen ? "fullscreen enter" : "fullscreen exit");
+      inputHandlers.handleFullscreenChange();
       refreshCapability(gl, canvas, document.fullscreenElement);
       syncSceneStateFromCapability(canvas, document.fullscreenElement);
       resizeCanvas();
     };
 
-    const handlePointerDown = () => {
-      canvas.focus();
-    };
-
-    const handleBlur = () => {
-      keysHeldRef.current.clear();
-      cameraKeysHeldRef.current.clear();
-      playerKeysHeldRef.current.clear();
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "F11") {
-        event.preventDefault();
-        if (document.fullscreenElement === host) {
-          void document.exitFullscreen();
-        } else {
-          void host.requestFullscreen();
-        }
-      }
-      if (event.key === "Escape" && document.fullscreenElement === host) {
-        event.preventDefault();
-        void document.exitFullscreen();
-      }
-      if (uiModeRef.current === "chat") {
-        event.preventDefault();
-        recordInputEvent({
-          type: "key_down",
-          code: event.code,
-          key: event.key,
-          repeat: event.repeat,
-          tick: simTickRef.current,
-        });
-        if (event.key === "Escape") {
-          closeChat();
-        } else if (event.key === "Enter") {
-          submitChat();
-        } else if (event.key === "Backspace") {
-          const current = sceneStateRef.current.chatBuffer;
-          const next = event.ctrlKey || event.shiftKey
-            ? deleteLastWord(current)
-            : current.slice(0, -1);
-          updateChatBuffer(next);
-        } else if (event.key.length === 1) {
-          const next = `${sceneStateRef.current.chatBuffer}${event.key}`;
-          updateChatBuffer(next);
-          recordInputEvent({
-            type: "text",
-            value: event.key,
-            tick: simTickRef.current,
-          });
-        }
-        return;
-      }
-
-      if (event.key === "/" || event.code === "Slash") {
-        event.preventDefault();
-        recordInputEvent({
-          type: "key_down",
-          code: event.code,
-          key: event.key,
-          repeat: event.repeat,
-          tick: simTickRef.current,
-        });
-        openChat("/");
-        return;
-      }
-
-      if (event.code === "KeyT") {
-        event.preventDefault();
-        recordInputEvent({
-          type: "key_down",
-          code: event.code,
-          key: event.key,
-          repeat: event.repeat,
-          tick: simTickRef.current,
-        });
-        openChat("");
-        return;
-      }
-
-      recordInputEvent({
-        type: "key_down",
-        code: event.code,
-        key: event.key,
-        repeat: event.repeat,
-        tick: simTickRef.current,
-      });
-
-      if (PLAYER_KEYS.has(event.code)) {
-        event.preventDefault();
-        playerKeysHeldRef.current.add(event.code);
-        if (!event.repeat) {
-          playerKeysJustPressedRef.current.add(event.code);
-        }
-      }
-      if (CAMERA_KEYS.has(event.code)) {
-        event.preventDefault();
-        cameraKeysHeldRef.current.add(event.code);
-      }
-      if (event.code === "Digit1") {
-        event.preventDefault();
-        uiOverlayVisibleRef.current = !uiOverlayVisibleRef.current;
-        setUiOverlayVisible(uiOverlayVisibleRef.current);
-        appendLog(`ui: ${uiOverlayVisibleRef.current ? "on" : "off"}`);
-      }
-      if (event.code === "KeyR") {
-        event.preventDefault();
-        viewZ += 1;
-        streamingKeySetRef.current = "";
-        topmostCacheDirtyRef.current = true;
-        appendLog(`z-level: ${viewZ}`);
-      }
-      if (event.code === "KeyV") {
-        event.preventDefault();
-        viewZ -= 1;
-        streamingKeySetRef.current = "";
-        topmostCacheDirtyRef.current = true;
-        appendLog(`z-level: ${viewZ}`);
-      }
-      if (event.code === "KeyU" || event.code === "KeyM") {
-        event.preventDefault();
-        const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0];
-        const cur = sceneStateRef.current.camera.zoom;
-        const idx = ZOOM_LEVELS.reduce(
-          (best, z, i) =>
-            Math.abs(z - cur) < Math.abs(ZOOM_LEVELS[best] - cur) ? i : best,
-          0,
-        );
-        const next = event.code === "KeyU"
-          ? ZOOM_LEVELS[Math.max(0, idx - 1)]
-          : ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)];
-        sceneStateRef.current.camera = {
-          ...sceneStateRef.current.camera,
-          zoom: next,
-        };
-        appendLog(`zoom: ${next}`);
-      }
-      if (event.code === "Digit6") {
-        event.preventDefault();
-        layersRef.current = {
-          ...layersRef.current,
-          floor: !layersRef.current.floor,
-        };
-        setLayers({ ...layersRef.current });
-        appendLog(`floor: ${layersRef.current.floor ? "on" : "off"}`);
-      }
-      if (event.code === "Digit7") {
-        event.preventDefault();
-        layersRef.current = {
-          ...layersRef.current,
-          edgeShadow: !layersRef.current.edgeShadow,
-        };
-        setLayers({ ...layersRef.current });
-        appendLog(`edgeShadow: ${layersRef.current.edgeShadow ? "on" : "off"}`);
-      }
-      if (event.code === "Digit8") {
-        event.preventDefault();
-        layersRef.current = {
-          ...layersRef.current,
-          ceilShadow: !layersRef.current.ceilShadow,
-        };
-        setLayers({ ...layersRef.current });
-        appendLog(
-          `ceilShadow: ${layersRef.current.ceilShadow ? "on" : "off"}`,
-        );
-      }
-      if (event.code === "Digit9") {
-        event.preventDefault();
-        layersRef.current = {
-          ...layersRef.current,
-          depthTint: !layersRef.current.depthTint,
-        };
-        setLayers({ ...layersRef.current });
-        appendLog(`depthTint: ${layersRef.current.depthTint ? "on" : "off"}`);
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      recordInputEvent({
-        type: "key_up",
-        code: event.code,
-        key: event.key,
-        tick: simTickRef.current,
-      });
-      keysHeldRef.current.delete(event.code);
-      cameraKeysHeldRef.current.delete(event.code);
-      playerKeysHeldRef.current.delete(event.code);
-    };
+    const handlePointerDown = inputHandlers.handlePointerDown;
+    const handleBlur = inputHandlers.handleBlur;
+    const handleKeyDown = inputHandlers.handleKeyDown;
+    const handleKeyUp = inputHandlers.handleKeyUp;
 
     const resizeObserver = new ResizeObserver(() => resizeCanvas());
     resizeObserver.observe(host);
@@ -2413,7 +1432,7 @@ export default function WebGlGameCanvas() {
         flowDescriptorRef.current = descriptor;
         const cam = descriptor.camera ?? { x: 0, y: 0, zoom: 1 };
         worldRef.current = createWorldSim(descriptor.seed);
-        const player = worldPlayerSnapshot();
+        const player = worldPlayerSnapshotRuntime(worldRef.current);
         sceneStateRef.current.camera = {
           x: cam.x,
           y: cam.y,
@@ -2499,7 +1518,7 @@ export default function WebGlGameCanvas() {
     globalThis.__openDwarfWebGlHarness = harness;
 
     resizeCanvas();
-    drawFrame();
+    renderFrame();
     pushReplayEvent({ type: "boot", tick: nextTick() });
     appendLog("boot");
     void loadTextures().catch((error) => {
