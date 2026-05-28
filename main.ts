@@ -1,7 +1,11 @@
 import "$std/dotenv/load.ts";
 
-import { start } from "fresh";
-import manifest from "./fresh.gen.ts";
-import config from "./fresh.config.ts";
+import { App, staticFiles } from "fresh";
 
-await start(manifest, config);
+export const app = new App()
+  .use(staticFiles())
+  .fsRoutes();
+
+if (import.meta.main) {
+  app.listen();
+}
