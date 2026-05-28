@@ -34,8 +34,8 @@ import {
   VGA_FONT_SRC,
   type VgaFontAtlas,
 } from "./webgl-ui-text-vga.ts";
-import TILE_FRAGMENT_SHADER from "./webgl/shaders/tile.frag?raw"
-import TILE_VERTEX_SHADER from "./webgl/shaders/tile.vert?raw"
+import TILE_FRAGMENT_SHADER from "./webgl/shaders/tile.frag?raw";
+import TILE_VERTEX_SHADER from "./webgl/shaders/tile.vert?raw";
 import {
   browserVersionFromUserAgent,
   buildSceneHash,

@@ -479,7 +479,10 @@ export function recomputeFov(
     const idx = dz * D * D + dy * D + dx;
     if (memo[idx] < 0) {
       const cached = solidCheck?.(x, y, z);
-      memo[idx] = (cached !== undefined ? cached : isSolid(world.seed, { x, y, z })) ? 1 : 0;
+      memo[idx] =
+        (cached !== undefined ? cached : isSolid(world.seed, { x, y, z }))
+          ? 1
+          : 0;
     }
     return memo[idx] > 0;
   };

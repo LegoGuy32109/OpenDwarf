@@ -1,4 +1,4 @@
-import { Head } from "$fresh/runtime.ts";
+import { Head } from "fresh/runtime";
 import WebGlGameCanvas from "../islands/WebGlGameCanvas.tsx";
 import WebGlFullscreenButton from "../islands/WebGlFullscreenButton.tsx";
 

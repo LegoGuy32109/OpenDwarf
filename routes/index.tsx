@@ -1,5 +1,5 @@
-import { Head } from "$fresh/runtime.ts";
-import { PageProps } from "$fresh/server.ts";
+import { Head } from "fresh/runtime";
+import { PageProps } from "fresh";
 import GameCanvas from "../islands/GameCanvas.tsx";
 import FullscreenButton from "../islands/FullscreenButton.tsx";
 import MultiplayerSidebar from "../islands/MultiplayerSidebar.tsx";
