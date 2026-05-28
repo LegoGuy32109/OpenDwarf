@@ -376,7 +376,12 @@ export function computePerfWindow(metrics: FrameMetric[]): PerfWindow {
 
 export function waitForAnimationFrame() {
   return new Promise<void>((resolve) => {
-    globalThis.requestAnimationFrame(() => resolve());
+    const raf = (
+      globalThis as unknown as {
+        requestAnimationFrame: (callback: () => void) => number;
+      }
+    ).requestAnimationFrame;
+    raf(() => resolve());
   });
 }
 

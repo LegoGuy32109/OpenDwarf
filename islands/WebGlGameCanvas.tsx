@@ -30,12 +30,21 @@ import {
   type WorldSimState,
 } from "../lib/webgl-world-sim.ts";
 import {
+  advanceSimulationTick as advanceSimulationTickRuntime,
+  buildStreamingChunkKeys as buildStreamingChunkKeysRuntime,
+  createSolidChunkCache,
+  processCameraMovement as processCameraMovementRuntime,
+  processPlayerMovement as processPlayerMovementRuntime,
+  processVisibility as processVisibilityRuntime,
+  syncScenePlayerFromWorld as syncScenePlayerFromWorldRuntime,
+  updateWorldSolidCache as updateWorldSolidCacheRuntime,
+  worldPlayerSnapshot as worldPlayerSnapshotRuntime,
+} from "./webgl/world-runtime.ts";
+import {
   createVgaFontAtlas,
   VGA_FONT_SRC,
   type VgaFontAtlas,
 } from "./webgl-ui-text-vga.ts";
-import TILE_FRAGMENT_SHADER from "./webgl/shaders/tile.frag?raw";
-import TILE_VERTEX_SHADER from "./webgl/shaders/tile.vert?raw";
 import {
   browserVersionFromUserAgent,
   buildSceneHash,
@@ -90,6 +99,10 @@ import {
 } from "./webgl/gl-resources.ts";
 import { flushInstanceBatch } from "./webgl/render-batch.ts";
 import { renderVgaUi } from "./webgl/render-ui.ts";
+import {
+  TILE_FRAGMENT_SHADER,
+  TILE_VERTEX_SHADER,
+} from "./webgl/shaders.ts";
 
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
@@ -668,28 +681,14 @@ export default function WebGlGameCanvas() {
     appendLog(`chat message ${JSON.stringify(trimmed)}`);
   };
 
-  const worldPlayerSnapshot = (): PlayerState => {
-    const pos = worldRef.current.entity.position;
-    return { tileX: pos.x, tileY: pos.y, tileZ: pos.z };
-  };
+  const worldPlayerSnapshot = () => worldPlayerSnapshotRuntime(worldRef.current);
 
-  const syncScenePlayerFromWorld = () => {
-    const pos = worldRef.current.entity.position;
-    if (
-      pos.x !== sceneStateRef.current.player.tileX ||
-      pos.y !== sceneStateRef.current.player.tileY ||
-      pos.z !== sceneStateRef.current.player.tileZ
-    ) {
-      sceneStateRef.current.player = {
-        tileX: pos.x,
-        tileY: pos.y,
-        tileZ: pos.z,
-      };
-      fovDirtyRef.current = true;
-    }
-  };
-
-  const loadedChunkSet = () => new Set(solidCacheRef.current.keys());
+  const syncScenePlayerFromWorld = () =>
+    syncScenePlayerFromWorldRuntime(
+      worldRef,
+      sceneStateRef,
+      fovDirtyRef,
+    );
 
   const closeChat = () => {
     uiModeRef.current = "world";
@@ -705,243 +704,76 @@ export default function WebGlGameCanvas() {
     closeChat();
   };
 
-  const processPlayerMovement = () => {
-    if (uiModeRef.current === "chat") {
-      playerKeysJustPressedRef.current.clear();
-      return;
-    }
-
-    const isMoving = !!worldRef.current.entity.movement;
-    const wasMoving = wasMovingLastTickRef.current;
-    wasMovingLastTickRef.current = isMoving;
-    const shouldChainHeld = wasMoving && !isMoving;
-
-    // just-pressed: non-repeat keydowns since last tick, cleared after reading
-    const jp = playerKeysJustPressedRef.current;
-    const justPressedDir: Vec3i = {
-      x: (jp.has("KeyS") && !jp.has("KeyF"))
-        ? -1
-        : (jp.has("KeyF") && !jp.has("KeyS"))
-        ? 1
-        : 0,
-      y: (jp.has("KeyE") && !jp.has("KeyD"))
-        ? -1
-        : (jp.has("KeyD") && !jp.has("KeyE"))
-        ? 1
-        : 0,
-      z: 0,
-    };
-    playerKeysJustPressedRef.current.clear();
-    const justPressedNonZero = justPressedDir.x !== 0 || justPressedDir.y !== 0;
-
-    // held direction
-    const h = playerKeysHeldRef.current;
-    const heldDir: Vec3i = {
-      x: (h.has("KeyS") && !h.has("KeyF"))
-        ? -1
-        : (h.has("KeyF") && !h.has("KeyS"))
-        ? 1
-        : 0,
-      y: (h.has("KeyE") && !h.has("KeyD"))
-        ? -1
-        : (h.has("KeyD") && !h.has("KeyE"))
-        ? 1
-        : 0,
-      z: 0,
-    };
-    const heldNonZero = heldDir.x !== 0 || heldDir.y !== 0;
-
-    const tryMove = (dir: Vec3i) => {
-      const result = startEntityMove(worldRef.current, dir, loadedChunkSet());
-      if (!result.ok && result.reason !== "moving") {
-        appendLog(`move blocked: ${result.reason}`);
-      }
-    };
-
-    if (!isMoving) {
-      if (justPressedNonZero) {
-        tryMove(justPressedDir);
-      } else if (shouldChainHeld && heldNonZero) {
-        tryMove(heldDir);
-      }
-    } else if (justPressedNonZero) {
-      const mv = worldRef.current.entity.movement!;
-      const activeDir: Vec3i = {
-        x: Math.sign(mv.target.x - mv.origin.x),
-        y: Math.sign(mv.target.y - mv.origin.y),
-        z: 0,
-      };
-      // direction_contains: does heldDir contain activeDir?
-      // Prevents interrupting e.g. north movement when user holds NE (NE contains N)
-      const activeInHeld = (heldDir.x !== 0 || heldDir.y !== 0) &&
-        (activeDir.x === 0 || Math.sign(heldDir.x) === activeDir.x) &&
-        (activeDir.y === 0 || Math.sign(heldDir.y) === activeDir.y);
-      const sameAsActive = justPressedDir.x === activeDir.x &&
-        justPressedDir.y === activeDir.y;
-      if (!sameAsActive && !activeInHeld) {
-        tryMove(justPressedDir);
-      }
-    }
-  };
+  const processPlayerMovement = () =>
+    processPlayerMovementRuntime({
+      worldRef,
+      sceneStateRef,
+      solidCacheRef,
+      pendingChunkGenerationRef,
+      playerKeysHeldRef,
+      playerKeysJustPressedRef,
+      cameraKeysHeldRef,
+      wasMovingLastTickRef,
+      cameraLookOffsetRef,
+      fovDirtyRef,
+      topmostCacheDirtyRef,
+      streamingKeySetRef,
+      viewModeRef,
+      uiModeRef,
+      simTickRef,
+      eventTickRef,
+      simTicksThisSecondRef,
+      simTickSecondStartRef,
+      appendLog,
+    });
 
   // deltaS: seconds since last frame. Must run every render frame, not per sim tick,
   // so camera movement stays smooth regardless of simulation TPS.
-  const processCameraMovement = (deltaS: number) => {
-    if (uiModeRef.current === "chat") return;
-    const up = cameraKeysHeldRef.current.has("KeyI");
-    const down = cameraKeysHeldRef.current.has("KeyK");
-    const left = cameraKeysHeldRef.current.has("KeyJ");
-    const right = cameraKeysHeldRef.current.has("KeyL");
-    const step = cameraSpeedPxPerS * deltaS;
+  const processCameraMovement = (deltaS: number) =>
+    processCameraMovementRuntime(deltaS, {
+      uiModeRef,
+      viewModeRef,
+      cameraKeysHeldRef,
+      cameraLookOffsetRef,
+      sceneStateRef,
+      cameraSpeedPxPerS,
+    });
 
-    if (viewModeRef.current === "entity") {
-      const offset = cameraLookOffsetRef.current;
-      let ox = offset.x;
-      let oy = offset.y;
-      if (up && !down) oy -= step;
-      if (down && !up) oy += step;
-      if (left && !right) ox -= step;
-      if (right && !left) ox += step;
-      if (!up && !down && !left && !right) {
-        // Exponential return — CAMERA_RETURN_PER_TICK=0.08 was per 60fps frame,
-        // equivalent decay constant k≈5 gives same feel at any frame rate.
-        const returnRate = 1 - Math.exp(-5 * deltaS);
-        ox += (0 - ox) * returnRate;
-        oy += (0 - oy) * returnRate;
-        if (Math.abs(ox) < 0.5) ox = 0;
-        if (Math.abs(oy) < 0.5) oy = 0;
-      }
-      cameraLookOffsetRef.current = { x: ox, y: oy };
-      // Camera position itself is set by the smooth-pos override in drawFrame;
-      // we only need to keep the look offset up to date here.
-      return;
-    }
+  const processVisibility = () =>
+    processVisibilityRuntime({
+      worldRef,
+      sceneStateRef,
+      viewModeRef,
+      fovDirtyRef,
+      solidCacheRef,
+      topmostCacheDirtyRef,
+    });
 
-    if (!up && !down && !left && !right) return;
-    const cam = sceneStateRef.current.camera;
-    sceneStateRef.current.camera = {
-      x: cam.x + (left && !right ? -step : right && !left ? step : 0),
-      y: cam.y + (up && !down ? -step : down && !up ? step : 0),
-      zoom: cam.zoom,
-    };
-  };
-
-  const processVisibility = () => {
-    if (viewModeRef.current !== "entity") {
-      // Fix 5: only clear visible set if it was previously non-empty
-      if (worldRef.current.visible.size > 0) {
-        worldRef.current.visible = new Set();
-        sceneStateRef.current.visibleTileCount = 0;
-        sceneStateRef.current.rememberedTileCount =
-          worldRef.current.memory.size;
-      }
-      return;
-    }
-    if (fovDirtyRef.current) {
-      // Pass solidCacheRef as a fast O(1) lookup so recomputeFov avoids noise recomputation.
-      // Returns undefined for uncached chunks; recomputeFov falls back to worldBlockAt.
-      const solidCache = solidCacheRef.current;
-      const solidCheck = (
-        x: number,
-        y: number,
-        z: number,
-      ): boolean | undefined => {
-        const { chunkX, chunkY } = chunkOfTile(x, y);
-        const key = `${chunkX},${chunkY},${z}`;
-        const chunk = solidCache.get(key);
-        if (!chunk) return undefined;
-        const lx = ((x % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-          CHUNK_EDGE_TILES;
-        const ly = ((y % CHUNK_EDGE_TILES) + CHUNK_EDGE_TILES) %
-          CHUNK_EDGE_TILES;
-        return chunk[ly * CHUNK_EDGE_TILES + lx] !== 0;
-      };
-      recomputeFov(worldRef.current, solidCheck);
-      fovDirtyRef.current = false;
-      topmostCacheDirtyRef.current = true;
-    }
-    sceneStateRef.current.visibleTileCount = worldRef.current.visible.size;
-    sceneStateRef.current.rememberedTileCount = worldRef.current.memory.size;
-  };
-
-  const buildStreamingChunkKeys = (currentViewZ: number) => {
-    const viewport = sceneStateRef.current.viewport;
-    const keys = computeStreamingChunks(
-      sceneStateRef.current.camera,
-      {
-        framebufferWidth: viewport.framebufferWidth,
-        framebufferHeight: viewport.framebufferHeight,
-      },
-      STREAM_PADDING,
-    );
-    if (viewModeRef.current === "entity") {
-      const playerChunk = chunkOfTile(
-        sceneStateRef.current.player.tileX,
-        sceneStateRef.current.player.tileY,
-      );
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          keys.push({
-            chunkX: playerChunk.chunkX + dx,
-            chunkY: playerChunk.chunkY + dy,
-            chunkZ: currentViewZ,
-          });
-        }
-      }
-    }
-    const deduped = new Map<
-      string,
-      { chunkX: number; chunkY: number; chunkZ: number }
-    >();
-    for (const key of keys) {
-      deduped.set(chunkKeyString(key), key);
-    }
-    return [...deduped.values()];
-  };
+  const buildStreamingChunkKeys = (currentViewZ: number) =>
+    buildStreamingChunkKeysRuntime(sceneStateRef, viewModeRef, currentViewZ);
 
   const updateWorldSolidCache = (
     streamingXYKeys: Array<{ chunkX: number; chunkY: number }>,
     currentViewZ: number,
-  ) => {
-    const wanted = new Set<string>();
-    const world = worldRef.current;
-    const visibilityZ = entityVisibilityPosition(world.entity).z;
-    const minZ = Math.min(currentViewZ - Z_LEVELS_BELOW, visibilityZ - 6);
-    const maxZ = Math.max(currentViewZ + 1, visibilityZ + 6);
-    for (const { chunkX, chunkY } of streamingXYKeys) {
-      for (let z = minZ; z <= maxZ; z++) {
-        wanted.add(chunkKeyString({ chunkX, chunkY, chunkZ: z }));
-      }
-    }
+  ) =>
+    updateWorldSolidCacheRuntime(
+      worldRef,
+      solidCacheRef,
+      pendingChunkGenerationRef,
+      streamingXYKeys,
+      currentViewZ,
+    );
 
-    for (const key of [...solidCacheRef.current.keys()]) {
-      if (!wanted.has(key)) {
-        solidCacheRef.current.delete(key);
-      }
-    }
-    // Rebuild pending queue: drop no-longer-wanted keys, add newly missing ones.
-    const pendingSet = new Set(pendingChunkGenerationRef.current);
-    pendingChunkGenerationRef.current = pendingChunkGenerationRef.current
-      .filter(
-        (k) => wanted.has(k),
-      );
-    for (const key of wanted) {
-      if (!solidCacheRef.current.has(key) && !pendingSet.has(key)) {
-        pendingChunkGenerationRef.current.push(key);
-      }
-    }
-  };
-
-  const advanceSimulationTick = () => {
-    simTickRef.current += 1;
-    eventTickRef.current = simTickRef.current;
-    worldRef.current.tick = simTickRef.current;
-    simTicksThisSecondRef.current += 1;
-    processPlayerMovement();
-    advanceWorldMovement(worldRef.current);
-    syncScenePlayerFromWorld();
-    processVisibility();
-  };
+  const advanceSimulationTick = () =>
+    advanceSimulationTickRuntime({
+      simTickRef,
+      eventTickRef,
+      simTicksThisSecondRef,
+      worldRef,
+      processPlayerMovement,
+      processVisibility,
+      syncScenePlayerFromWorld,
+    });
 
   useEffect(() => {
     const host = hostRef.current;
