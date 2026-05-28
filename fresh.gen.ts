@@ -19,7 +19,7 @@ import * as $webgl_ui_text_vga from "./islands/webgl-ui-text-vga.ts";
 import * as $webgl_gl_resources from "./islands/webgl/gl-resources.ts";
 import * as $webgl_render_batch from "./islands/webgl/render-batch.ts";
 import * as $webgl_render_ui from "./islands/webgl/render-ui.ts";
-import * as $webgl_shaders from "./islands/webgl/shaders.ts";
+import * as $webgl_webgl_core from "./islands/webgl/webgl-core.ts";
 import type { Manifest } from "$fresh/server.ts";
 
 const manifest = {
@@ -43,7 +43,7 @@ const manifest = {
     "./islands/webgl/gl-resources.ts": $webgl_gl_resources,
     "./islands/webgl/render-batch.ts": $webgl_render_batch,
     "./islands/webgl/render-ui.ts": $webgl_render_ui,
-    "./islands/webgl/shaders.ts": $webgl_shaders,
+    "./islands/webgl/webgl-core.ts": $webgl_webgl_core,
   },
   baseUrl: import.meta.url,
 } satisfies Manifest;

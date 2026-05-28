@@ -8,6 +8,72 @@ export type TileUniformLocations = {
   renderModeLoc: WebGLUniformLocation | null;
 };
 
+export function readGpuStrings(gl: WebGL2RenderingContext) {
+  const debugInfo = gl.getExtension("WEBGL_debug_renderer_info") as
+    | {
+      UNMASKED_RENDERER_WEBGL: number;
+      UNMASKED_VENDOR_WEBGL: number;
+    }
+    | undefined;
+
+  return {
+    renderer: debugInfo
+      ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL))
+      : null,
+    vendor: debugInfo
+      ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL))
+      : null,
+  };
+}
+
+export function compileShader(
+  gl: WebGL2RenderingContext,
+  type: number,
+  source: string,
+) {
+  const shader = gl.createShader(type);
+  if (!shader) {
+    throw new Error("Failed to create shader");
+  }
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const info = gl.getShaderInfoLog(shader) ?? "unknown shader compile error";
+    gl.deleteShader(shader);
+    throw new Error(info);
+  }
+  return shader;
+}
+
+export function createProgram(
+  gl: WebGL2RenderingContext,
+  vertexSource: string,
+  fragmentSource: string,
+) {
+  const program = gl.createProgram();
+  if (!program) {
+    throw new Error("Failed to create program");
+  }
+
+  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+
+  gl.deleteShader(vertexShader);
+  gl.deleteShader(fragmentShader);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const info = gl.getProgramInfoLog(program) ?? "unknown link error";
+    gl.deleteProgram(program);
+    throw new Error(info);
+  }
+
+  return program;
+}
+
 export function createAtlasTexture(gl: WebGL2RenderingContext): WebGLTexture {
   const tex = gl.createTexture();
   if (!tex) throw new Error("Failed to create texture");

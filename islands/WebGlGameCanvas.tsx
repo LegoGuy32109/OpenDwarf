@@ -34,11 +34,57 @@ import {
   VGA_FONT_SRC,
   type VgaFontAtlas,
 } from "./webgl-ui-text-vga.ts";
-import { TILE_FRAGMENT_SHADER, TILE_VERTEX_SHADER } from "./webgl/shaders.ts";
+import TILE_FRAGMENT_SHADER from "./webgl/shaders/tile.frag?raw"
+import TILE_VERTEX_SHADER from "./webgl/shaders/tile.vert?raw"
+import {
+  browserVersionFromUserAgent,
+  buildSceneHash,
+  CAMERA_KEYS,
+  CameraLookOffset,
+  CEIL_SHADOW_TEXTURE_SRC,
+  ChatBubbleRecord,
+  computePerfWindow,
+  createJsonBlob,
+  createRunId,
+  EDGE_SEGMENT_BAND_PX,
+  EDGE_SEGMENT_DARK_ALPHA,
+  EDGE_SEGMENT_LIGHT_ALPHA,
+  FLOW_NAME,
+  FrameMetric,
+  hashJson,
+  InputLogEvent,
+  makeArtifactFilename,
+  makeStateFilename,
+  MAX_STREAMING_CHUNKS,
+  PLAYER_KEYS,
+  PLAYER_TEXTURE_SRC,
+  PlayerState,
+  ReplayDocument,
+  ReplayEvent,
+  ReplayPreview,
+  SEED_NAME,
+  SHADOW_ALPHA_MULTIPLIER,
+  SHADOW_TEXTURE_SRC,
+  STREAM_PADDING,
+  summarizeReplay,
+  TILE_TEXTURE_SRC,
+  waitForAnimationFrame,
+  WebGlArtifactManifest,
+  WebGlCapabilityReport,
+  WebGlCheckpointRecord,
+  WebGlExportBundleData,
+  WebGlSceneSnapshot,
+  WebGlScreenshotBaselineManifest,
+  WebGlTestHarness,
+  WebGlUiMode,
+  WebGlViewMode,
+} from "./webgl/webgl-core.ts";
 import {
   createAtlasTexture,
   createInstancedQuadBuffers,
+  createProgram,
   getTileUniformLocations,
+  readGpuStrings,
   uploadTexImage,
   uploadWhiteTexture,
 } from "./webgl/gl-resources.ts";
@@ -48,492 +94,7 @@ import { renderVgaUi } from "./webgl/render-ui.ts";
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
 }
-
-type WebGlCapabilityReport = {
-  userAgent: string;
-  platform: string;
-  hardwareConcurrency: number | null;
-  devicePixelRatio: number;
-  innerSize: { width: number; height: number };
-  screenSize: { width: number; height: number };
-  maxTouchPoints: number | null;
-  fullscreen: boolean;
-  canvasCssSize: { width: number; height: number };
-  framebufferSize: { width: number; height: number };
-  context: {
-    webgl2: boolean;
-    version: string | null;
-    shadingLanguageVersion: string | null;
-    renderer: string | null;
-    vendor: string | null;
-    maxTextureSize: number | null;
-    maxViewportDims: [number, number] | null;
-  };
-};
-
-type ReplayEvent =
-  | {
-    type: "boot";
-    tick: number;
-  }
-  | {
-    type: "key_down";
-    code: string;
-    key: string;
-    repeat: boolean;
-    tick: number;
-  }
-  | { type: "key_up"; code: string; key: string; tick: number }
-  | { type: "text"; value: string; tick: number }
-  | {
-    type: "resize";
-    tick: number;
-    cssWidth: number;
-    cssHeight: number;
-    dpr: number;
-    framebufferWidth: number;
-    framebufferHeight: number;
-  }
-  | {
-    type: "fullscreen";
-    tick: number;
-    active: boolean;
-  }
-  | {
-    type: "texture_loaded";
-    tick: number;
-    src: string;
-    width: number;
-    height: number;
-  }
-  | {
-    type: "screenshot";
-    tick: number;
-    filename: string;
-    bytes: number;
-  }
-  | {
-    type: "checkpoint";
-    tick: number;
-    name: string;
-    frame: number;
-    screenshotFilename: string;
-    stateFilename: string;
-    stateHash: string;
-    baselineConfigured: boolean;
-  };
-
-type FrameMetric = {
-  cpuMs: number;
-  drawCalls: number;
-  uploadBytes: number;
-  visibleChunks: number;
-};
-
-type WebGlViewMode = "entity" | "master";
-type WebGlUiMode = "world" | "chat";
-
-type InputLogEvent =
-  | {
-    type: "key_down";
-    code: string;
-    key: string;
-    repeat: boolean;
-    tick: number;
-  }
-  | { type: "key_up"; code: string; key: string; tick: number }
-  | { type: "text"; value: string; tick: number }
-  | { type: "fullscreen"; active: boolean; tick: number }
-  | {
-    type: "resize";
-    cssWidth: number;
-    cssHeight: number;
-    dpr: number;
-    framebufferWidth: number;
-    framebufferHeight: number;
-    tick: number;
-  };
-
-type PlayerState = {
-  tileX: number;
-  tileY: number;
-  tileZ: number;
-};
-
-type ChatBubbleRecord = {
-  message: string;
-  target: PlayerState;
-  tick: number;
-};
-
-type CameraLookOffset = {
-  x: number;
-  y: number;
-};
-
-type WebGlSceneSnapshot = {
-  tick: number;
-  frame: number;
-  seed: string;
-  camera: { x: number; y: number; zoom: number };
-  player: PlayerState;
-  viewMode: WebGlViewMode;
-  uiMode: WebGlUiMode;
-  fullscreen: boolean;
-  viewport: {
-    cssWidth: number;
-    cssHeight: number;
-    devicePixelRatio: number;
-    framebufferWidth: number;
-    framebufferHeight: number;
-  };
-  visibleChunks: string[];
-  streamingChunks: string[];
-  residentChunks: number;
-  assetsLoaded: string[];
-  chatBuffer: string;
-  submittedChatMessages: string[];
-  visibleTileCount: number;
-  rememberedTileCount: number;
-  drawOrderLabels: string[];
-  sceneHash: string;
-  perf: PerfWindow;
-};
-
-type WebGlCheckpointRecord = {
-  name: string;
-  ordinal: number;
-  tick: number;
-  frame: number;
-  camera: { x: number; y: number; zoom: number };
-  viewMode: WebGlViewMode;
-  uiMode: WebGlUiMode;
-  player: PlayerState;
-  chatBuffer: string;
-  screenshotFilename: string;
-  stateFilename: string;
-  stateHash: string;
-  baselineConfigured: boolean;
-  baselineSource: string | null;
-  perf: PerfWindow;
-  visibleChunks: string[];
-  residentChunks: number;
-  visibleTileCount: number;
-  rememberedTileCount: number;
-  drawOrderLabels: string[];
-};
-
-type WebGlScreenshotBaselineManifest = {
-  version: 1;
-  flow: string;
-  screenshots: Record<string, { path: string; sha256?: string }>;
-};
-
-type ReplayDocument = {
-  version: 1;
-  flow: "webgl-step1-single-rock";
-  scene: "webgl-step1-single-rock";
-  seed: string;
-  viewport: {
-    width: number;
-    height: number;
-    devicePixelRatio: number;
-  };
-  capture: {
-    fullscreenRequired: boolean;
-    screenshots: boolean;
-    video: boolean;
-  };
-  createdAt: string;
-  capability: WebGlCapabilityReport | null;
-  events: ReplayEvent[];
-  checkpoints: WebGlCheckpointRecord[];
-};
-
-type ReplayPreview = {
-  eventCount: number;
-  checkpointCount: number;
-  lastResize: ReplayEvent | null;
-  fullscreenActive: boolean;
-  textureCount: number;
-  screenshotCount: number;
-};
-
-type WebGlArtifactManifest = {
-  version: 1;
-  flow: "webgl-step1-single-rock";
-  runId: string;
-  createdAt: string;
-  browser: {
-    name: string;
-    version: string | null;
-    userAgent: string;
-    platform: string | null;
-  };
-  renderer: {
-    webgl2: boolean;
-    renderer: string | null;
-    vendor: string | null;
-  };
-  baseline: {
-    configured: boolean;
-    source: string | null;
-  };
-  checkpoints: WebGlCheckpointRecord[];
-};
-
-type WebGlSerializableArtifact = {
-  filename: string;
-  dataUrl: string;
-};
-
-type WebGlExportBundleData = {
-  replayJson: string;
-  manifestJson: string;
-  frames: WebGlSerializableArtifact[];
-  screenshots: WebGlSerializableArtifact[];
-  states: WebGlSerializableArtifact[];
-};
-
-type WebGlTestHarness = {
-  loadFlow: (descriptor: FlowDescriptor) => void;
-  stepTick: (n: number) => Promise<void>;
-  captureCheckpoint: (name: string) => Promise<WebGlCheckpointRecord | null>;
-  setCamera: (x: number, y: number, zoom?: number) => Promise<void>;
-  setPlayer: (tileX: number, tileY: number, tileZ?: number) => Promise<void>;
-  setViewMode: (mode: WebGlViewMode) => Promise<void>;
-  setCameraSpeed: (pxPerS: number) => void;
-  exportReplay: () => ReplayDocument;
-  exportBundleData: () => Promise<WebGlExportBundleData>;
-  importReplay: (doc: ReplayDocument) => void;
-  setScreenshotBaselineManifest: (
-    manifest: WebGlScreenshotBaselineManifest | null,
-  ) => void;
-  getManifest: () => WebGlArtifactManifest;
-};
-
-const FLOW_NAME = "webgl-step1-single-rock";
-const SEED_NAME = "single-rock-step1";
-const TILE_TEXTURE_SRC = "/assets/sprites/StackedTextures.png";
-const PLAYER_TEXTURE_SRC = "/assets/sprites/Dwarf_16x16.png";
-const SHADOW_TEXTURE_SRC = "/assets/atlases/ShadowAtlas.png";
-const CEIL_SHADOW_TEXTURE_SRC = "/assets/atlases/ObscureAtlas.png";
-const SHADOW_ALPHA_MULTIPLIER = 0.55;
-const EDGE_SEGMENT_DARK_ALPHA = 0.28;
-const EDGE_SEGMENT_LIGHT_ALPHA = 0.11;
-const EDGE_SEGMENT_BAND_PX = 4;
 let cameraSpeedPxPerS = 480;
-const STREAM_PADDING = 1;
-const MAX_STREAMING_CHUNKS = 64;
-const PLAYER_KEYS = new Set([
-  "KeyE",
-  "KeyS",
-  "KeyD",
-  "KeyF",
-]);
-const CAMERA_KEYS = new Set([
-  "KeyI",
-  "KeyJ",
-  "KeyK",
-  "KeyL",
-]);
-
-function createRunId() {
-  const stamp = new Date().toISOString().replaceAll(":", "-");
-  const entropy = globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
-    .toString(16)
-    .padStart(8, "0");
-  return `${stamp}__${entropy}`;
-}
-
-function slugifyName(name: string) {
-  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
-    /_+/g,
-    "_",
-  ).replace(/^_|_$/g, "");
-}
-
-function makeArtifactFilename(
-  ordinal: number,
-  name: string,
-  extension: string,
-) {
-  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${
-    slugifyName(name)
-  }.${extension}`;
-}
-
-function makeStateFilename(ordinal: number, name: string) {
-  return `${FLOW_NAME}__${String(ordinal).padStart(3, "0")}__${
-    slugifyName(name)
-  }.json`;
-}
-
-function browserVersionFromUserAgent(userAgent: string) {
-  const chromeMatch = userAgent.match(/Chrome\/([0-9.]+)/);
-  if (chromeMatch) return chromeMatch[1];
-  const firefoxMatch = userAgent.match(/Firefox\/([0-9.]+)/);
-  if (firefoxMatch) return firefoxMatch[1];
-  const safariMatch = userAgent.match(/Version\/([0-9.]+).*Safari\//);
-  if (safariMatch) return safariMatch[1];
-  return null;
-}
-
-async function hashJson(value: unknown) {
-  const encoded = new TextEncoder().encode(JSON.stringify(value));
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  const bytes = [...new Uint8Array(digest)].map((byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-  return `sha256:${bytes}`;
-}
-
-function createJsonBlob(value: unknown) {
-  return new Blob([JSON.stringify(value, null, 2)], {
-    type: "application/json;charset=utf-8",
-  });
-}
-
-function buildSceneHash(
-  snapshot: Omit<WebGlSceneSnapshot, "sceneHash" | "perf">,
-) {
-  return hashJson(snapshot);
-}
-
-function computePerfWindow(metrics: FrameMetric[]): PerfWindow {
-  if (metrics.length === 0) {
-    return {
-      frames: 0,
-      cpuMs: { p50: 0, p95: 0, max: 0 },
-      drawCalls: { p50: 0, p95: 0, max: 0 },
-      uploadBytes: 0,
-    };
-  }
-  const sortedAsc = (arr: number[]) => [...arr].sort((a, b) => a - b);
-  const percentile = (sorted: number[], pct: number) =>
-    sorted[Math.min(Math.floor(sorted.length * pct), sorted.length - 1)];
-
-  const cpuSorted = sortedAsc(metrics.map((m) => m.cpuMs));
-  const dcSorted = sortedAsc(metrics.map((m) => m.drawCalls));
-
-  return {
-    frames: metrics.length,
-    cpuMs: {
-      p50: percentile(cpuSorted, 0.5),
-      p95: percentile(cpuSorted, 0.95),
-      max: cpuSorted[cpuSorted.length - 1],
-    },
-    drawCalls: {
-      p50: percentile(dcSorted, 0.5),
-      p95: percentile(dcSorted, 0.95),
-      max: dcSorted[dcSorted.length - 1],
-    },
-    uploadBytes: metrics.reduce((s, m) => s + m.uploadBytes, 0),
-  };
-}
-
-function waitForAnimationFrame() {
-  return new Promise<void>((resolve) => {
-    globalThis.requestAnimationFrame(() => resolve());
-  });
-}
-
-function readGpuStrings(gl: WebGL2RenderingContext) {
-  const debugInfo = gl.getExtension("WEBGL_debug_renderer_info") as
-    | {
-      UNMASKED_RENDERER_WEBGL: number;
-      UNMASKED_VENDOR_WEBGL: number;
-    }
-    | undefined;
-
-  return {
-    renderer: debugInfo
-      ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL))
-      : null,
-    vendor: debugInfo
-      ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL))
-      : null,
-  };
-}
-
-function compileShader(
-  gl: WebGL2RenderingContext,
-  type: number,
-  source: string,
-) {
-  const shader = gl.createShader(type);
-  if (!shader) {
-    throw new Error("Failed to create shader");
-  }
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const info = gl.getShaderInfoLog(shader) ?? "unknown shader compile error";
-    gl.deleteShader(shader);
-    throw new Error(info);
-  }
-  return shader;
-}
-
-function createProgram(
-  gl: WebGL2RenderingContext,
-  vertexSource: string,
-  fragmentSource: string,
-) {
-  const program = gl.createProgram();
-  if (!program) {
-    throw new Error("Failed to create program");
-  }
-
-  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
-  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
-
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
-  gl.linkProgram(program);
-
-  gl.deleteShader(vertexShader);
-  gl.deleteShader(fragmentShader);
-
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const info = gl.getProgramInfoLog(program) ?? "unknown link error";
-    gl.deleteProgram(program);
-    throw new Error(info);
-  }
-
-  return program;
-}
-
-function summarizeReplay(events: ReplayEvent[]): ReplayPreview {
-  let lastResize: ReplayEvent | null = null;
-  let fullscreenActive = false;
-  let textureCount = 0;
-  let screenshotCount = 0;
-  let checkpointCount = 0;
-
-  for (const event of events) {
-    if (event.type === "resize") {
-      lastResize = event;
-    } else if (event.type === "fullscreen") {
-      fullscreenActive = event.active;
-    } else if (event.type === "texture_loaded") {
-      textureCount += 1;
-    } else if (event.type === "screenshot") {
-      screenshotCount += 1;
-    } else if (event.type === "checkpoint") {
-      checkpointCount += 1;
-    }
-  }
-
-  return {
-    eventCount: events.length,
-    checkpointCount,
-    lastResize,
-    fullscreenActive,
-    textureCount,
-    screenshotCount,
-  };
-}
 
 export default function WebGlGameCanvas() {
   const hostRef = useRef<HTMLDivElement>(null);
