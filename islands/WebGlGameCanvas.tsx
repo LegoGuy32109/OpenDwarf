@@ -26,13 +26,11 @@ import {
   isTileVisible,
   recomputeFov,
   startEntityMove,
-  type Vec3i,
   type WorldSimState,
 } from "../lib/webgl-world-sim.ts";
 import {
   advanceSimulationTick as advanceSimulationTickRuntime,
   buildStreamingChunkKeys as buildStreamingChunkKeysRuntime,
-  createSolidChunkCache,
   processCameraMovement as processCameraMovementRuntime,
   processPlayerMovement as processPlayerMovementRuntime,
   processVisibility as processVisibilityRuntime,
@@ -108,6 +106,17 @@ declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
 }
 let cameraSpeedPxPerS = 480;
+void [
+  computeStreamingChunks,
+  advanceWorldMovement,
+  entityVisibilityPosition,
+  generateWorldSolidChunk,
+  isTileRemembered,
+  isTileVisible,
+  recomputeFov,
+  startEntityMove,
+  STREAM_PADDING,
+];
 
 export default function WebGlGameCanvas() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -681,15 +690,6 @@ export default function WebGlGameCanvas() {
     appendLog(`chat message ${JSON.stringify(trimmed)}`);
   };
 
-  const worldPlayerSnapshot = () => worldPlayerSnapshotRuntime(worldRef.current);
-
-  const syncScenePlayerFromWorld = () =>
-    syncScenePlayerFromWorldRuntime(
-      worldRef,
-      sceneStateRef,
-      fovDirtyRef,
-    );
-
   const closeChat = () => {
     uiModeRef.current = "world";
     activeTypingRef.current = false;
@@ -703,6 +703,15 @@ export default function WebGlGameCanvas() {
     handleChatSubmission(current);
     closeChat();
   };
+
+  const worldPlayerSnapshot = () => worldPlayerSnapshotRuntime(worldRef.current);
+
+  const syncScenePlayerFromWorld = () =>
+    syncScenePlayerFromWorldRuntime(
+      worldRef,
+      sceneStateRef,
+      fovDirtyRef,
+    );
 
   const processPlayerMovement = () =>
     processPlayerMovementRuntime({

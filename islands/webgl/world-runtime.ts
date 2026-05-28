@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import {
   CHUNK_EDGE_TILES,
   chunkKeyString,
@@ -9,8 +11,6 @@ import {
   advanceWorldMovement,
   entityVisibilityPosition,
   generateWorldSolidChunk,
-  isTileRemembered,
-  isTileVisible,
   recomputeFov,
   startEntityMove,
   type Vec3i,

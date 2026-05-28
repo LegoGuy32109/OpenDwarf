@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 const VGA_BITMAP_SRC = "/assets/ui/JoshPerfectDosVga.png";
 const VGA_FIRST_CHAR = 33;
 const VGA_LAST_CHAR = 126;

@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import { CHUNK_EDGE_TILES, TILE_SIZE_PX } from "../../lib/webgl-chunk-gen.ts";
 import {
   drawVgaTextLines,

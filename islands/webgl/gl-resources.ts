@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 export type TileUniformLocations = {
   canvasSizeLoc: WebGLUniformLocation | null;
   cameraLoc: WebGLUniformLocation | null;

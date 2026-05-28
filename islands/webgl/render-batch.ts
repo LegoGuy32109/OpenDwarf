@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 export type InstanceBatchStats = {
   drawCalls: number;
   instances: number;
