@@ -1,7 +1,7 @@
 import { IS_BROWSER } from "fresh/runtime";
 import { JSX } from "preact";
 
-export function Button(props: JSX.HTMLAttributes<HTMLButtonElement>) {
+export function Button(props: JSX.IntrinsicElements["button"]) {
   return (
     <button
       {...props}
