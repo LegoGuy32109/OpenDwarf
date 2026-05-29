@@ -27,7 +27,7 @@
     "@tailwindcss/vite": "npm:@tailwindcss/vite@^4.1.0",
     "vite": "npm:vite@^7.3.0",
     "preact": "npm:preact@^10.29.1",
-    "preact/": "https://esm.sh/preact@10.22.0/",
+    "preact/": "npm:preact@^10.29.1/",
     "@preact/signals": "npm:@preact/signals@^2.9.0",
     "$std/": "https://deno.land/std@0.216.0/"
   },

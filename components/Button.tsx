@@ -1,5 +1,5 @@
-import { JSX } from "preact";
 import { IS_BROWSER } from "fresh/runtime";
+import { JSX } from "preact";
 
 export function Button(props: JSX.HTMLAttributes<HTMLButtonElement>) {
   return (

@@ -18,6 +18,18 @@ function shaderTextLoader() {
 }
 
 export default defineConfig({
+  server: {
+    watch: {
+      ignored: [
+        "**/game_library/**",
+        "**/exports/**",
+        "**/_fresh/**",
+        "**/old_plans/**",
+        "**/.claude/**",
+        "**/.perf_sessions/**",
+      ],
+    },
+  },
   plugins: [
     fresh(),
     tailwindcss(),
