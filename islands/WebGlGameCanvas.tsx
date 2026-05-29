@@ -8,10 +8,7 @@ import {
   updateChunkCache,
   updateFloorCache,
 } from "../lib/webgl-chunk-gen.ts";
-import {
-  createWorldSim,
-  type WorldSimState,
-} from "../lib/webgl-world-sim.ts";
+import { createWorldSim, type WorldSimState } from "../lib/webgl-world-sim.ts";
 import {
   advanceSimulationTick as advanceSimulationTickRuntime,
   buildStreamingChunkKeys as buildStreamingChunkKeysRuntime,
@@ -74,10 +71,7 @@ import {
   uploadWhiteTexture,
 } from "./webgl/gl-resources.ts";
 import { renderWebGlFrame } from "./webgl/render-loop.ts";
-import {
-  TILE_FRAGMENT_SHADER,
-  TILE_VERTEX_SHADER,
-} from "./webgl/shaders.ts";
+import { TILE_FRAGMENT_SHADER, TILE_VERTEX_SHADER } from "./webgl/shaders.ts";
 
 declare global {
   var __openDwarfWebGlHarness: WebGlTestHarness | undefined;
@@ -1296,11 +1290,12 @@ export default function WebGlGameCanvas() {
     }
 
     const loadTextures = async () => {
-      const loadImg = (src: string) => {
+      const loadImg = async (src: string) => {
         const img = new Image();
         img.decoding = "async";
         img.src = src;
-        return img.decode().then(() => img);
+        await img.decode();
+        return img;
       };
       const [floorImg, shadowImg, ceilImg, playerImg] = await Promise.all([
         loadImg(TILE_TEXTURE_SRC),
@@ -1479,9 +1474,10 @@ export default function WebGlGameCanvas() {
           chunkCacheRef.current = new Map();
           updateFloorCache(chunkCacheRef.current, seed, skFlow, viewZ);
           updateWorldSolidCache(skFlow, viewZ);
-          streamingKeySetRef.current = skFlow.map((k) =>
-            chunkKeyString({ ...k, chunkZ: viewZ })
-          ).join("|") + `|z${viewZ}`;
+          streamingKeySetRef.current =
+            skFlow.map((k) => chunkKeyString({ ...k, chunkZ: viewZ })).join(
+              "|",
+            ) + `|z${viewZ}`;
           sceneStateRef.current.residentChunks = skFlow.length;
           sceneStateRef.current.streamingChunks = skFlow.map((k) =>
             chunkKeyString({ ...k, chunkZ: viewZ })
@@ -1583,7 +1579,7 @@ export default function WebGlGameCanvas() {
   return (
     <div
       ref={hostRef}
-      class="webgl-experiment-shell relative overflow-hidden rounded-[18px] border border-white/10 bg-[#0e1015] shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+      class="webgl-experiment-shell relative border border-white/10 bg-[#0e1015] shadow"
     >
       <style>
         {`

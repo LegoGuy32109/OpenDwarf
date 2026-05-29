@@ -245,7 +245,8 @@ export function processVisibility(
     if (args.worldRef.current.visible.size > 0) {
       args.worldRef.current.visible = new Set();
       args.sceneStateRef.current.visibleTileCount = 0;
-      args.sceneStateRef.current.rememberedTileCount = args.worldRef.current.memory.size;
+      args.sceneStateRef.current.rememberedTileCount =
+        args.worldRef.current.memory.size;
     }
     return;
   }
@@ -271,8 +272,10 @@ export function processVisibility(
     args.fovDirtyRef.current = false;
     args.topmostCacheDirtyRef.current = true;
   }
-  args.sceneStateRef.current.visibleTileCount = args.worldRef.current.visible.size;
-  args.sceneStateRef.current.rememberedTileCount = args.worldRef.current.memory.size;
+  args.sceneStateRef.current.visibleTileCount =
+    args.worldRef.current.visible.size;
+  args.sceneStateRef.current.rememberedTileCount =
+    args.worldRef.current.memory.size;
 }
 
 export function buildStreamingChunkKeys(

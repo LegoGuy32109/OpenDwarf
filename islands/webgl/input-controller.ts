@@ -2,9 +2,9 @@
 
 import {
   CAMERA_KEYS,
-  PLAYER_KEYS,
   type ChatBubbleRecord,
   type InputLogEvent,
+  PLAYER_KEYS,
   type ReplayDocument,
   type WebGlUiMode,
   type WebGlViewMode,
@@ -189,7 +189,9 @@ export function createInputController(args: InputControllerArgs) {
       event.preventDefault();
       handleFullScreenToggle();
     }
-    if (event.key === "Escape" && document.fullscreenElement === hostRef.current) {
+    if (
+      event.key === "Escape" && document.fullscreenElement === hostRef.current
+    ) {
       event.preventDefault();
       void document.exitFullscreen();
     }
@@ -307,7 +309,10 @@ export function createInputController(args: InputControllerArgs) {
     }
     if (event.code === "Digit6") {
       event.preventDefault();
-      layersRef.current = { ...layersRef.current, floor: !layersRef.current.floor };
+      layersRef.current = {
+        ...layersRef.current,
+        floor: !layersRef.current.floor,
+      };
       setLayers({ ...layersRef.current });
       appendLog(`floor: ${layersRef.current.floor ? "on" : "off"}`);
     }

@@ -2,7 +2,8 @@
   "tasks": {
     "fmt": "deno fmt && cd game_library && cargo fmt",
     "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx && cd game_library && cargo check && cargo check --target wasm32-unknown-unknown",
-    "start": "vite",
+    "dev": "vite",
+    "start": "deno serve -A _fresh/server.js",
     "build": "vite build",
     "preview": "deno serve -A _fresh/server.js",
     "local": "cargo run --manifest-path ./game_library/Cargo.toml",

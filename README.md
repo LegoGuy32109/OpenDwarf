@@ -12,7 +12,7 @@ Make sure to install Deno:
 Then start the project:
 
 ```bash
-deno task start
+deno task dev
 ```
 
 This will watch the project directory and restart as necessary.

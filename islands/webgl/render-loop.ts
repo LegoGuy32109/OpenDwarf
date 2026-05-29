@@ -9,10 +9,10 @@ import {
   FLOOR_FRAMES,
   SHADOW_FRAMES,
   shadowMaskToAtlasId,
+  TILE_SIZE_PX,
   tileKeyString,
   updateFloorCache,
   Z_LEVELS_BELOW,
-  TILE_SIZE_PX,
 } from "../../lib/webgl-chunk-gen.ts";
 import {
   entityRenderPosition,
@@ -25,15 +25,15 @@ import { flushInstanceBatch, type InstanceBatchStats } from "./render-batch.ts";
 import { getTileUniformLocations } from "./gl-resources.ts";
 import { renderVgaUi } from "./render-ui.ts";
 import {
+  type CameraLookOffset,
+  type ChatBubbleRecord,
   EDGE_SEGMENT_BAND_PX,
   EDGE_SEGMENT_DARK_ALPHA,
   EDGE_SEGMENT_LIGHT_ALPHA,
-  SHADOW_ALPHA_MULTIPLIER,
-  type CameraLookOffset,
-  type ChatBubbleRecord,
   type FrameMetric,
   type PlayerState,
   type ReplayPreview,
+  SHADOW_ALPHA_MULTIPLIER,
   type WebGlCapabilityReport,
   type WebGlCheckpointRecord,
   type WebGlUiMode,
@@ -96,7 +96,14 @@ type RenderLoopArgs = {
   shadowVisibleXYCacheRef: Ref<Array<{ chunkX: number; chunkY: number }>>;
   solidCacheRef: Ref<Map<string, Uint8Array>>;
   chunkCacheRef: Ref<Map<string, Uint16Array>>;
-  layersRef: Ref<{ floor: boolean; edgeShadow: boolean; ceilShadow: boolean; depthTint: boolean }>;
+  layersRef: Ref<
+    {
+      floor: boolean;
+      edgeShadow: boolean;
+      ceilShadow: boolean;
+      depthTint: boolean;
+    }
+  >;
   viewModeRef: Ref<WebGlViewMode>;
   wasMovingLastTickRef: Ref<boolean>;
   textureRef: Ref<WebGLTexture | null>;
@@ -106,7 +113,9 @@ type RenderLoopArgs = {
   whiteTextureRef: Ref<WebGLTexture | null>;
   vgaFontAtlasRef: Ref<VgaFontAtlas | null>;
   textureInfoRef: Ref<{ src: string; width: number; height: number } | null>;
-  playerTextureInfoRef: Ref<{ src: string; width: number; height: number } | null>;
+  playerTextureInfoRef: Ref<
+    { src: string; width: number; height: number } | null
+  >;
   capabilityStateRef: Ref<WebGlCapabilityReport | null>;
   replayPreviewRef: Ref<ReplayPreview>;
   checkpointRecordsRef: Ref<WebGlCheckpointRecord[]>;
@@ -114,8 +123,13 @@ type RenderLoopArgs = {
   chatBubblesRef: Ref<ChatBubbleRecord[]>;
   uiOverlayVisibleRef: Ref<boolean>;
   getViewZ: () => number;
-  buildStreamingChunkKeys: (currentViewZ: number) => Array<{ chunkX: number; chunkY: number; chunkZ: number }>;
-  updateWorldSolidCache: (streamingXYKeys: Array<{ chunkX: number; chunkY: number }>, currentViewZ: number) => void;
+  buildStreamingChunkKeys: (
+    currentViewZ: number,
+  ) => Array<{ chunkX: number; chunkY: number; chunkZ: number }>;
+  updateWorldSolidCache: (
+    streamingXYKeys: Array<{ chunkX: number; chunkY: number }>,
+    currentViewZ: number,
+  ) => void;
   processCameraMovement: (deltaS: number) => void;
   advanceSimulationTick: () => void;
   scheduleNextFrame: () => void;
@@ -231,8 +245,9 @@ export function renderWebGlFrame(args: RenderLoopArgs) {
   if (sceneReadyRef.current) {
     const skGl = buildStreamingChunkKeys(viewZ);
     const seed = worldRef.current.seed;
-    const sfpGl =
-      skGl.map((k) => chunkKeyString({ ...k, chunkZ: viewZ })).join("|") +
+    const sfpGl = skGl.map((k) =>
+      chunkKeyString({ ...k, chunkZ: viewZ })
+    ).join("|") +
       `|z${viewZ}`;
     if (sfpGl !== streamingKeySetRef.current) {
       streamingKeySetRef.current = sfpGl;
@@ -446,7 +461,9 @@ export function renderWebGlFrame(args: RenderLoopArgs) {
           chunkY: vis.chunkY,
           chunkZ: viewZ,
         });
-        const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(127);
+        const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(
+          127,
+        );
         for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
           for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
             const idx = ty * CHUNK_EDGE_TILES + tx;
@@ -716,7 +733,9 @@ export function renderWebGlFrame(args: RenderLoopArgs) {
             if (zOffset === 127) continue;
             const tileX = baseX + tx;
             const tileY = baseY + ty;
-            if (visibilityState(tileX, tileY, viewZ + zOffset) !== "remembered") {
+            if (
+              visibilityState(tileX, tileY, viewZ + zOffset) !== "remembered"
+            ) {
               continue;
             }
             const off = count * 8;
@@ -747,13 +766,16 @@ export function renderWebGlFrame(args: RenderLoopArgs) {
         const lx = player.x - playerChunk.chunkX * CHUNK_EDGE_TILES;
         const ly = player.y - playerChunk.chunkY * CHUNK_EDGE_TILES;
         for (let checkZ = lo; checkZ <= hi; checkZ++) {
-          if (localSolidAt(playerChunk.chunkX, playerChunk.chunkY, lx, ly, checkZ)) {
+          if (
+            localSolidAt(playerChunk.chunkX, playerChunk.chunkY, lx, ly, checkZ)
+          ) {
             occluded = true;
             break;
           }
         }
       }
-      const visibleToEntity = !entityMode || isTileVisible(worldRef.current, player);
+      const visibleToEntity = !entityMode ||
+        isTileVisible(worldRef.current, player);
       if (inZRange && !occluded && visibleToEntity) {
         gl.bindTexture(gl.TEXTURE_2D, playerTextureRef.current);
         setRenderMode(0);
