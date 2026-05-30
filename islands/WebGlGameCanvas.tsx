@@ -1579,7 +1579,7 @@ export default function WebGlGameCanvas() {
   return (
     <div
       ref={hostRef}
-      class="webgl-experiment-shell relative border border-white/10 bg-[#0e1015] shadow"
+      class="webgl-experiment-shell shadow-2xl shadow-black"
     >
       <style>
         {`

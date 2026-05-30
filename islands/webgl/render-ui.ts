@@ -140,10 +140,10 @@ export function renderVgaUi(args: RenderVgaUiArgs) {
     );
   };
 
-  const chatScale = 2;
+  const chatScale = 1.2;
   const vgaLineH = vgaTextLineHeight(vgaAtlas, chatScale);
   const vgaW = (text: string) => vgaTextWidth(vgaAtlas, text, chatScale);
-  const vgaPad = 6;
+  const vgaPad = 0;
 
   if (uiOverlayVisible) {
     const avgFps = fpsHistory.length > 0
@@ -268,7 +268,7 @@ export function renderVgaUi(args: RenderVgaUiArgs) {
       : 1;
     const msgW = Math.min(vgaW(bubble.message), canvas.width - 32);
     const bubbleW = msgW + vgaPad * 2;
-    const bubbleH = vgaLineH + vgaPad * 2;
+    const bubbleH = vgaLineH + vgaPad * 1;
     const bubbleX = Math.max(
       8,
       Math.min(playerScreenX - bubbleW * 0.5, canvas.width - bubbleW - 8),
@@ -296,6 +296,6 @@ export function renderVgaUi(args: RenderVgaUiArgs) {
       alpha,
       chatScale,
     );
-    bubbleOffsetY += bubbleH + 8;
+    bubbleOffsetY += bubbleH + 0;
   }
 }
