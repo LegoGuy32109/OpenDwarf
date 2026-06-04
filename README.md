@@ -58,7 +58,22 @@ deno task dev
 deno task test
 ```
 
-## Build Mods With The SDK
+## Build Mods With The SDK — TypeScript or Rust
+
+Open Dwarf ships **two author-facing SDKs**, both targeting the same
+sandboxed runtime on the server. Pick the language that fits the job:
+
+- **TypeScript** (`@opendwarf/sdk`) — fast iteration, no build step,
+  hot-reload from source. Best for gameplay scripting, UI logic, glue.
+- **Rust** (`opendwarf-sdk`) — compiled to WebAssembly, sandboxed by the
+  same wasm-host, with the speed, safety, and type system of Rust. Best
+  for perf-sensitive or type-strict mods.
+
+Both expose the same hook names (`on_player_join`, `on_tick`, …) and the
+same value types. A mod in either language ends up as the same `Mod`
+object inside the runtime.
+
+### TypeScript
 
 ```ts
 import { createMod } from "@opendwarf/sdk";
@@ -73,13 +88,54 @@ export default createMod({
 
   onTick(ctx) {
     for (const dwarf of ctx.players.list()) {
-      if (dwarf.hunger > 80) {
+      if (dwarf.stats.hunger > 80) {
         ctx.world.spawn("food", { near: dwarf.id });
       }
     }
   },
 });
 ```
+
+### Rust
+
+```rust
+use opendwarf_sdk::{export_mod, GameContext, Mod, ModManifest, Player};
+
+#[derive(Default)]
+pub struct Welcome;
+
+impl Mod for Welcome {
+    fn manifest(&self) -> ModManifest {
+        ModManifest::new("welcome-mod", "1.0.0")
+    }
+
+    fn on_player_join(&self, ctx: &mut GameContext, p: &Player) {
+        ctx.broadcast(&format!("{} entered the fortress.", p.name));
+    }
+
+    fn on_tick(&self, ctx: &mut GameContext) {
+        for player in ctx.players().list() {
+            if player.stats.hunger > 80.0 {
+                ctx.world().spawn("food").near(player.id).fire();
+            }
+        }
+    }
+}
+
+export_mod!(Welcome);
+```
+
+Build:
+
+```bash
+cd game_library/crates/opendwarf-welcome
+cargo build --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/opendwarf_welcome.wasm \
+   ../../../examples/mods/
+```
+
+The loader discovers `.wasm` and `mod.ts` side by side — drop the binary
+next to any TypeScript mods.
 
 ## Debug Multiplayer Sessions
 
@@ -122,24 +178,27 @@ See [examples/mods](./examples/mods) for runnable mods.
 ## How It Fits Together
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Playwright Debugger  (packages/debugger)                   │
-│  connectPlayer · waitForState · captureSnapshot · replay    │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ drives browser clients
-┌───────────────────────────▼─────────────────────────────────┐
-│  Game Client  (Fresh + Preact islands + WebGL canvas)       │
-│  routes/  islands/  static/game/                            │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ WebRTC data channels
-┌───────────────────────────▼─────────────────────────────────┐
-│  Mod Runtime  (packages/server)  · loads user mods          │
-│      ▲                                                       │
-│      │ public SDK (@opendwarf/sdk)                          │
-│      ▼                                                       │
-│  Game Engine  (game_library, Rust + Bevy → WASM)            │
-│  ECS world · simulation tick · WebRTC sync                  │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  Playwright Debugger  (packages/debugger)                          │
+│  connectPlayer · waitForState · captureSnapshot · replay           │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │ drives browser clients
+┌──────────────────────────────▼─────────────────────────────────────┐
+│  Game Client  (Fresh + Preact islands + WebGL canvas)              │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │ WebRTC data channels
+┌──────────────────────────────▼─────────────────────────────────────┐
+│  Mod Runtime  (packages/server)                                    │
+│     ▲                                ▲                             │
+│     │ TS mods                        │ Wasm mods                   │
+│     │                                │                             │
+│  @opendwarf/sdk                opendwarf-sdk  (Rust → wasm32)      │
+│  (loaded directly)             (loaded via wasm-host.ts)           │
+│                                                                    │
+│            │ shared FFI to engine                                  │
+│            ▼                                                       │
+│  Game Engine  (game_library, Rust + Bevy → WASM)                   │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 See [docs/architecture.md](./docs/architecture.md) for the full breakdown.
@@ -154,8 +213,10 @@ See [docs/architecture.md](./docs/architecture.md) for the full breakdown.
 
 ## Examples
 
-- [`examples/mods/welcome`](./examples/mods/welcome) — react to player join/leave
-- [`examples/bots/wanderer`](./examples/bots/wanderer) — automation bot that explores
+- [`examples/mods/welcome`](./examples/mods/welcome) — TypeScript mod, react to player join/leave
+- [`game_library/crates/opendwarf-welcome`](./game_library/crates/opendwarf-welcome) — same mod, written in Rust → wasm
+- [`examples/mods/run-welcome.ts`](./examples/mods/run-welcome.ts) — drive the TS mod through the runtime
+- [`examples/mods/run-welcome-rs.ts`](./examples/mods/run-welcome-rs.ts) — drive the Rust wasm mod through the same runtime
 - [`examples/debugging/multiplayer-session`](./examples/debugging/multiplayer-session) — 2-client Playwright flow
 - [`examples/debugging/replay-analyzer`](./examples/debugging/replay-analyzer) — record and replay interactions
 

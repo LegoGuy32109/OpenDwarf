@@ -13,6 +13,7 @@
 
 import type { Mod } from "@opendwarf/sdk";
 import type { ModRuntime } from "./mod-runtime.ts";
+import { loadWasmMod } from "./wasm-host.ts";
 
 export interface LoaderOptions {
   /** Directory containing mod folders. Resolved relative to cwd. */
@@ -40,7 +41,22 @@ export async function loadMods(opts: LoaderOptions): Promise<Mod[]> {
   }
 
   for await (const entry of entries) {
+    // .wasm files are Rust-authored mods, loaded via the wasm host.
+    if (entry.isFile && entry.name.endsWith(".wasm")) {
+      mods.push(await loadWasmMod(`${dir}/${entry.name}`));
+      continue;
+    }
+
     if (!entry.isDirectory) continue;
+
+    // A subdirectory containing a `mod.wasm` is also a wasm mod.
+    const wasmPath = `${dir}/${entry.name}/mod.wasm`;
+    try {
+      await Deno.stat(wasmPath);
+      mods.push(await loadWasmMod(wasmPath));
+      continue;
+    } catch { /* fall through to TS lookup */ }
+
     for (const file of entrypoints) {
       const path = `${dir}/${entry.name}/${file}`;
       try {

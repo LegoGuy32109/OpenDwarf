@@ -61,21 +61,81 @@ The runtime is the boundary between "third-party TypeScript" and "trusted
 engine internals". It is intentionally small — most of the public surface
 lives in the SDK.
 
-## 4. Public SDK — `packages/sdk`
+## 4. Public SDKs — TypeScript and Rust
 
-The SDK is the contract between mod authors and the runtime. It exports:
+Two SDKs target the same `Mod` shape inside the runtime.
+
+### `packages/sdk` — TypeScript (`@opendwarf/sdk`)
 
 - `createMod()` — declarative mod factory
 - Types: `GameContext`, `Player`, `GameState`, `GameAction`, `GameEvent`,
   `ModManifest`
 - Type guards and small helpers (`isPlayer`, `tilesAround`, …)
 
-The SDK is **pure types and thin helpers**. It has no runtime dependency on
-the engine; the runtime is responsible for satisfying the shape it
-describes. This means mod authors can typecheck their code without booting
-the engine.
+Pure types and thin helpers. No runtime dependency on the engine; the
+runtime satisfies the shape. Mod authors typecheck without booting the
+engine.
 
-Versioning: semver. Breaking changes go through a deprecation cycle.
+### `game_library/crates/opendwarf-sdk` — Rust → wasm
+
+- The `Mod` trait with the same five hooks (`on_player_join`, `on_tick`, …)
+- Serde-derived types matching the TS SDK one-to-one
+- `export_mod!` macro that emits the wasm export entry points
+- `GameContext` with `broadcast`, `log_*`, `players()`, `world()`, `now()`
+
+The crate compiles to `wasm32-unknown-unknown`. The resulting `.wasm` is
+loaded at runtime by [the wasm host](#wasm-host), which adapts it to the
+same `Mod` object the TS path produces. The runtime never learns about
+wasm; it sees uniform `Mod` values.
+
+Versioning: both SDKs follow semver. The ABI between the wasm guest and
+the host has its own `_opendwarf_abi_version` constant the host validates
+at load time.
+
+## Wasm host {#wasm-host}
+
+`packages/server/wasm-host.ts` is the bridge that turns a `.wasm` file into
+a `Mod` object. It:
+
+1. Reads the `.wasm` and instantiates it with `WebAssembly.instantiate`,
+   providing the `env.__host_*` imports the SDK declares.
+2. Validates the guest's `_opendwarf_abi_version` matches the host.
+3. Calls `_opendwarf_manifest` to get the mod's name and version.
+4. Builds a `Mod` object whose hooks call `_opendwarf_on_*` exports.
+
+The runtime sees a normal `Mod`. Dependency sorting, error sandboxing,
+hook order — all uniform across TS and Rust mods.
+
+### ABI v1
+
+Guest **exports** (called by host):
+
+```
+_opendwarf_abi_version()                 -> u32
+_opendwarf_manifest()                    -> u64    // (ptr<<32)|len
+_opendwarf_on_player_join(ptr, len)
+_opendwarf_on_player_leave(ptr, len)
+_opendwarf_on_tick()
+_opendwarf_on_message(ptr, len)
+_opendwarf_on_action(ptr, len)
+_opendwarf_alloc(size)                   -> ptr
+_opendwarf_free(ptr, size)
+```
+
+Guest **imports** (provided by host):
+
+```
+__host_broadcast(ptr, len)
+__host_log(level, ptr, len)
+__host_players_list()                    -> u64    // packed (ptr,len)
+__host_state_get()                       -> u64
+__host_spawn(ptr, len)                   -> u64
+__host_now()                             -> u64
+```
+
+Wire format: JSON in v1. Both sides have it free, it's debuggable, it's
+swappable for MessagePack/bincode behind a feature flag once `onTick`
+overhead matters.
 
 ## 5. Playwright Debugger — `packages/debugger`
 
@@ -122,23 +182,31 @@ mods to isolated workers.
 
 ```
 packages/
-  sdk/            Public TypeScript SDK
-  server/         Game server + mod runtime
-  client/         Game client glue (Fresh app lives at the root for now)
-  debugger/       Playwright-powered debugger
+  sdk/                       Public TypeScript SDK (@opendwarf/sdk)
+  server/                    Mod runtime + loaders + wasm host
+    mod-runtime.ts             dispatcher, error sandbox, dep sort
+    mod-loader.ts              discovers .ts and .wasm mods
+    wasm-host.ts               adapts .wasm → Mod
+    runtime-singleton.ts       process-wide runtime for the Fresh app
+  client/                    Game client glue (Fresh app at repo root for now)
+  debugger/                  Playwright-powered debugger
 examples/
-  mods/           Sample mods
-  bots/           Sample automation bots
-  debugging/      Sample Playwright debug flows
-docs/             This documentation
-game_library/     Rust/Bevy engine → WASM
-routes/           Fresh routes (server-rendered + APIs)
-islands/          Preact islands (interactive client)
-domain/           Server-side domain logic (WebRTC, Result)
-lib/              Shared TypeScript libraries (WebGL harness, world sim)
-tests/            Playwright + unit tests
-scripts/          Internal build and tooling
-static/           Built WASM artifacts and public assets
+  mods/                      Sample mods (TS + wasm side by side)
+  bots/                      Sample automation bots
+  debugging/                 Sample Playwright debug flows
+docs/                        This documentation
+game_library/                Engine + Rust SDK
+  src/                         existing Bevy engine
+  crates/
+    opendwarf-sdk/             Rust SDK (compiles to wasm)
+    opendwarf-welcome/         Example Rust mod
+routes/                      Fresh routes (server-rendered + APIs)
+islands/                     Preact islands (interactive client)
+domain/                      Server-side domain logic (WebRTC, Result)
+lib/                         Shared TypeScript libraries
+tests/                       Playwright + unit tests
+scripts/                     Internal build and tooling
+static/                      Built WASM artifacts and public assets
 ```
 
 ## Why a layered design

@@ -1,7 +1,15 @@
 # Modding API
 
-The modding API is the public TypeScript surface for extending Open Dwarf.
-Everything in this document is exported from `@opendwarf/sdk`.
+The modding API has **two implementations** of the same surface:
+
+- **TypeScript** — `@opendwarf/sdk`. The primary reference; this document
+  shows TS signatures.
+- **Rust** — `opendwarf-sdk` crate, compiled to `wasm32-unknown-unknown`.
+  Mirrors the same types and hook names. See
+  [Rust SDK](#rust-sdk-wasm) at the bottom for the Rust analogue.
+
+Pick the language that fits the job. Both produce the same `Mod` object
+inside the runtime and dispatch through the same hooks.
 
 ## Mental model
 
@@ -159,3 +167,99 @@ A misbehaving mod cannot crash the server.
   debugger's trace channel.
 - Prefer `ctx.world.spawn()` over reaching into the engine — direct engine
   access is unstable and unsupported.
+
+---
+
+## Rust SDK (wasm)
+
+The Rust SDK is the same API, in idiomatic Rust, compiled to WebAssembly
+and loaded by the same wasm host on the server. A `.wasm` mod is
+indistinguishable from a TS mod once it's in the runtime.
+
+### Authoring
+
+```rust
+use opendwarf_sdk::{export_mod, GameContext, Mod, ModManifest, Player, GameMessage};
+
+#[derive(Default)]
+pub struct Welcome;
+
+impl Mod for Welcome {
+    fn manifest(&self) -> ModManifest {
+        ModManifest::new("welcome", "0.1.0")
+            .author("Open Dwarf examples")
+    }
+
+    fn on_player_join(&self, ctx: &mut GameContext, p: &Player) {
+        ctx.broadcast(&format!("{} entered the fortress.", p.name));
+    }
+
+    fn on_tick(&self, ctx: &mut GameContext) {
+        for player in ctx.players().list() {
+            if player.stats.hunger > 80.0 {
+                ctx.world().spawn("item").near(player.id.clone()).fire();
+            }
+        }
+    }
+
+    fn on_message(&self, ctx: &mut GameContext, msg: &GameMessage) {
+        if msg.text == "/hello" {
+            ctx.broadcast("Hello to you too!");
+        }
+    }
+}
+
+export_mod!(Welcome);
+```
+
+### Hook ↔ method mapping
+
+| TypeScript        | Rust                |
+| ----------------- | ------------------- |
+| `onPlayerJoin`    | `on_player_join`    |
+| `onPlayerLeave`   | `on_player_leave`   |
+| `onTick`          | `on_tick`           |
+| `onMessage`       | `on_message`        |
+| `onAction`        | `on_action`         |
+
+Type mapping is one-to-one: `Player`, `GameContext`, `GameAction`,
+`GameMessage`, `ModManifest` all exist in both SDKs with the same fields.
+
+### Building
+
+```bash
+cd game_library/crates/opendwarf-welcome
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Output: `target/wasm32-unknown-unknown/release/opendwarf_welcome.wasm`
+(roughly 100 KB stripped).
+
+### Loading
+
+Drop the `.wasm` into the mods directory the server scans (default
+`./examples/mods/`). The loader picks up `*.wasm` files automatically — no
+config change needed:
+
+```
+examples/mods/
+  welcome/mod.ts            ← TypeScript mod
+  opendwarf_welcome.wasm    ← Rust mod (same runtime)
+```
+
+### ABI
+
+The wasm guest exports a stable set of `_opendwarf_*` functions and imports
+`__host_*` from the runtime. JSON is the wire format in v1; swap to
+MessagePack/bincode behind a feature flag once perf matters. See
+[architecture.md](./architecture.md#wasm-host) for the full ABI.
+
+### When to use which SDK
+
+| If you're…                          | Use         |
+| ----------------------------------- | ----------- |
+| Writing gameplay scripts, UI glue   | TypeScript  |
+| Iterating quickly without a build   | TypeScript  |
+| Adding perf-sensitive simulation    | Rust → wasm |
+| Sharing types with the engine crate | Rust → wasm |
+| Distributing a closed-source mod    | Rust → wasm |

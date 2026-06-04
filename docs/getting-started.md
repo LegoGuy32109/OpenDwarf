@@ -97,6 +97,29 @@ Run it:
 deno run -A scripts/smoke.ts
 ```
 
+## 5b. (Optional) Write a Rust mod
+
+If you'd rather author in Rust, the same hooks exist on a `Mod` trait in
+the `opendwarf-sdk` crate. Mods compile to `wasm32-unknown-unknown` and
+load through the same runtime as TypeScript mods.
+
+```bash
+rustup target add wasm32-unknown-unknown
+cd game_library/crates/opendwarf-welcome
+cargo build --release --target wasm32-unknown-unknown
+cp target/wasm32-unknown-unknown/release/opendwarf_welcome.wasm \
+   ../../../examples/mods/
+```
+
+Then run it through the runtime:
+
+```bash
+deno run -A examples/mods/run-welcome-rs.ts
+```
+
+See [Modding API → Rust SDK](./modding-api.md#rust-sdk-wasm) for the full
+Rust authoring surface.
+
 ## 6. What to read next
 
 - [Modding API](./modding-api.md) — every hook and context method

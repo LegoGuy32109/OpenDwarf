@@ -1,0 +1,19 @@
+[package]
+name = "opendwarf-welcome"
+version = "0.1.0"
+edition = "2024"
+description = "Example Rust mod for Open Dwarf — mirrors examples/mods/welcome/mod.ts."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+opendwarf-sdk = { path = "../opendwarf-sdk" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
