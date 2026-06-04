@@ -152,7 +152,13 @@ export async function createGameDebugger(
       viewport: { width: 1280, height: 720 },
     });
     const page = await context.newPage();
-    const id = `player_${name}_${crypto.randomUUID().slice(0, 8)}` as PlayerId;
+    // Match the shim's id derivation so recorded traces replay across
+    // sessions. Duplicate names get a counter suffix.
+    let id = `player_${name}` as PlayerId;
+    let dup = 1;
+    while ([...players.keys()].includes(id)) {
+      id = `player_${name}_${++dup}` as PlayerId;
+    }
 
     const url = new URL(baseUrl);
     url.searchParams.set("playerName", name);

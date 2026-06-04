@@ -55,7 +55,26 @@
     };
   }
 
-  function snapshot() {
+  // Pluggable state provider. The Bevy/WASM bridge (or any client code)
+  // can call __opendwarf.setStateProvider(fn) to take over snapshot()
+  // without changing the shim contract.
+  let stateProvider = null;
+  let eventsProvider = null;
+  // Async metadata sources (e.g. /api/mods). Cached and refreshed.
+  let serverMods = [];
+  refreshServerMods();
+  setInterval(refreshServerMods, 5000);
+
+  function refreshServerMods() {
+    fetch("/api/mods")
+      .then((r) => (r.ok ? r.json() : { mods: [] }))
+      .then((data) => {
+        if (data && Array.isArray(data.mods)) serverMods = data.mods;
+      })
+      .catch(() => {/* server may not have the endpoint yet */});
+  }
+
+  function fallbackSnapshot() {
     const players = localId ? [localPlayer()] : [];
     return {
       tick,
@@ -70,7 +89,22 @@
         })),
       weather: "clear",
       tiles: { width: 0, height: 0 },
+      mods: serverMods,
     };
+  }
+
+  function snapshot() {
+    if (stateProvider) {
+      try {
+        const provided = stateProvider();
+        // Always attach the latest cached mods so the debugger sees them
+        // even when an engine-side provider is in charge of world state.
+        return { ...provided, mods: serverMods };
+      } catch (e) {
+        emit({ kind: "shim.error", error: String(e) });
+      }
+    }
+    return fallbackSnapshot();
   }
 
   window.__opendwarf = {
@@ -78,7 +112,19 @@
 
     snapshot,
 
+    setStateProvider(fn) {
+      stateProvider = typeof fn === "function" ? fn : null;
+    },
+    setEventsProvider(fn) {
+      eventsProvider = typeof fn === "function" ? fn : null;
+    },
+
     events() {
+      if (eventsProvider) {
+        try {
+          return eventsProvider();
+        } catch (_) { /* fall through */ }
+      }
       return events.slice();
     },
 
