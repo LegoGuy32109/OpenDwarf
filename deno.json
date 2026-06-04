@@ -19,6 +19,8 @@
   "exclude": ["**/_fresh/*", "**/static/**/*open_dwarf*"],
   "fmt": { "exclude": ["game_library/", "static/", "node_modules/"] },
   "imports": {
+    "@opendwarf/sdk": "./packages/sdk/mod.ts",
+    "@opendwarf/debugger": "./packages/debugger/mod.ts",
     "@playwright/test": "npm:@playwright/test@1.52.0",
     "fflate": "npm:fflate@^0.8.3",
     "fresh": "jsr:@fresh/core@^2.3.3",
