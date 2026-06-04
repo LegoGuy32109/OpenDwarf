@@ -1,33 +1,151 @@
 # Open Dwarf
 
-A dwarf fortress inspired game playable in your browser
+An extensible multiplayer game platform with a TypeScript modding SDK and
+Playwright-powered debugging tools.
 
-Connect with other players through WebRTC
+Open Dwarf is a Dwarf Fortress–inspired browser game built on a Bevy/WebAssembly
+engine, a Deno + Fresh web app, and WebRTC for peer-to-peer multiplayer.
+Developers can build custom game modes, automation bots, and debugging
+workflows against a stable public API. The project ships a browser automation
+layer for inspecting multiplayer sessions, replaying interactions, and
+validating game behavior across multiple clients.
 
-## Usage
+## Why this exists
 
-Make sure to install Deno:
-[getting_started](https://deno.land/manual/getting_started/installation)
+Most game projects treat browser automation as throwaway test infrastructure.
+Open Dwarf treats it as a product surface: the same primitives a mod author
+uses to extend the game are the ones a developer uses to drive it from
+Playwright, simulate players, and assert on game state. The goal is a
+reproducible, typed, developer-first interface to a complex multiplayer
+simulation.
 
-Then start the project:
+## Quickstart
 
 ```bash
-deno task dev
-```
-
-This will watch the project directory and restart as necessary.
-
-## Compile
-
-To create the wasm files to run in the web app
-
-```bash
+# 1. Install Deno (https://docs.deno.com/runtime/getting_started/installation)
+# 2. Build the WebAssembly engine
 deno task web-release
+
+# 3. Run the dev server
+deno task dev
+# → http://localhost:8000
+
+# 4. (Optional) Run the Playwright debug examples
+deno task test
 ```
 
-For quicker iteration reachable at
-[localhost://8000/?debug](localhost://8000/?debug)
+## SDK example
 
-```bash
-deno task web-dev
+```ts
+import { createMod } from "@opendwarf/sdk";
+
+export default createMod({
+  name: "welcome-mod",
+  version: "1.0.0",
+
+  onPlayerJoin(ctx, player) {
+    ctx.broadcast(`${player.name} entered the fortress.`);
+  },
+
+  onTick(ctx) {
+    for (const dwarf of ctx.players.list()) {
+      if (dwarf.hunger > 80) {
+        ctx.world.spawn("food", { near: dwarf.id });
+      }
+    }
+  },
+});
 ```
+
+## Playwright debugging example
+
+```ts
+import { createGameDebugger } from "@opendwarf/debugger";
+
+const debug = await createGameDebugger({
+  baseUrl: "http://localhost:8000",
+});
+
+const alice = await debug.connectPlayer("Alice");
+const bob = await debug.connectPlayer("Bob");
+
+await alice.performAction("move", { x: 10, y: 5 });
+await debug.waitForState((state) => state.players.length === 2);
+
+const snapshot = await debug.captureSnapshot();
+await debug.close();
+```
+
+## Modding example
+
+A mod is a TypeScript module that exports a `createMod()` result. Drop it in
+`mods/` and Open Dwarf loads it on server startup:
+
+```ts
+// mods/greeter/mod.ts
+import { createMod } from "@opendwarf/sdk";
+
+export default createMod({
+  name: "greeter",
+  onMessage(ctx, msg) {
+    if (msg.text === "/hello") ctx.broadcast("Hello!");
+  },
+});
+```
+
+See [examples/mods](./examples/mods) for runnable mods.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Playwright Debugger  (packages/debugger)                   │
+│  connectPlayer · waitForState · captureSnapshot · replay    │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ drives browser clients
+┌───────────────────────────▼─────────────────────────────────┐
+│  Game Client  (Fresh + Preact islands + WebGL canvas)       │
+│  routes/  islands/  static/game/                            │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ WebRTC data channels
+┌───────────────────────────▼─────────────────────────────────┐
+│  Mod Runtime  (packages/server)  · loads user mods          │
+│      ▲                                                       │
+│      │ public SDK (@opendwarf/sdk)                          │
+│      ▼                                                       │
+│  Game Engine  (game_library, Rust + Bevy → WASM)            │
+│  ECS world · simulation tick · WebRTC sync                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+See [docs/architecture.md](./docs/architecture.md) for the full breakdown.
+
+## Documentation
+
+- [Getting Started](./docs/getting-started.md) — install, run, write your first mod
+- [Modding API](./docs/modding-api.md) — hooks, context, world primitives
+- [Debugging with Playwright](./docs/debugging-with-playwright.md) — automation layer
+- [Architecture](./docs/architecture.md) — how the layers fit together
+- [API Reference](./docs/api-reference.md) — every exported type and function
+
+## Examples
+
+- [`examples/mods/welcome`](./examples/mods/welcome) — react to player join/leave
+- [`examples/bots/wanderer`](./examples/bots/wanderer) — automation bot that explores
+- [`examples/debugging/multiplayer-session`](./examples/debugging/multiplayer-session) — 2-client Playwright flow
+- [`examples/debugging/replay-analyzer`](./examples/debugging/replay-analyzer) — record and replay interactions
+
+## Contributing
+
+Contributions are welcome. Please:
+
+1. Open an issue describing the change before large refactors.
+2. Run `deno task check` and `deno task test` locally.
+3. Keep public SDK changes backward-compatible or document the migration.
+
+The project uses Deno workspaces. SDK and debugger packages live under
+`packages/` and are published independently.
+
+## License
+
+MIT
