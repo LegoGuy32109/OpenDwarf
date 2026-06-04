@@ -9,8 +9,8 @@
 </h1>
 
 <p align="center">
-  An extensible multiplayer game platform with a TypeScript modding SDK and
-  Playwright-powered debugging tools.
+  A multiplayer fortress game for players and a typed modding/debugging stack
+  for developers.
 </p>
 
 <p align="center">
@@ -21,21 +21,27 @@
   />
 </p>
 
-Open Dwarf is a Dwarf Fortress–inspired browser game built on a Bevy/WebAssembly
-engine, a Deno + Fresh web app, and WebRTC for peer-to-peer multiplayer.
-Developers can build custom game modes, automation bots, and debugging
-workflows against a stable public API. The project ships a browser automation
-layer for inspecting multiplayer sessions, replaying interactions, and
-validating game behavior across multiple clients.
+<p align="center">
+  Play the fortress, shape the simulation, and debug the same world from both
+  sides of the screen.
+</p>
 
-## Why this exists
+Open Dwarf is a Dwarf Fortress–inspired browser game built for the people who
+want to jump into a living fortress and the people who want to shape it.
+It runs on a Bevy/WebAssembly engine, a Deno + Fresh web app, and WebRTC for
+peer-to-peer multiplayer. Developers can build custom game modes, automation
+bots, and debugging workflows against a stable public API. The project ships a
+browser automation layer for inspecting multiplayer sessions, replaying
+interactions, and validating game behavior across multiple clients.
+
+## Why players and developers use it
 
 Most game projects treat browser automation as throwaway test infrastructure.
-Open Dwarf treats it as a product surface: the same primitives a mod author
-uses to extend the game are the ones a developer uses to drive it from
+Open Dwarf treats it as part of the experience: the same primitives a mod
+author uses to extend the game are the ones a developer uses to drive it from
 Playwright, simulate players, and assert on game state. The goal is a
 reproducible, typed, developer-first interface to a complex multiplayer
-simulation.
+simulation without making the player-facing side feel bolted on.
 
 ## Quickstart
 
@@ -52,7 +58,7 @@ deno task dev
 deno task test
 ```
 
-## SDK example
+## Build Mods With The SDK
 
 ```ts
 import { createMod } from "@opendwarf/sdk";
@@ -75,7 +81,7 @@ export default createMod({
 });
 ```
 
-## Playwright debugging example
+## Debug Multiplayer Sessions
 
 ```ts
 import { createGameDebugger } from "@opendwarf/debugger";
@@ -94,7 +100,7 @@ const snapshot = await debug.captureSnapshot();
 await debug.close();
 ```
 
-## Modding example
+## Write A Mod
 
 A mod is a TypeScript module that exports a `createMod()` result. Drop it in
 `mods/` and Open Dwarf loads it on server startup:
@@ -113,7 +119,7 @@ export default createMod({
 
 See [examples/mods](./examples/mods) for runnable mods.
 
-## Architecture
+## How It Fits Together
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
