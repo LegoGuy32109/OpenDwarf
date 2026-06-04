@@ -12,6 +12,7 @@ import {
   type Browser,
   type BrowserContext,
   chromium,
+  type Locator,
   type Page,
 } from "@playwright/test";
 
@@ -77,9 +78,44 @@ export interface GameDebugger {
 
   screenshot(opts: { path: string; from?: PlayerId }): Promise<void>;
 
+  // ---- reliability helpers ----
+  safeClick(locator: Locator, opts?: { attempts?: number }): Promise<void>;
+  safeAction(
+    playerId: PlayerId,
+    action: GameAction,
+    opts?: { attempts?: number; intervalMs?: number },
+  ): Promise<void>;
+  retryUntil<T>(
+    fn: () => Promise<T> | T,
+    predicate: (state: GameState) => boolean,
+    opts?: { attempts?: number; intervalMs?: number; from?: PlayerId },
+  ): Promise<T>;
+
+  // ---- recording / replay ----
+  startRecording(): Recording;
+  loadTrace(path: string): Promise<Trace>;
+  replay(trace: Trace, opts?: { speed?: number }): Promise<void>;
+
   page(playerId: PlayerId): Page;
 
   close(): Promise<void>;
+}
+
+export interface Recording {
+  stop(): Trace;
+}
+
+export interface TraceStep {
+  readonly tick: number;
+  readonly playerId: PlayerId;
+  readonly action: GameAction;
+}
+
+export interface Trace {
+  readonly startedAt: string;
+  readonly endedAt: string;
+  readonly steps: ReadonlyArray<TraceStep>;
+  save(path: string): Promise<void>;
 }
 
 // ---------- implementation ----------
@@ -99,6 +135,17 @@ export async function createGameDebugger(
   });
 
   const players = new Map<PlayerId, InternalPlayer>();
+  let activeRecording: InternalRecording | null = null;
+
+  const onActionDispatched = (playerId: PlayerId, action: GameAction) => {
+    if (activeRecording) {
+      activeRecording.steps.push({
+        tick: activeRecording.currentTick,
+        playerId,
+        action,
+      });
+    }
+  };
 
   const connectPlayer = async (name: string): Promise<DebugPlayer> => {
     const context = await browser.newContext({
@@ -111,7 +158,7 @@ export async function createGameDebugger(
     url.searchParams.set("playerName", name);
     await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
 
-    const player = buildDebugPlayer(id, name, context, page);
+    const player = buildDebugPlayer(id, name, context, page, onActionDispatched);
     players.set(id, player);
     return player;
   };
@@ -208,6 +255,148 @@ export async function createGameDebugger(
     return p.page;
   };
 
+  const safeClick: GameDebugger["safeClick"] = async (locator, opts) => {
+    const attempts = opts?.attempts ?? 3;
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await locator.waitFor({ state: "visible", timeout: 5_000 });
+        await locator.click({ timeout: 5_000 });
+        return;
+      } catch (e) {
+        lastErr = e;
+        await sleep(250 * (i + 1));
+      }
+    }
+    throw new Error(
+      `safeClick failed after ${attempts} attempts: ${String(lastErr)}`,
+    );
+  };
+
+  const safeAction: GameDebugger["safeAction"] = async (playerId, action, opts) => {
+    const player = players.get(playerId);
+    if (!player) throw new Error(`unknown player ${playerId}`);
+    const attempts = opts?.attempts ?? 3;
+    const intervalMs = opts?.intervalMs ?? 250;
+    const before = await readStateFromPage(player.page);
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await player.performAction(action.kind, actionPayload(action));
+        // Validate the action landed by waiting for the state to change.
+        await waitForState((s) => s.tick !== before.tick, {
+          timeout: 2_000,
+          from: playerId,
+        });
+        return;
+      } catch (e) {
+        lastErr = e;
+        await sleep(intervalMs * (i + 1));
+      }
+    }
+    throw new Error(
+      `safeAction(${action.kind}) failed after ${attempts} attempts: ${
+        String(lastErr)
+      }`,
+    );
+  };
+
+  const retryUntil: GameDebugger["retryUntil"] = async (fn, predicate, opts) => {
+    const attempts = opts?.attempts ?? 5;
+    const intervalMs = opts?.intervalMs ?? 250;
+    let lastResult: unknown;
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        lastResult = await fn();
+        const state = await readState(opts?.from);
+        if (predicate(state)) return lastResult as Awaited<ReturnType<typeof fn>>;
+      } catch (e) {
+        lastErr = e;
+      }
+      await sleep(intervalMs);
+    }
+    throw new Error(
+      `retryUntil exhausted after ${attempts} attempts` +
+        (lastErr ? `: ${String(lastErr)}` : ""),
+    );
+  };
+
+  const startRecording: GameDebugger["startRecording"] = () => {
+    if (activeRecording) {
+      throw new Error("A recording is already in progress");
+    }
+    const rec: InternalRecording = {
+      startedAt: new Date().toISOString(),
+      steps: [],
+      currentTick: 0,
+    };
+    activeRecording = rec;
+
+    // Keep the recording's `currentTick` reasonably fresh.
+    const ticker = setInterval(async () => {
+      try {
+        const state = await readState();
+        rec.currentTick = state.tick;
+      } catch (_) { /* no players yet, ignore */ }
+    }, 200);
+
+    return {
+      stop(): Trace {
+        clearInterval(ticker);
+        activeRecording = null;
+        const endedAt = new Date().toISOString();
+        const steps = rec.steps.slice();
+        return {
+          startedAt: rec.startedAt,
+          endedAt,
+          steps,
+          async save(path) {
+            await Deno.writeTextFile(
+              path,
+              JSON.stringify({ startedAt: rec.startedAt, endedAt, steps }, null, 2),
+            );
+          },
+        };
+      },
+    };
+  };
+
+  const loadTrace: GameDebugger["loadTrace"] = async (path) => {
+    const text = await Deno.readTextFile(path);
+    const data = JSON.parse(text) as {
+      startedAt: string;
+      endedAt: string;
+      steps: TraceStep[];
+    };
+    return {
+      startedAt: data.startedAt,
+      endedAt: data.endedAt,
+      steps: data.steps,
+      async save(p) {
+        await Deno.writeTextFile(p, JSON.stringify(data, null, 2));
+      },
+    };
+  };
+
+  const replay: GameDebugger["replay"] = async (trace, opts) => {
+    const speed = opts?.speed ?? 1.0;
+    let prevTick = trace.steps[0]?.tick ?? 0;
+    for (const step of trace.steps) {
+      const player = players.get(step.playerId);
+      if (!player) {
+        throw new Error(
+          `replay: player ${step.playerId} not connected. ` +
+            `connectPlayer() the same names before calling replay().`,
+        );
+      }
+      const gap = Math.max(0, step.tick - prevTick);
+      if (gap > 0) await sleep((gap * 100) / speed);
+      await player.performAction(step.action.kind, actionPayload(step.action));
+      prevTick = step.tick;
+    }
+  };
+
   const close: GameDebugger["close"] = async () => {
     for (const p of players.values()) await p.context.close();
     players.clear();
@@ -223,9 +412,26 @@ export async function createGameDebugger(
     saveSnapshot,
     diffStates,
     screenshot,
+    safeClick,
+    safeAction,
+    retryUntil,
+    startRecording,
+    loadTrace,
+    replay,
     page: pageFor,
     close,
   };
+}
+
+interface InternalRecording {
+  startedAt: string;
+  steps: TraceStep[];
+  currentTick: number;
+}
+
+function actionPayload(action: GameAction): Record<string, unknown> {
+  const { kind: _kind, ...rest } = action as GameAction & Record<string, unknown>;
+  return rest;
 }
 
 // ---------- internal ----------
@@ -249,6 +455,7 @@ function buildDebugPlayer(
   name: string,
   context: BrowserContext,
   page: Page,
+  onActionDispatched: (playerId: PlayerId, action: GameAction) => void,
 ): InternalPlayer {
   return {
     id,
@@ -257,13 +464,15 @@ function buildDebugPlayer(
     page,
 
     async performAction(kind, payload) {
+      const action = { kind, ...(payload as object ?? {}) } as GameAction;
       await page.evaluate(
-        ([k, p]) => {
+        (a) => {
           const od = (globalThis as unknown as OpenDwarfWindow).__opendwarf;
-          od?.dispatch?.({ kind: k, ...(p as object ?? {}) } as GameAction);
+          od?.dispatch?.(a);
         },
-        [kind, payload] as const,
+        action,
       );
+      onActionDispatched(id, action);
     },
 
     async send(message) {

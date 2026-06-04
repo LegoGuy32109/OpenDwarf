@@ -15,6 +15,8 @@
 
 import { createGameDebugger } from "@opendwarf/debugger";
 
+await Deno.mkdir("exports/screenshots", { recursive: true });
+
 const debug = await createGameDebugger({
   baseUrl: Deno.env.get("OPENDWARF_URL") ?? "http://localhost:8000",
   headless: Deno.env.get("HEADLESS") !== "false",

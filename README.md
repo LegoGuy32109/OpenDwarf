@@ -1,7 +1,25 @@
-# Open Dwarf
+<h1 align="center">
+  <img
+    src="./static/assets/sprites/Dwarf_16x16.png"
+    alt="Open Dwarf sprite"
+    width="32"
+    height="32"
+  />
+  Open Dwarf
+</h1>
 
-An extensible multiplayer game platform with a TypeScript modding SDK and
-Playwright-powered debugging tools.
+<p align="center">
+  An extensible multiplayer game platform with a TypeScript modding SDK and
+  Playwright-powered debugging tools.
+</p>
+
+<p align="center">
+  <img
+    src="./docs/images/game_example"
+    alt="Open Dwarf game example"
+    width="736"
+  />
+</p>
 
 Open Dwarf is a Dwarf Fortress–inspired browser game built on a Bevy/WebAssembly
 engine, a Deno + Fresh web app, and WebRTC for peer-to-peer multiplayer.
