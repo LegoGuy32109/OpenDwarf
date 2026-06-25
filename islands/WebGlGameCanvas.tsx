@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import type { FlowDescriptor, PerfWindow } from "../lib/webgl-harness-types.ts";
 import {
   CHUNK_EDGE_TILES,
@@ -189,35 +189,10 @@ export default function WebGlGameCanvas() {
   const playerTextureRef = useRef<WebGLTexture | null>(null);
   const whiteTextureRef = useRef<WebGLTexture | null>(null);
 
-  const [_status, setStatus] = useState("booting");
-  const [_fullscreen, setFullscreen] = useState(false);
-  const [_capability, setCapability] = useState<WebGlCapabilityReport | null>(
-    null,
-  );
-  const [_logs, setLogs] = useState<string[]>([]);
-  const [_replayPreview, setReplayPreview] = useState<ReplayPreview>(
-    summarizeReplay([]),
-  );
-  const [_checkpointRecords, setCheckpointRecords] = useState<
-    WebGlCheckpointRecord[]
-  >([]);
-  const [_baselineConfigured, setBaselineConfigured] = useState(false);
-  const [_importedReplayInfo, setImportedReplayInfo] = useState<string | null>(
-    null,
-  );
-  const [_layers, setLayers] = useState({
-    floor: true,
-    edgeShadow: true,
-    ceilShadow: true,
-    depthTint: true,
-  });
-  const [_uiOverlayVisible, setUiOverlayVisible] = useState(false);
-
   const appendLog = (text: string) => {
     const id = logIdRef.current++;
     const next = `${String(id).padStart(3, "0")} ${text}`;
     logsRef.current = [next, ...logsRef.current].slice(0, 10);
-    setLogs(logsRef.current);
   };
 
   const syncScenePlayerFromWorld = () =>
@@ -299,27 +274,22 @@ export default function WebGlGameCanvas() {
   const pushReplayEvent = (event: ReplayEvent) => {
     replayEventsRef.current = [...replayEventsRef.current, event];
     replayPreviewRef.current = summarizeReplay(replayEventsRef.current);
-    setReplayPreview(replayPreviewRef.current);
   };
 
   const setStatusText = (next: string) => {
     statusRef.current = next;
-    setStatus(next);
   };
 
   const setFullscreenState = (next: boolean) => {
     fullscreenRef.current = next;
-    setFullscreen(next);
   };
 
   const setCheckpointRecordsState = (next: WebGlCheckpointRecord[]) => {
     checkpointRecordsRef.current = next;
-    setCheckpointRecords(next);
   };
 
   const setBaselineConfiguredState = (next: boolean) => {
     baselineConfiguredRef.current = next;
-    setBaselineConfigured(next);
   };
 
   const nextTick = () => {
@@ -337,7 +307,6 @@ export default function WebGlGameCanvas() {
 
     const nextCapability: WebGlCapabilityReport = {
       userAgent: navigator.userAgent,
-      platform: navigator.platform,
       hardwareConcurrency: navigator.hardwareConcurrency ?? null,
       devicePixelRatio: dpr,
       innerSize: {
@@ -363,7 +332,6 @@ export default function WebGlGameCanvas() {
         maxViewportDims: [maxViewportDims[0], maxViewportDims[1]],
       },
     };
-    setCapability(nextCapability);
     capabilityRef.current = nextCapability;
     capabilityStateRef.current = nextCapability;
   };
@@ -444,7 +412,6 @@ export default function WebGlGameCanvas() {
       name: "Chrome",
       version: browserVersionFromUserAgent(navigator.userAgent),
       userAgent: navigator.userAgent,
-      platform: navigator.platform ?? null,
     },
     renderer: {
       webgl2: Boolean(glRef.current),
@@ -551,15 +518,10 @@ export default function WebGlGameCanvas() {
     replayEventsRef.current = doc.events ?? [];
     checkpointsRef.current = doc.checkpoints ?? [];
     replayPreviewRef.current = summarizeReplay(replayEventsRef.current);
-    setReplayPreview(replayPreviewRef.current);
     setCheckpointRecordsState(checkpointsRef.current);
-    setImportedReplayInfo(
-      `${doc.createdAt} | ${replayEventsRef.current.length} events | ${checkpointsRef.current.length} checkpoints`,
-    );
     logsRef.current = replayEventsRef.current.slice(-10).map((entry, index) =>
       `${String(index).padStart(3, "0")} ${JSON.stringify(entry)}`
     ).reverse();
-    setLogs(logsRef.current);
     appendLog(`imported replay ${doc.createdAt}`);
   };
 
@@ -643,7 +605,6 @@ export default function WebGlGameCanvas() {
   const recordReplayEvent = (event: ReplayEvent) => {
     replayEventsRef.current = [...replayEventsRef.current, event];
     replayPreviewRef.current = summarizeReplay(replayEventsRef.current);
-    setReplayPreview(replayPreviewRef.current);
   };
 
   const recordInputEvent = (event: InputLogEvent) => {
@@ -677,68 +638,13 @@ export default function WebGlGameCanvas() {
       });
       if (!fallbackContext) {
         setStatusText("canvas2d unavailable");
-        setCapability({
-          userAgent: navigator.userAgent,
-          platform: navigator.platform,
-          hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-          devicePixelRatio: globalThis.devicePixelRatio || 1,
-          innerSize: {
-            width: globalThis.innerWidth,
-            height: globalThis.innerHeight,
-          },
-          screenSize: {
-            width: globalThis.screen.width,
-            height: globalThis.screen.height,
-          },
-          maxTouchPoints: navigator.maxTouchPoints ?? null,
-          fullscreen: false,
-          canvasCssSize: { width: 0, height: 0 },
-          framebufferSize: { width: 0, height: 0 },
-          context: {
-            webgl2: false,
-            version: null,
-            shadingLanguageVersion: null,
-            renderer: null,
-            vendor: null,
-            maxTextureSize: null,
-            maxViewportDims: null,
-          },
-        });
         return () => {};
       }
 
       fallbackContext.imageSmoothingEnabled = false;
       setStatusText("canvas2d fallback active");
-      setCapability({
-        userAgent: navigator.userAgent,
-        platform: navigator.platform,
-        hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-        devicePixelRatio: globalThis.devicePixelRatio || 1,
-        innerSize: {
-          width: globalThis.innerWidth,
-          height: globalThis.innerHeight,
-        },
-        screenSize: {
-          width: globalThis.screen.width,
-          height: globalThis.screen.height,
-        },
-        maxTouchPoints: navigator.maxTouchPoints ?? null,
-        fullscreen: false,
-        canvasCssSize: { width: 0, height: 0 },
-        framebufferSize: { width: 0, height: 0 },
-        context: {
-          webgl2: false,
-          version: "canvas2d-fallback",
-          shadingLanguageVersion: null,
-          renderer: "canvas2d-fallback",
-          vendor: null,
-          maxTextureSize: null,
-          maxViewportDims: null,
-        },
-      });
       capabilityRef.current = {
         userAgent: navigator.userAgent,
-        platform: navigator.platform,
         hardwareConcurrency: navigator.hardwareConcurrency ?? null,
         devicePixelRatio: globalThis.devicePixelRatio || 1,
         innerSize: {
@@ -871,36 +777,8 @@ export default function WebGlGameCanvas() {
         if (canvas.height !== height) canvas.height = height;
 
         fallbackContext.imageSmoothingEnabled = false;
-        setCapability({
-          userAgent: navigator.userAgent,
-          platform: navigator.platform,
-          hardwareConcurrency: navigator.hardwareConcurrency ?? null,
-          devicePixelRatio: dpr,
-          innerSize: {
-            width: globalThis.innerWidth,
-            height: globalThis.innerHeight,
-          },
-          screenSize: {
-            width: globalThis.screen.width,
-            height: globalThis.screen.height,
-          },
-          maxTouchPoints: navigator.maxTouchPoints ?? null,
-          fullscreen: document.fullscreenElement === host,
-          canvasCssSize: { width: rect.width, height: rect.height },
-          framebufferSize: { width, height },
-          context: {
-            webgl2: false,
-            version: "canvas2d-fallback",
-            shadingLanguageVersion: null,
-            renderer: "canvas2d-fallback",
-            vendor: null,
-            maxTextureSize: null,
-            maxViewportDims: null,
-          },
-        });
         capabilityRef.current = {
           userAgent: navigator.userAgent,
-          platform: navigator.platform,
           hardwareConcurrency: navigator.hardwareConcurrency ?? null,
           devicePixelRatio: dpr,
           innerSize: {
@@ -1078,8 +956,6 @@ export default function WebGlGameCanvas() {
           lastFrameTimeRef.current = null;
           setCheckpointRecordsState([]);
           replayPreviewRef.current = summarizeReplay([]);
-          setReplayPreview(replayPreviewRef.current);
-          setImportedReplayInfo(null);
           keysHeldRef.current.clear();
           cameraKeysHeldRef.current.clear();
           playerKeysHeldRef.current.clear();
@@ -1216,15 +1092,12 @@ export default function WebGlGameCanvas() {
       simTickRef,
       setLayers: (next) => {
         layersRef.current = next;
-        setLayers(next);
       },
       setUiOverlayVisible: (next) => {
         uiOverlayVisibleRef.current = next;
-        setUiOverlayVisible(next);
       },
       appendLog,
       recordInputEvent,
-      setImportedReplayInfo,
       importReplayDocument,
       setFullscreenState,
     });
@@ -1455,8 +1328,6 @@ export default function WebGlGameCanvas() {
         lastFrameTimeRef.current = null;
         setCheckpointRecordsState([]);
         replayPreviewRef.current = summarizeReplay([]);
-        setReplayPreview(replayPreviewRef.current);
-        setImportedReplayInfo(null);
         keysHeldRef.current.clear();
         cameraKeysHeldRef.current.clear();
         playerKeysHeldRef.current.clear();
@@ -1566,11 +1437,7 @@ export default function WebGlGameCanvas() {
 
       importReplayDocument(parsed);
     } catch (error) {
-      setImportedReplayInfo(
-        `import failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      console.error(error);
     } finally {
       if (input) input.value = "";
     }

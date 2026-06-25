@@ -2,7 +2,6 @@ import type { PerfWindow } from "../../lib/webgl-harness-types.ts";
 
 export type WebGlCapabilityReport = {
   userAgent: string;
-  platform: string;
   hardwareConcurrency: number | null;
   devicePixelRatio: number;
   innerSize: { width: number; height: number };
@@ -219,7 +218,6 @@ export type WebGlArtifactManifest = {
     name: string;
     version: string | null;
     userAgent: string;
-    platform: string | null;
   };
   renderer: {
     webgl2: boolean;

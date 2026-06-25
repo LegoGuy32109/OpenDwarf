@@ -54,7 +54,6 @@ type InputControllerArgs = {
   setUiOverlayVisible: (next: boolean) => void;
   appendLog: (text: string) => void;
   recordInputEvent: (event: InputLogEvent) => void;
-  setImportedReplayInfo: (value: string | null) => void;
   importReplayDocument: (doc: ReplayDocument) => void;
   setFullscreenState: (next: boolean) => void;
 };
@@ -99,7 +98,6 @@ export function createInputController(args: InputControllerArgs) {
     setUiOverlayVisible,
     appendLog,
     recordInputEvent,
-    setImportedReplayInfo,
     importReplayDocument,
     setFullscreenState,
   } = args;
@@ -389,11 +387,7 @@ export function createInputController(args: InputControllerArgs) {
       }
       importReplayDocument(parsed);
     } catch (error) {
-      setImportedReplayInfo(
-        `import failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      console.error(error);
     } finally {
       if (input) input.value = "";
     }
