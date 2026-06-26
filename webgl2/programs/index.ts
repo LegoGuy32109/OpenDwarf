@@ -38,6 +38,20 @@ import {
   SPRITE_STRIDE_FLOATS,
   vert as spriteVert,
 } from "./sprite.ts";
+import {
+  attribs as uiRectAttribs,
+  frag as uiRectFrag,
+  sampler as uiRectSampler,
+  UI_RECT_STRIDE_FLOATS,
+  vert as uiRectVert,
+} from "./ui-rect.ts";
+import {
+  attribs as uiTextAttribs,
+  frag as uiTextFrag,
+  sampler as uiTextSampler,
+  UI_TEXT_STRIDE_FLOATS,
+  vert as uiTextVert,
+} from "./ui-text.ts";
 import { GLOBALS_UNIFORMS } from "./_chunks.ts";
 
 export const MAX_INSTANCES = 8192;
@@ -170,6 +184,23 @@ function bindQuadGlobals(
   const simTickLoc = gl.getUniformLocation(program, GLOBALS_UNIFORMS.simTick);
   if (cameraLoc) gl.uniform2f(cameraLoc, camera.x, camera.y);
   if (zoomLoc) gl.uniform1f(zoomLoc, zoom);
+  if (canvasSizeLoc) {
+    gl.uniform2f(canvasSizeLoc, canvasSize.width, canvasSize.height);
+  }
+  if (simTickLoc) gl.uniform1f(simTickLoc, simTick);
+}
+
+function bindScreenGlobals(
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  canvasSize: { width: number; height: number },
+  simTick: number,
+) {
+  const canvasSizeLoc = gl.getUniformLocation(
+    program,
+    GLOBALS_UNIFORMS.canvasSize,
+  );
+  const simTickLoc = gl.getUniformLocation(program, GLOBALS_UNIFORMS.simTick);
   if (canvasSizeLoc) {
     gl.uniform2f(canvasSizeLoc, canvasSize.width, canvasSize.height);
   }
@@ -467,6 +498,173 @@ function createSpriteProgram(
   };
 }
 
+function createUiTextProgram(
+  gl: WebGL2RenderingContext,
+  vertexBuffer: WebGLBuffer,
+  instanceBuffer: WebGLBuffer,
+): ProgramHandle {
+  const handle = createProgram(gl, "ui-text", uiTextVert, uiTextFrag);
+  const vao = gl.createVertexArray();
+  if (!vao) {
+    throw new Error("[webgl2] ui-text: failed to create VAO");
+  }
+
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.enableVertexAttribArray(uiTextAttribs.corner);
+  gl.vertexAttribPointer(uiTextAttribs.corner, 2, gl.FLOAT, false, 8, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+  gl.enableVertexAttribArray(uiTextAttribs.pos);
+  gl.vertexAttribPointer(
+    uiTextAttribs.pos,
+    2,
+    gl.FLOAT,
+    false,
+    UI_TEXT_STRIDE_FLOATS * 4,
+    0,
+  );
+  gl.vertexAttribDivisor(uiTextAttribs.pos, 1);
+
+  gl.enableVertexAttribArray(uiTextAttribs.size);
+  gl.vertexAttribPointer(
+    uiTextAttribs.size,
+    2,
+    gl.FLOAT,
+    false,
+    UI_TEXT_STRIDE_FLOATS * 4,
+    8,
+  );
+  gl.vertexAttribDivisor(uiTextAttribs.size, 1);
+
+  gl.enableVertexAttribArray(uiTextAttribs.uv);
+  gl.vertexAttribPointer(
+    uiTextAttribs.uv,
+    4,
+    gl.FLOAT,
+    false,
+    UI_TEXT_STRIDE_FLOATS * 4,
+    16,
+  );
+  gl.vertexAttribDivisor(uiTextAttribs.uv, 1);
+
+  gl.enableVertexAttribArray(uiTextAttribs.tint);
+  gl.vertexAttribPointer(
+    uiTextAttribs.tint,
+    3,
+    gl.FLOAT,
+    false,
+    UI_TEXT_STRIDE_FLOATS * 4,
+    32,
+  );
+  gl.vertexAttribDivisor(uiTextAttribs.tint, 1);
+
+  gl.enableVertexAttribArray(uiTextAttribs.alpha);
+  gl.vertexAttribPointer(
+    uiTextAttribs.alpha,
+    1,
+    gl.FLOAT,
+    false,
+    UI_TEXT_STRIDE_FLOATS * 4,
+    44,
+  );
+  gl.vertexAttribDivisor(uiTextAttribs.alpha, 1);
+  gl.bindVertexArray(null);
+
+  gl.useProgram(handle);
+  bindSampler(gl, handle, "u_texture", uiTextSampler);
+  gl.useProgram(null);
+
+  return {
+    name: "ui-text",
+    handle,
+    vao,
+    strideFloats: UI_TEXT_STRIDE_FLOATS,
+    setGlobals: (_camera, _zoom, canvasSize, simTick) => {
+      gl.useProgram(handle);
+      bindScreenGlobals(gl, handle, canvasSize, simTick);
+    },
+  };
+}
+
+function createUiRectProgram(
+  gl: WebGL2RenderingContext,
+  vertexBuffer: WebGLBuffer,
+  instanceBuffer: WebGLBuffer,
+): ProgramHandle {
+  const handle = createProgram(gl, "ui-rect", uiRectVert, uiRectFrag);
+  const vao = gl.createVertexArray();
+  if (!vao) {
+    throw new Error("[webgl2] ui-rect: failed to create VAO");
+  }
+
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.enableVertexAttribArray(uiRectAttribs.corner);
+  gl.vertexAttribPointer(uiRectAttribs.corner, 2, gl.FLOAT, false, 8, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+  gl.enableVertexAttribArray(uiRectAttribs.pos);
+  gl.vertexAttribPointer(
+    uiRectAttribs.pos,
+    2,
+    gl.FLOAT,
+    false,
+    UI_RECT_STRIDE_FLOATS * 4,
+    0,
+  );
+  gl.vertexAttribDivisor(uiRectAttribs.pos, 1);
+
+  gl.enableVertexAttribArray(uiRectAttribs.size);
+  gl.vertexAttribPointer(
+    uiRectAttribs.size,
+    2,
+    gl.FLOAT,
+    false,
+    UI_RECT_STRIDE_FLOATS * 4,
+    8,
+  );
+  gl.vertexAttribDivisor(uiRectAttribs.size, 1);
+
+  gl.enableVertexAttribArray(uiRectAttribs.tint);
+  gl.vertexAttribPointer(
+    uiRectAttribs.tint,
+    3,
+    gl.FLOAT,
+    false,
+    UI_RECT_STRIDE_FLOATS * 4,
+    16,
+  );
+  gl.vertexAttribDivisor(uiRectAttribs.tint, 1);
+
+  gl.enableVertexAttribArray(uiRectAttribs.alpha);
+  gl.vertexAttribPointer(
+    uiRectAttribs.alpha,
+    1,
+    gl.FLOAT,
+    false,
+    UI_RECT_STRIDE_FLOATS * 4,
+    28,
+  );
+  gl.vertexAttribDivisor(uiRectAttribs.alpha, 1);
+  gl.bindVertexArray(null);
+
+  gl.useProgram(handle);
+  bindSampler(gl, handle, "u_texture", uiRectSampler);
+  gl.useProgram(null);
+
+  return {
+    name: "ui-rect",
+    handle,
+    vao,
+    strideFloats: UI_RECT_STRIDE_FLOATS,
+    setGlobals: (_camera, _zoom, canvasSize, simTick) => {
+      gl.useProgram(handle);
+      bindScreenGlobals(gl, handle, canvasSize, simTick);
+    },
+  };
+}
+
 export type ProgramResources = {
   programs: Programs;
   instanceBuffer: WebGLBuffer;
@@ -477,6 +675,7 @@ export type ProgramResources = {
   edgeShadowTexture: WebGLTexture;
   ceilShadowTexture: WebGLTexture;
   spriteTexture: WebGLTexture;
+  fontTexture: WebGLTexture;
   whiteTexture: WebGLTexture;
 };
 
@@ -518,17 +717,20 @@ export function compilePrograms(gl: WebGL2RenderingContext): ProgramResources {
   const ceilShadow = createCeilShadowProgram(gl, vertexBuffer, instanceBuffer);
   const fog = createFogProgram(gl, vertexBuffer, instanceBuffer);
   const sprite = createSpriteProgram(gl, vertexBuffer, instanceBuffer);
+  const uiText = createUiTextProgram(gl, vertexBuffer, instanceBuffer);
+  const uiRect = createUiRectProgram(gl, vertexBuffer, instanceBuffer);
 
   const floorTexture = createTextureSlot(gl, TEXTURE_UNITS.floor);
   const edgeShadowTexture = createTextureSlot(gl, TEXTURE_UNITS.edgeShadow);
   const ceilShadowTexture = createTextureSlot(gl, TEXTURE_UNITS.ceilShadow);
   const spriteTexture = createTextureSlot(gl, TEXTURE_UNITS.sprite);
+  const fontTexture = createTextureSlot(gl, TEXTURE_UNITS.font);
   const whiteTexture = createTextureSlot(gl, TEXTURE_UNITS.white);
 
   assertNoGlError(gl, "program init");
 
   return {
-    programs: { floor, edgeShadow, ceilShadow, fog, sprite },
+    programs: { floor, edgeShadow, ceilShadow, fog, sprite, uiText, uiRect },
     instanceBuffer,
     vertexBuffer,
     maxInstances: MAX_INSTANCES,
@@ -537,6 +739,7 @@ export function compilePrograms(gl: WebGL2RenderingContext): ProgramResources {
     edgeShadowTexture,
     ceilShadowTexture,
     spriteTexture,
+    fontTexture,
     whiteTexture,
   };
 }

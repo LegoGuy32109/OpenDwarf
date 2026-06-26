@@ -25,6 +25,8 @@ export type Programs = {
   ceilShadow: ProgramHandle;
   fog: ProgramHandle;
   sprite: ProgramHandle;
+  uiText: ProgramHandle;
+  uiRect: ProgramHandle;
 };
 
 export type Pass<TCtx> = {

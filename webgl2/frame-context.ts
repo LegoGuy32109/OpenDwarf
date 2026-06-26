@@ -3,6 +3,13 @@
 import type { ChunkKey } from "../lib/webgl-chunk-gen.ts";
 import type { WorldSimState } from "../lib/webgl-world-sim.ts";
 import type { Programs } from "./gpu-types.ts";
+import type { UiFontAtlas } from "./ui-text.ts";
+
+export type UiChatBubble = {
+  message: string;
+  target: { x: number; y: number; z: number };
+  tick: number;
+};
 
 export type FrameContext = {
   gl: WebGL2RenderingContext;
@@ -32,6 +39,13 @@ export type FrameContext = {
     };
     visibleChunkKeys: ChunkKey[];
     world: Readonly<WorldSimState>;
+  };
+  ui: {
+    chatBuffer: string;
+    chatBubbles: UiChatBubble[];
+    fpsHistory: number[];
+    simTpsDisplay: number;
+    fontAtlas: UiFontAtlas | null;
   };
   policy: {
     viewMode: "entity" | "free";

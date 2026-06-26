@@ -5,6 +5,8 @@ import { EdgeShadowPass } from "./edge-shadow.ts";
 import { CeilShadowPass } from "./ceil-shadow.ts";
 import { FogPass } from "./fog.ts";
 import { PlayerPass } from "./player.ts";
+import { ChatPass } from "./chat.ts";
+import { HudPass } from "./hud.ts";
 
 export const ALL_PASSES: Pass<FrameContext>[] = [
   FloorPass,
@@ -12,4 +14,6 @@ export const ALL_PASSES: Pass<FrameContext>[] = [
   CeilShadowPass,
   FogPass,
   PlayerPass,
+  ChatPass,
+  HudPass,
 ];

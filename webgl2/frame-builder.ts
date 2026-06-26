@@ -28,6 +28,7 @@ export type FrameBuilderInput = {
   dtSeconds: number;
   simTick: number;
   viewMode: "entity" | "free";
+  ui: FrameContext["ui"];
 };
 
 export function createFrameBuilderWorld(seed = "rocks-aabb-v1") {
@@ -35,7 +36,15 @@ export function createFrameBuilderWorld(seed = "rocks-aabb-v1") {
 }
 
 export function buildFrameContext(input: FrameBuilderInput): FrameContext {
-  const { canvas, world, frameNumber, dtSeconds, simTick, viewMode } = input;
+  const {
+    canvas,
+    world,
+    frameNumber,
+    dtSeconds,
+    simTick,
+    viewMode,
+    ui,
+  } = input;
   const [entityX, entityY] = entityRenderPosition(world.entity);
   const camera = {
     x: (entityX + 0.5) * TILE_SIZE_PX,
@@ -76,6 +85,7 @@ export function buildFrameContext(input: FrameBuilderInput): FrameContext {
       visibleChunkKeys: region.visibleChunkKeys,
       world,
     },
+    ui,
     policy: {
       viewMode,
       layers: {

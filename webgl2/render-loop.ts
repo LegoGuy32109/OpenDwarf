@@ -7,11 +7,13 @@ import { runPasses } from "./pass-runner.ts";
 import { resetPlayerRenderState } from "./passes/player.ts";
 import { ALL_PASSES } from "./passes/index.ts";
 import { compilePrograms } from "./programs/index.ts";
+import { advanceWorldMovement } from "../lib/webgl-world-sim.ts";
 import {
   loadAtlasInto,
   TEXTURE_UNITS,
   uploadWhiteTo,
 } from "./texture-units.ts";
+import { loadUiFontAtlas } from "./ui-text.ts";
 
 const BACKGROUND_COLOR: [number, number, number, number] = [
   0.106,
@@ -49,12 +51,18 @@ export function startWebGl2RenderLoop(
   const scratch = new Float32Array(
     gpu.maxInstances * gpu.maxStrideFloats,
   );
+  let uiFontAtlas: Awaited<ReturnType<typeof loadUiFontAtlas>> | null = null;
   resetPlayerRenderState();
   let rafId = 0;
   let stopped = false;
   let sceneReady = false;
   let frameNumber = 0;
   let lastFrameTime: number | null = null;
+  const fpsHistory: number[] = [];
+  let simAccumulatorMs = 0;
+  let simTicksThisSecond = 0;
+  let simTpsDisplay = 0;
+  let simTickSecondStart = performance.now();
 
   void (async () => {
     try {
@@ -84,12 +92,15 @@ export function startWebGl2RenderLoop(
           SPRITE_ATLAS_SRC,
           gpu.spriteTexture,
         ),
+        loadUiFontAtlas(gl, gpu.fontTexture).then((atlas) => {
+          uiFontAtlas = atlas;
+        }),
       ]);
       uploadWhiteTo(gl, TEXTURE_UNITS.white, gpu.whiteTexture);
       assertNoGlError(gl, "phase 2 init");
       sceneReady = true;
       console.info(
-        "[webgl2] phase 2 done: loading assets (floor + shadow + sprite atlases ready)",
+        "[webgl2] phase 2 done: loading assets (floor + shadow + sprite atlases + font ready)",
       );
       console.info("[webgl2] phase 3 start: steady state (sceneReady=true)");
     } catch (error) {
@@ -114,6 +125,7 @@ export function startWebGl2RenderLoop(
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     if (!sceneReady) {
+      lastFrameTime = now;
       rafId = globalThis.requestAnimationFrame(frame);
       return;
     }
@@ -122,6 +134,30 @@ export function startWebGl2RenderLoop(
       ? 0
       : Math.min((now - lastFrameTime) / 1000, 0.1);
     lastFrameTime = now;
+
+    const rawDeltaMs = dtSeconds * 1000;
+    if (rawDeltaMs > 0 && rawDeltaMs < 250) {
+      fpsHistory.push(1000 / rawDeltaMs);
+      if (fpsHistory.length > 60) {
+        fpsHistory.shift();
+      }
+    }
+
+    const SIM_TICK_MS = 1000 / 20;
+    simAccumulatorMs += rawDeltaMs;
+    let simTicksThisFrame = 0;
+    while (simAccumulatorMs >= SIM_TICK_MS && simTicksThisFrame < 3) {
+      world.tick++;
+      advanceWorldMovement(world);
+      simAccumulatorMs -= SIM_TICK_MS;
+      simTicksThisFrame++;
+      simTicksThisSecond++;
+    }
+    if (now - simTickSecondStart >= 1000) {
+      simTpsDisplay = simTicksThisSecond;
+      simTicksThisSecond = 0;
+      simTickSecondStart = now;
+    }
 
     const ctx = buildFrameContext({
       gl,
@@ -136,6 +172,13 @@ export function startWebGl2RenderLoop(
       dtSeconds,
       simTick: world.tick,
       viewMode: getViewMode(),
+      ui: {
+        chatBuffer: "",
+        chatBubbles: [],
+        fpsHistory,
+        simTpsDisplay,
+        fontAtlas: uiFontAtlas,
+      },
     });
 
     runPasses(ctx, ALL_PASSES);
