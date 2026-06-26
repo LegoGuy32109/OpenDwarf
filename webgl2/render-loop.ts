@@ -1,20 +1,30 @@
 /// <reference lib="dom" />
 
 import type { WebGl2Boot } from "./gpu-init.ts";
-import { buildFrameContext, createFrameBuilderWorld } from "./frame-builder.ts";
+import { buildFrameContext } from "./frame-builder.ts";
 import { assertNoGlError } from "./gl-errors.ts";
 import { runPasses } from "./pass-runner.ts";
 import { resetPlayerRenderState } from "./passes/player.ts";
 import { ALL_PASSES } from "./passes/index.ts";
 import { compilePrograms } from "./programs/index.ts";
-import { advanceWorldMovement } from "../lib/webgl-world-sim.ts";
-import { syncCanvasSize } from "./canvas.ts";
 import {
   loadAtlasInto,
   TEXTURE_UNITS,
   uploadWhiteTo,
 } from "./texture-units.ts";
 import { loadUiFontAtlas } from "./ui-text.ts";
+import {
+  advanceSimulationTick,
+  buildStreamingChunkKeys,
+  processCameraMovement,
+  processPendingSolidChunks,
+  updateWorldSolidCache,
+} from "./runtime.ts";
+import { syncCanvasSize } from "./canvas.ts";
+import type { WebGl2GameState } from "./game-state.ts";
+import { entityRenderPosition } from "../lib/webgl-world-sim.ts";
+import { TILE_SIZE_PX } from "../lib/webgl-chunk-gen.ts";
+import { getSolidCache } from "./caches/topmost.ts";
 
 const BACKGROUND_COLOR: [number, number, number, number] = [
   0.106,
@@ -30,27 +40,40 @@ const SPRITE_ATLAS_SRC = "/assets/sprites/Dwarf_16x16.png";
 
 export function startWebGl2RenderLoop(
   boot: WebGl2Boot,
+  state: WebGl2GameState,
   onError?: (message: string) => void,
-  getViewMode: () => "entity" | "free" = () => "entity",
 ): () => void {
   const { gl, canvas } = boot;
-  const world = createFrameBuilderWorld();
   const gpu = compilePrograms(gl);
-  const scratch = new Float32Array(
-    gpu.maxInstances * gpu.maxStrideFloats,
-  );
+  const scratch = new Float32Array(gpu.maxInstances * gpu.maxStrideFloats);
   let uiFontAtlas: Awaited<ReturnType<typeof loadUiFontAtlas>> | null = null;
   resetPlayerRenderState();
   let rafId = 0;
   let stopped = false;
   let sceneReady = false;
-  let frameNumber = 0;
   let lastFrameTime: number | null = null;
-  const fpsHistory: number[] = [];
-  let simAccumulatorMs = 0;
-  let simTicksThisSecond = 0;
-  let simTpsDisplay = 0;
-  let simTickSecondStart = performance.now();
+  let smoothPlayerWorldPos: [number, number] | null = null;
+
+  const updateCameraFromWorld = (dtSeconds: number) => {
+    const [targetX, targetY] = entityRenderPosition(state.world.entity);
+    if (!smoothPlayerWorldPos) {
+      smoothPlayerWorldPos = [targetX, targetY];
+    } else {
+      const rate = 1 - Math.exp(-10 * dtSeconds);
+      smoothPlayerWorldPos[0] += (targetX - smoothPlayerWorldPos[0]) * rate;
+      smoothPlayerWorldPos[1] += (targetY - smoothPlayerWorldPos[1]) * rate;
+    }
+
+    if (state.scene.viewMode === "entity") {
+      const [sx, sy] = smoothPlayerWorldPos;
+      state.scene.camera = {
+        x: (sx + 0.5) * TILE_SIZE_PX + state.cameraLookOffset.x,
+        y: (sy + 0.5) * TILE_SIZE_PX + state.cameraLookOffset.y,
+        zoom: state.scene.camera.zoom,
+      };
+      state.topmostDirty = true;
+    }
+  };
 
   void (async () => {
     try {
@@ -88,6 +111,14 @@ export function startWebGl2RenderLoop(
       uploadWhiteTo(gl, TEXTURE_UNITS.white, gpu.whiteTexture);
       assertNoGlError(gl, "phase 2 init");
       sceneReady = true;
+      state.scene.assetsLoaded = [
+        FLOOR_ATLAS_SRC,
+        EDGE_SHADOW_ATLAS_SRC,
+        CEIL_SHADOW_ATLAS_SRC,
+        SPRITE_ATLAS_SRC,
+        "/assets/ui/JoshPerfectDosVga.png",
+      ];
+      state.status = "depth stack ready";
       const phase2Elapsed = Math.round(performance.now() - phase2Start);
       console.info(
         `[webgl2] phase 2 done: assets ready (${phase2Elapsed}ms)`,
@@ -106,6 +137,13 @@ export function startWebGl2RenderLoop(
     }
 
     syncCanvasSize(gl, canvas);
+    state.scene.viewport = {
+      cssWidth: canvas.clientWidth,
+      cssHeight: canvas.clientHeight,
+      devicePixelRatio: globalThis.devicePixelRatio || 1,
+      framebufferWidth: canvas.width,
+      framebufferHeight: canvas.height,
+    };
     gl.clearColor(
       BACKGROUND_COLOR[0],
       BACKGROUND_COLOR[1],
@@ -124,32 +162,69 @@ export function startWebGl2RenderLoop(
       ? 0
       : Math.min((now - lastFrameTime) / 1000, 0.1);
     lastFrameTime = now;
+    state.lastFrameTime = now;
 
     const rawDeltaMs = dtSeconds * 1000;
     if (rawDeltaMs > 0 && rawDeltaMs < 250) {
-      fpsHistory.push(1000 / rawDeltaMs);
-      if (fpsHistory.length > 60) {
-        fpsHistory.shift();
+      state.fpsHistory.push(1000 / rawDeltaMs);
+      if (state.fpsHistory.length > 60) {
+        state.fpsHistory.shift();
       }
     }
 
     const SIM_TICK_MS = 1000 / 20;
-    simAccumulatorMs += rawDeltaMs;
+    state.simAccumulatorMs += rawDeltaMs;
     let simTicksThisFrame = 0;
-    while (simAccumulatorMs >= SIM_TICK_MS && simTicksThisFrame < 3) {
-      world.tick++;
-      advanceWorldMovement(world);
-      simAccumulatorMs -= SIM_TICK_MS;
+    while (state.simAccumulatorMs >= SIM_TICK_MS && simTicksThisFrame < 3) {
+      advanceSimulationTick(state);
+      state.simAccumulatorMs -= SIM_TICK_MS;
       simTicksThisFrame++;
-      simTicksThisSecond++;
     }
-    if (now - simTickSecondStart >= 1000) {
-      simTpsDisplay = simTicksThisSecond;
-      simTicksThisSecond = 0;
-      simTickSecondStart = now;
+    if (now - state.simTickSecondStart >= 1000) {
+      state.simTpsDisplay = state.simTicksThisSecond;
+      state.simTicksThisSecond = 0;
+      state.simTickSecondStart = now;
     }
 
+    processCameraMovement(dtSeconds, state);
+    updateCameraFromWorld(dtSeconds);
+
+    const streaming = buildStreamingChunkKeys(state, state.viewZ);
+    const streamingFingerprint = streaming.streamingChunkKeys.map((k) =>
+      `${k.chunkX},${k.chunkY},${k.chunkZ}`
+    ).join("|");
+    if (streamingFingerprint !== state.streamingKeySet) {
+      state.streamingKeySet = streamingFingerprint;
+      state.scene.residentChunks = streaming.streamingChunkKeys.length;
+      state.scene.streamingChunks = streaming.streamingChunkKeys.map((k) =>
+        `${k.chunkX},${k.chunkY},${k.chunkZ}`
+      );
+      updateWorldSolidCache(
+        state,
+        streaming.streamingChunkKeys.map((k) => ({
+          chunkX: k.chunkX,
+          chunkY: k.chunkY,
+        })),
+        state.viewZ,
+      );
+      state.topmostDirty = true;
+    }
+    processPendingSolidChunks(state);
+    state.scene.residentChunks = getSolidCache().size;
+
+    state.frameNumber += 1;
+    state.scene.drawOrderLabels = [
+      "floor",
+      "edgeShadow",
+      "ceilingShadow",
+      ...(state.scene.viewMode === "entity" ? ["fog"] : []),
+      "player",
+      "chat",
+      "ui",
+    ];
+
     const ctx = buildFrameContext({
+      state,
       gl,
       programs: gpu.programs,
       scratch,
@@ -157,22 +232,11 @@ export function startWebGl2RenderLoop(
       maxInstances: gpu.maxInstances,
       batchStats: { drawCalls: 0, instances: 0 },
       canvas,
-      world,
-      frameNumber,
+      uiFontAtlas,
       dtSeconds,
-      simTick: world.tick,
-      viewMode: getViewMode(),
-      ui: {
-        chatBuffer: "",
-        chatBubbles: [],
-        fpsHistory,
-        simTpsDisplay,
-        fontAtlas: uiFontAtlas,
-      },
     });
 
     runPasses(ctx, ALL_PASSES);
-    frameNumber++;
     rafId = globalThis.requestAnimationFrame(frame);
   };
 

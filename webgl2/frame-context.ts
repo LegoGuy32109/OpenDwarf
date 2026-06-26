@@ -41,14 +41,16 @@ export type FrameContext = {
     world: Readonly<WorldSimState>;
   };
   ui: {
+    uiMode: "world" | "chat";
     chatBuffer: string;
     chatBubbles: UiChatBubble[];
     fpsHistory: number[];
     simTpsDisplay: number;
     fontAtlas: UiFontAtlas | null;
+    uiOverlayVisible: boolean;
   };
   policy: {
-    viewMode: "entity" | "free";
+    viewMode: "entity" | "master";
     layers: {
       floor: boolean;
       edgeShadow: boolean;

@@ -8,7 +8,7 @@ import {
 import { recomputeFov, type WorldSimState } from "../../lib/webgl-world-sim.ts";
 import { getSolidCache } from "./topmost.ts";
 
-export type ViewMode = "entity" | "free";
+export type ViewMode = "entity" | "master";
 export type TileVisibilityState = "visible" | "remembered" | "unseen";
 
 const visibleTiles = new Set<string>();
@@ -35,8 +35,12 @@ function clearVisible(world: WorldSimState) {
   }
 }
 
-export function syncFovCache(world: WorldSimState, viewMode: ViewMode) {
-  if (viewMode === "entity") {
+export function syncFovCache(
+  world: WorldSimState,
+  viewMode: ViewMode,
+  dirty = true,
+) {
+  if (viewMode === "entity" && dirty) {
     const solidCache = getSolidCache();
     recomputeFov(world, (x, y, z) => {
       const { chunkX, chunkY } = chunkOfTile(x, y);
@@ -50,7 +54,7 @@ export function syncFovCache(world: WorldSimState, viewMode: ViewMode) {
         CHUNK_EDGE_TILES;
       return chunk[localY * CHUNK_EDGE_TILES + localX] === 1;
     });
-  } else {
+  } else if (viewMode !== "entity") {
     clearVisible(world);
   }
   syncSnapshot(world);

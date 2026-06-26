@@ -102,28 +102,24 @@ export const ChatPass: Pass<FrameContext> = {
     const chatScale = 1.2;
     const vgaLineH = uiTextLineHeight(fontAtlas, chatScale);
     const vgaW = (text: string) => uiTextWidth(fontAtlas, text, chatScale);
-    const vgaPad = 6;
-    const barText = ctx.ui.chatBuffer.length > 0
-      ? `> ${ctx.ui.chatBuffer}_`
-      : "press enter to chat";
-    const barW = Math.min(
-      Math.max(vgaW(barText) + vgaPad * 2, 240),
-      canvasWidth - 40,
-    );
-    const barH = vgaLineH + vgaPad * 2;
-    const barX = 20;
-    const barY = canvasHeight - barH - 18;
-
-    drawRect(ctx, barX, barY, barW, barH, CHAT_BAR_TINT, 0.65);
-    drawText(
-      ctx,
-      barText,
-      barX + vgaPad,
-      barY + vgaPad,
-      CHAT_TEXT_TINT,
-      1,
-      chatScale,
-    );
+    const vgaPad = 0;
+    if (ctx.ui.uiMode === "chat") {
+      const barText = `${ctx.ui.chatBuffer}_`;
+      const barW = Math.min(vgaW(barText) + vgaPad * 2, canvasWidth - 40);
+      const barH = vgaLineH + vgaPad * 2;
+      const barX = 20;
+      const barY = canvasHeight - barH - 18;
+      drawRect(ctx, barX, barY, barW, barH, CHAT_BAR_TINT, 0.65);
+      drawText(
+        ctx,
+        barText,
+        barX + vgaPad,
+        barY + vgaPad,
+        CHAT_TEXT_TINT,
+        1,
+        chatScale,
+      );
+    }
 
     const liveBubbles = ctx.ui.chatBubbles
       .map((bubble) => ({ ...bubble, age: ctx.frame.simTick - bubble.tick }))

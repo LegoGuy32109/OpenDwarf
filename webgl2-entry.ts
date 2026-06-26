@@ -2,6 +2,7 @@ import { bootWebGl2Renderer } from "./webgl2/gpu-init.ts";
 import { createInputController } from "./webgl2/input.ts";
 import { startWebGl2RenderLoop } from "./webgl2/render-loop.ts";
 import { applyCanvasDisplaySize } from "./webgl2/canvas.ts";
+import { createWebGl2GameState } from "./webgl2/game-state.ts";
 
 function setErrorOverlay(
   overlay: HTMLElement | null,
@@ -28,7 +29,7 @@ function startWebGl2Client() {
     "#webgl2-fullscreen",
   );
   const shell = document.querySelector<HTMLElement>(".webgl-experiment-shell");
-  const viewModeRef: { current: "entity" | "free" } = { current: "entity" };
+  const state = createWebGl2GameState();
 
   if (!canvas) {
     setErrorOverlay(errorOverlay, "WebGL2 canvas unavailable");
@@ -42,13 +43,14 @@ function startWebGl2Client() {
   }
 
   const stopInput = createInputController({
-    viewModeRef,
+    state,
     fullscreenTarget: shell,
+    canvas,
   });
   const stopRender = startWebGl2RenderLoop(
     boot,
+    state,
     (message) => setErrorOverlay(errorOverlay, message),
-    () => viewModeRef.current,
   );
 
   const syncCanvas = () => {

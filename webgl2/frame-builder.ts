@@ -1,21 +1,16 @@
 /// <reference lib="dom" />
 
-import { TILE_SIZE_PX } from "../lib/webgl-chunk-gen.ts";
-import {
-  createWorldSim,
-  entityRenderPosition,
-  type WorldSimState,
-} from "../lib/webgl-world-sim.ts";
-import {
-  rebuildTopmostCache,
-  syncFloorAndSolidCaches,
-} from "./caches/topmost.ts";
+import { chunkKeyString } from "../lib/webgl-chunk-gen.ts";
+import type { WorldSimState } from "../lib/webgl-world-sim.ts";
+import { rebuildTopmostCache } from "./caches/topmost.ts";
 import { syncFovCache } from "./caches/fov.ts";
 import { updateVisibleRegion } from "./caches/visible-region.ts";
 import type { FrameContext } from "./frame-context.ts";
 import type { Programs } from "./gpu-types.ts";
+import type { WebGl2GameState } from "./game-state.ts";
 
 export type FrameBuilderInput = {
+  state: WebGl2GameState;
   gl: WebGL2RenderingContext;
   programs: Programs;
   scratch: Float32Array;
@@ -23,35 +18,14 @@ export type FrameBuilderInput = {
   maxInstances: number;
   batchStats: { drawCalls: number; instances: number };
   canvas: HTMLCanvasElement;
-  world: WorldSimState;
-  frameNumber: number;
+  uiFontAtlas: FrameContext["ui"]["fontAtlas"];
   dtSeconds: number;
-  simTick: number;
-  viewMode: "entity" | "free";
-  ui: FrameContext["ui"];
 };
 
-export function createFrameBuilderWorld(seed = "rocks-aabb-v1") {
-  return createWorldSim(seed);
-}
-
 export function buildFrameContext(input: FrameBuilderInput): FrameContext {
-  const {
-    canvas,
-    world,
-    frameNumber,
-    dtSeconds,
-    simTick,
-    viewMode,
-    ui,
-  } = input;
-  const [entityX, entityY] = entityRenderPosition(world.entity);
-  const camera = {
-    x: (entityX + 0.5) * TILE_SIZE_PX,
-    y: (entityY + 0.5) * TILE_SIZE_PX,
-    zoom: 1,
-  };
-  const viewZ = world.entity.position.z;
+  const { state, canvas, uiFontAtlas, dtSeconds } = input;
+  const camera = state.scene.camera;
+  const viewZ = state.viewZ;
   const viewport = {
     cssWidth: canvas.clientWidth,
     cssHeight: canvas.clientHeight,
@@ -59,13 +33,41 @@ export function buildFrameContext(input: FrameBuilderInput): FrameContext {
     fbWidth: canvas.width,
     fbHeight: canvas.height,
   };
-  const region = updateVisibleRegion(camera, {
-    fbWidth: canvas.width,
-    fbHeight: canvas.height,
-  }, viewZ);
-  syncFloorAndSolidCaches(world.seed, region.streamingChunkKeys, viewZ);
-  syncFovCache(world, viewMode);
-  rebuildTopmostCache(region.visibleChunkKeys, viewZ);
+  state.scene.viewport = {
+    cssWidth: viewport.cssWidth,
+    cssHeight: viewport.cssHeight,
+    devicePixelRatio: viewport.dpr,
+    framebufferWidth: viewport.fbWidth,
+    framebufferHeight: viewport.fbHeight,
+  };
+
+  const region = updateVisibleRegion(
+    camera,
+    { fbWidth: canvas.width, fbHeight: canvas.height },
+    viewZ,
+  );
+
+  state.scene.visibleChunks = region.visibleChunkKeys.map((key) =>
+    chunkKeyString(key)
+  );
+
+  syncFovCache(state.world, state.scene.viewMode, state.fovDirty);
+  state.scene.visibleTileCount = state.world.visible.size;
+  state.scene.rememberedTileCount = state.world.memory.size;
+  if (state.topmostDirty) {
+    rebuildTopmostCache(region.visibleChunkKeys, viewZ);
+    state.topmostDirty = false;
+  }
+
+  state.scene.drawOrderLabels = [
+    "floor",
+    "edgeShadow",
+    "ceilingShadow",
+    ...(state.scene.viewMode === "entity" ? ["fog"] : []),
+    "player",
+    "chat",
+    "ui",
+  ];
 
   return {
     gl: input.gl,
@@ -79,21 +81,24 @@ export function buildFrameContext(input: FrameBuilderInput): FrameContext {
       viewport,
       viewZ,
       dtSeconds,
-      simTick,
-      frameNumber,
+      simTick: state.simTick,
+      frameNumber: state.frameNumber,
       visibleTileBounds: region.visibleTileBounds,
       visibleChunkKeys: region.visibleChunkKeys,
-      world,
+      world: state.world as Readonly<WorldSimState>,
     },
-    ui,
+    ui: {
+      uiMode: state.scene.uiMode,
+      chatBuffer: state.scene.chatBuffer,
+      chatBubbles: state.scene.chatBubbles,
+      fpsHistory: state.fpsHistory,
+      simTpsDisplay: state.simTpsDisplay,
+      fontAtlas: uiFontAtlas,
+      uiOverlayVisible: state.uiOverlayVisible,
+    },
     policy: {
-      viewMode,
-      layers: {
-        floor: true,
-        edgeShadow: true,
-        ceilShadow: true,
-        depthTint: true,
-      },
+      viewMode: state.scene.viewMode,
+      layers: state.layers,
     },
   };
 }

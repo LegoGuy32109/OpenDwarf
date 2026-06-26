@@ -87,7 +87,7 @@ export const HudPass: Pass<FrameContext> = {
   state: { blend: "alpha" },
   draw(ctx) {
     const fontAtlas = ctx.ui.fontAtlas;
-    if (!fontAtlas) {
+    if (!fontAtlas || !ctx.ui.uiOverlayVisible) {
       return;
     }
 
