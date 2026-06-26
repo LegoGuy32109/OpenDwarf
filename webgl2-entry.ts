@@ -1,6 +1,7 @@
 import { bootWebGl2Renderer } from "./webgl2/gpu-init.ts";
 import { createInputController } from "./webgl2/input.ts";
 import { startWebGl2RenderLoop } from "./webgl2/render-loop.ts";
+import { applyCanvasDisplaySize } from "./webgl2/canvas.ts";
 
 function setErrorOverlay(
   overlay: HTMLElement | null,
@@ -40,12 +41,32 @@ function startWebGl2Client() {
     return;
   }
 
-  const stopInput = createInputController({ viewModeRef });
+  const stopInput = createInputController({
+    viewModeRef,
+    fullscreenTarget: shell,
+  });
   const stopRender = startWebGl2RenderLoop(
     boot,
     (message) => setErrorOverlay(errorOverlay, message),
     () => viewModeRef.current,
   );
+
+  const syncCanvas = () => {
+    applyCanvasDisplaySize(canvas);
+  };
+
+  const handleFullscreenChange = () => {
+    syncCanvas();
+    canvas.focus();
+  };
+
+  const handleResize = () => {
+    syncCanvas();
+  };
+
+  const handlePointerDown = () => {
+    canvas.focus();
+  };
 
   fullscreenButton?.addEventListener("click", async () => {
     if (!shell) {
@@ -60,11 +81,23 @@ function startWebGl2Client() {
 
   canvas.tabIndex = 0;
   canvas.focus();
+  canvas.addEventListener("pointerdown", handlePointerDown);
+  window.addEventListener("resize", handleResize);
+  document.addEventListener("fullscreenchange", handleFullscreenChange);
+  const resizeObserver = shell ? new ResizeObserver(syncCanvas) : null;
+  if (shell) {
+    resizeObserver?.observe(shell);
+  }
+  syncCanvas();
   setErrorOverlay(errorOverlay, null);
 
   const cleanup = () => {
     stopInput();
     stopRender();
+    canvas.removeEventListener("pointerdown", handlePointerDown);
+    window.removeEventListener("resize", handleResize);
+    document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    resizeObserver?.disconnect();
   };
   window.addEventListener("pagehide", cleanup, { once: true });
 }

@@ -13,7 +13,7 @@ export default function WebGlGameCanvas2() {
           </h1>
         </div>
         <div class="max-w-7xl mx-auto">
-          <div class="webgl-experiment-shell relative shadow-2xl shadow-black">
+          <div class="webgl-experiment-shell relative">
             <style>
               {`
                 .webgl-experiment-shell:fullscreen {
@@ -30,9 +30,17 @@ export default function WebGlGameCanvas2() {
 
                 .webgl-experiment-canvas {
                   display: block;
-                  width: 100%;
-                  height: 74vh;
+                  width: 90vw;
+                  height: 75vh;
+                  margin: 0 auto;
+                  border-radius: 0.5rem;
+                  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
                   outline: none;
+                }
+
+                .webgl-experiment-canvas:focus {
+                  outline: 2px solid rgba(183, 149, 96, 0.7);
+                  outline-offset: 2px;
                 }
               `}
             </style>

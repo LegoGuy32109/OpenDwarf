@@ -8,6 +8,7 @@ import { resetPlayerRenderState } from "./passes/player.ts";
 import { ALL_PASSES } from "./passes/index.ts";
 import { compilePrograms } from "./programs/index.ts";
 import { advanceWorldMovement } from "../lib/webgl-world-sim.ts";
+import { syncCanvasSize } from "./canvas.ts";
 import {
   loadAtlasInto,
   TEXTURE_UNITS,
@@ -26,19 +27,6 @@ const FLOOR_ATLAS_SRC = "/assets/sprites/StackedTextures.png";
 const EDGE_SHADOW_ATLAS_SRC = "/assets/atlases/ShadowAtlas.png";
 const CEIL_SHADOW_ATLAS_SRC = "/assets/atlases/ObscureAtlas.png";
 const SPRITE_ATLAS_SRC = "/assets/sprites/Dwarf_16x16.png";
-
-function syncCanvasSize(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
-  const dpr = globalThis.devicePixelRatio || 1;
-  const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
-  const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
-
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
-  }
-
-  gl.viewport(0, 0, canvas.width, canvas.height);
-}
 
 export function startWebGl2RenderLoop(
   boot: WebGl2Boot,
@@ -66,6 +54,7 @@ export function startWebGl2RenderLoop(
 
   void (async () => {
     try {
+      const phase2Start = performance.now();
       console.info("[webgl2] phase 2 start: loading assets");
       await Promise.all([
         loadAtlasInto(
@@ -99,10 +88,11 @@ export function startWebGl2RenderLoop(
       uploadWhiteTo(gl, TEXTURE_UNITS.white, gpu.whiteTexture);
       assertNoGlError(gl, "phase 2 init");
       sceneReady = true;
+      const phase2Elapsed = Math.round(performance.now() - phase2Start);
       console.info(
-        "[webgl2] phase 2 done: loading assets (floor + shadow + sprite atlases + font ready)",
+        `[webgl2] phase 2 done: assets ready (${phase2Elapsed}ms)`,
       );
-      console.info("[webgl2] phase 3 start: steady state (sceneReady=true)");
+      console.info("[webgl2] phase 3 start: steady state");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(error);
