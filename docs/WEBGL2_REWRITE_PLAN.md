@@ -11,8 +11,8 @@ being implemented, fix the implementation or update this doc — don't drift.
 
 ## Goal & scope
 
-**Build a new WebGL2 renderer with the abstractions needed to scale, shipping
-at visual parity with the current renderer.**
+**Build a new WebGL2 renderer with the abstractions needed to scale, shipping at
+visual parity with the current renderer.**
 
 In:
 
@@ -26,8 +26,8 @@ In:
 Out (deferred to v2+):
 
 - Replay/checkpoint harness — `globalThis.__openDwarfWebGlHarness` does not
-  exist in v1. No state hashes, no scene snapshots, no replay JSON, no
-  baseline manifests, no checkpoint capture.
+  exist in v1. No state hashes, no scene snapshots, no replay JSON, no baseline
+  manifests, no checkpoint capture.
 - Event log panel.
 - Capability info dump on canvas (it logs to `console.info` at phase 1 done
   instead).
@@ -43,27 +43,27 @@ Out (deferred to v2+):
 
 ## Top-level decisions
 
-| # | Decision | Notes |
-|---|---|---|
-| 1 | Parallel development on a new route | `/webgl2` → `WebGlGameCanvas2.tsx`. Old code untouched until cutover. |
-| 2 | Visual parity only for v1 | No new features. Side-by-side compare against old code is the test. |
-| 3 | Pass-registry of free-function modules | One file per pass; `passes/index.ts` exports `ALL_PASSES` in draw order. |
-| 4 | Each pass: optional `prepare()` + required `draw()` | Runner walks all `prepare`s then all `draw`s per frame. |
-| 5 | Caches live as their own modules, not on `ctx` | Module-level singletons; pass files import them. Re-evaluate if a second renderer instance is ever needed. |
-| 6 | Single-layer file structure | `islands/webgl2/*`. Engine-vs-game distinction is a mental model only. |
-| 7 | Seven shader programs, one per pass family | `floor`, `edge-shadow`, `ceil-shadow`, `fog`, `sprite`, `ui-text`, `ui-rect`. No `u_render_mode` branching. |
-| 8 | Per-pass instance schema (stride-per-pass) | Each program has its own attribute layout sized to what varies. |
-| 9 | Per-instance alpha on all textured passes | Per the design discussion. Note: on `floor`, alpha is uploaded but inert while `blend: "off"`. |
-| 10 | Permanent named texture units | Each texture gets a `TEXTURE_UNITS.<name>` slot, bound once at load. No per-frame rebinding. |
-| 11 | GLSL inline as TS template literals | One file per program: `programs/<name>.ts` exports `{ vert, frag, attribs, sampler }`. Shared chunks in `_chunks.ts`. |
-| 12 | Per-program uniform writes (no UBO) | `setGlobals(camera, zoom, canvasSize, simTick)` per program. UBO is a future optimization (note in `_chunks.ts`). |
-| 13 | One shared static vertex buffer + one shared dynamic instance buffer + seven VAOs | Each VAO interprets the shared instance buffer at its own stride. |
-| 14 | Declarative `PassState.blend` enforced by the runner | `"off"` or `"alpha"` for v1. Pass code doesn't call `gl.enable`/`gl.disable` directly. |
-| 15 | Critical-point `gl.getError()` only | Shader compile, program link, end-of-init. No hot-path checks. No dev wrapper. |
-| 16 | Three-phase boot, no canvas2d fallback | Sync init → async asset load → steady state. Phase boundaries logged to console. |
-| 17 | Hardcoded player pass; entity collection deferred | `passes/player.ts` emits one instance. NPCs land later in `passes/entities.ts`. |
-| 18 | No harness, no replay, no checkpoints | Hundreds of LoC drop. Restored when game and visual systems stabilize. |
-| 19 | Minimal UI in v1 | Chat bubbles, chat input bar, FPS/TPS, status text. No log panel, no capability overlay, no toggle. |
+| #  | Decision                                                                          | Notes                                                                                                                 |
+| -- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 1  | Parallel development on a new route                                               | `/webgl2` → `WebGlGameCanvas2.tsx`. Old code untouched until cutover.                                                 |
+| 2  | Visual parity only for v1                                                         | No new features. Side-by-side compare against old code is the test.                                                   |
+| 3  | Pass-registry of free-function modules                                            | One file per pass; `passes/index.ts` exports `ALL_PASSES` in draw order.                                              |
+| 4  | Each pass: optional `prepare()` + required `draw()`                               | Runner walks all `prepare`s then all `draw`s per frame.                                                               |
+| 5  | Caches live as their own modules, not on `ctx`                                    | Module-level singletons; pass files import them. Re-evaluate if a second renderer instance is ever needed.            |
+| 6  | Single-layer file structure                                                       | `islands/webgl2/*`. Engine-vs-game distinction is a mental model only.                                                |
+| 7  | Seven shader programs, one per pass family                                        | `floor`, `edge-shadow`, `ceil-shadow`, `fog`, `sprite`, `ui-text`, `ui-rect`. No `u_render_mode` branching.           |
+| 8  | Per-pass instance schema (stride-per-pass)                                        | Each program has its own attribute layout sized to what varies.                                                       |
+| 9  | Per-instance alpha on all textured passes                                         | Per the design discussion. Note: on `floor`, alpha is uploaded but inert while `blend: "off"`.                        |
+| 10 | Permanent named texture units                                                     | Each texture gets a `TEXTURE_UNITS.<name>` slot, bound once at load. No per-frame rebinding.                          |
+| 11 | GLSL inline as TS template literals                                               | One file per program: `programs/<name>.ts` exports `{ vert, frag, attribs, sampler }`. Shared chunks in `_chunks.ts`. |
+| 12 | Per-program uniform writes (no UBO)                                               | `setGlobals(camera, zoom, canvasSize, simTick)` per program. UBO is a future optimization (note in `_chunks.ts`).     |
+| 13 | One shared static vertex buffer + one shared dynamic instance buffer + seven VAOs | Each VAO interprets the shared instance buffer at its own stride.                                                     |
+| 14 | Declarative `PassState.blend` enforced by the runner                              | `"off"` or `"alpha"` for v1. Pass code doesn't call `gl.enable`/`gl.disable` directly.                                |
+| 15 | Critical-point `gl.getError()` only                                               | Shader compile, program link, end-of-init. No hot-path checks. No dev wrapper.                                        |
+| 16 | Three-phase boot, no canvas2d fallback                                            | Sync init → async asset load → steady state. Phase boundaries logged to console.                                      |
+| 17 | Hardcoded player pass; entity collection deferred                                 | `passes/player.ts` emits one instance. NPCs land later in `passes/entities.ts`.                                       |
+| 18 | No harness, no replay, no checkpoints                                             | Hundreds of LoC drop. Restored when game and visual systems stabilize.                                                |
+| 19 | Minimal UI in v1                                                                  | Chat bubbles, chat input bar, FPS/TPS, status text. No log panel, no capability overlay, no toggle.                   |
 
 ---
 
@@ -97,7 +97,7 @@ Slim. Game-shaped, lives in `frame-context.ts`. Built once per frame by
 type FrameContext = {
   // mechanical
   gl: WebGL2RenderingContext;
-  programs: Programs;            // { floor, edgeShadow, ... }
+  programs: Programs; // { floor, edgeShadow, ... }
   scratch: Float32Array;
   instanceBuffer: WebGLBuffer;
   maxInstances: number;
@@ -107,22 +107,35 @@ type FrameContext = {
   frame: {
     camera: { x: number; y: number; zoom: number };
     viewport: {
-      cssWidth: number; cssHeight: number; dpr: number;
-      fbWidth: number; fbHeight: number;
+      cssWidth: number;
+      cssHeight: number;
+      dpr: number;
+      fbWidth: number;
+      fbHeight: number;
     };
     viewZ: number;
     dtSeconds: number;
     simTick: number;
     frameNumber: number;
-    visibleTileBounds: { minX: number; minY: number; maxX: number; maxY: number };
+    visibleTileBounds: {
+      minX: number;
+      minY: number;
+      maxX: number;
+      maxY: number;
+    };
     visibleChunkKeys: ChunkKey[];
-    world: WorldSimState;        // read-only by convention
+    world: WorldSimState; // read-only by convention
   };
 
   // render policy — how to display
   policy: {
     viewMode: "entity" | "free";
-    layers: { floor: boolean; edgeShadow: boolean; ceilShadow: boolean; depthTint: boolean };
+    layers: {
+      floor: boolean;
+      edgeShadow: boolean;
+      ceilShadow: boolean;
+      depthTint: boolean;
+    };
   };
 };
 ```
@@ -170,23 +183,23 @@ export function runPasses(ctx: FrameContext, passes: Pass<FrameContext>[]) {
 
 Seven programs, each with its own VAO and per-instance schema.
 
-| Program | Stride (floats) | Layout | Blend | Sampler unit |
-|---|---|---|---|---|
-| `floor` | 7 | `[x, y, frame, tintR, tintG, tintB, alpha]` | off | `floor` |
-| `edge-shadow` | 5 | `[x, y, w, h, alpha]` | alpha | `edgeShadow` |
-| `ceil-shadow` | 4 | `[x, y, frame, alpha]` | alpha | `ceilShadow` |
-| `fog` | 3 | `[x, y, alpha]` | alpha | `white` (or none) |
-| `sprite` | 12 | `[x, y, w, h, uvX, uvY, uvW, uvH, tintR, tintG, tintB, alpha]` | alpha | `sprite` |
-| `ui-text` | 12 | same as sprite (screen-space) | alpha | `font` |
-| `ui-rect` | 8 | `[sx, sy, w, h, tintR, tintG, tintB, alpha]` | alpha | `white` |
+| Program       | Stride (floats) | Layout                                                         | Blend | Sampler unit      |
+| ------------- | --------------- | -------------------------------------------------------------- | ----- | ----------------- |
+| `floor`       | 7               | `[x, y, frame, tintR, tintG, tintB, alpha]`                    | off   | `floor`           |
+| `edge-shadow` | 5               | `[x, y, w, h, alpha]`                                          | alpha | `edgeShadow`      |
+| `ceil-shadow` | 4               | `[x, y, frame, alpha]`                                         | alpha | `ceilShadow`      |
+| `fog`         | 3               | `[x, y, alpha]`                                                | alpha | `white` (or none) |
+| `sprite`      | 12              | `[x, y, w, h, uvX, uvY, uvW, uvH, tintR, tintG, tintB, alpha]` | alpha | `sprite`          |
+| `ui-text`     | 12              | same as sprite (screen-space)                                  | alpha | `font`            |
+| `ui-rect`     | 8               | `[sx, sy, w, h, tintR, tintG, tintB, alpha]`                   | alpha | `white`           |
 
 **Convention:** first two floats are always position (world or screen). Vertex
 shaders standardize on `a_pos` for slot 0.
 
 **Frame index → UV shortcut:** for uniform-grid atlases (`floor`,
-`ceil-shadow`), the vertex shader computes UV from a single `frame` float
-plus a compile-time `NUM_FRAMES` constant. Sprite/text use full uv rects because
-their atlases aren't uniform grids.
+`ceil-shadow`), the vertex shader computes UV from a single `frame` float plus a
+compile-time `NUM_FRAMES` constant. Sprite/text use full uv rects because their
+atlases aren't uniform grids.
 
 **Globals (uniforms set per frame via `setGlobals`):**
 
@@ -199,8 +212,8 @@ Each program file declares which globals it needs. `getUniformLocation`
 returning null is a no-op in `setGlobals`.
 
 **Note in `programs/_chunks.ts`:** "If program count exceeds ~10 or per-frame
-global data grows beyond a handful of floats, migrate to a UBO. The migration
-is mechanical and isolated to this file plus the program loader."
+global data grows beyond a handful of floats, migrate to a UBO. The migration is
+mechanical and isolated to this file plus the program loader."
 
 ---
 
@@ -273,9 +286,9 @@ console.info("[webgl2] phase 3 start: steady state (sceneReady=true)");
 
 ### Phase 3 — steady state
 
-RAF loop runs every frame. Input handlers and resize handlers run regardless
-of `sceneReady`. The render path checks the flag and early-exits with a clear
-to background color while false.
+RAF loop runs every frame. Input handlers and resize handlers run regardless of
+`sceneReady`. The render path checks the flag and early-exits with a clear to
+background color while false.
 
 ---
 
@@ -330,8 +343,7 @@ Notes:
 - `lib/webgl-chunk-gen.ts`, `lib/webgl-world-sim.ts` are reused as-is.
 - No central `webgl-core.ts` junk-drawer. Constants live with what uses them
   (e.g. `SHADOW_ALPHA_MULTIPLIER` belongs in `passes/ceil-shadow.ts`).
-- No `.glsl` / `.vert` / `.frag` files. All shader text is TS template
-  literals.
+- No `.glsl` / `.vert` / `.frag` files. All shader text is TS template literals.
 
 ---
 
@@ -340,13 +352,13 @@ Notes:
 ```ts
 // passes/index.ts
 export const ALL_PASSES: Pass<FrameContext>[] = [
-  FloorPass,         // blend: off
-  EdgeShadowPass,    // blend: alpha
-  CeilShadowPass,    // blend: alpha
-  FogPass,           // blend: alpha; enabled: ctx => ctx.policy.viewMode === "entity"
-  PlayerPass,        // blend: alpha
-  ChatPass,          // blend: alpha — bubbles above player + active input bar bg
-  HudPass,           // blend: alpha — fps/tps + status text
+  FloorPass, // blend: off
+  EdgeShadowPass, // blend: alpha
+  CeilShadowPass, // blend: alpha
+  FogPass, // blend: alpha; enabled: ctx => ctx.policy.viewMode === "entity"
+  PlayerPass, // blend: alpha
+  ChatPass, // blend: alpha — bubbles above player + active input bar bg
+  HudPass, // blend: alpha — fps/tps + status text
 ];
 ```
 
@@ -440,22 +452,22 @@ with one program.
 These are real things we discussed and chose to defer. Each has a known trigger
 for when to revisit.
 
-| Deferred | Revisit when |
-|---|---|
-| Harness / replay / checkpoints | Game and visual systems stabilize |
-| FBO infrastructure | First feature that needs offscreen rendering (lighting, minimap, post-FX) |
-| UBO for globals | Program count exceeds ~10 or per-frame global data grows substantially |
-| Entity collection (multi-entity rendering) | Sim adds `world.entities[]` |
-| Hot-reload of shaders | Iteration speed becomes painful |
-| Dev-only per-call `gl.getError()` wrapper | Hard-to-debug per-frame GL bug appears |
-| Canvas2D fallback | Never. WebGL2 is universal in current browsers |
-| Log panel + capability overlay + UI toggle | Game-level config UI needs them |
-| `preserveDrawingBuffer: true` | FBO-based capture replaces canvas.toBlob path |
-| Cache factory pattern (per-renderer instances) | Second renderer instance (split-screen, minimap-as-renderer) |
+| Deferred                                       | Revisit when                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| Harness / replay / checkpoints                 | Game and visual systems stabilize                                         |
+| FBO infrastructure                             | First feature that needs offscreen rendering (lighting, minimap, post-FX) |
+| UBO for globals                                | Program count exceeds ~10 or per-frame global data grows substantially    |
+| Entity collection (multi-entity rendering)     | Sim adds `world.entities[]`                                               |
+| Hot-reload of shaders                          | Iteration speed becomes painful                                           |
+| Dev-only per-call `gl.getError()` wrapper      | Hard-to-debug per-frame GL bug appears                                    |
+| Canvas2D fallback                              | Never. WebGL2 is universal in current browsers                            |
+| Log panel + capability overlay + UI toggle     | Game-level config UI needs them                                           |
+| `preserveDrawingBuffer: true`                  | FBO-based capture replaces canvas.toBlob path                             |
+| Cache factory pattern (per-renderer instances) | Second renderer instance (split-screen, minimap-as-renderer)              |
 
 ---
 
-## What this rewrite is intentionally *not* solving
+## What this rewrite is intentionally _not_ solving
 
 - **Sim/render decoupling.** The renderer drives sim ticks via RAF, same as
   today. Decoupling (fixed-step sim with render interpolation) is a separate
@@ -464,21 +476,20 @@ for when to revisit.
 - **Lighting.** No shader has light contributions. No light caches.
 - **Particles.** No transform feedback, no compute paths.
 - **Multiple tilesets / hot-swap.** One floor atlas, one shadow atlas, one
-  player sprite sheet. Hot-swap is a one-`bindTexture` call when needed —
-  add later.
+  player sprite sheet. Hot-swap is a one-`bindTexture` call when needed — add
+  later.
 
 ---
 
 ## Open conventions
 
-- **GLSL syntax highlighting:** tag template literals with `/* glsl */` so
-  the `glsl-literal` VS Code extension highlights them.
-- **Shader compile error printing:** the program loader, on failure, prints
-  the full concatenated source with 1-indexed line numbers so GL's "error on
-  line N" maps to a visual location.
-- **Constants for magic numbers:** every depth tint, edge segment width,
-  shadow alpha lives next to the pass that uses it. No central constants
-  file.
+- **GLSL syntax highlighting:** tag template literals with `/* glsl */` so the
+  `glsl-literal` VS Code extension highlights them.
+- **Shader compile error printing:** the program loader, on failure, prints the
+  full concatenated source with 1-indexed line numbers so GL's "error on line N"
+  maps to a visual location.
+- **Constants for magic numbers:** every depth tint, edge segment width, shadow
+  alpha lives next to the pass that uses it. No central constants file.
 - **No emoji in code or logs.** Match existing project style.
 
 ---
@@ -492,9 +503,10 @@ For a frame with all passes enabled and ~1500 visible tiles:
 3. `buildFrameContext()` — recompute camera, viewport, visible bounds.
 4. `prepare()` for each pass — topmost cache, FOV cache, etc. (cached; cheap
    when clean).
-5. `draw()` for each pass — write scratch, `bufferSubData`, `drawArraysInstanced`.
-6. Total draw calls: roughly 7 (one per pass; sometimes more if a pass
-   needs split-flushes).
+5. `draw()` for each pass — write scratch, `bufferSubData`,
+   `drawArraysInstanced`.
+6. Total draw calls: roughly 7 (one per pass; sometimes more if a pass needs
+   split-flushes).
 7. Total program switches: up to 7. Total VAO binds: up to 7. Total texture
    binds: 0.
 8. `scheduleNextFrame()`.
@@ -520,8 +532,8 @@ Then in one commit:
 - [ ] Repoint main route.
 - [ ] Delete old island, old `islands/webgl/`, `.vert`/`.frag` files.
 - [ ] Delete `routes/webgl2.tsx` (or rename it to the main route's filename).
-- [ ] Rename `islands/webgl2/` to `islands/webgl/` (or leave as-is if you
-      prefer the explicit name).
+- [ ] Rename `islands/webgl2/` to `islands/webgl/` (or leave as-is if you prefer
+      the explicit name).
 - [ ] Update README if it references the old code paths.
 
 ---
