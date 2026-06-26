@@ -7,7 +7,6 @@ import { flushInstanceBatch } from "../instance-batch.ts";
 import { getFloorCache, getTopmostOffsetsCache } from "../caches/topmost.ts";
 import { getTileVisibilityState } from "../caches/fov.ts";
 import type { Pass } from "../gpu-types.ts";
-import { FLOOR_FRAME_COUNT } from "../programs/_chunks.ts";
 
 const DEPTH_TINTS: [number, number, number][] = [
   [1, 1, 1],
@@ -19,6 +18,7 @@ const DEPTH_TINTS: [number, number, number][] = [
 ];
 
 const REMEMBERED_TINT: [number, number, number] = [1.0, 0.86, 0.34];
+const WEBGL_PARITY_FLOOR_FRAME = 5;
 
 const FLOOR_STRIDE_FLOATS = 7;
 
@@ -115,8 +115,6 @@ export const FloorPass: Pass<FrameContext> = {
             if (visibility === "unseen") {
               continue;
             }
-            const tileId = floorChunk[idx];
-            const frame = tileId % FLOOR_FRAME_COUNT;
             const tint = visibility === "remembered"
               ? REMEMBERED_TINT
               : depthTint
@@ -125,7 +123,7 @@ export const FloorPass: Pass<FrameContext> = {
             emit(
               tileX * TILE_SIZE_PX,
               tileY * TILE_SIZE_PX,
-              frame,
+              WEBGL_PARITY_FLOOR_FRAME,
               tint,
               visibility === "remembered" ? 0.95 : 1,
             );

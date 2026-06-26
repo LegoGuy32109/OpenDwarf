@@ -49,6 +49,6 @@ out vec4 out_color;
 
 void main() {
   vec4 texel = texture(u_texture, vec2(0.5, 0.5));
-  out_color = vec4(0.0, 0.0, 0.0, texel.a * v_alpha);
+  out_color = vec4(1.0, 0.78, 0.18, texel.a * v_alpha);
 }
 `;

@@ -75,7 +75,11 @@ export type WebGl2GameState = {
   status: string;
 };
 
-export function createWebGl2GameState(seed = "rocks-aabb-v1"): WebGl2GameState {
+export const DEFAULT_WEBGL2_SEED = "single-rock-step1";
+
+export function createWebGl2GameState(
+  seed = DEFAULT_WEBGL2_SEED,
+): WebGl2GameState {
   const world = createWorldSim(seed);
   const [playerX, playerY] = [
     world.entity.position.x,

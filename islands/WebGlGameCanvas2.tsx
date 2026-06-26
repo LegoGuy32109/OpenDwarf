@@ -1,6 +1,11 @@
+import { useEffect } from "preact/hooks";
 import { Head } from "fresh/runtime";
 
 export default function WebGlGameCanvas2() {
+  useEffect(() => {
+    void import("../webgl2-entry.ts");
+  }, []);
+
   return (
     <div class="px-4 mx-auto fresh-gradient bg-[#1B1C1F] min-h-screen flex flex-col">
       <Head>
@@ -64,10 +69,6 @@ export default function WebGlGameCanvas2() {
           </button>
         </div>
       </div>
-      <script
-        type="module"
-        src="/webgl2-entry.ts"
-      />
       <footer class="flex justify-center items-center py-4">
         <p class="flex items-center text-yellow-400 text-sm">
           Served using Deno Fresh

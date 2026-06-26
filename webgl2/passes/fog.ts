@@ -4,11 +4,11 @@ import { CHUNK_EDGE_TILES, TILE_SIZE_PX } from "../../lib/webgl-chunk-gen.ts";
 import type { FrameContext } from "../frame-context.ts";
 import { flushInstanceBatch } from "../instance-batch.ts";
 import { getTileVisibilityState } from "../caches/fov.ts";
+import { getTopmostOffsetsCache } from "../caches/topmost.ts";
 import type { Pass } from "../gpu-types.ts";
 
 const FOG_STRIDE_FLOATS = 3;
-const REMEMBERED_FOG_ALPHA = 0.34;
-const UNSEEN_FOG_ALPHA = 0.72;
+const REMEMBERED_OVERLAY_ALPHA = 0.06;
 
 function writeFogInstance(
   scratch: Float32Array,
@@ -33,6 +33,7 @@ export const FogPass: Pass<FrameContext> = {
     const stats = ctx.batchStats;
     const scratch = ctx.scratch;
     const { world, visibleChunkKeys, viewZ } = ctx.frame;
+    const topmostOffsets = getTopmostOffsetsCache();
     let count = 0;
 
     const flush = () => {
@@ -56,20 +57,35 @@ export const FogPass: Pass<FrameContext> = {
     };
 
     for (const vis of visibleChunkKeys) {
+      const topmost = topmostOffsets.get(
+        `${vis.chunkX},${vis.chunkY},${viewZ}`,
+      );
+      if (!topmost) {
+        continue;
+      }
       const baseX = vis.chunkX * CHUNK_EDGE_TILES;
       const baseY = vis.chunkY * CHUNK_EDGE_TILES;
       for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
         for (let tx = 0; tx < CHUNK_EDGE_TILES; tx++) {
+          const zOffset = topmost[ty * CHUNK_EDGE_TILES + tx];
+          if (zOffset === 127) {
+            continue;
+          }
           const tileX = baseX + tx;
           const tileY = baseY + ty;
-          const state = getTileVisibilityState(world, tileX, tileY, viewZ);
-          if (state === "visible") {
+          const state = getTileVisibilityState(
+            world,
+            tileX,
+            tileY,
+            viewZ + zOffset,
+          );
+          if (state !== "remembered") {
             continue;
           }
           emit(
             tileX * TILE_SIZE_PX,
             tileY * TILE_SIZE_PX,
-            state === "remembered" ? REMEMBERED_FOG_ALPHA : UNSEEN_FOG_ALPHA,
+            REMEMBERED_OVERLAY_ALPHA,
           );
         }
       }

@@ -55,7 +55,12 @@ export function buildFrameContext(input: FrameBuilderInput): FrameContext {
   state.scene.visibleTileCount = state.world.visible.size;
   state.scene.rememberedTileCount = state.world.memory.size;
   if (state.topmostDirty) {
-    rebuildTopmostCache(region.visibleChunkKeys, viewZ);
+    rebuildTopmostCache(
+      region.visibleChunkKeys,
+      viewZ,
+      state.world,
+      state.scene.viewMode,
+    );
     state.topmostDirty = false;
   }
 

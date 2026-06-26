@@ -24,7 +24,7 @@ import { syncCanvasSize } from "./canvas.ts";
 import type { WebGl2GameState } from "./game-state.ts";
 import { entityRenderPosition } from "../lib/webgl-world-sim.ts";
 import { TILE_SIZE_PX } from "../lib/webgl-chunk-gen.ts";
-import { getSolidCache } from "./caches/topmost.ts";
+import { getSolidCache, syncFloorCache } from "./caches/topmost.ts";
 
 const BACKGROUND_COLOR: [number, number, number, number] = [
   0.106,
@@ -75,6 +75,12 @@ export function startWebGl2RenderLoop(
     }
   };
 
+  const pushAssetLoaded = (src: string) => {
+    if (!state.scene.assetsLoaded.includes(src)) {
+      state.scene.assetsLoaded = [...state.scene.assetsLoaded, src];
+    }
+  };
+
   void (async () => {
     try {
       const phase2Start = performance.now();
@@ -85,39 +91,60 @@ export function startWebGl2RenderLoop(
           TEXTURE_UNITS.floor,
           FLOOR_ATLAS_SRC,
           gpu.floorTexture,
-        ),
+        ).then((atlas) => {
+          pushAssetLoaded(FLOOR_ATLAS_SRC);
+          console.info(
+            `[webgl2] texture ${FLOOR_ATLAS_SRC} ${atlas.width}x${atlas.height}`,
+          );
+          return atlas;
+        }),
         loadAtlasInto(
           gl,
           TEXTURE_UNITS.edgeShadow,
           EDGE_SHADOW_ATLAS_SRC,
           gpu.edgeShadowTexture,
-        ),
+        ).then((atlas) => {
+          pushAssetLoaded(EDGE_SHADOW_ATLAS_SRC);
+          console.info(
+            `[webgl2] texture ${EDGE_SHADOW_ATLAS_SRC} ${atlas.width}x${atlas.height}`,
+          );
+          return atlas;
+        }),
         loadAtlasInto(
           gl,
           TEXTURE_UNITS.ceilShadow,
           CEIL_SHADOW_ATLAS_SRC,
           gpu.ceilShadowTexture,
-        ),
+        ).then((atlas) => {
+          pushAssetLoaded(CEIL_SHADOW_ATLAS_SRC);
+          console.info(
+            `[webgl2] texture ${CEIL_SHADOW_ATLAS_SRC} ${atlas.width}x${atlas.height}`,
+          );
+          return atlas;
+        }),
         loadAtlasInto(
           gl,
           TEXTURE_UNITS.sprite,
           SPRITE_ATLAS_SRC,
           gpu.spriteTexture,
-        ),
+        ).then((atlas) => {
+          pushAssetLoaded(SPRITE_ATLAS_SRC);
+          console.info(
+            `[webgl2] texture ${SPRITE_ATLAS_SRC} ${atlas.width}x${atlas.height}`,
+          );
+          return atlas;
+        }),
         loadUiFontAtlas(gl, gpu.fontTexture).then((atlas) => {
           uiFontAtlas = atlas;
+          pushAssetLoaded("/assets/ui/JoshPerfectDosVga.png");
+          console.info(
+            `[webgl2] texture /assets/ui/JoshPerfectDosVga.png ${atlas.width}x${atlas.height}`,
+          );
         }),
       ]);
       uploadWhiteTo(gl, TEXTURE_UNITS.white, gpu.whiteTexture);
       assertNoGlError(gl, "phase 2 init");
       sceneReady = true;
-      state.scene.assetsLoaded = [
-        FLOOR_ATLAS_SRC,
-        EDGE_SHADOW_ATLAS_SRC,
-        CEIL_SHADOW_ATLAS_SRC,
-        SPRITE_ATLAS_SRC,
-        "/assets/ui/JoshPerfectDosVga.png",
-      ];
       state.status = "depth stack ready";
       const phase2Elapsed = Math.round(performance.now() - phase2Start);
       console.info(
@@ -198,6 +225,11 @@ export function startWebGl2RenderLoop(
       state.scene.residentChunks = streaming.streamingChunkKeys.length;
       state.scene.streamingChunks = streaming.streamingChunkKeys.map((k) =>
         `${k.chunkX},${k.chunkY},${k.chunkZ}`
+      );
+      syncFloorCache(
+        state.world.seed,
+        streaming.streamingChunkKeys,
+        state.viewZ,
       );
       updateWorldSolidCache(
         state,

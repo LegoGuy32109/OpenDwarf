@@ -2,10 +2,13 @@ import {
   CHUNK_EDGE_TILES,
   type ChunkKey,
   chunkKeyString,
+  tileKeyString,
   updateFloorCache,
   updateSolidCache,
   Z_LEVELS_BELOW,
 } from "../../lib/webgl-chunk-gen.ts";
+import type { WorldSimState } from "../../lib/webgl-world-sim.ts";
+import type { WebGl2ViewMode } from "../game-state.ts";
 
 const floorCache = new Map<string, Uint16Array>();
 const solidCache = new Map<string, Uint8Array>();
@@ -28,7 +31,11 @@ function expandShadowChunkKeys(visibleChunkKeys: ChunkKey[]): ChunkKey[] {
   return [...next.values()];
 }
 
-function tileSolidAt(tileX: number, tileY: number, tileZ: number): boolean {
+function localTileSolidAt(
+  tileX: number,
+  tileY: number,
+  tileZ: number,
+): boolean {
   const chunkX = Math.floor(tileX / CHUNK_EDGE_TILES);
   const chunkY = Math.floor(tileY / CHUNK_EDGE_TILES);
   const chunk = solidCache.get(
@@ -40,6 +47,24 @@ function tileSolidAt(tileX: number, tileY: number, tileZ: number): boolean {
   const localX = tileX - chunkX * CHUNK_EDGE_TILES;
   const localY = tileY - chunkY * CHUNK_EDGE_TILES;
   return chunk[localY * CHUNK_EDGE_TILES + localX] === 1;
+}
+
+function renderTileSolidAt(
+  tileX: number,
+  tileY: number,
+  tileZ: number,
+  world: Readonly<WorldSimState>,
+  viewMode: WebGl2ViewMode,
+): boolean {
+  if (viewMode !== "entity") {
+    return localTileSolidAt(tileX, tileY, tileZ);
+  }
+
+  const key = tileKeyString({ tileX, tileY, tileZ });
+  if (world.visible.has(key)) {
+    return localTileSolidAt(tileX, tileY, tileZ);
+  }
+  return world.memory.get(key)?.block === "solid";
 }
 
 export function syncFloorAndSolidCaches(
@@ -62,9 +87,19 @@ export function syncFloorAndSolidCaches(
   return floorChanged || solidChanged;
 }
 
+export function syncFloorCache(
+  seed: string,
+  streamingXYKeys: ChunkKey[],
+  viewZ: number,
+): boolean {
+  return updateFloorCache(floorCache, seed, streamingXYKeys, viewZ);
+}
+
 export function rebuildTopmostCache(
   visibleChunkKeys: ChunkKey[],
   viewZ: number,
+  world: Readonly<WorldSimState>,
+  viewMode: WebGl2ViewMode,
 ) {
   const next = new Map<string, Int8Array>();
   for (const vis of expandShadowChunkKeys(visibleChunkKeys)) {
@@ -76,7 +111,7 @@ export function rebuildTopmostCache(
         for (let zo = 0; zo >= -Z_LEVELS_BELOW; zo--) {
           const tileX = vis.chunkX * CHUNK_EDGE_TILES + tx;
           const tileY = vis.chunkY * CHUNK_EDGE_TILES + ty;
-          if (tileSolidAt(tileX, tileY, viewZ + zo)) {
+          if (renderTileSolidAt(tileX, tileY, viewZ + zo, world, viewMode)) {
             tmo[idx] = zo;
             break;
           }
