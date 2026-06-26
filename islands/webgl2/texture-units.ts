@@ -70,8 +70,26 @@ export function createTextureSlot(
 export function uploadWhiteTo(
   gl: WebGL2RenderingContext,
   unit: number,
+  texture = createTextureSlot(gl, unit),
 ): WebGLTexture {
-  return createTextureWithPixel(gl, unit, WHITE_PIXEL);
+  bindTextureToUnit(gl, unit, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    WHITE_PIXEL,
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return texture;
 }
 
 export async function loadAtlasInto(

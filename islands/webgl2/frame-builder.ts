@@ -78,8 +78,8 @@ export function buildFrameContext(input: FrameBuilderInput): FrameContext {
       viewMode,
       layers: {
         floor: true,
-        edgeShadow: false,
-        ceilShadow: false,
+        edgeShadow: true,
+        ceilShadow: true,
         depthTint: true,
       },
     },

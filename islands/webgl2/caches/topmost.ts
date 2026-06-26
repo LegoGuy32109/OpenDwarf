@@ -11,6 +11,23 @@ const floorCache = new Map<string, Uint16Array>();
 const solidCache = new Map<string, Uint8Array>();
 let topmostOffsetsCache = new Map<string, Int8Array>();
 
+function expandShadowChunkKeys(visibleChunkKeys: ChunkKey[]): ChunkKey[] {
+  const next = new Map<string, ChunkKey>();
+  for (const vis of visibleChunkKeys) {
+    for (const dx of [0, 1]) {
+      for (const dy of [0, 1]) {
+        const chunkX = vis.chunkX + dx;
+        const chunkY = vis.chunkY + dy;
+        next.set(
+          `${chunkX},${chunkY},${vis.chunkZ}`,
+          { chunkX, chunkY, chunkZ: vis.chunkZ },
+        );
+      }
+    }
+  }
+  return [...next.values()];
+}
+
 function tileSolidAt(tileX: number, tileY: number, tileZ: number): boolean {
   const chunkX = Math.floor(tileX / CHUNK_EDGE_TILES);
   const chunkY = Math.floor(tileY / CHUNK_EDGE_TILES);
@@ -50,7 +67,7 @@ export function rebuildTopmostCache(
   viewZ: number,
 ) {
   const next = new Map<string, Int8Array>();
-  for (const vis of visibleChunkKeys) {
+  for (const vis of expandShadowChunkKeys(visibleChunkKeys)) {
     const chunkKey = chunkKeyString(vis);
     const tmo = new Int8Array(CHUNK_EDGE_TILES * CHUNK_EDGE_TILES).fill(127);
     for (let ty = 0; ty < CHUNK_EDGE_TILES; ty++) {
@@ -77,4 +94,8 @@ export function getFloorCache() {
 
 export function getTopmostOffsetsCache() {
   return topmostOffsetsCache;
+}
+
+export function getSolidCache() {
+  return solidCache;
 }

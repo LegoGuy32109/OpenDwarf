@@ -21,6 +21,8 @@ export type ProgramHandle = {
 
 export type Programs = {
   floor: ProgramHandle;
+  edgeShadow: ProgramHandle;
+  ceilShadow: ProgramHandle;
 };
 
 export type Pass<TCtx> = {

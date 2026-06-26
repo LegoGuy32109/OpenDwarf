@@ -20,6 +20,8 @@ const BACKGROUND_COLOR: [number, number, number, number] = [
 ];
 
 const FLOOR_ATLAS_SRC = "/assets/sprites/StackedTextures.png";
+const EDGE_SHADOW_ATLAS_SRC = "/assets/atlases/ShadowAtlas.png";
+const CEIL_SHADOW_ATLAS_SRC = "/assets/atlases/ObscureAtlas.png";
 
 function syncCanvasSize(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
   const dpr = globalThis.devicePixelRatio || 1;
@@ -53,16 +55,32 @@ export function startWebGl2RenderLoop(
   void (async () => {
     try {
       console.info("[webgl2] phase 2 start: loading assets");
-      await loadAtlasInto(
-        gl,
-        TEXTURE_UNITS.floor,
-        FLOOR_ATLAS_SRC,
-        gpu.floorTexture,
-      );
-      uploadWhiteTo(gl, TEXTURE_UNITS.white);
+      await Promise.all([
+        loadAtlasInto(
+          gl,
+          TEXTURE_UNITS.floor,
+          FLOOR_ATLAS_SRC,
+          gpu.floorTexture,
+        ),
+        loadAtlasInto(
+          gl,
+          TEXTURE_UNITS.edgeShadow,
+          EDGE_SHADOW_ATLAS_SRC,
+          gpu.edgeShadowTexture,
+        ),
+        loadAtlasInto(
+          gl,
+          TEXTURE_UNITS.ceilShadow,
+          CEIL_SHADOW_ATLAS_SRC,
+          gpu.ceilShadowTexture,
+        ),
+      ]);
+      uploadWhiteTo(gl, TEXTURE_UNITS.white, gpu.whiteTexture);
       assertNoGlError(gl, "phase 2 init");
       sceneReady = true;
-      console.info("[webgl2] phase 2 done: loading assets (floor atlas ready)");
+      console.info(
+        "[webgl2] phase 2 done: loading assets (floor + shadow atlases ready)",
+      );
       console.info("[webgl2] phase 3 start: steady state (sceneReady=true)");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -74,7 +74,7 @@ export function bootWebGl2Renderer(
 
   const elapsedMs = Math.round(performance.now() - t0);
   console.info(
-    `[webgl2] phase 1 done: sync boot (${elapsedMs}ms) — skeleton renderer online`,
+    `[webgl2] phase 1 done: sync boot (${elapsedMs}ms) — renderer core online`,
   );
   console.info("[webgl2] capability:", capabilities);
 
