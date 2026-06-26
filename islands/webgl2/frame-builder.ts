@@ -10,6 +10,7 @@ import {
   rebuildTopmostCache,
   syncFloorAndSolidCaches,
 } from "./caches/topmost.ts";
+import { syncFovCache } from "./caches/fov.ts";
 import { updateVisibleRegion } from "./caches/visible-region.ts";
 import type { FrameContext } from "./frame-context.ts";
 import type { Programs } from "./gpu-types.ts";
@@ -54,6 +55,7 @@ export function buildFrameContext(input: FrameBuilderInput): FrameContext {
     fbHeight: canvas.height,
   }, viewZ);
   syncFloorAndSolidCaches(world.seed, region.streamingChunkKeys, viewZ);
+  syncFovCache(world, viewMode);
   rebuildTopmostCache(region.visibleChunkKeys, viewZ);
 
   return {

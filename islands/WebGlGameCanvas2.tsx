@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { bootWebGl2Renderer } from "./webgl2/gpu-init.ts";
+import { createInputController } from "./webgl2/input.ts";
 import { startWebGl2RenderLoop } from "./webgl2/render-loop.ts";
 
 export default function WebGlGameCanvas2() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  const viewModeRef = useRef<"entity" | "free">("entity");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,8 +23,16 @@ export default function WebGlGameCanvas2() {
       return;
     }
 
-    const stop = startWebGl2RenderLoop(boot, setError);
-    return () => stop();
+    const stopInput = createInputController({ viewModeRef });
+    const stopRender = startWebGl2RenderLoop(
+      boot,
+      setError,
+      () => viewModeRef.current,
+    );
+    return () => {
+      stopInput();
+      stopRender();
+    };
   }, []);
 
   return (

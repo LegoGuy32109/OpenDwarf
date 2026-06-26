@@ -39,6 +39,7 @@ function syncCanvasSize(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement) {
 export function startWebGl2RenderLoop(
   boot: WebGl2Boot,
   onError?: (message: string) => void,
+  getViewMode: () => "entity" | "free" = () => "entity",
 ): () => void {
   const { gl, canvas } = boot;
   const world = createFrameBuilderWorld();
@@ -125,7 +126,7 @@ export function startWebGl2RenderLoop(
       frameNumber,
       dtSeconds,
       simTick: world.tick,
-      viewMode: "entity",
+      viewMode: getViewMode(),
     });
 
     runPasses(ctx, ALL_PASSES);

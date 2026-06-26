@@ -24,6 +24,13 @@ import {
   sampler as ceilSampler,
   vert as ceilVert,
 } from "./ceil-shadow.ts";
+import {
+  attribs as fogAttribs,
+  FOG_STRIDE_FLOATS,
+  frag as fogFrag,
+  sampler as fogSampler,
+  vert as fogVert,
+} from "./fog.ts";
 import { GLOBALS_UNIFORMS } from "./_chunks.ts";
 
 export const MAX_INSTANCES = 8192;
@@ -301,6 +308,62 @@ function createCeilShadowProgram(
   };
 }
 
+function createFogProgram(
+  gl: WebGL2RenderingContext,
+  vertexBuffer: WebGLBuffer,
+  instanceBuffer: WebGLBuffer,
+): ProgramHandle {
+  const handle = createProgram(gl, "fog", fogVert, fogFrag);
+  const vao = gl.createVertexArray();
+  if (!vao) {
+    throw new Error("[webgl2] fog: failed to create VAO");
+  }
+
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.enableVertexAttribArray(fogAttribs.corner);
+  gl.vertexAttribPointer(fogAttribs.corner, 2, gl.FLOAT, false, 8, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+  gl.enableVertexAttribArray(fogAttribs.pos);
+  gl.vertexAttribPointer(
+    fogAttribs.pos,
+    2,
+    gl.FLOAT,
+    false,
+    FOG_STRIDE_FLOATS * 4,
+    0,
+  );
+  gl.vertexAttribDivisor(fogAttribs.pos, 1);
+
+  gl.enableVertexAttribArray(fogAttribs.alpha);
+  gl.vertexAttribPointer(
+    fogAttribs.alpha,
+    1,
+    gl.FLOAT,
+    false,
+    FOG_STRIDE_FLOATS * 4,
+    8,
+  );
+  gl.vertexAttribDivisor(fogAttribs.alpha, 1);
+  gl.bindVertexArray(null);
+
+  gl.useProgram(handle);
+  bindSampler(gl, handle, "u_texture", fogSampler);
+  gl.useProgram(null);
+
+  return {
+    name: "fog",
+    handle,
+    vao,
+    strideFloats: FOG_STRIDE_FLOATS,
+    setGlobals: (camera, zoom, canvasSize, simTick) => {
+      gl.useProgram(handle);
+      bindQuadGlobals(gl, handle, camera, zoom, canvasSize, simTick);
+    },
+  };
+}
+
 export type ProgramResources = {
   programs: Programs;
   instanceBuffer: WebGLBuffer;
@@ -347,6 +410,7 @@ export function compilePrograms(gl: WebGL2RenderingContext): ProgramResources {
   const floor = createFloorProgram(gl, vertexBuffer, instanceBuffer);
   const edgeShadow = createEdgeShadowProgram(gl, vertexBuffer, instanceBuffer);
   const ceilShadow = createCeilShadowProgram(gl, vertexBuffer, instanceBuffer);
+  const fog = createFogProgram(gl, vertexBuffer, instanceBuffer);
 
   const floorTexture = createTextureSlot(gl, TEXTURE_UNITS.floor);
   const edgeShadowTexture = createTextureSlot(gl, TEXTURE_UNITS.edgeShadow);
@@ -356,7 +420,7 @@ export function compilePrograms(gl: WebGL2RenderingContext): ProgramResources {
   assertNoGlError(gl, "program init");
 
   return {
-    programs: { floor, edgeShadow, ceilShadow },
+    programs: { floor, edgeShadow, ceilShadow, fog },
     instanceBuffer,
     vertexBuffer,
     maxInstances: MAX_INSTANCES,

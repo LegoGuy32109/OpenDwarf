@@ -23,6 +23,7 @@ export type Programs = {
   floor: ProgramHandle;
   edgeShadow: ProgramHandle;
   ceilShadow: ProgramHandle;
+  fog: ProgramHandle;
 };
 
 export type Pass<TCtx> = {

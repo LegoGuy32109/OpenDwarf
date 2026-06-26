@@ -8,6 +8,7 @@ import { Z_LEVELS_BELOW } from "../../../lib/webgl-chunk-gen.ts";
 import type { FrameContext } from "../frame-context.ts";
 import { flushInstanceBatch } from "../instance-batch.ts";
 import { getFloorCache, getTopmostOffsetsCache } from "../caches/topmost.ts";
+import { getTileVisibilityState } from "../caches/fov.ts";
 import type { Pass } from "../gpu-types.ts";
 import { FLOOR_FRAME_COUNT } from "../programs/_chunks.ts";
 
@@ -19,6 +20,8 @@ const DEPTH_TINTS: [number, number, number][] = [
   [0.32, 0.34, 0.61],
   [0.2, 0.2, 0.4],
 ];
+
+const REMEMBERED_TINT: [number, number, number] = [1.0, 0.86, 0.34];
 
 const FLOOR_STRIDE_FLOATS = 7;
 
@@ -50,8 +53,9 @@ export const FloorPass: Pass<FrameContext> = {
     const gl = ctx.gl;
     const floorCache = getFloorCache();
     const topmostOffsets = getTopmostOffsetsCache();
-    const { viewZ, visibleChunkKeys } = ctx.frame;
+    const { viewZ, visibleChunkKeys, world } = ctx.frame;
     const depthTint = ctx.policy.layers.depthTint;
+    const entityMode = ctx.policy.viewMode === "entity";
     const stats = ctx.batchStats;
     const scratch = ctx.scratch;
     let count = 0;
@@ -85,9 +89,6 @@ export const FloorPass: Pass<FrameContext> = {
     const zMin = viewZ - Z_LEVELS_BELOW;
     for (let z = zMin; z <= viewZ; z++) {
       const zOffset = z - viewZ;
-      const tint = depthTint
-        ? DEPTH_TINTS[Math.min(-zOffset, DEPTH_TINTS.length - 1)]
-        : ([1, 1, 1] as [number, number, number]);
       for (const vis of visibleChunkKeys) {
         const topmost = topmostOffsets.get(
           `${vis.chunkX},${vis.chunkY},${viewZ}`,
@@ -109,14 +110,27 @@ export const FloorPass: Pass<FrameContext> = {
             if (topmost[idx] !== zOffset) {
               continue;
             }
+            const tileX = baseX + tx;
+            const tileY = baseY + ty;
+            const visibility = entityMode
+              ? getTileVisibilityState(world, tileX, tileY, z)
+              : "visible";
+            if (visibility === "unseen") {
+              continue;
+            }
             const tileId = floorChunk[idx];
             const frame = tileId % FLOOR_FRAME_COUNT;
+            const tint = visibility === "remembered"
+              ? REMEMBERED_TINT
+              : depthTint
+              ? DEPTH_TINTS[Math.min(-zOffset, DEPTH_TINTS.length - 1)]
+              : ([1, 1, 1] as [number, number, number]);
             emit(
-              (baseX + tx) * TILE_SIZE_PX,
-              (baseY + ty) * TILE_SIZE_PX,
+              tileX * TILE_SIZE_PX,
+              tileY * TILE_SIZE_PX,
               frame,
               tint,
-              1,
+              visibility === "remembered" ? 0.95 : 1,
             );
           }
         }
