@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 const GL_CONTEXT_ATTRIBUTES: WebGLContextAttributes = {
   alpha: false,
   antialias: false,

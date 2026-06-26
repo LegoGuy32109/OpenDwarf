@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+
 import { useEffect, useRef, useState } from "preact/hooks";
 import { bootWebGl2Renderer } from "./webgl2/gpu-init.ts";
 import { startWebGl2RenderLoop } from "./webgl2/render-loop.ts";
@@ -19,7 +21,7 @@ export default function WebGlGameCanvas2() {
       return;
     }
 
-    const stop = startWebGl2RenderLoop(boot);
+    const stop = startWebGl2RenderLoop(boot, setError);
     return () => stop();
   }, []);
 
