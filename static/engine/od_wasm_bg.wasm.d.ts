@@ -16,6 +16,11 @@ export const uiengine_dropped_rects: (a: number) => number;
 export const uiengine_frame: (a: number) => number;
 export const uiengine_glyph_capacity: (a: number) => number;
 export const uiengine_glyph_ptr: (a: number) => number;
+export const uiengine_hydrate_settings: (
+  a: number,
+  b: number,
+  c: number,
+) => void;
 export const uiengine_input_capacity: (a: number) => number;
 export const uiengine_input_ptr: (a: number) => number;
 export const uiengine_new: () => number;
@@ -23,4 +28,5 @@ export const uiengine_rect_capacity: (a: number) => number;
 export const uiengine_rect_ptr: (a: number) => number;
 export const uiengine_abi_rect_stride: (a: number) => number;
 export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_start: () => void;

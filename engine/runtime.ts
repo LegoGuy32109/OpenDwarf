@@ -23,6 +23,7 @@ type EngineHandle = {
   drawlist_capacity(): number;
   input_ptr(): number;
   input_capacity(): number;
+  hydrate_settings(bytes: Uint8Array): void;
   frame(): number;
   abi_drawcmd_stride(): number;
   abi_rect_stride(): number;
@@ -50,6 +51,21 @@ type EngineRuntime = {
   inputCapture: InputCapture;
 };
 
+const SETTINGS_STORAGE_KEY = "od.settings";
+
+type EngineGlobals = typeof globalThis & {
+  host_leave_game?: () => void;
+  host_persist_settings?: (ptr: number, len: number) => void;
+};
+
+let leaveGameHandler: () => void = () => {};
+let persistSettingsHandler: (ptr: number, len: number) => void = () => {};
+
+const engineGlobals = globalThis as EngineGlobals;
+engineGlobals.host_leave_game = () => leaveGameHandler();
+engineGlobals.host_persist_settings = (ptr: number, len: number) =>
+  persistSettingsHandler(ptr, len);
+
 type DrawCmdView = {
   program: number;
   instanceOffset: number;
@@ -75,6 +91,43 @@ function setErrorOverlay(
     overlay.textContent = "";
     overlay.classList.add("hidden");
     overlay.classList.remove("flex");
+  }
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index++) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function loadPersistedSettings() {
+  try {
+    const raw = globalThis.localStorage?.getItem(SETTINGS_STORAGE_KEY);
+    return raw ? base64ToBytes(raw) : new Uint8Array();
+  } catch {
+    return new Uint8Array();
+  }
+}
+
+function savePersistedSettings(bytes: Uint8Array) {
+  try {
+    globalThis.localStorage?.setItem(
+      SETTINGS_STORAGE_KEY,
+      bytesToBase64(bytes),
+    );
+  } catch {
+    // localStorage is best-effort only.
   }
 }
 
@@ -206,10 +259,24 @@ export async function startEngineRenderLoop(
 
   const wasm = await initEngine();
   const engine = new UiEngine();
+  engine.hydrate_settings(loadPersistedSettings());
   const runtime = createRuntime(gl, canvas, resources, wasm, engine);
 
   let stopped = false;
   let rafId = 0;
+
+  leaveGameHandler = () => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    globalThis.cancelAnimationFrame(rafId);
+    runtime.inputCapture.dispose();
+  };
+  persistSettingsHandler = (_ptr: number, _len: number) => {
+    const bytes = new Uint8Array(runtime.wasm.memory.buffer, _ptr, _len);
+    savePersistedSettings(bytes);
+  };
 
   const frame = (now: number) => {
     if (stopped) {

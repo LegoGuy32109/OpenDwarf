@@ -117,6 +117,14 @@ export class UiEngine {
     return ret >>> 0;
   }
   /**
+   * @param {Uint8Array} bytes
+   */
+  hydrate_settings(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.uiengine_hydrate_settings(this.__wbg_ptr, ptr0, len0);
+  }
+  /**
    * @returns {number}
    */
   input_capacity() {
@@ -161,6 +169,12 @@ function __wbg_get_imports() {
     __wbg___wbindgen_throw_be289d5034ed271b: function (arg0, arg1) {
       throw new Error(getStringFromWasm0(arg0, arg1));
     },
+    __wbg_host_leave_game_0bc3aea13d42e74b: function () {
+      globalThis.host_leave_game();
+    },
+    __wbg_host_persist_settings_d8f08f1513dfa838: function (arg0, arg1) {
+      globalThis.host_persist_settings(arg0 >>> 0, arg1 >>> 0);
+    },
     __wbindgen_init_externref_table: function () {
       const table = wasm.__wbindgen_externrefs;
       const offset = table.grow(4);
@@ -196,6 +210,13 @@ function getUint8ArrayMemory0() {
   return cachedUint8ArrayMemory0;
 }
 
+function passArray8ToWasm0(arg, malloc) {
+  const ptr = malloc(arg.length * 1, 1) >>> 0;
+  getUint8ArrayMemory0().set(arg, ptr / 1);
+  WASM_VECTOR_LEN = arg.length;
+  return ptr;
+}
+
 let cachedTextDecoder = new TextDecoder("utf-8", {
   ignoreBOM: true,
   fatal: true,
@@ -218,10 +239,12 @@ function decodeText(ptr, len) {
   );
 }
 
-let wasmModule, wasm;
+let WASM_VECTOR_LEN = 0;
+
+let _wasmModule, wasm;
 function __wbg_finalize_init(instance, module) {
   wasm = instance.exports;
-  wasmModule = module;
+  _wasmModule = module;
   cachedUint8ArrayMemory0 = null;
   wasm.__wbindgen_start();
   return wasm;

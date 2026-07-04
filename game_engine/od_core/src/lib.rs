@@ -3,6 +3,7 @@
 
 pub mod abi;
 pub mod input;
+pub mod intent;
 pub mod keycode;
 
 pub use abi::{
@@ -29,4 +30,5 @@ pub use input::{
     INPUT_SAMPLE_POINTER_Y_OFFSET, INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET, INPUT_SAMPLED_SIZE_BYTES,
     InputArena, InputEvent, InputQueueHeader, InputSampled,
 };
+pub use intent::SessionIntent;
 pub use keycode::KeyCode;

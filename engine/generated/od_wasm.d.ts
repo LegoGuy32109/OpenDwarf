@@ -19,6 +19,7 @@ export class UiEngine {
   frame(): number;
   glyph_capacity(): number;
   glyph_ptr(): number;
+  hydrate_settings(bytes: Uint8Array): void;
   input_capacity(): number;
   input_ptr(): number;
   constructor();
@@ -50,6 +51,7 @@ export interface InitOutput {
   readonly uiengine_frame: (a: number) => number;
   readonly uiengine_glyph_capacity: (a: number) => number;
   readonly uiengine_glyph_ptr: (a: number) => number;
+  readonly uiengine_hydrate_settings: (a: number, b: number, c: number) => void;
   readonly uiengine_input_capacity: (a: number) => number;
   readonly uiengine_input_ptr: (a: number) => number;
   readonly uiengine_new: () => number;
@@ -57,6 +59,7 @@ export interface InitOutput {
   readonly uiengine_rect_ptr: (a: number) => number;
   readonly uiengine_abi_rect_stride: (a: number) => number;
   readonly __wbindgen_externrefs: WebAssembly.Table;
+  readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_start: () => void;
 }
 

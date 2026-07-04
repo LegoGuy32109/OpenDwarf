@@ -137,6 +137,15 @@ impl<M: FontMetrics> UiEngine<M> {
         intents: &[UiIntent],
         root: impl FnOnce(&mut Ui<'_, M>),
     ) -> FrameOutput {
+        self.frame_with_options(intents, root, false)
+    }
+
+    pub fn frame_with_options(
+        &mut self,
+        intents: &[UiIntent],
+        root: impl FnOnce(&mut Ui<'_, M>),
+        preserve_focus: bool,
+    ) -> FrameOutput {
         self.retained.frame = self.retained.frame.saturating_add(1);
         let (resolved_focus, activate_fired) =
             resolve_focus(self.focus, &self.prev_focusables, intents);
@@ -167,7 +176,9 @@ impl<M: FontMetrics> UiEngine<M> {
         } = build.finish();
 
         self.prev_focusables = focusables;
-        self.focus = next_focus_after_build(resolved_focus, &self.prev_focusables);
+        if !preserve_focus {
+            self.focus = next_focus_after_build(resolved_focus, &self.prev_focusables);
+        }
 
         self.retained.map.clear();
         for node in nodes {

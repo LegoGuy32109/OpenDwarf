@@ -124,6 +124,7 @@ impl Style {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
     pub panel_bg: Color,
+    pub scrim: Color,
     pub border: Color,
     pub text: Color,
     pub text_disabled: Color,
@@ -138,6 +139,7 @@ impl Theme {
     pub const fn dwarf_dark() -> Self {
         Self {
             panel_bg: Color::rgb(26, 28, 32),
+            scrim: Color::rgba(0, 0, 0, 128),
             border: Color::rgb(154, 124, 77),
             text: Color::rgb(243, 231, 201),
             text_disabled: Color::rgb(130, 124, 111),

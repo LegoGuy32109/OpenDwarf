@@ -17,6 +17,10 @@ impl InputState {
         self.repeats.clear();
     }
 
+    pub fn clear_repeats(&mut self) {
+        self.repeats.clear();
+    }
+
     pub fn frame(&mut self, decoded: &DecodedInput<'_>, focus: Focus) -> Vec<UiIntent> {
         let mut intents = Vec::new();
         if decoded.sampled.window_focused == 0 {
@@ -82,7 +86,7 @@ fn binding_for(code: KeyCode, focus: Focus) -> Option<Binding> {
             KeyCode::KeyI => Some(Binding::Repeat(UiIntent::FocusPrev)),
             KeyCode::KeyK => Some(Binding::Repeat(UiIntent::FocusNext)),
             KeyCode::Enter | KeyCode::Space => Some(Binding::Once(UiIntent::Activate)),
-            KeyCode::Escape | KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
+            KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
             _ => None,
         },
         Focus::Grid { .. } => match code {
@@ -91,7 +95,7 @@ fn binding_for(code: KeyCode, focus: Focus) -> Option<Binding> {
             KeyCode::KeyK => Some(Binding::Repeat(UiIntent::GridMove(Dir::Down))),
             KeyCode::KeyL => Some(Binding::Repeat(UiIntent::GridMove(Dir::Right))),
             KeyCode::Enter | KeyCode::Space => Some(Binding::Once(UiIntent::Activate)),
-            KeyCode::Escape | KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
+            KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
             _ => None,
         },
     }
