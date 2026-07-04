@@ -73,6 +73,8 @@ The wasm-bindgen JS glue is imported by the TS side and served through the Fresh
 ## Part 3 — The UI engine (`od_ui`)
 
 ### 3.1 Render-command ABI (Q2) — Option B: GL-ready buffers + draw-list
+> Full byte-level design: [`design/render-command-abi.md`](design/render-command-abi.md).
+
 Rust does **everything including glyph layout** and writes the exact instance buffers the existing GL programs consume:
 - **Rect** instance stride **8 floats**: `[pos.xy, size.xy, tint.rgb, alpha]` (+ shared unit-quad corner buffer).
 - **Text** instance stride **12 floats**: `[pos.xy, size.xy, uv_rect.xyzw, tint.rgb, alpha]`.
@@ -170,9 +172,17 @@ Two boundaries, not one:
 
 ## Part 6 — Phased implementation plan
 
+### Migration & parity
+
+The new engine is built **alongside** the existing `webgl2/` TS engine, not in place. It gets its own route (e.g. `/engine`), entry/island, and canvas; the existing `/webgl` route stays fully intact and playable as a live parity reference throughout. Phase 0's reuse of `ui-rect`/`ui-text` is a **read-only import** that does not disturb the old engine. The old engine is retired in **one clean cutover** once the new engine reaches parity — not deleted incrementally — so the reference survives the whole build. The deterministic golden-snapshot tests (ABI doc §8) are the durable parity check.
+
+### Design-doc process
+
+Each "Define"/"Decide" point in the phases is nailed down via a decision interview and saved under `docs/design/`, then linked from its phase. First one: [`design/render-command-abi.md`](design/render-command-abi.md).
+
 **Phase 0 — Foundation & ABI proof (walking skeleton).**
-Scaffold `game_engine/` + four crates + build scripts (output `static/engine/`, wired to a route). Define the render-command ABI in `od_core` (rect/text instance formats, `DrawCmd`, `FrameCounts`). `od_wasm` `ui_frame` stub fills fixed arenas with one bordered rect + a line of text and returns counts; export arena base pointers + memory. TS instantiates the main-thread module, derives views once, per frame calls `ui_frame`, walks the draw-list, and uploads through the **existing** `ui-rect`/`ui-text` programs with the grow-guard.
-*Done when:* a bordered rect + "hello" render through the real Rust→wasm→GL zero-copy pipeline.
+Scaffold `game_engine/` + four crates + `deno task` build scripts (output `static/engine/`), on a **new `/engine` route** (existing `/webgl` untouched). Implement the render-command ABI per [`design/render-command-abi.md`](design/render-command-abi.md): the `#[repr(C)]`+`bytemuck` records (`DrawCmd`, `RectInstance`, `GlyphInstance`) with `offset_of!` self-asserts in `od_core`, the `abi:gen` codegen → `abi.generated.ts`, and the `UiEngine` handle (`new` / ptr+capacity getters / `frame() -> draw_list_count`). `frame()` fills the fixed arenas with one bordered rect + a line of text. TS instantiates the main-thread module, derives views once, per frame calls `frame()`, walks the draw-list, and uploads per-batch through the **existing** `ui-rect`/`ui-text` programs with the grow-guard.
+*Done when:* a bordered rect + "hello" render through the real Rust→wasm→GL zero-copy pipeline on `/engine`, with `abi.generated.ts` driving the TS consts.
 
 **Phase 1 — IMGUI core (`od_ui`).**
 Port Clay's solver (fit/grow/fixed/percent, direction, padding, gap, alignment, floating, scroll, wrap) with native unit tests. Closure API; hierarchical ID stack; explicit scoped ids; retained-state side-table + dev-mode dup detector. `FontMetrics` interface + monospace VGA impl. Emit GL-ready buffers + draw-list (scissor for clips, flat borders). Core widgets: panel, label, button, text field (caret), toggle, slider, scroll area, floating/tooltip.
@@ -183,11 +193,13 @@ Fixed input arena (`DataView`), sampled state + event queue. JS capture → (stu
 **Phase 3 — Sovereign ESC menu (vertical slice + trust boundary).**
 Two structurally-isolated domains with separate retained stores. Sovereign context: ESC → settings + leave-game; composited last; reserved-key routing; sovereign intents applied locally; settings persisted. Proves the full trust boundary + compositing + persistence.
 
-**Phase 4 — Port session game UI; retire TS UI.**
-HUD, chat (DOM-input mirror, GM-visible buffer), game menus into the session domain. Delete TS equivalents (`passes/hud.ts`, `passes/chat.ts`, `ui-rect.ts`/`ui-text.ts` helpers) as each lands → ends the UI parity treadmill.
+**Phase 4 — Port session game UI (old engine still the reference).**
+HUD, chat (DOM-input mirror, GM-visible buffer), game menus into the session domain, on `/engine`. The existing `webgl2/` engine stays intact as the parity reference — do **not** delete its UI incrementally. Retirement is a single cutover (below) once parity is reached.
 
 **Phase 5 — Surfaces, world-anchored UI, data + persistence integration.**
 Generalize contexts → surfaces with placement; world-anchored session surfaces (tooltips, chat bubbles, nameplates) via floating-attach → `world_to_screen`, billboarded integer scale. `ClientView` type wired; UI renders from it; host projection vs remote snapshot; 60 fps interpolation. Persistence hooks (WAL seed+delta on OPFS) for session resume + sovereign settings.
+
+**Cutover — retire the old engine.** Once `/engine` reaches parity with `/webgl` (visual A/B + golden tests), remove the `webgl2/` TS engine and old route wholesale, and move any still-shared GL modules into the new engine's ownership. This is the single point where the two-implementation maintenance burden ends.
 
 *(Parallel tracks referenced but detailed separately: the `od_world` worker + FOV/chunkgen offload, the brotli/streaming wasm load pipeline, and multiplayer netcode.)*
 
