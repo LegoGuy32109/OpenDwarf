@@ -124,11 +124,8 @@ impl UiEngine {
                 od_core::INPUT_ARENA_SIZE_BYTES as usize,
             )
         };
-        let _ui_intents = od_ui::input::frame(
-            &mut self.input_state,
-            input_bytes,
-            od_ui::Focus::Linear,
-        );
+        let _ui_intents =
+            od_ui::input::frame(&mut self.input_state, input_bytes, od_ui::Focus::Linear);
 
         let sampled: InputSampled = self.input.sampled;
         let counts = od_ui::phase0::build_phase0_demo_frame(

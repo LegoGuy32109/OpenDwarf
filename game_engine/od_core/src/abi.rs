@@ -9,13 +9,13 @@ use crate::input::{
     INPUT_ARENA_EVENTS_OFFSET, INPUT_ARENA_QUEUE_OFFSET, INPUT_ARENA_SAMPLE_OFFSET,
     INPUT_ARENA_SIZE_BYTES, INPUT_EVENT_CODE_OFFSET, INPUT_EVENT_KIND_OFFSET,
     INPUT_EVENT_MODIFIERS_OFFSET, INPUT_EVENT_SIZE_BYTES, INPUT_EVENT_VALUE_OFFSET,
-    INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP, INPUT_KIND_RESYNC,
-    INPUT_KIND_UNKNOWN, INPUT_MODIFIER_ALT, INPUT_MODIFIER_CTRL, INPUT_MODIFIER_META,
-    INPUT_MODIFIER_SHIFT, INPUT_QUEUE_CAPACITY, INPUT_QUEUE_HEADER_COUNT_OFFSET,
-    INPUT_QUEUE_HEADER_OVERFLOW_OFFSET, INPUT_QUEUE_HEADER_SIZE_BYTES, INPUT_SAMPLE_BUTTONS_OFFSET,
-    INPUT_SAMPLE_DT_MS_OFFSET, INPUT_SAMPLE_DPR_OFFSET, INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET,
-    INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET, INPUT_SAMPLE_POINTER_X_OFFSET, INPUT_SAMPLE_POINTER_Y_OFFSET,
-    INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET, INPUT_SAMPLED_SIZE_BYTES,
+    INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP, INPUT_KIND_RESYNC, INPUT_KIND_UNKNOWN,
+    INPUT_MODIFIER_ALT, INPUT_MODIFIER_CTRL, INPUT_MODIFIER_META, INPUT_MODIFIER_SHIFT,
+    INPUT_QUEUE_CAPACITY, INPUT_QUEUE_HEADER_COUNT_OFFSET, INPUT_QUEUE_HEADER_OVERFLOW_OFFSET,
+    INPUT_QUEUE_HEADER_SIZE_BYTES, INPUT_SAMPLE_BUTTONS_OFFSET, INPUT_SAMPLE_DPR_OFFSET,
+    INPUT_SAMPLE_DT_MS_OFFSET, INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET,
+    INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET, INPUT_SAMPLE_POINTER_X_OFFSET,
+    INPUT_SAMPLE_POINTER_Y_OFFSET, INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET, INPUT_SAMPLED_SIZE_BYTES,
 };
 use crate::keycode::KeyCode;
 
@@ -301,26 +301,14 @@ pub fn ts_abi_source() -> String {
         "  INPUT_ARENA_SIZE_BYTES: {},\n",
         INPUT_ARENA_SIZE_BYTES
     ));
-    out.push_str(&format!(
-        "  INPUT_KIND_UNKNOWN: {},\n",
-        INPUT_KIND_UNKNOWN
-    ));
+    out.push_str(&format!("  INPUT_KIND_UNKNOWN: {},\n", INPUT_KIND_UNKNOWN));
     out.push_str(&format!(
         "  INPUT_KIND_KEY_DOWN: {},\n",
         INPUT_KIND_KEY_DOWN
     ));
-    out.push_str(&format!(
-        "  INPUT_KIND_KEY_UP: {},\n",
-        INPUT_KIND_KEY_UP
-    ));
-    out.push_str(&format!(
-        "  INPUT_KIND_BLUR: {},\n",
-        INPUT_KIND_BLUR
-    ));
-    out.push_str(&format!(
-        "  INPUT_KIND_RESYNC: {},\n",
-        INPUT_KIND_RESYNC
-    ));
+    out.push_str(&format!("  INPUT_KIND_KEY_UP: {},\n", INPUT_KIND_KEY_UP));
+    out.push_str(&format!("  INPUT_KIND_BLUR: {},\n", INPUT_KIND_BLUR));
+    out.push_str(&format!("  INPUT_KIND_RESYNC: {},\n", INPUT_KIND_RESYNC));
     out.push_str(&format!(
         "  INPUT_MODIFIER_SHIFT: {},\n",
         INPUT_MODIFIER_SHIFT
@@ -329,15 +317,15 @@ pub fn ts_abi_source() -> String {
         "  INPUT_MODIFIER_CTRL: {},\n",
         INPUT_MODIFIER_CTRL
     ));
-    out.push_str(&format!(
-        "  INPUT_MODIFIER_ALT: {},\n",
-        INPUT_MODIFIER_ALT
-    ));
+    out.push_str(&format!("  INPUT_MODIFIER_ALT: {},\n", INPUT_MODIFIER_ALT));
     out.push_str(&format!(
         "  INPUT_MODIFIER_META: {},\n",
         INPUT_MODIFIER_META
     ));
-    out.push_str(&format!("  KEYCODE_UNKNOWN: {},\n", KeyCode::Unknown as u16));
+    out.push_str(&format!(
+        "  KEYCODE_UNKNOWN: {},\n",
+        KeyCode::Unknown as u16
+    ));
     out.push_str(&format!("  KEYCODE_ENTER: {},\n", KeyCode::Enter as u16));
     out.push_str(&format!("  KEYCODE_ESCAPE: {},\n", KeyCode::Escape as u16));
     out.push_str(&format!("  KEYCODE_SPACE: {},\n", KeyCode::Space as u16));

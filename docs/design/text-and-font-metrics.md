@@ -1,19 +1,21 @@
 # Text & FontMetrics
 
-Design decisions for text measurement, wrapping, and the font-metrics abstraction
-in `od_ui` (Phase 1). The solver calls this to size and wrap text; the emitter
-calls it to place glyphs.
+Design decisions for text measurement, wrapping, and the font-metrics
+abstraction in `od_ui` (Phase 1). The solver calls this to size and wrap text;
+the emitter calls it to place glyphs.
 
 Companion docs: [`layout-solver.md`](layout-solver.md) (where measure/wrap are
-invoked) and [`imgui-core.md`](imgui-core.md) (the `text` / `text_runs` widgets).
-Glyph instance format: [`render-command-abi.md`](render-command-abi.md).
+invoked) and [`imgui-core.md`](imgui-core.md) (the `text` / `text_runs`
+widgets). Glyph instance format:
+[`render-command-abi.md`](render-command-abi.md).
 
 ## 1. FontMetrics trait
 
 Font-agnostic and **per-glyph**, so the wrap/measure code in the solver never
-assumes fixed width — MSDF or proportional fonts drop in later as a new impl with
-**zero solver changes**. Font size is a requested **pixel height** (`px: f32`);
-the impl is free to snap it internally and report the actual snapped metrics.
+assumes fixed width — MSDF or proportional fonts drop in later as a new impl
+with **zero solver changes**. Font size is a requested **pixel height**
+(`px: f32`); the impl is free to snap it internally and report the actual
+snapped metrics.
 
 ```rust
 trait FontMetrics {
@@ -37,8 +39,8 @@ trait FontMetrics {
 struct Glyph { uv: [f32; 4], size: Vec2, advance: f32 } // uv = [u0,v0,u1,v1]
 ```
 
-`px` passed in is the **already-scaled device-px** font height (logical font_px ×
-per-Category scale, computed by the solver).
+`px` passed in is the **already-scaled device-px** font height (logical font_px
+× per-Category scale, computed by the solver).
 
 ## 2. MonospaceVga impl (Phase 1)
 
@@ -57,10 +59,10 @@ current `webgl2/ui-text.ts` conventions:
     no meaningful sub-cell baseline). Real ascent/descent arrive with a
     proportional/MSDF impl.
 - `measure_line` overridden to `char_count · advance` (with tab handling, §3).
-- NEAREST sampling, integer scale only — pixel-crisp, consistent with the current
-  renderer. (Per-instance non-integer scaling is a future, per the ABI scale
-  decision; the trait already accommodates it since callers pass an arbitrary
-  `px`.)
+- NEAREST sampling, integer scale only — pixel-crisp, consistent with the
+  current renderer. (Per-instance non-integer scaling is a future, per the ABI
+  scale decision; the trait already accommodates it since callers pass an
+  arbitrary `px`.)
 
 ## 3. Text runs & config
 
@@ -106,10 +108,10 @@ Output: a `Vec<Line>`, each `Line` a sequence of positioned glyphs
 
 ## 5. Horizontal alignment & emit
 
-- Within the text box of inner width `W`, each line is offset by `align`:
-  `Left` → 0, `Center` → `(W − line_width)/2`, `Right` → `W − line_width`.
-- Vertical: line `i` sits at `y + i · line_height`; glyphs are top-aligned within
-  the line (bitmap `ascent = line_height`).
+- Within the text box of inner width `W`, each line is offset by `align`: `Left`
+  → 0, `Center` → `(W − line_width)/2`, `Right` → `W − line_width`.
+- Vertical: line `i` sits at `y + i · line_height`; glyphs are top-aligned
+  within the line (bitmap `ascent = line_height`).
 - Emit: one `GlyphInstance` per glyph (`pos`, `size`, `uv` from
   `FontMetrics::glyph`, `tint` = run color), integer-snapped to device px at
   emit-time only.
@@ -120,8 +122,8 @@ If crisp fractional scaling / true typography is wanted later, add an `MsdfFont`
 impl of `FontMetrics` and an MSDF text program. No solver or wrap changes are
 needed because:
 
-- `advance(ch, px)` already returns per-glyph fractional advances (kerning can be
-  folded in or added as an optional `kern(prev, ch, px)` method later).
+- `advance(ch, px)` already returns per-glyph fractional advances (kerning can
+  be folded in or added as an optional `kern(prev, ch, px)` method later).
 - `ascent`/`descent`/`line_height` already exist for real baseline layout.
 - `px` is already an arbitrary float; MSDF renders at fractional scale natively.
 

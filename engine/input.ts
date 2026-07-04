@@ -41,7 +41,11 @@ function writeSampled(
   input.setFloat32(ABI.INPUT_SAMPLE_POINTER_X_OFFSET, 0, true);
   input.setFloat32(ABI.INPUT_SAMPLE_POINTER_Y_OFFSET, 0, true);
   input.setUint32(ABI.INPUT_SAMPLE_BUTTONS_OFFSET, 0, true);
-  input.setUint32(ABI.INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET, focused ? 1 : 0, true);
+  input.setUint32(
+    ABI.INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET,
+    focused ? 1 : 0,
+    true,
+  );
 }
 
 function appendEvent(
@@ -59,7 +63,8 @@ function appendEvent(
     input.setUint32(ABI.INPUT_QUEUE_HEADER_OVERFLOW_OFFSET, 1, true);
     return;
   }
-  const base = ABI.INPUT_ARENA_EVENTS_OFFSET + count * ABI.INPUT_EVENT_SIZE_BYTES;
+  const base = ABI.INPUT_ARENA_EVENTS_OFFSET +
+    count * ABI.INPUT_EVENT_SIZE_BYTES;
   input.setUint8(base + ABI.INPUT_EVENT_KIND_OFFSET, kind);
   input.setUint8(base + ABI.INPUT_EVENT_MODIFIERS_OFFSET, modifiers);
   input.setUint16(base + ABI.INPUT_EVENT_CODE_OFFSET, code, true);
@@ -76,7 +81,12 @@ export class InputCapture {
       return;
     }
     event.preventDefault();
-    appendEvent(this.input, ABI.INPUT_KIND_KEY_DOWN, code, modifiersFrom(event));
+    appendEvent(
+      this.input,
+      ABI.INPUT_KIND_KEY_DOWN,
+      code,
+      modifiersFrom(event),
+    );
   };
 
   private readonly onKeyUp = (event: KeyboardEvent) => {
@@ -124,7 +134,9 @@ export class InputCapture {
     if (this.input.byteLength === 0) {
       return;
     }
-    const dt = this.lastFrameNow === 0 ? 16.0 : Math.max(0, now - this.lastFrameNow);
+    const dt = this.lastFrameNow === 0
+      ? 16.0
+      : Math.max(0, now - this.lastFrameNow);
     this.lastFrameNow = now;
     writeSampled(this.input, this.canvas, document.hasFocus());
     this.input.setFloat32(ABI.INPUT_SAMPLE_DT_MS_OFFSET, dt, true);

@@ -5,9 +5,10 @@ crosses into the wasm engine, how Rust turns it into the `UiIntent` stream that
 Phase 1's focus system consumes, and the concrete byte layout of the input
 arena. This is the deferred ABI §9 "input arena layout" item.
 
-Companion docs: [`render-command-abi.md`](render-command-abi.md) (the mirror-image
-output arena + the `abi:gen` codegen this reuses), [`imgui-core.md`](imgui-core.md)
-(`UiIntent`, focus scopes, `frame()` lifecycle).
+Companion docs: [`render-command-abi.md`](render-command-abi.md) (the
+mirror-image output arena + the `abi:gen` codegen this reuses),
+[`imgui-core.md`](imgui-core.md) (`UiIntent`, focus scopes, `frame()`
+lifecycle).
 
 ## 1. Model overview
 
@@ -24,14 +25,14 @@ output arena + the `abi:gen` codegen this reuses), [`imgui-core.md`](imgui-core.
 - **Deterministic + replayable.** The arena bytes (including `dt_ms`) are a
   complete, ordered input log — replay reproduces a session exactly and golden
   tests can drive input by writing arena bytes.
-- **Main-thread instance only.** The world worker (`od_world`) does not read this
-  arena; it receives intents via `postMessage` (parallel track).
+- **Main-thread instance only.** The world worker (`od_world`) does not read
+  this arena; it receives intents via `postMessage` (parallel track).
 
 ## 2. Arena regions
 
-Two regions in wasm linear memory, each exposed by `UiEngine` getters
-(`ptr` + `len`/`capacity`), with offsets codegen'd into `abi.generated.ts`
-alongside the render ABI consts.
+Two regions in wasm linear memory, each exposed by `UiEngine` getters (`ptr` +
+`len`/`capacity`), with offsets codegen'd into `abi.generated.ts` alongside the
+render ABI consts.
 
 ### 2a. Sampled block (fixed struct, overwritten in place)
 
@@ -58,9 +59,10 @@ Reserving the mouse fields now avoids ABI churn when pointer support lands.
 
 ### 2b. Event queue (bounded, reset per frame)
 
-Because DOM handlers and the `rAF`-driven `frame()` run on the **same JS thread**
-and cannot interleave, no wrap-around ring or atomics are needed. TS appends
-records between frames; `frame()` drains `[0, count)` and resets `count = 0`.
+Because DOM handlers and the `rAF`-driven `frame()` run on the **same JS
+thread** and cannot interleave, no wrap-around ring or atomics are needed. TS
+appends records between frames; `frame()` drains `[0, count)` and resets
+`count = 0`.
 
 ```rust
 #[repr(C)]
@@ -91,15 +93,16 @@ enum EventKind {           // u8
 
 **Overflow policy:** if `count == CAPACITY`, TS drops the event and sets
 `overflow = 1`. On seeing `overflow`, Rust treats it as a `Resync` (clears
-held-state) so a dropped key-up can never leave a stuck key. 1024 events/frame is
-far beyond any real frame's input.
+held-state) so a dropped key-up can never leave a stuck key. 1024 events/frame
+is far beyond any real frame's input.
 
 ## 3. KeyCode
 
 Physical, layout-independent identity from `KeyboardEvent.code` (see the
 key-source decision). A numeric `KeyCode` enum is the single source of truth in
 `od_core`, codegen'd into `abi.generated.ts`; TS maps `event.code` → `KeyCode`
-via a lookup table (`"KeyK"` → `KeyCode::KeyK`), unknown → `KeyCode::Unknown(0)`.
+via a lookup table (`"KeyK"` → `KeyCode::KeyK`), unknown →
+`KeyCode::Unknown(0)`.
 
 ```rust
 enum KeyCode {            // u16; extend freely, Unknown must stay 0
@@ -120,22 +123,22 @@ representation/sync — layout-independence comes from using `event.code`.
 Resolved against the active focus scope (imgui-core §4). Same physical key can
 mean different things per scope.
 
-| Key(s) | Linear scope | Grid scope | Any scope |
-|---|---|---|---|
-| `KeyI` | FocusPrev | GridMove(Up) | |
-| `KeyK` | FocusNext | GridMove(Down) | |
-| `KeyJ` | — | GridMove(Left) | |
-| `KeyL` | — | GridMove(Right) | |
-| `Enter`, `Space` | | | Activate |
-| `Escape`, `KeyQ` | | | Cancel |
+| Key(s)           | Linear scope | Grid scope      | Any scope |
+| ---------------- | ------------ | --------------- | --------- |
+| `KeyI`           | FocusPrev    | GridMove(Up)    |           |
+| `KeyK`           | FocusNext    | GridMove(Down)  |           |
+| `KeyJ`           | —            | GridMove(Left)  |           |
+| `KeyL`           | —            | GridMove(Right) |           |
+| `Enter`, `Space` |              |                 | Activate  |
+| `Escape`, `KeyQ` |              |                 | Cancel    |
 
 - **No Tab, no arrow keys** (deliberate).
-- All bindings are **rebindable later** (rebind UI = Phase 5 settings); this table
-  is the shipped default in the Rust keymap.
-- **Escape seam:** in Phase 2, Escape → `Cancel` via the keymap (stub). In Phase 3
-  the router intercepts Escape **before** the keymap as the sovereign
-  secure-attention key (open ESC menu, unsuppressable). `KeyQ` stays the in-scope
-  Cancel/back, so the two never fight.
+- All bindings are **rebindable later** (rebind UI = Phase 5 settings); this
+  table is the shipped default in the Rust keymap.
+- **Escape seam:** in Phase 2, Escape → `Cancel` via the keymap (stub). In Phase
+  3 the router intercepts Escape **before** the keymap as the sovereign
+  secure-attention key (open ESC menu, unsuppressable). `KeyQ` stays the
+  in-scope Cancel/back, so the two never fight.
 
 ## 5. Held-state reconstruction & repeat
 
@@ -149,15 +152,15 @@ stream (chosen in the interview).
   On the `KeyDown` transition, emit once and start a repeat timer; while the key
   stays in `HeldSet`, the timer (driven by `dt_ms` from the sampled block) emits
   further intents after an initial delay, then at a steady interval.
-  - Defaults (Rust consts, tunable via settings later):
-    `REPEAT_DELAY_MS = 400`, `REPEAT_INTERVAL_MS = 60`.
+  - Defaults (Rust consts, tunable via settings later): `REPEAT_DELAY_MS = 400`,
+    `REPEAT_INTERVAL_MS = 60`.
 - **Non-repeating:** `Activate` and `Cancel` fire once per `KeyDown` transition
   only (never repeat).
 
 ## 6. `frame()` integration
 
-`frame() -> u32` (draw_list_count) keeps its Phase-0 signature — input is already
-in memory, `dt_ms` is in the sampled block, so no arguments are added.
+`frame() -> u32` (draw_list_count) keeps its Phase-0 signature — input is
+already in memory, `dt_ms` is in the sampled block, so no arguments are added.
 
 ```
 frame():
@@ -177,12 +180,12 @@ slice directly (bypassing the arena) for deterministic focus/nav unit tests.
 
 ## 7. TS capture module (`/engine`)
 
-A new capture module for the `/engine` route (analogous to `webgl2/input.ts`, but
-writing the arena instead of mutating a JS state object):
+A new capture module for the `/engine` route (analogous to `webgl2/input.ts`,
+but writing the arena instead of mutating a JS state object):
 
-- `keydown`/`keyup` (window, `passive:false`): map `event.code` → `KeyCode`, read
-  modifier flags, append a `KeyDown`/`KeyUp` record; `preventDefault` for captured
-  keys.
+- `keydown`/`keyup` (window, `passive:false`): map `event.code` → `KeyCode`,
+  read modifier flags, append a `KeyDown`/`KeyUp` record; `preventDefault` for
+  captured keys.
 - `blur`: append a `Blur` record (replaces the old `keysHeld.clear()`).
 - `resize`/`focus`: update `InputSampled` (framebuffer, dpr, `window_focused`).
 - Each frame before `engine.frame()`: write `dt_ms` (and refresh framebuffer/dpr
@@ -198,14 +201,15 @@ writing the arena instead of mutating a JS state object):
 - **Text / IME** — `Text` event kind + `value` (codepoint) reserved; the hidden
   DOM `<input>` mirror path lands with the text field in Phase 4.
 - **Rebinding UI** and **repeat-timing settings** — Phase 5 sovereign settings.
-- **Worker input** — the world worker receives intents via `postMessage`, not this
-  arena (parallel `od_world` track).
+- **Worker input** — the world worker receives intents via `postMessage`, not
+  this arena (parallel `od_world` track).
 
 ## 9. Module layout
 
-Build one module at a time (`engine:check`/`engine:test` after each); never a `phase2.rs`.
-All input **semantics** (keymap, held-state, repeat) live in `od_ui` and are
-**native-tested**; `od_wasm` only owns the arena memory and hands `od_ui` a byte slice.
+Build one module at a time (`engine:check`/`engine:test` after each); never a
+`phase2.rs`. All input **semantics** (keymap, held-state, repeat) live in
+`od_ui` and are **native-tested**; `od_wasm` only owns the arena memory and
+hands `od_ui` a byte slice.
 
 - **`od_core/src/`**
   - `keycode.rs` — the `KeyCode` enum (single source of truth; codegen'd into
@@ -217,9 +221,9 @@ All input **semantics** (keymap, held-state, repeat) live in `od_ui` and are
   - `decode.rs` — `bytemuck`-cast the arena byte slice → `&[InputEvent]`; read
     `InputSampled`.
   - `held.rs` — `HeldSet` reconstruction + the `dt_ms`-driven repeat timer.
-  - `keymap.rs` — the context-aware table → `UiIntent` stream (per active focus scope);
-    the test hook that injects `UiIntent`s directly bypasses this (§6).
-- **`od_wasm/src/`** — expose the input-arena `ptr`/`capacity` getters; in `frame()`, hand
-  the arena slice to `od_ui`. Thin glue only.
-- **TS (`engine/`)** — `input.ts`: the dumb capture layer (`event.code` → `KeyCode`,
-  `Blur`/`Resync`, sampled-state writes). No meaning.
+  - `keymap.rs` — the context-aware table → `UiIntent` stream (per active focus
+    scope); the test hook that injects `UiIntent`s directly bypasses this (§6).
+- **`od_wasm/src/`** — expose the input-arena `ptr`/`capacity` getters; in
+  `frame()`, hand the arena slice to `od_ui`. Thin glue only.
+- **TS (`engine/`)** — `input.ts`: the dumb capture layer (`event.code` →
+  `KeyCode`, `Blur`/`Resync`, sampled-state writes). No meaning.

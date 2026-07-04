@@ -2,10 +2,10 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod draw;
-pub mod input;
 pub mod focus;
 pub mod font;
 pub mod id;
+pub mod input;
 pub mod layout;
 pub mod phase0;
 pub mod primitives;

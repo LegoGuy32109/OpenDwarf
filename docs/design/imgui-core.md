@@ -36,7 +36,8 @@ ui.column(Layout::new().grow().gap(4), |ui| {
 ```
 
 - `ui` is `&mut Ui` re-borrowed into each child closure.
-- Container methods: `column`, `row`, `grid`, `panel` — each `(config, closure)`.
+- Container methods: `column`, `row`, `grid`, `panel` — each
+  `(config, closure)`.
 - Leaf methods: `spacer`, `text`, `text_runs`, `button`.
 - `Layout::new()` is the sizing/direction/padding/gap/align builder that lowers
   to the solver's config (see `layout-solver.md`). Convenience: `.grow()`,
@@ -46,7 +47,7 @@ ui.column(Layout::new().grow().gap(4), |ui| {
 
 Every node has an `Id: u64`. Ids are produced by **hash-chaining through the ID
 stack**: `child_id = hash(parent_id, local_key)`. Global uniqueness comes from
-the *path*; a local key need only be unique **among its siblings**.
+the _path_; a local key need only be unique **among its siblings**.
 
 - **Hash:** FNV-1a 64-bit (trivial, dependency-free, stable across platforms and
   compiler versions — important for reproducible golden tests). Seed each child
@@ -71,9 +72,9 @@ the *path*; a local key need only be unique **among its siblings**.
 
 ## 4. Focus & navigation
 
-`ctx.focus: Option<Id>` — at most one focused widget. Focus movement is fed by an
-abstract intent stream (the **seam** to input; Phase 2 wires the input arena to
-it, Phase 1 tests inject it directly):
+`ctx.focus: Option<Id>` — at most one focused widget. Focus movement is fed by
+an abstract intent stream (the **seam** to input; Phase 2 wires the input arena
+to it, Phase 1 tests inject it directly):
 
 ```rust
 enum UiIntent {
@@ -140,8 +141,10 @@ struct Retained { map: HashMap<Id, Entry>, frame: u64 }
 ```
 
 - `get_or_insert(id)` stamps `frame_touched = self.frame`.
-- **Prune immediately:** at frame end, `map.retain(|_, e| e.frame_touched ==
-  frame)`. Entries not touched this frame are dropped.
+- **Prune immediately:** at frame end,
+  `map.retain(|_, e| e.frame_touched ==
+  frame)`. Entries not touched this
+  frame are dropped.
 - The `state` slot is `None` in Phase 1 (button/text/panel need no persistent
   state). Scroll offsets (deferred) and the text-field caret (Phase 4) downcast
   this slot when they land. A widget wanting sticky-across-hidden state (e.g. a
@@ -153,16 +156,16 @@ struct Retained { map: HashMap<Id, Entry>, frame: u64 }
 All keyboard-focus-driven. **Lean core only** — form controls
 (toggle/slider/stepper) arrive with the settings UI (Phase 5).
 
-| Widget | Focusable | Notes |
-|---|---|---|
-| `column(cfg, f)` | scope | vertical container; `Focus::Linear` default |
-| `row(cfg, f)` | scope | horizontal container |
-| `grid(cfg, f)` | scope | `Focus::Grid { cols }`; spatial nav within |
-| `panel(style, f)` | no | container with theme background + flat border |
-| `spacer(size)` | no | flexible/empty gap (use `Grow` to push siblings) |
-| `text(s, cfg)` | no | single-color label; wraps to width |
-| `text_runs(&[(s,color)], cfg)` | no | inline multi-color paragraph; wraps as one flow |
-| `button(key, label)` | yes | returns `Response`; `activated` on Enter/Space when focused |
+| Widget                         | Focusable | Notes                                                       |
+| ------------------------------ | --------- | ----------------------------------------------------------- |
+| `column(cfg, f)`               | scope     | vertical container; `Focus::Linear` default                 |
+| `row(cfg, f)`                  | scope     | horizontal container                                        |
+| `grid(cfg, f)`                 | scope     | `Focus::Grid { cols }`; spatial nav within                  |
+| `panel(style, f)`              | no        | container with theme background + flat border               |
+| `spacer(size)`                 | no        | flexible/empty gap (use `Grow` to push siblings)            |
+| `text(s, cfg)`                 | no        | single-color label; wraps to width                          |
+| `text_runs(&[(s,color)], cfg)` | no        | inline multi-color paragraph; wraps as one flow             |
+| `button(key, label)`           | yes       | returns `Response`; `activated` on Enter/Space when focused |
 
 Focused focusable widgets render the theme's `focus_ring`/`focus_bg`.
 

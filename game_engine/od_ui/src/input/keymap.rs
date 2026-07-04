@@ -2,7 +2,7 @@ use od_core::{EventKind, KeyCode};
 
 use crate::focus::{Dir, Focus, UiIntent};
 
-use super::decode::{decode, DecodedInput};
+use super::decode::{DecodedInput, decode};
 use super::held::{HeldSet, RepeatState};
 
 #[derive(Debug, Default)]
@@ -106,12 +106,12 @@ pub fn frame(state: &mut InputState, bytes: &[u8], focus: Focus) -> Vec<UiIntent
 
 #[cfg(test)]
 mod tests {
-    use bytemuck::bytes_of;
     use crate::input::decode_arena;
+    use bytemuck::bytes_of;
 
     use od_core::{
-        EventKind, InputArena, InputEvent, InputQueueHeader, InputSampled, KeyCode,
-        INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP,
+        EventKind, INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP, InputArena, InputEvent,
+        InputQueueHeader, InputSampled, KeyCode,
     };
 
     use super::*;

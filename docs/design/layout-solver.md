@@ -6,8 +6,9 @@ device pixels, then hands them to the draw-list emitter. It is a focused port of
 [Clay](https://github.com/nicbarker/clay)'s multi-pass solver.
 
 Companion docs: [`imgui-core.md`](imgui-core.md) (authoring API, identity,
-focus, widgets, theme) and [`text-and-font-metrics.md`](text-and-font-metrics.md)
-(text measurement + wrap). Byte-level output format:
+focus, widgets, theme) and
+[`text-and-font-metrics.md`](text-and-font-metrics.md) (text measurement +
+wrap). Byte-level output format:
 [`render-command-abi.md`](render-command-abi.md).
 
 ## 1. Scope
@@ -32,14 +33,15 @@ non-structural.
   the developer writes is logical. The solver multiplies these by the surface's
   resolved **per-Category scale** (`snap(dpr × settings.scale[category])`, see
   the ABI doc) to produce **device pixels**. The solver computes in device-px
-  `f32`; final positions/sizes are integer-snapped only at draw-list emit
-  (§7), never mid-solve (snapping mid-solve accumulates error).
+  `f32`; final positions/sizes are integer-snapped only at draw-list emit (§7),
+  never mid-solve (snapping mid-solve accumulates error).
 - **Deferred solve.** The closure-based authoring API (see `imgui-core.md`)
   builds the full element tree into an arena during declaration. Layout runs
   **once, after the root closure returns.** Widget interaction (`focused`,
-  `activated`) is resolved from the *previous* frame's state, not from geometry
+  `activated`) is resolved from the _previous_ frame's state, not from geometry
   computed this frame — so the solver never has to run mid-declaration.
-- Per-frame pipeline: `build tree → solve (§4) → emit draw-list + store rects
+- Per-frame pipeline:
+  `build tree → solve (§4) → emit draw-list + store rects
   into the retained table → prune`.
 
 ## 3. Node model
@@ -109,31 +111,31 @@ enum Sizing {
 ## 4. Solver passes
 
 A faithful Clay port. Width is fully resolved before height because text
-wrapping (a height-affecting operation) depends on final width. Axis `0` = width,
-axis `1` = height.
+wrapping (a height-affecting operation) depends on final width. Axis `0` =
+width, axis `1` = height.
 
 1. **Fit widths — bottom-up (post-order).** Leaf content widths first:
    - `Text`: width = `FontMetrics::measure_line` of the widest hard-line if no
-     wrap; if wrapping, the *fit* width is the longest single word (the minimum
+     wrap; if wrapping, the _fit_ width is the longest single word (the minimum
      the text can shrink to). Preferred width = full unwrapped width.
-   - `Spacer`: 0.
-   Containers combine children: **Row** → `padding.x + Σ child.w + gap·(n−1)`;
-   **Column** → `padding.x + max(child.w)`. Then apply this node's own `Sizing`:
-   `Fixed` overrides exactly; `Fit` keeps the computed value; `Grow`/`Percent`
-   defer to pass 2 but seed their `min`. Clamp to `[min, max]`.
+   - `Spacer`: 0. Containers combine children: **Row** →
+     `padding.x + Σ child.w + gap·(n−1)`; **Column** →
+     `padding.x + max(child.w)`. Then apply this node's own `Sizing`: `Fixed`
+     overrides exactly; `Fit` keeps the computed value; `Grow`/`Percent` defer
+     to pass 2 but seed their `min`. Clamp to `[min, max]`.
 
 2. **Grow / shrink widths — top-down (pre-order).** For each container, compute
    `remaining = inner_width − Σ children base widths on the main axis`
    (`inner_width = node.w − padding.x`).
    - **Row (main axis = width):** distribute `remaining` across `Grow` children
-     using Clay's algorithm — repeatedly add to the *smallest* grow child(ren)
+     using Clay's algorithm — repeatedly add to the _smallest_ grow child(ren)
      until they equal the next-smallest, respecting each child's `max`, until
      `remaining` is exhausted or all are capped. If `remaining < 0`, shrink the
-     *largest* children symmetrically (respecting `min`).
+     _largest_ children symmetrically (respecting `min`).
    - **Column (cross axis = width):** a `Grow` child's width = `inner_width`; a
      `Fit` child keeps its width; `Percent` = `fraction · inner_width`.
-   `Percent` on either axis resolves here against the parent's inner size. Clamp
-   all results to `[min, max]`.
+     `Percent` on either axis resolves here against the parent's inner size.
+     Clamp all results to `[min, max]`.
 
 3. **Wrap text — after widths are final.** For each `Text` node, break its runs
    into lines at the node's resolved inner width (algorithm in
@@ -148,10 +150,12 @@ axis `1` = height.
    (Column distributes along main axis; Row grows children to inner height).
 
 6. **Position + align — top-down.** For each container, lay children along the
-   main axis starting at `pos + padding_start`, advancing by `child.size_main +
-   gap`. `align.main` shifts the whole run within leftover main-axis space
-   (`Start`/`Center`/`End`); `align.cross` positions each child within the
-   cross-axis extent. Each child's `pos` is set absolute (surface-relative).
+   main axis starting at `pos + padding_start`, advancing by
+   `child.size_main +
+   gap`. `align.main` shifts the whole run within leftover
+   main-axis space (`Start`/`Center`/`End`); `align.cross` positions each child
+   within the cross-axis extent. Each child's `pos` is set absolute
+   (surface-relative).
 
 ## 5. Grow distribution (detail)
 
@@ -169,7 +173,7 @@ while remaining > EPS and grow not empty:
     drop children that hit their max from `grow`
 ```
 
-Shrink (`remaining < 0`) is the mirror: subtract from the *largest* children
+Shrink (`remaining < 0`) is the mirror: subtract from the _largest_ children
 down toward `min`. Both must terminate (each iteration either exhausts
 `remaining` or removes a child from the working set).
 

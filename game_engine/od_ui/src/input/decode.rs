@@ -47,8 +47,8 @@ mod tests {
     use bytemuck::bytes_of;
 
     use od_core::{
-        EventKind, InputArena, InputEvent, InputQueueHeader, InputSampled, KeyCode,
-        INPUT_KIND_KEY_DOWN,
+        EventKind, INPUT_KIND_KEY_DOWN, InputArena, InputEvent, InputQueueHeader, InputSampled,
+        KeyCode,
     };
 
     use super::*;

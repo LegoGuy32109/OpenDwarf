@@ -11,4 +11,3 @@ test("engine route boots the Rust demo frame", async ({ page }) => {
   await page.waitForTimeout(1_000);
   await expect(canvas).toBeVisible();
 });
-

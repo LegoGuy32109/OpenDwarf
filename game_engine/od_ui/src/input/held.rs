@@ -37,11 +37,7 @@ impl HeldSet {
 
     const fn bit(code: KeyCode) -> u128 {
         let index = code as u16;
-        if index >= 128 {
-            0
-        } else {
-            1_u128 << index
-        }
+        if index >= 128 { 0 } else { 1_u128 << index }
     }
 }
 

@@ -121,18 +121,22 @@ impl InputArena {
 }
 
 const _: () = assert!(mem::size_of::<InputSampled>() == INPUT_SAMPLED_SIZE_BYTES as usize);
-const _: () = assert!(mem::offset_of!(InputSampled, framebuffer_w) == INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET);
-const _: () = assert!(mem::offset_of!(InputSampled, framebuffer_h) == INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(InputSampled, framebuffer_w) == INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(InputSampled, framebuffer_h) == INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET);
 const _: () = assert!(mem::offset_of!(InputSampled, dpr) == INPUT_SAMPLE_DPR_OFFSET);
 const _: () = assert!(mem::offset_of!(InputSampled, dt_ms) == INPUT_SAMPLE_DT_MS_OFFSET);
-const _: () = assert!(mem::offset_of!(InputSampled, window_focused) == INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(InputSampled, window_focused) == INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET);
 const _: () = assert!(mem::offset_of!(InputSampled, pointer_x) == INPUT_SAMPLE_POINTER_X_OFFSET);
 const _: () = assert!(mem::offset_of!(InputSampled, pointer_y) == INPUT_SAMPLE_POINTER_Y_OFFSET);
 const _: () = assert!(mem::offset_of!(InputSampled, buttons) == INPUT_SAMPLE_BUTTONS_OFFSET);
 
 const _: () = assert!(mem::size_of::<InputQueueHeader>() == INPUT_QUEUE_HEADER_SIZE_BYTES as usize);
 const _: () = assert!(mem::offset_of!(InputQueueHeader, count) == INPUT_QUEUE_HEADER_COUNT_OFFSET);
-const _: () = assert!(mem::offset_of!(InputQueueHeader, overflow) == INPUT_QUEUE_HEADER_OVERFLOW_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(InputQueueHeader, overflow) == INPUT_QUEUE_HEADER_OVERFLOW_OFFSET);
 
 const _: () = assert!(mem::size_of::<InputEvent>() == INPUT_EVENT_SIZE_BYTES as usize);
 const _: () = assert!(mem::offset_of!(InputEvent, kind) == INPUT_EVENT_KIND_OFFSET);

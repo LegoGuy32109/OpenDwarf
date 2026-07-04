@@ -1,8 +1,14 @@
 import { startEngineClient } from "./engine/runtime.ts";
 
 function syncCanvas(canvas: HTMLCanvasElement) {
-  const width = Math.max(1, Math.round(canvas.clientWidth * (globalThis.devicePixelRatio || 1)));
-  const height = Math.max(1, Math.round(canvas.clientHeight * (globalThis.devicePixelRatio || 1)));
+  const width = Math.max(
+    1,
+    Math.round(canvas.clientWidth * (globalThis.devicePixelRatio || 1)),
+  );
+  const height = Math.max(
+    1,
+    Math.round(canvas.clientHeight * (globalThis.devicePixelRatio || 1)),
+  );
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
@@ -29,7 +35,9 @@ function startEngine() {
   canvas.tabIndex = 0;
   syncCanvas(canvas);
 
-  const resizeObserver = shell ? new ResizeObserver(() => syncCanvas(canvas)) : null;
+  const resizeObserver = shell
+    ? new ResizeObserver(() => syncCanvas(canvas))
+    : null;
   if (shell) {
     resizeObserver?.observe(shell);
   }
@@ -58,4 +66,3 @@ function startEngine() {
 }
 
 startEngine();
-

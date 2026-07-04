@@ -22,11 +22,18 @@ async function ensureEngineArtifacts() {
 await ensureEngineArtifacts();
 
 const devServer = new Deno.Command(Deno.execPath(), {
-  args: ["task", "dev", "--host", "127.0.0.1", "--port", "8000", "--strictPort"],
+  args: [
+    "task",
+    "dev",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8000",
+    "--strictPort",
+  ],
   cwd: Deno.cwd(),
   stdout: "inherit",
   stderr: "inherit",
 }).spawn();
 
 await devServer.status;
-
