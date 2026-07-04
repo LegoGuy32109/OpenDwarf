@@ -55,6 +55,10 @@ A new Cargo workspace at `game_engine/`, **four crates**, `od_` prefix. Only one
 
 **Why:** `wasm-bindgen` quarantined to one crate → `od_ui`/`od_world`/`od_core` are plain Rust with millisecond native unit tests. One `cdylib` = "one binary now." Independent lib crates = "two binaries later" is mechanical. Native server reuses `od_core` + `od_world` directly.
 
+**Two engine-wide placement rules** (decided during the Phase 2–4 module interview; apply to every phase):
+- **Session-domain / networkable types live in `od_core`** (`SessionIntent`, the minimal `SessionModel`, later `ClientView`) so the native server reuses them with zero move. **Shell-local types stay in `od_ui`** (`ShellIntent`, `Settings`) — never networked. Mirrors the trust boundary in the crate graph.
+- **`od_ui` stays pure by returning effects, never calling host functions.** Input semantics (keymap/held/repeat) and host effects both live in `od_ui`: its frame returns `FrameOut { draw_list_count, host_effects: Vec<HostEffect> }`, and `od_wasm` (the only wasm crate) dispatches `host_effects` to its `#[cfg(wasm32)]` extern JS callbacks. No trait/dyn/cfg leaks into `od_ui`; native tests assert the returned effects.
+
 **Build pipeline** (mirror `game_library`'s wasm steps):
 - `cargo build --target wasm32-unknown-unknown --release --features web` → `wasm-bindgen --target web --out-dir static/engine` → `wasm-opt -O4` → `brotli -q11`.
 - `.cargo/config.toml`: `target-feature=+simd128` (**not** `+atomics` — threads deferred).
@@ -180,6 +184,16 @@ The new engine is built **alongside** the existing `webgl2/` TS engine, not in p
 
 Each "Define"/"Decide" point in the phases is nailed down via a decision interview and saved under `docs/design/`, then linked from its phase. Completed: [`design/render-command-abi.md`](design/render-command-abi.md) (Phase 0); [`design/layout-solver.md`](design/layout-solver.md), [`design/imgui-core.md`](design/imgui-core.md), [`design/text-and-font-metrics.md`](design/text-and-font-metrics.md) (Phase 1); [`design/input-arena.md`](design/input-arena.md) (Phase 2); [`design/domains-and-shell-router.md`](design/domains-and-shell-router.md) (Phase 3); [`design/text-input-and-chat.md`](design/text-input-and-chat.md) (Phase 4).
 
+### Code organization & incremental build discipline
+
+Applies to **every** phase, for every coding agent:
+
+- **Organize `od_*` source by responsibility into small modules (~200–400 lines each). Never one monolithic `phaseN.rs`.** The `phase0` naming was a walking-skeleton scaffold *only*; there is no ongoing "phase file." When Phase 1 lands, the demo in `od_ui/src/phase0.rs` is **absorbed/deleted into the real modules** — Phase 0's file layout is not a structure to preserve or mirror. (Parity, elsewhere in this doc, means behavioral parity with the old `webgl2/` TS engine — never parity with Phase 0's code shape.)
+- **Build one module at a time**, running `engine:check` after each (and `engine:test` once a module has behavior). The compiler validates incrementally and progress is visible in the harness, instead of surfacing only after a single 2000-line generation.
+- Each module compiles and carries its native unit tests **before** moving to the next; prefer many small `Write`/`Edit` calls over one giant file (faster to generate, reviewable, interruptible). Independent modules can be farmed to separate subagents.
+- **Module names mirror the linked design-doc sections**, so the decision → code mapping is obvious.
+- **Evolve in place; never accumulate dead phase code.** Each phase *replaces or refactors* the prior scaffold rather than layering beside it: Phase 1 deletes the `phase0.rs` demo, Phase 2 deletes the placeholder input region, Phase 3 refactors the single-context `Ui` into `Domain`s, later phases supersede placeholders (HUD, `SessionModel`) with the real thing. When a phase supersedes something, **delete the old path** and confirm with `git grep` that no old symbol, placeholder, or dead code path remains. (The sole deliberate exception is the `webgl2/` reference engine, kept intact until the single cutover.)
+
 **Phase 0 — Foundation & ABI proof (walking skeleton).**
 Scaffold `game_engine/` + four crates + `deno task` build scripts (output `static/engine/`), on a **new `/engine` route** (existing `/webgl` untouched). Implement the render-command ABI per [`design/render-command-abi.md`](design/render-command-abi.md): the `#[repr(C)]`+`bytemuck` records (`DrawCmd`, `RectInstance`, `GlyphInstance`) with `offset_of!` self-asserts in `od_core`, the `abi:gen` codegen → `abi.generated.ts`, and the `UiEngine` handle (`new` / ptr+capacity getters / `frame() -> draw_list_count`). `frame()` fills the fixed arenas with one bordered rect + a line of text. TS instantiates the main-thread module, derives views once, per frame calls `frame()`, walks the draw-list, and uploads per-batch through the **existing** `ui-rect`/`ui-text` programs with the grow-guard.
 *Done when:* a bordered rect + "hello" render through the real Rust→wasm→GL zero-copy pipeline on `/engine`, with `abi.generated.ts` driving the TS consts.
@@ -187,6 +201,19 @@ Scaffold `game_engine/` + four crates + `deno task` build scripts (output `stati
 **Phase 1 — IMGUI core (`od_ui`).**
 Design nailed in three docs: [`design/layout-solver.md`](design/layout-solver.md), [`design/imgui-core.md`](design/imgui-core.md), [`design/text-and-font-metrics.md`](design/text-and-font-metrics.md).
 Port Clay's solver — **core + text wrap** (fit/grow/fixed/percent, direction, padding, gap, alignment); **floating deferred to Phase 5, scroll/clip deferred until scissor** — with native unit tests. **Closure-scoped builder** API; hash-chained ids (FNV-1a, explicit keys for interactive widgets, `scope()` for lists, dev-mode dup detector); minimal retained-state side-table (last-rect + `frame_touched` + extension slot, immediate prune). Per-glyph `FontMetrics` trait + monospace VGA impl. Central `Theme` + per-call overrides. **Keyboard-focus-first, mouse deferred**: `ctx.focus` + `UiIntent` seam (input source is Phase 2), Linear-default focus scopes with opt-in Grid. Run-based text (`text` / `text_runs` inline color). Emit GL-ready buffers + draw-list (flat borders). Lean core widgets: column, row, grid, panel, spacer, text, button. (Toggle/slider/stepper → Phase 5 settings; text field/caret → Phase 4.)
+*Module layout (`od_ui/src/`, build in this order, `engine:check`/`engine:test` after each — do **not** write a `phase1.rs`):*
+- `id.rs` — `Id`, FNV-1a hash-chaining, ID stack, `scope()`, dev-mode dup detector (imgui-core §3).
+- `theme.rs` — `Theme`, `Style`/`Text` config + resolution against the theme (imgui-core §8).
+- `font/mod.rs` + `font/vga.rs` — `FontMetrics` trait + monospace VGA impl and baked metrics (text-and-font-metrics).
+- `text.rs` — run-based text model, measurement + wrapping through `FontMetrics` (text-and-font-metrics; layout-solver text-wrap).
+- `layout/config.rs` — `Layout` sizing/direction/padding/gap/align builder types (layout-solver).
+- `layout/solve.rs` — the Clay sizing passes: fit/grow/fixed/percent (layout-solver).
+- `retained.rs` — `Retained` side-table, `Entry`, immediate prune (imgui-core §6).
+- `focus.rs` — `ctx.focus`, `UiIntent`, Linear/Grid scopes + one-frame resolution (imgui-core §4).
+- `draw.rs` — draw-list + instance-arena emission into the `od_core` ABI records, flat borders (render-command-abi).
+- `widgets/` — column, row, grid, panel, spacer, text, button (one small file each or grouped; imgui-core §7).
+- `ui.rs` — the `Ui` context + `frame()` lifecycle wiring (imgui-core §9); `lib.rs` — module wiring + public surface.
+Same discipline applies to every phase, never a `phaseN.rs`. **Phases 2–4 have a decided module layout in their design docs** — build to it: Phase 2 → [`design/input-arena.md`](design/input-arena.md) §9; Phase 3 → [`design/domains-and-shell-router.md`](design/domains-and-shell-router.md) "Module layout"; Phase 4 → [`design/text-input-and-chat.md`](design/text-input-and-chat.md) "Module layout". **Phase 5's pending design interviews must each produce a module layout** in their `docs/design/*.md` before implementation, same as 2–4.
 
 **Phase 2 — Input.**
 Design nailed in [`design/input-arena.md`](design/input-arena.md).

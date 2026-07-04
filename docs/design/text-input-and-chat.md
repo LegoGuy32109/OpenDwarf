@@ -150,13 +150,18 @@ enum TextEdit {          // local session intents, field-focused only
 
 Edit-mode == the field is focused (chat opens directly into edit; a focus-then-activate
 mode for keyboard-navigated fields is deferred). When a text field gains/loses focus,
-wasm calls a host callback (same wasm-bindgen boundary chosen in Phase 3):
+`od_ui` emits a **`HostEffect`** (the pure `od_ui`→`od_wasm` boundary from
+domains-and-shell-router §4 — `od_ui` returns effects, `od_wasm` dispatches):
 
 ```rust
+// od_ui: add to the HostEffect enum
+enum HostEffect { /* LeaveGame, PersistSettings(..), */ SetTextCapture { active: bool, rect: Rect } }
+
+// od_wasm: dispatch -> extern (behind #[cfg(target_arch = "wasm32")])
 #[wasm_bindgen] extern "C" {
     fn host_set_text_capture(active: u32, x: f32, y: f32, w: f32, h: f32);
 }
-// active=1 -> TS .focus()es + positions the hidden <input> at (x,y,w,h) [visible caret]
+// active=1 -> TS .focus()es + positions the hidden <input> at rect [visible caret]
 // active=0 -> TS .blur()es it
 ```
 
@@ -217,7 +222,9 @@ for non-text scopes; inside a text field it is a normal character.
 ### 6.1 Session model (minimal, placeholder)
 
 Phase 4 introduces a minimal main-thread session model — a placeholder superseded by
-`od_world` / `ClientView` (Phase 5 / netcode track):
+`od_world` / `ClientView` (Phase 5 / netcode track). It lives in **`od_core`**
+(session-domain, networkable — the crate the native server reuses; `SessionIntent` is
+already there):
 
 ```rust
 struct SessionModel {
@@ -250,6 +257,29 @@ struct SessionModel {
   on-screen log may be added behind a debug flag for Phase-4 visibility.
 
 ---
+
+## Module layout
+
+Build one module at a time (`engine:check`/`engine:test` after each); never a `phase4.rs`.
+
+- **`od_core/src/`** — extend `input.rs` with the `Text` (=5) `EventKind` (`Composition`=6
+  reserved); extend `session.rs` with `chat_draft` / `messages` / `ChatMsg`; add the
+  chat/text edit variants to `SessionIntent`.
+- **`od_ui/src/`**
+  - `text/state.rs` — `TextState` (buf ref, caret, scroll, blink, `max_len`; `sel_anchor`
+    reserved) + the edit ops (`TextEdit` apply over the buffer + caret).
+  - `text/field.rs` — the reusable text-field widget: render (I-beam caret, scroll-to-caret,
+    scissor clip), focus↔`HostEffect::SetTextCapture`.
+  - `keymap.rs` (extend, Phase 2 module) — the **TextField context** (editing keys only;
+    others fall through as `Text`).
+  - `router.rs` (extend, Phase 3 module) — Escape prefers field-cancel when
+    `text_capture_active` (§4.2); add `SetTextCapture` to `HostEffect`.
+  - `chat.rs` — the chat bar UI + open/submit/cancel intents (§6.2).
+- **`od_wasm/src/`** — add the `host_set_text_capture` extern + dispatch the new
+  `HostEffect` variant; ingestion pruning (`font.has_glyph`) runs in `od_ui` on drain.
+- **TS (`engine/`)** — extend the capture layer: the hidden `<input>`, `beforeinput` →
+  `Text` events (clamp paste to `max_len`), no `preventDefault` on printables in capture
+  mode, and honor `DrawCmd.scissor` in the draw-list walker (first scissor consumer).
 
 ## 7. Done when
 

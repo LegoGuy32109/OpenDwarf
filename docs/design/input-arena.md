@@ -200,3 +200,26 @@ writing the arena instead of mutating a JS state object):
 - **Rebinding UI** and **repeat-timing settings** — Phase 5 sovereign settings.
 - **Worker input** — the world worker receives intents via `postMessage`, not this
   arena (parallel `od_world` track).
+
+## 9. Module layout
+
+Build one module at a time (`engine:check`/`engine:test` after each); never a `phase2.rs`.
+All input **semantics** (keymap, held-state, repeat) live in `od_ui` and are
+**native-tested**; `od_wasm` only owns the arena memory and hands `od_ui` a byte slice.
+
+- **`od_core/src/`**
+  - `keycode.rs` — the `KeyCode` enum (single source of truth; codegen'd into
+    `abi.generated.ts`, grows freely, `Unknown` stays 0).
+  - `input.rs` — `InputSampled`, `InputEvent`, `InputQueueHeader`, `EventKind`
+    (`#[repr(C)]` + `bytemuck` + `offset_of!` self-asserts; offsets folded into
+    `abi.generated.ts` via `abi:gen`, replacing the Phase-0 placeholder region).
+- **`od_ui/src/input/`**
+  - `decode.rs` — `bytemuck`-cast the arena byte slice → `&[InputEvent]`; read
+    `InputSampled`.
+  - `held.rs` — `HeldSet` reconstruction + the `dt_ms`-driven repeat timer.
+  - `keymap.rs` — the context-aware table → `UiIntent` stream (per active focus scope);
+    the test hook that injects `UiIntent`s directly bypasses this (§6).
+- **`od_wasm/src/`** — expose the input-arena `ptr`/`capacity` getters; in `frame()`, hand
+  the arena slice to `od_ui`. Thin glue only.
+- **TS (`engine/`)** — `input.ts`: the dumb capture layer (`event.code` → `KeyCode`,
+  `Blur`/`Resync`, sampled-state writes). No meaning.

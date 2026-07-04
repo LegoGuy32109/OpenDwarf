@@ -168,8 +168,8 @@ before the apply step):
 
 ## 4. Frame lifecycle & intent application
 
-`frame() -> u32` keeps its Phase-0/2 signature (draw_list_count; input already in
-memory). The two-domain orchestration:
+The **`od_wasm` wasm-bindgen `frame()` still returns `u32`** (draw_list_count) to JS.
+Internally, **`od_ui`'s frame returns `FrameOut { draw_list_count, host_effects: Vec<HostEffect> }`** (pure, native-testable); `od_wasm` dispatches `host_effects` to its extern callbacks and returns the count. The two-domain orchestration:
 
 ```
 frame():
@@ -191,17 +191,18 @@ frame():
     solve; emit draws (APPENDED after session -> paints on top);  widgets push into shell_out
 
   # --- apply intents (end-of-frame; §3.8 "applied after the frame") ---
+  host_effects := []                                              # od_ui collects, od_wasm dispatches
   apply_shell(shell_out):
     Open        -> shell.open = true;  shell.nav = Root
     Back        -> shell.nav.pop(); if was Root { shell.open = false }
     OpenSettings-> shell.nav.push(Settings)
-    ChangeSetting(UiScale(v)) -> settings.ui_scale = clamp(v,1,4); host_persist_settings(...)
-    LeaveGame   -> host_leave_game()                              # extern JS callback
+    ChangeSetting(UiScale(v)) -> settings.ui_scale = clamp(v,1,4); host_effects.push(PersistSettings(encode()))
+    LeaveGame   -> host_effects.push(LeaveGame)
   apply_session(session_out):                                     # Phase 3: no-op stub
 
   reset queue count = 0; clear overflow                           (input-arena §2b)
   prune shell.retained; prune session.retained                   (imgui-core §6)
-  return draw_list_count
+  return FrameOut { draw_list_count, host_effects }               # od_wasm dispatches host_effects to externs
 ```
 
 - **New values visible next frame.** A `ChangeSetting` applied at end-of-frame N is read
@@ -213,31 +214,44 @@ frame():
   shared arenas (rects/glyphs/draw-list) as Phase 0 — paint order *is* append order; no
   per-domain arenas.
 
-### Intent-out channel — wasm-bindgen JS callbacks
+### Intent-out channel — `HostEffect` return + wasm-bindgen JS callbacks
 
-Host-side effects (`LeaveGame`, `PersistSettings`, future `Disconnect`) cross to JS via
-imported functions, called during the end-of-frame apply step (inside the `frame()`
-FFI call, after build/solve/emit — never scattered mid-build):
+Two boundaries in series (both native-testable):
 
-```rust
-// od_wasm only, behind #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-extern "C" {
-    fn host_leave_game();
-    fn host_persist_settings(ptr: u32, len: u32);   // opaque settings bytes over linear memory
-    // reserved (MP): fn host_disconnect();
-}
-```
+1. **`od_ui` → `od_wasm` (pure):** host effects are an intent-output category. `od_ui`'s
+   frame returns `FrameOut { draw_list_count, host_effects: Vec<HostEffect> }`; it never
+   calls a host function. Native tests assert the returned `host_effects` list.
 
-- **Layering keeps `od_ui` pure.** `od_ui` *produces* `ShellIntent`s (native-testable);
-  `od_wasm`'s apply step *dispatches* the host-effecting ones to these externs. Off-wasm
-  (native tests), the extern calls are cfg'd out / stubbed — tests assert the emitted
-  intents, not the host effect.
+   ```rust
+   // od_ui
+   enum HostEffect {
+       LeaveGame,
+       PersistSettings(Vec<u8>),        // opaque encoded settings blob
+       // Phase 4: SetTextCapture { active: bool, rect: Rect }
+       // reserved (MP): Disconnect
+   }
+   ```
+
+2. **`od_wasm` → JS (wasm-bindgen):** `od_wasm`'s `frame()` dispatches each `HostEffect`
+   to an imported function after build/solve/emit, then returns the count.
+
+   ```rust
+   // od_wasm only, behind #[cfg(target_arch = "wasm32")]
+   #[wasm_bindgen] extern "C" {
+       fn host_leave_game();
+       fn host_persist_settings(ptr: u32, len: u32);   // opaque bytes over linear memory
+       // reserved (MP): fn host_disconnect();
+   }
+   // for e in out.host_effects { match e { LeaveGame => host_leave_game(), .. } }
+   ```
+
+- **Layering keeps `od_ui` pure — no trait, no dyn, no cfg.** Off-wasm, `od_ui` is
+  unchanged; only `od_wasm`'s dispatch is `#[cfg(wasm32)]`.
 - **JS must supply the imports.** `runtime.ts` provides `host_leave_game` /
   `host_persist_settings` in the import object the `--target web` glue expects.
 - Tradeoff accepted: this breaks the strict "one crossing, everything through arenas"
   discipline (an outbound host-command arena was the alternative). Justified because host
-  effects are rare and low-frequency; the callbacks read as ordinary function calls.
+  effects are rare and low-frequency; the calls read as ordinary function calls.
 
 ---
 
@@ -300,8 +314,9 @@ only proves the boot→restore path for the tiny settings blob.
 - **Boot hydration:** `engine.hydrate_settings(&[u8])` (wasm-bindgen method) called once
   at startup with the stored blob (empty → defaults). Mirrors the pragmatic callback
   boundary chosen in §4 rather than adding a second inbound arena.
-- **Persist on change:** the `ChangeSetting` apply calls `host_persist_settings(ptr,len)`;
-  JS reads the slice and writes it to `localStorage["od.settings"]`.
+- **Persist on change:** the `ChangeSetting` apply pushes `HostEffect::PersistSettings(bytes)`
+  (§4); `od_wasm` dispatches it to `host_persist_settings(ptr,len)`; JS reads the slice and
+  writes it to `localStorage["od.settings"]`.
 
 ```js
 // boot
@@ -317,6 +332,26 @@ function host_leave_game() { /* navigate away / tear down the /engine session */
 ```
 
 ---
+
+## Module layout
+
+Build one module at a time (`engine:check`/`engine:test` after each); never a `phase3.rs`.
+
+- **`od_core/src/`** — `intent.rs`: `SessionIntent` (session-domain, networkable — the native
+  server reuses it). *(`ShellIntent` does **not** live here — it is shell-local, see below.)*
+- **`od_ui/src/`**
+  - `domain.rs` — the generic `Domain` store machinery over the intent type; the distinct
+    `ShellDomain` / `SessionDomain` wrappers (§1).
+  - `router.rs` — the pre-keymap reserved-key router; `HostEffect` enum (§3, §4).
+  - `shell/intent.rs` — `ShellIntent`, `SettingChange` (shell-local, never networked).
+  - `shell/mod.rs` — the shell tree builder: scrim + Root / Settings pages, nav back-stack (§5).
+  - `settings.rs` — `Settings` model, clamp/apply, opaque encode (§6).
+  - `compositing` lives in the existing `draw` module (append-order, scrim).
+- **`od_wasm/src/`** — extend `frame()` to run the two-domain orchestration and dispatch
+  `FrameOut.host_effects` to the extern callbacks; add `host_leave_game` /
+  `host_persist_settings` externs + `hydrate_settings(&[u8])` (§4, §6). Thin glue only.
+- **TS (`engine/`)** — `runtime.ts`: supply the host-callback imports + `localStorage`
+  read/write; call `hydrate_settings` on boot.
 
 ## 7. Done when
 
