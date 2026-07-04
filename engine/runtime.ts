@@ -38,7 +38,10 @@ type EngineRuntime = {
   resources: ReturnType<typeof compilePrograms>;
   wasm: EngineWasmExports;
   engine: EngineHandle;
-  memory: WebAssembly.Memory;
+  // Snapshot of memory.buffer taken when the views below were derived. wasm
+  // memory growth detaches the old ArrayBuffer and swaps in a new one, so this
+  // is how we detect that the views are stale (see the grow-guard in frame()).
+  bufferRef: ArrayBuffer;
   rects: Float32Array;
   glyphs: Float32Array;
   drawlist: DataView;
@@ -99,7 +102,7 @@ function readDrawCmd(drawlist: DataView, index: number): DrawCmdView {
 function rederiveViews(runtime: EngineRuntime) {
   const { memory } = runtime.wasm;
   const engine = runtime.engine;
-  runtime.memory = memory;
+  runtime.bufferRef = memory.buffer;
   runtime.rects = new Float32Array(
     memory.buffer,
     engine.rect_ptr(),
@@ -135,7 +138,7 @@ function createRuntime(
     resources,
     wasm,
     engine,
-    memory: wasm.memory,
+    bufferRef: wasm.memory.buffer,
     rects: new Float32Array(),
     glyphs: new Float32Array(),
     drawlist: new DataView(new ArrayBuffer(0)),
@@ -237,7 +240,9 @@ export async function startEngineRenderLoop(
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
     const drawCount = runtime.engine.frame();
-    if (runtime.memory.buffer !== runtime.wasm.memory.buffer) {
+    // Grow-guard: if frame() grew wasm memory, the old ArrayBuffer is detached
+    // and our views point at freed memory — re-derive against the new buffer.
+    if (runtime.wasm.memory.buffer !== runtime.bufferRef) {
       rederiveViews(runtime);
     }
 
