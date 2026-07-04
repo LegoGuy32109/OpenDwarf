@@ -1,0 +1,10 @@
+[package]
+name = "od_core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+bincode.workspace = true
+serde.workspace = true
+

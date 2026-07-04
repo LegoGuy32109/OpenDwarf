@@ -1,0 +1,9 @@
+[package]
+name = "od_ui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+od_core = { path = "../od_core" }
+

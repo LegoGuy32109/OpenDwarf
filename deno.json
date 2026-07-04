@@ -1,7 +1,7 @@
 {
   "tasks": {
-    "fmt": "deno fmt && cd game_library && cargo fmt",
-    "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx && cd game_library && cargo check && cargo check --target wasm32-unknown-unknown",
+    "fmt": "deno fmt && cd game_library && cargo fmt && cd ../game_engine && cargo fmt --all",
+    "check": "deno fmt --check && deno lint && deno check **/*.ts && deno check **/*.tsx && cd game_library && cargo check && cargo check --target wasm32-unknown-unknown && cd ../game_engine && cargo check && cargo check --target wasm32-unknown-unknown",
     "dev": "vite",
     "start": "deno serve -A _fresh/server.js",
     "build": "vite build",
@@ -9,6 +9,11 @@
     "local": "cargo run --manifest-path ./game_library/Cargo.toml",
     "web-release": "bash scripts/bash/web-release.sh",
     "web-dev": "bash scripts/bash/web-dev.sh",
+    "abi:gen": "bash scripts/bash/engine-abi-gen.sh",
+    "engine:build": "bash scripts/bash/engine-build.sh",
+    "engine:dev": "bash scripts/bash/engine-dev.sh",
+    "engine:check": "bash scripts/bash/engine-check.sh",
+    "engine:test": "bash scripts/bash/engine-test.sh",
     "font:msdf": "deno run -A scripts/generate_vga_msdf.ts",
     "ui-test": "deno run -A scripts/webgl_review.ts",
     "unit": "deno test tests/unit/",

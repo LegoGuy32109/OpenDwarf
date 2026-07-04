@@ -1,0 +1,7 @@
+[package]
+name = "od_world"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+

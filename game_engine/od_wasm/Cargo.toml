@@ -1,0 +1,14 @@
+[package]
+name = "od_wasm"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+od_core = { path = "../od_core" }
+od_ui = { path = "../od_ui" }
+wasm-bindgen.workspace = true
+
