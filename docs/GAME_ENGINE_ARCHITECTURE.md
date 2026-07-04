@@ -178,17 +178,18 @@ The new engine is built **alongside** the existing `webgl2/` TS engine, not in p
 
 ### Design-doc process
 
-Each "Define"/"Decide" point in the phases is nailed down via a decision interview and saved under `docs/design/`, then linked from its phase. First one: [`design/render-command-abi.md`](design/render-command-abi.md).
+Each "Define"/"Decide" point in the phases is nailed down via a decision interview and saved under `docs/design/`, then linked from its phase. Completed: [`design/render-command-abi.md`](design/render-command-abi.md) (Phase 0); [`design/layout-solver.md`](design/layout-solver.md), [`design/imgui-core.md`](design/imgui-core.md), [`design/text-and-font-metrics.md`](design/text-and-font-metrics.md) (Phase 1).
 
 **Phase 0 — Foundation & ABI proof (walking skeleton).**
 Scaffold `game_engine/` + four crates + `deno task` build scripts (output `static/engine/`), on a **new `/engine` route** (existing `/webgl` untouched). Implement the render-command ABI per [`design/render-command-abi.md`](design/render-command-abi.md): the `#[repr(C)]`+`bytemuck` records (`DrawCmd`, `RectInstance`, `GlyphInstance`) with `offset_of!` self-asserts in `od_core`, the `abi:gen` codegen → `abi.generated.ts`, and the `UiEngine` handle (`new` / ptr+capacity getters / `frame() -> draw_list_count`). `frame()` fills the fixed arenas with one bordered rect + a line of text. TS instantiates the main-thread module, derives views once, per frame calls `frame()`, walks the draw-list, and uploads per-batch through the **existing** `ui-rect`/`ui-text` programs with the grow-guard.
 *Done when:* a bordered rect + "hello" render through the real Rust→wasm→GL zero-copy pipeline on `/engine`, with `abi.generated.ts` driving the TS consts.
 
 **Phase 1 — IMGUI core (`od_ui`).**
-Port Clay's solver (fit/grow/fixed/percent, direction, padding, gap, alignment, floating, scroll, wrap) with native unit tests. Closure API; hierarchical ID stack; explicit scoped ids; retained-state side-table + dev-mode dup detector. `FontMetrics` interface + monospace VGA impl. Emit GL-ready buffers + draw-list (scissor for clips, flat borders). Core widgets: panel, label, button, text field (caret), toggle, slider, scroll area, floating/tooltip.
+Design nailed in three docs: [`design/layout-solver.md`](design/layout-solver.md), [`design/imgui-core.md`](design/imgui-core.md), [`design/text-and-font-metrics.md`](design/text-and-font-metrics.md).
+Port Clay's solver — **core + text wrap** (fit/grow/fixed/percent, direction, padding, gap, alignment); **floating deferred to Phase 5, scroll/clip deferred until scissor** — with native unit tests. **Closure-scoped builder** API; hash-chained ids (FNV-1a, explicit keys for interactive widgets, `scope()` for lists, dev-mode dup detector); minimal retained-state side-table (last-rect + `frame_touched` + extension slot, immediate prune). Per-glyph `FontMetrics` trait + monospace VGA impl. Central `Theme` + per-call overrides. **Keyboard-focus-first, mouse deferred**: `ctx.focus` + `UiIntent` seam (input source is Phase 2), Linear-default focus scopes with opt-in Grid. Run-based text (`text` / `text_runs` inline color). Emit GL-ready buffers + draw-list (flat borders). Lean core widgets: column, row, grid, panel, spacer, text, button. (Toggle/slider/stepper → Phase 5 settings; text field/caret → Phase 4.)
 
 **Phase 2 — Input.**
-Fixed input arena (`DataView`), sampled state + event queue. JS capture → (stub) router → input queue. hot/active/focus resolution; hidden `<input>` text path. Widgets interactive; intents-out.
+Fixed input arena (`DataView`), sampled state + event queue. JS capture → (stub) router → input queue → the `UiIntent` seam defined in Phase 1 (`FocusNext/Prev`, `GridMove`, `Activate`, `Cancel`), driving keyboard focus/nav resolution. Mouse (pointer hit-testing, hot/active) is deferred; the hidden `<input>` text path lands with the text field in Phase 4. Widgets interactive; intents-out.
 
 **Phase 3 — Sovereign ESC menu (vertical slice + trust boundary).**
 Two structurally-isolated domains with separate retained stores. Sovereign context: ESC → settings + leave-game; composited last; reserved-key routing; sovereign intents applied locally; settings persisted. Proves the full trust boundary + compositing + persistence.
