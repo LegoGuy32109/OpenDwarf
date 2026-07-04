@@ -116,11 +116,11 @@ export class InputCapture {
   };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    window.addEventListener("keydown", this.onKeyDown, { passive: false });
-    window.addEventListener("keyup", this.onKeyUp, { passive: false });
-    window.addEventListener("blur", this.onBlur);
-    window.addEventListener("focus", this.onFocus);
-    window.addEventListener("resize", this.onResize);
+    globalThis.addEventListener("keydown", this.onKeyDown, { passive: false });
+    globalThis.addEventListener("keyup", this.onKeyUp, { passive: false });
+    globalThis.addEventListener("blur", this.onBlur);
+    globalThis.addEventListener("focus", this.onFocus);
+    globalThis.addEventListener("resize", this.onResize);
     document.addEventListener("visibilitychange", this.onResize);
     canvas.addEventListener("pointerdown", this.onPointerDown);
   }
@@ -151,11 +151,11 @@ export class InputCapture {
   }
 
   dispose() {
-    window.removeEventListener("keydown", this.onKeyDown);
-    window.removeEventListener("keyup", this.onKeyUp);
-    window.removeEventListener("blur", this.onBlur);
-    window.removeEventListener("focus", this.onFocus);
-    window.removeEventListener("resize", this.onResize);
+    globalThis.removeEventListener("keydown", this.onKeyDown);
+    globalThis.removeEventListener("keyup", this.onKeyUp);
+    globalThis.removeEventListener("blur", this.onBlur);
+    globalThis.removeEventListener("focus", this.onFocus);
+    globalThis.removeEventListener("resize", this.onResize);
     document.removeEventListener("visibilitychange", this.onResize);
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
   }

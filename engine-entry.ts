@@ -62,7 +62,7 @@ function startEngine() {
     stop?.();
     resizeObserver?.disconnect();
   };
-  window.addEventListener("pagehide", cleanup, { once: true });
+  globalThis.addEventListener("pagehide", cleanup, { once: true });
 }
 
 startEngine();

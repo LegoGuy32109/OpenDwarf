@@ -410,7 +410,7 @@ export function advanceWorldMovement(world: WorldSimState) {
 }
 
 function hasLos(
-  seed: string,
+  _seed: string,
   from: Vec3i,
   to: Vec3i,
   solidFn: (x: number, y: number, z: number) => boolean,

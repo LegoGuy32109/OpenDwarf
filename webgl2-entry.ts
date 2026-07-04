@@ -84,7 +84,7 @@ function startWebGl2Client() {
   canvas.tabIndex = 0;
   canvas.focus();
   canvas.addEventListener("pointerdown", handlePointerDown);
-  window.addEventListener("resize", handleResize);
+  globalThis.addEventListener("resize", handleResize);
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   const resizeObserver = shell ? new ResizeObserver(syncCanvas) : null;
   if (shell) {
@@ -97,11 +97,11 @@ function startWebGl2Client() {
     stopInput();
     stopRender();
     canvas.removeEventListener("pointerdown", handlePointerDown);
-    window.removeEventListener("resize", handleResize);
+    globalThis.removeEventListener("resize", handleResize);
     document.removeEventListener("fullscreenchange", handleFullscreenChange);
     resizeObserver?.disconnect();
   };
-  window.addEventListener("pagehide", cleanup, { once: true });
+  globalThis.addEventListener("pagehide", cleanup, { once: true });
 }
 
 startWebGl2Client();

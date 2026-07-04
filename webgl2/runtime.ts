@@ -10,7 +10,6 @@ import {
 } from "../lib/webgl-chunk-gen.ts";
 import {
   advanceWorldMovement,
-  entityRenderPosition,
   entityVisibilityPosition,
   generateWorldSolidChunk,
   recomputeFov,

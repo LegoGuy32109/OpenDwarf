@@ -170,16 +170,16 @@ export function createInputController(args: InputControllerArgs) {
       document.fullscreenElement === args.fullscreenTarget;
   };
 
-  window.addEventListener("keydown", handleKeyDown, { passive: false });
-  window.addEventListener("keyup", handleKeyUp);
-  window.addEventListener("blur", handleBlur);
+  globalThis.addEventListener("keydown", handleKeyDown, { passive: false });
+  globalThis.addEventListener("keyup", handleKeyUp);
+  globalThis.addEventListener("blur", handleBlur);
   document.addEventListener("fullscreenchange", handleFullscreenChange);
   args.canvas?.addEventListener("pointerdown", handlePointerDown);
 
   return () => {
-    window.removeEventListener("keydown", handleKeyDown);
-    window.removeEventListener("keyup", handleKeyUp);
-    window.removeEventListener("blur", handleBlur);
+    globalThis.removeEventListener("keydown", handleKeyDown);
+    globalThis.removeEventListener("keyup", handleKeyUp);
+    globalThis.removeEventListener("blur", handleBlur);
     document.removeEventListener("fullscreenchange", handleFullscreenChange);
     args.canvas?.removeEventListener("pointerdown", handlePointerDown);
   };
