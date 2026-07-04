@@ -2,6 +2,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod draw;
+pub mod input;
 pub mod focus;
 pub mod font;
 pub mod id;

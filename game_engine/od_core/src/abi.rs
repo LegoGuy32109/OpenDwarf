@@ -5,6 +5,20 @@ use std::mem;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
+use crate::input::{
+    INPUT_ARENA_EVENTS_OFFSET, INPUT_ARENA_QUEUE_OFFSET, INPUT_ARENA_SAMPLE_OFFSET,
+    INPUT_ARENA_SIZE_BYTES, INPUT_EVENT_CODE_OFFSET, INPUT_EVENT_KIND_OFFSET,
+    INPUT_EVENT_MODIFIERS_OFFSET, INPUT_EVENT_SIZE_BYTES, INPUT_EVENT_VALUE_OFFSET,
+    INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP, INPUT_KIND_RESYNC,
+    INPUT_KIND_UNKNOWN, INPUT_MODIFIER_ALT, INPUT_MODIFIER_CTRL, INPUT_MODIFIER_META,
+    INPUT_MODIFIER_SHIFT, INPUT_QUEUE_CAPACITY, INPUT_QUEUE_HEADER_COUNT_OFFSET,
+    INPUT_QUEUE_HEADER_OVERFLOW_OFFSET, INPUT_QUEUE_HEADER_SIZE_BYTES, INPUT_SAMPLE_BUTTONS_OFFSET,
+    INPUT_SAMPLE_DT_MS_OFFSET, INPUT_SAMPLE_DPR_OFFSET, INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET,
+    INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET, INPUT_SAMPLE_POINTER_X_OFFSET, INPUT_SAMPLE_POINTER_Y_OFFSET,
+    INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET, INPUT_SAMPLED_SIZE_BYTES,
+};
+use crate::keycode::KeyCode;
+
 pub const DRAWCMD_PROGRAM_RECT: u32 = 0;
 pub const DRAWCMD_PROGRAM_TEXT: u32 = 1;
 
@@ -199,10 +213,153 @@ pub fn ts_abi_source() -> String {
         "  GLYPH_INSTANCE_ALPHA_OFFSET: {},\n",
         GLYPH_INSTANCE_ALPHA_OFFSET
     ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLED_SIZE_BYTES: {},\n",
+        INPUT_SAMPLED_SIZE_BYTES
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET: {},\n",
+        INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET: {},\n",
+        INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_DPR_OFFSET: {},\n",
+        INPUT_SAMPLE_DPR_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_DT_MS_OFFSET: {},\n",
+        INPUT_SAMPLE_DT_MS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET: {},\n",
+        INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_POINTER_X_OFFSET: {},\n",
+        INPUT_SAMPLE_POINTER_X_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_POINTER_Y_OFFSET: {},\n",
+        INPUT_SAMPLE_POINTER_Y_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_SAMPLE_BUTTONS_OFFSET: {},\n",
+        INPUT_SAMPLE_BUTTONS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_QUEUE_HEADER_SIZE_BYTES: {},\n",
+        INPUT_QUEUE_HEADER_SIZE_BYTES
+    ));
+    out.push_str(&format!(
+        "  INPUT_QUEUE_HEADER_COUNT_OFFSET: {},\n",
+        INPUT_QUEUE_HEADER_COUNT_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_QUEUE_HEADER_OVERFLOW_OFFSET: {},\n",
+        INPUT_QUEUE_HEADER_OVERFLOW_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_EVENT_SIZE_BYTES: {},\n",
+        INPUT_EVENT_SIZE_BYTES
+    ));
+    out.push_str(&format!(
+        "  INPUT_EVENT_KIND_OFFSET: {},\n",
+        INPUT_EVENT_KIND_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_EVENT_MODIFIERS_OFFSET: {},\n",
+        INPUT_EVENT_MODIFIERS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_EVENT_CODE_OFFSET: {},\n",
+        INPUT_EVENT_CODE_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_EVENT_VALUE_OFFSET: {},\n",
+        INPUT_EVENT_VALUE_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_QUEUE_CAPACITY: {},\n",
+        INPUT_QUEUE_CAPACITY
+    ));
+    out.push_str(&format!(
+        "  INPUT_ARENA_SAMPLE_OFFSET: {},\n",
+        INPUT_ARENA_SAMPLE_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_ARENA_QUEUE_OFFSET: {},\n",
+        INPUT_ARENA_QUEUE_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_ARENA_EVENTS_OFFSET: {},\n",
+        INPUT_ARENA_EVENTS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  INPUT_ARENA_SIZE_BYTES: {},\n",
+        INPUT_ARENA_SIZE_BYTES
+    ));
+    out.push_str(&format!(
+        "  INPUT_KIND_UNKNOWN: {},\n",
+        INPUT_KIND_UNKNOWN
+    ));
+    out.push_str(&format!(
+        "  INPUT_KIND_KEY_DOWN: {},\n",
+        INPUT_KIND_KEY_DOWN
+    ));
+    out.push_str(&format!(
+        "  INPUT_KIND_KEY_UP: {},\n",
+        INPUT_KIND_KEY_UP
+    ));
+    out.push_str(&format!(
+        "  INPUT_KIND_BLUR: {},\n",
+        INPUT_KIND_BLUR
+    ));
+    out.push_str(&format!(
+        "  INPUT_KIND_RESYNC: {},\n",
+        INPUT_KIND_RESYNC
+    ));
+    out.push_str(&format!(
+        "  INPUT_MODIFIER_SHIFT: {},\n",
+        INPUT_MODIFIER_SHIFT
+    ));
+    out.push_str(&format!(
+        "  INPUT_MODIFIER_CTRL: {},\n",
+        INPUT_MODIFIER_CTRL
+    ));
+    out.push_str(&format!(
+        "  INPUT_MODIFIER_ALT: {},\n",
+        INPUT_MODIFIER_ALT
+    ));
+    out.push_str(&format!(
+        "  INPUT_MODIFIER_META: {},\n",
+        INPUT_MODIFIER_META
+    ));
+    out.push_str(&format!("  KEYCODE_UNKNOWN: {},\n", KeyCode::Unknown as u16));
+    out.push_str(&format!("  KEYCODE_ENTER: {},\n", KeyCode::Enter as u16));
+    out.push_str(&format!("  KEYCODE_ESCAPE: {},\n", KeyCode::Escape as u16));
+    out.push_str(&format!("  KEYCODE_SPACE: {},\n", KeyCode::Space as u16));
+    out.push_str(&format!("  KEYCODE_KEYI: {},\n", KeyCode::KeyI as u16));
+    out.push_str(&format!("  KEYCODE_KEYJ: {},\n", KeyCode::KeyJ as u16));
+    out.push_str(&format!("  KEYCODE_KEYK: {},\n", KeyCode::KeyK as u16));
+    out.push_str(&format!("  KEYCODE_KEYL: {},\n", KeyCode::KeyL as u16));
+    out.push_str(&format!("  KEYCODE_KEYQ: {},\n", KeyCode::KeyQ as u16));
+    out.push_str(&format!("  KEYCODE_KEYE: {},\n", KeyCode::KeyE as u16));
+    out.push_str(&format!("  KEYCODE_KEYS: {},\n", KeyCode::KeyS as u16));
+    out.push_str(&format!("  KEYCODE_KEYD: {},\n", KeyCode::KeyD as u16));
+    out.push_str(&format!("  KEYCODE_KEYF: {},\n", KeyCode::KeyF as u16));
     out.push_str("} as const);\n");
     out.push_str(
     "export type DrawCmdProgram = typeof ABI.DRAWCMD_PROGRAM_RECT | typeof ABI.DRAWCMD_PROGRAM_TEXT;\n",
   );
+    out.push_str(
+        "export type EventKind = typeof ABI.INPUT_KIND_UNKNOWN | typeof ABI.INPUT_KIND_KEY_DOWN | typeof ABI.INPUT_KIND_KEY_UP | typeof ABI.INPUT_KIND_BLUR | typeof ABI.INPUT_KIND_RESYNC;\n",
+    );
+    out.push_str(
+        "export type KeyCode = typeof ABI.KEYCODE_UNKNOWN | typeof ABI.KEYCODE_ENTER | typeof ABI.KEYCODE_ESCAPE | typeof ABI.KEYCODE_SPACE | typeof ABI.KEYCODE_KEYI | typeof ABI.KEYCODE_KEYJ | typeof ABI.KEYCODE_KEYK | typeof ABI.KEYCODE_KEYL | typeof ABI.KEYCODE_KEYQ | typeof ABI.KEYCODE_KEYE | typeof ABI.KEYCODE_KEYS | typeof ABI.KEYCODE_KEYD | typeof ABI.KEYCODE_KEYF;\n",
+    );
     out
 }
 

@@ -8,6 +8,7 @@ import { compilePrograms } from "../webgl2/programs/index.ts";
 import { TEXTURE_UNITS, uploadWhiteTo } from "../webgl2/texture-units.ts";
 import { loadUiFontAtlas } from "../webgl2/ui-text.ts";
 import initEngine, { UiEngine } from "../engine/generated/od_wasm.js";
+import { InputCapture } from "./input.ts";
 
 type EngineWasmExports = {
   memory: WebAssembly.Memory;
@@ -46,11 +47,8 @@ type EngineRuntime = {
   glyphs: Float32Array;
   drawlist: DataView;
   input: DataView;
+  inputCapture: InputCapture;
 };
-
-const INPUT_FRAMEBUFFER_WIDTH_OFFSET = 0;
-const INPUT_FRAMEBUFFER_HEIGHT_OFFSET = 4;
-const INPUT_DPR_OFFSET = 8;
 
 type DrawCmdView = {
   program: number;
@@ -123,6 +121,7 @@ function rederiveViews(runtime: EngineRuntime) {
     engine.input_ptr(),
     engine.input_capacity(),
   );
+  runtime.inputCapture.setArena(runtime.input);
 }
 
 function createRuntime(
@@ -143,6 +142,7 @@ function createRuntime(
     glyphs: new Float32Array(),
     drawlist: new DataView(new ArrayBuffer(0)),
     input: new DataView(new ArrayBuffer(0)),
+    inputCapture: new InputCapture(canvas),
   };
   rederiveViews(runtime);
   return runtime;
@@ -217,21 +217,7 @@ export async function startEngineRenderLoop(
     }
 
     syncCanvasSize(gl, canvas);
-    runtime.input.setUint32(
-      INPUT_FRAMEBUFFER_WIDTH_OFFSET,
-      canvas.width,
-      true,
-    );
-    runtime.input.setUint32(
-      INPUT_FRAMEBUFFER_HEIGHT_OFFSET,
-      canvas.height,
-      true,
-    );
-    runtime.input.setFloat32(
-      INPUT_DPR_OFFSET,
-      globalThis.devicePixelRatio || 1,
-      true,
-    );
+    runtime.inputCapture.beginFrame(now);
 
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0.11, 0.11, 0.13, 1);
@@ -259,6 +245,7 @@ export async function startEngineRenderLoop(
   return () => {
     stopped = true;
     globalThis.cancelAnimationFrame(rafId);
+    runtime.inputCapture.dispose();
   };
 }
 

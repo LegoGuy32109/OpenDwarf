@@ -50,7 +50,7 @@ export class UiEngine {
      * @returns {number}
      */
     abi_rect_stride() {
-        const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
+        const ret = wasm.uiengine_abi_rect_stride(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
