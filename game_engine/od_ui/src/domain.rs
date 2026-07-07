@@ -1,11 +1,13 @@
-use od_core::{DrawCmd, GlyphInstance, RectInstance};
+use od_core::{ChatMsg, DrawCmd, GlyphInstance, RectInstance, SessionIntent, SessionModel};
+use serde_json::json;
 
 use crate::{
     draw::FrameOutput,
     font::{FontMetrics, MonospaceVga},
     input::{DecodedInput, InputState},
-    primitives::Vec2,
+    primitives::{Rect, Vec2},
     router::{HostEffect, route},
+    text::state::TextState,
     settings::Settings,
     shell::{self, ShellIntent, ShellNav, ShellPage},
     ui::UiEngine,
@@ -23,6 +25,11 @@ pub struct ShellDomain<M: FontMetrics> {
 
 pub struct SessionDomain<M: FontMetrics> {
     pub ui: UiEngine<M>,
+    pub model: SessionModel,
+    capture_active: bool,
+    last_capture_active: bool,
+    last_capture_rect: Rect,
+    last_capture_max_len: u32,
 }
 
 #[derive(Debug)]
@@ -37,6 +44,11 @@ pub struct Engine<M: FontMetrics> {
     settings: Settings,
     input_state: InputState,
     prev_shell_open: bool,
+    prev_capture_active: bool,
+    frame_number: u64,
+    framebuffer_w: u32,
+    framebuffer_h: u32,
+    last_session_intent_count: u32,
     rects: Vec<RectInstance>,
     glyphs: Vec<GlyphInstance>,
     draw_cmds: Vec<DrawCmd>,
@@ -61,6 +73,11 @@ impl<M: FontMetrics + Clone> Engine<M> {
         };
         let session = SessionDomain {
             ui: UiEngine::with_font(font),
+            model: SessionModel::default(),
+            capture_active: false,
+            last_capture_active: false,
+            last_capture_rect: Rect::zero(),
+            last_capture_max_len: 256,
         };
         Self {
             shell,
@@ -68,6 +85,11 @@ impl<M: FontMetrics + Clone> Engine<M> {
             settings,
             input_state: InputState::default(),
             prev_shell_open: false,
+            prev_capture_active: false,
+            frame_number: 0,
+            framebuffer_w: 0,
+            framebuffer_h: 0,
+            last_session_intent_count: 0,
             rects: vec![RectInstance::default(); RECT_CAPACITY],
             glyphs: vec![GlyphInstance::default(); GLYPH_CAPACITY],
             draw_cmds: vec![DrawCmd::default(); DRAWCMD_CAPACITY],
@@ -113,6 +135,51 @@ impl<M: FontMetrics + Clone> Engine<M> {
         self.dropped_draw_cmds
     }
 
+    pub fn debug_snapshot_json(&self) -> String {
+        let shell_page = match self.shell.nav.current() {
+            ShellPage::Root => "root",
+            ShellPage::Settings => "settings",
+        };
+        let session_ui_mode = if self.session.capture_active {
+            "chat"
+        } else {
+            "world"
+        };
+        let messages = self
+            .session
+            .model
+            .messages
+            .iter()
+            .map(|msg| msg.text.clone())
+            .collect::<Vec<_>>();
+        json!({
+            "version": 1,
+            "frame": {
+                "number": self.frame_number,
+                "drawCount": self.draw_cmds.len() as u32,
+                "droppedRects": self.dropped_rects,
+                "droppedGlyphs": self.dropped_glyphs,
+                "droppedDrawCmds": self.dropped_draw_cmds,
+                "sessionIntentCount": self.last_session_intent_count,
+            },
+            "shell": {
+                "open": self.shell.open,
+                "page": shell_page,
+            },
+            "session": {
+                "uiMode": session_ui_mode,
+                "chatDraft": self.session.model.chat_draft.clone(),
+                "chatCaret": self.session.model.chat_caret,
+                "chatMessages": messages,
+            },
+            "render": {
+                "framebufferWidth": self.framebuffer_w,
+                "framebufferHeight": self.framebuffer_h,
+            },
+        })
+        .to_string()
+    }
+
     pub fn hydrate_settings(&mut self, bytes: &[u8]) {
         if let Some(settings) = Settings::decode(bytes) {
             self.settings = settings;
@@ -120,6 +187,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
     }
 
     pub fn frame(&mut self, input_bytes: &[u8]) -> FrameOut {
+        self.frame_number = self.frame_number.saturating_add(1);
         self.rects.fill(RectInstance::default());
         self.glyphs.fill(GlyphInstance::default());
         self.draw_cmds.fill(DrawCmd::default());
@@ -134,9 +202,9 @@ impl<M: FontMetrics + Clone> Engine<M> {
             };
         };
 
-        let routed = route(&decoded, self.shell.open);
+        let routed = route(&decoded, self.shell.open, self.session.capture_active);
         let shell_open = self.shell.open;
-        if self.prev_shell_open != shell_open {
+        if self.prev_shell_open != shell_open || self.prev_capture_active != self.session.capture_active {
             self.input_state.clear_repeats();
         }
         let filtered = DecodedInput {
@@ -144,22 +212,42 @@ impl<M: FontMetrics + Clone> Engine<M> {
             queue: decoded.queue,
             events: &routed.events,
         };
-        let ui_intents = self.input_state.frame(&filtered, crate::Focus::Linear);
+        let mode = if self.session.capture_active {
+            crate::input::InputMode::TextField
+        } else {
+            crate::input::InputMode::Gameplay
+        };
 
         let surface = Vec2::new(
             decoded.sampled.framebuffer_w as f32,
             decoded.sampled.framebuffer_h as f32,
         );
+        self.framebuffer_w = decoded.sampled.framebuffer_w;
+        self.framebuffer_h = decoded.sampled.framebuffer_h;
         let scale = self.settings.effective_scale(decoded.sampled.dpr);
         self.shell.ui.set_scale(scale);
         self.session.ui.set_scale(scale);
 
-        let session_output = if shell_open {
-            self.session
-                .ui
-                .frame_with_options(&[], |ui| build_session(ui), true)
-        } else {
-            self.session.ui.frame(&ui_intents, |ui| build_session(ui))
+        let keymap_out = {
+            let font = self.session.ui.font();
+            self.input_state.frame(&filtered, mode, font)
+        };
+        let mut session_intents = routed.session_intents;
+        session_intents.extend(keymap_out.session_intents);
+        let ui_intents = keymap_out.ui_intents;
+        self.last_session_intent_count = session_intents.len() as u32;
+
+        let mut chat_field_id = None;
+        let session_output = {
+            let SessionDomain {
+                ui,
+                model,
+                capture_active,
+                ..
+            } = &mut self.session;
+            ui.frame(&[], |ui| {
+                chat_field_id = build_session(ui, model, *capture_active);
+            })
         };
 
         let mut host_effects = Vec::new();
@@ -176,8 +264,14 @@ impl<M: FontMetrics + Clone> Engine<M> {
         for intent in shell_intents {
             self.apply_shell_intent(intent, &mut host_effects);
         }
+        for intent in session_intents {
+            self.apply_session_intent(intent, &mut host_effects);
+        }
+
+        self.update_text_capture_effects(&mut host_effects, chat_field_id);
 
         self.prev_shell_open = shell_open;
+        self.prev_capture_active = self.session.capture_active;
         self.merge_outputs(session_output, shell_output);
         FrameOut {
             draw_list_count: self.draw_cmds.len() as u32,
@@ -208,6 +302,91 @@ impl<M: FontMetrics + Clone> Engine<M> {
             ShellIntent::LeaveGame => {
                 host_effects.push(HostEffect::LeaveGame);
             }
+        }
+    }
+
+    fn apply_session_intent(&mut self, intent: SessionIntent, _host_effects: &mut Vec<HostEffect>) {
+        match intent {
+            SessionIntent::OpenChat { prefill } => {
+                self.session.capture_active = true;
+                let mut state = TextState::new(self.session.model.chat_draft.clone(), self.session.model.chat_caret, 256);
+                state.set_prefill(prefill);
+                self.session.model.chat_draft = state.buf;
+                self.session.model.chat_caret = state.caret;
+                self.session.model.chat_scroll_px = state.scroll_px;
+                self.session.model.chat_blink_ms = state.blink_ms;
+            }
+            SessionIntent::EditChat(edit) => {
+                if !self.session.capture_active {
+                    return;
+                }
+                let mut state = TextState::new(
+                    self.session.model.chat_draft.clone(),
+                    self.session.model.chat_caret,
+                    256,
+                );
+                let _ = state.apply_edit(edit, |ch| self.session.ui.font().has_glyph(ch));
+                self.session.model.chat_draft = state.buf;
+                self.session.model.chat_caret = state.caret;
+                self.session.model.chat_scroll_px = state.scroll_px;
+                self.session.model.chat_blink_ms = state.blink_ms;
+            }
+            SessionIntent::SubmitChat => {
+                if !self.session.capture_active {
+                    return;
+                }
+                let mut state = TextState::new(
+                    self.session.model.chat_draft.clone(),
+                    self.session.model.chat_caret,
+                    256,
+                );
+                if let Some(text) = state.submit_trimmed() {
+                    self.session.model.push_message(ChatMsg::new(text));
+                }
+                self.session.model.chat_draft = state.buf;
+                self.session.model.chat_caret = state.caret;
+                self.session.model.chat_scroll_px = state.scroll_px;
+                self.session.model.chat_blink_ms = state.blink_ms;
+                self.session.capture_active = false;
+            }
+            SessionIntent::CancelChat => {
+                if !self.session.capture_active {
+                    return;
+                }
+                self.session.model.chat_draft.clear();
+                self.session.model.chat_caret = 0;
+                self.session.model.chat_scroll_px = 0.0;
+                self.session.model.chat_blink_ms = 0.0;
+                self.session.capture_active = false;
+            }
+        }
+    }
+
+    fn update_text_capture_effects(
+        &mut self,
+        host_effects: &mut Vec<HostEffect>,
+        chat_field_id: Option<crate::id::Id>,
+    ) {
+        let active = self.session.capture_active;
+        let rect = chat_field_id
+            .and_then(|id| self.session.ui.rect_of(id))
+            .unwrap_or(Rect::zero());
+        let max_len = 256_u32;
+        if active != self.session.last_capture_active
+            || rect != self.session.last_capture_rect
+            || max_len != self.session.last_capture_max_len
+        {
+            host_effects.push(HostEffect::SetTextCapture {
+                active,
+                x: rect.x,
+                y: rect.y,
+                w: rect.w,
+                h: rect.h,
+                max_len,
+            });
+            self.session.last_capture_active = active;
+            self.session.last_capture_rect = rect;
+            self.session.last_capture_max_len = max_len;
         }
     }
 
@@ -257,11 +436,16 @@ impl<M: FontMetrics + Clone> Engine<M> {
     }
 }
 
-fn build_session<M: FontMetrics>(ui: &mut crate::Ui<'_, M>) {
+fn build_session<M: FontMetrics>(
+    ui: &mut crate::Ui<'_, M>,
+    model: &SessionModel,
+    capture_active: bool,
+) -> Option<crate::id::Id> {
+    let mut chat_field_id = None;
     ui.column(
         crate::Layout::new()
             .grow()
-            .align(crate::Alignment::Center, crate::Alignment::Center),
+            .align(crate::Alignment::Center, crate::Alignment::End),
         |ui| {
             ui.panel(
                 crate::Style::default()
@@ -269,16 +453,32 @@ fn build_session<M: FontMetrics>(ui: &mut crate::Ui<'_, M>) {
                     .border_with(ui.build.theme.border, 1.0),
                 |ui| {
                     ui.column(
-                        crate::Layout::new().pad(crate::Padding::all(12.0)).gap(8.0),
+                        crate::Layout::new().pad(crate::Padding::all(10.0)).gap(6.0),
                         |ui| {
-                            ui.text("Session HUD", crate::TextStyle::default());
-                            ui.text("Placeholder", crate::TextStyle::default());
+                            ui.text("Session", crate::TextStyle::default());
+                            ui.text(
+                                if capture_active { "Chat active" } else { "World" },
+                                crate::TextStyle::default(),
+                            );
+                            let visible = model.messages.iter().rev().take(3).rev();
+                            for msg in visible {
+                                ui.text(&msg.text, crate::TextStyle::default());
+                            }
+                            let state = TextState::new(model.chat_draft.clone(), model.chat_caret, 256);
+                            let response = ui.text_field(
+                                "chat_field",
+                                &state,
+                                crate::TextStyle::default().wrap(false),
+                                capture_active,
+                            );
+                            chat_field_id = Some(response.id);
                         },
                     );
                 },
             );
         },
     );
+    chat_field_id
 }
 
 #[cfg(test)]
@@ -356,7 +556,7 @@ mod tests {
             },
             events: &events,
         };
-        let routed = router::route(&decoded, false);
+        let routed = router::route(&decoded, false, false);
         assert_eq!(routed.shell_intents, vec![ShellIntent::Open]);
     }
 }

@@ -54,7 +54,9 @@ function startEngine() {
   });
 
   let stop: (() => void) | null = null;
-  void startEngineClient(canvas, errorOverlay).then((cleanup) => {
+  const harness = new URL(globalThis.location.href).searchParams.get("harness") ===
+    "1";
+  void startEngineClient(canvas, errorOverlay, { harness }).then((cleanup) => {
     stop = cleanup;
   });
 

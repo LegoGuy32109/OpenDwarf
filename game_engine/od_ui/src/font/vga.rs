@@ -55,6 +55,10 @@ impl FontMetrics for MonospaceVga {
         }
     }
 
+    fn has_glyph(&self, ch: char) -> bool {
+        matches!(ch, c if (VGA_FIRST_CHAR..=VGA_LAST_CHAR).contains(&(c as u32)))
+    }
+
     fn measure_line(&self, s: &str, px: f32) -> Vec2 {
         let mut width: f32 = 0.0;
         let tab_stop = self.advance(' ', px) * 4.0;

@@ -34,6 +34,8 @@ pub const INPUT_KIND_KEY_DOWN: u8 = EventKind::KeyDown as u8;
 pub const INPUT_KIND_KEY_UP: u8 = EventKind::KeyUp as u8;
 pub const INPUT_KIND_BLUR: u8 = EventKind::Blur as u8;
 pub const INPUT_KIND_RESYNC: u8 = EventKind::Resync as u8;
+pub const INPUT_KIND_TEXT: u8 = EventKind::Text as u8;
+pub const INPUT_KIND_COMPOSITION: u8 = EventKind::Composition as u8;
 
 pub const INPUT_MODIFIER_SHIFT: u8 = 1 << 0;
 pub const INPUT_MODIFIER_CTRL: u8 = 1 << 1;
@@ -48,6 +50,8 @@ pub enum EventKind {
     KeyUp = 2,
     Blur = 3,
     Resync = 4,
+    Text = 5,
+    Composition = 6,
 }
 
 impl EventKind {
@@ -57,6 +61,8 @@ impl EventKind {
             2 => Self::KeyUp,
             3 => Self::Blur,
             4 => Self::Resync,
+            5 => Self::Text,
+            6 => Self::Composition,
             _ => Self::Unknown,
         }
     }

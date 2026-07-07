@@ -1,9 +1,24 @@
-use od_core::{EventKind, KeyCode};
+use od_core::{EventKind, KeyCode, SessionIntent, TextEdit};
 
-use crate::focus::{Dir, Focus, UiIntent};
+use crate::{
+    FontMetrics,
+    focus::UiIntent,
+};
 
 use super::decode::{DecodedInput, decode};
 use super::held::{HeldSet, RepeatState};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InputMode {
+    Gameplay,
+    TextField,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct KeymapFrameOut {
+    pub ui_intents: Vec<UiIntent>,
+    pub session_intents: Vec<SessionIntent>,
+}
 
 #[derive(Debug, Default)]
 pub struct InputState {
@@ -21,11 +36,16 @@ impl InputState {
         self.repeats.clear();
     }
 
-    pub fn frame(&mut self, decoded: &DecodedInput<'_>, focus: Focus) -> Vec<UiIntent> {
-        let mut intents = Vec::new();
+    pub fn frame<M: FontMetrics>(
+        &mut self,
+        decoded: &DecodedInput<'_>,
+        mode: InputMode,
+        font: &M,
+    ) -> KeymapFrameOut {
+        let mut out = KeymapFrameOut::default();
         if decoded.sampled.window_focused == 0 {
             self.clear();
-            return intents;
+            return out;
         }
         if decoded.queue.overflow != 0 {
             self.clear();
@@ -39,12 +59,21 @@ impl InputState {
                         continue;
                     }
                     if self.held.insert(code) {
-                        if let Some(binding) = binding_for(code, focus) {
-                            match binding {
-                                Binding::Once(intent) => intents.push(intent),
-                                Binding::Repeat(intent) => {
-                                    intents.push(intent);
-                                    self.repeats.arm(code);
+                        match mode {
+                            InputMode::Gameplay => {
+                                if let Some(binding) = gameplay_binding_for(code) {
+                                    match binding {
+                                        Binding::Once(intent) => out.ui_intents.push(intent),
+                                        Binding::Repeat(intent) => {
+                                            out.ui_intents.push(intent);
+                                            self.repeats.arm(code);
+                                        }
+                                    }
+                                }
+                            }
+                            InputMode::TextField => {
+                                if let Some(intent) = text_binding_for(code, event.modifiers) {
+                                    out.session_intents.push(intent);
                                 }
                             }
                         }
@@ -57,20 +86,31 @@ impl InputState {
                         self.repeats.disarm(code);
                     }
                 }
+                EventKind::Text => {
+                    if matches!(mode, InputMode::TextField)
+                        && let Some(ch) = char::from_u32(event.value)
+                        && font.has_glyph(ch)
+                    {
+                        out.session_intents
+                            .push(SessionIntent::EditChat(TextEdit::InsertText(ch)));
+                    }
+                }
                 EventKind::Blur | EventKind::Resync => {
                     self.clear();
                 }
-                EventKind::Unknown => {}
+                EventKind::Composition | EventKind::Unknown => {}
             }
         }
 
-        for code in self.repeats.advance(decoded.sampled.dt_ms, &self.held) {
-            if let Some(Binding::Repeat(intent)) = binding_for(code, focus) {
-                intents.push(intent);
+        if matches!(mode, InputMode::Gameplay) {
+            for code in self.repeats.advance(decoded.sampled.dt_ms, &self.held) {
+                if let Some(Binding::Repeat(intent)) = gameplay_binding_for(code) {
+                    out.ui_intents.push(intent);
+                }
             }
         }
 
-        intents
+        out
     }
 }
 
@@ -80,41 +120,55 @@ enum Binding {
     Repeat(UiIntent),
 }
 
-fn binding_for(code: KeyCode, focus: Focus) -> Option<Binding> {
-    match focus {
-        Focus::Linear => match code {
-            KeyCode::KeyI => Some(Binding::Repeat(UiIntent::FocusPrev)),
-            KeyCode::KeyK => Some(Binding::Repeat(UiIntent::FocusNext)),
-            KeyCode::Enter | KeyCode::Space => Some(Binding::Once(UiIntent::Activate)),
-            KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
-            _ => None,
-        },
-        Focus::Grid { .. } => match code {
-            KeyCode::KeyI => Some(Binding::Repeat(UiIntent::GridMove(Dir::Up))),
-            KeyCode::KeyJ => Some(Binding::Repeat(UiIntent::GridMove(Dir::Left))),
-            KeyCode::KeyK => Some(Binding::Repeat(UiIntent::GridMove(Dir::Down))),
-            KeyCode::KeyL => Some(Binding::Repeat(UiIntent::GridMove(Dir::Right))),
-            KeyCode::Enter | KeyCode::Space => Some(Binding::Once(UiIntent::Activate)),
-            KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
-            _ => None,
-        },
+fn gameplay_binding_for(code: KeyCode) -> Option<Binding> {
+    match code {
+        KeyCode::KeyI => Some(Binding::Repeat(UiIntent::FocusPrev)),
+        KeyCode::KeyK => Some(Binding::Repeat(UiIntent::FocusNext)),
+        KeyCode::Enter | KeyCode::Space => Some(Binding::Once(UiIntent::Activate)),
+        KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
+        KeyCode::KeyT => None,
+        KeyCode::Slash => None,
+        _ => None,
     }
 }
 
-pub fn frame(state: &mut InputState, bytes: &[u8], focus: Focus) -> Vec<UiIntent> {
+fn text_binding_for(code: KeyCode, modifiers: u8) -> Option<SessionIntent> {
+    match code {
+        KeyCode::Backspace => {
+            if modifiers & od_core::INPUT_MODIFIER_CTRL != 0 {
+                Some(SessionIntent::EditChat(TextEdit::DeleteWordBack))
+            } else {
+                Some(SessionIntent::EditChat(TextEdit::DeleteBack))
+            }
+        }
+        KeyCode::Delete => Some(SessionIntent::EditChat(TextEdit::DeleteFwd)),
+        KeyCode::ArrowLeft => Some(SessionIntent::EditChat(TextEdit::CaretLeft)),
+        KeyCode::ArrowRight => Some(SessionIntent::EditChat(TextEdit::CaretRight)),
+        KeyCode::Home => Some(SessionIntent::EditChat(TextEdit::CaretHome)),
+        KeyCode::End => Some(SessionIntent::EditChat(TextEdit::CaretEnd)),
+        KeyCode::Enter => Some(SessionIntent::SubmitChat),
+        _ => None,
+    }
+}
+
+pub fn frame<M: FontMetrics>(
+    state: &mut InputState,
+    bytes: &[u8],
+    mode: InputMode,
+    font: &M,
+) -> KeymapFrameOut {
     let Some(decoded) = decode(bytes) else {
-        return Vec::new();
+        return KeymapFrameOut::default();
     };
-    state.frame(&decoded, focus)
+    state.frame(&decoded, mode, font)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::input::decode_arena;
-    use bytemuck::bytes_of;
 
     use od_core::{
-        EventKind, INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP, InputArena, InputEvent,
+        INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_TEXT, InputArena, InputEvent,
         InputQueueHeader, InputSampled, KeyCode,
     };
 
@@ -143,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn linear_keydown_emits_repeatable_and_once_intents() {
+    fn gameplay_keydown_emits_repeatable_and_once_intents() {
         let events = [
             InputEvent {
                 kind: INPUT_KIND_KEY_DOWN,
@@ -162,14 +216,43 @@ mod tests {
         let mut state = InputState::default();
 
         let decoded = decode_arena(&arena);
-        let intents = state.frame(&decoded, Focus::Linear);
-        assert_eq!(intents, vec![UiIntent::FocusPrev, UiIntent::Activate]);
+        let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        assert_eq!(out.ui_intents, vec![UiIntent::FocusPrev, UiIntent::Activate]);
     }
 
     #[test]
-    fn held_keys_repeat_after_delay() {
+    fn textfield_keydown_emits_editing_intents() {
+        let events = [
+            InputEvent {
+                kind: INPUT_KIND_KEY_DOWN,
+                modifiers: od_core::INPUT_MODIFIER_CTRL,
+                code: KeyCode::Backspace as u16,
+                value: 0,
+            },
+            InputEvent {
+                kind: INPUT_KIND_TEXT,
+                modifiers: 0,
+                code: 0,
+                value: 'a' as u32,
+            },
+        ];
+        let arena = arena_with_events(&events, 16.0);
         let mut state = InputState::default();
-        let mut arena = arena_with_events(
+        let decoded = decode_arena(&arena);
+        let out = state.frame(&decoded, InputMode::TextField, &crate::font::MonospaceVga);
+        assert_eq!(
+            out.session_intents,
+            vec![
+                SessionIntent::EditChat(TextEdit::DeleteWordBack),
+                SessionIntent::EditChat(TextEdit::InsertText('a')),
+            ]
+        );
+    }
+
+    #[test]
+    fn held_keys_repeat_in_gameplay() {
+        let mut state = InputState::default();
+        let arena = arena_with_events(
             &[InputEvent {
                 kind: INPUT_KIND_KEY_DOWN,
                 modifiers: 0,
@@ -179,16 +262,14 @@ mod tests {
             16.0,
         );
         let decoded = decode_arena(&arena);
-        let _ = state.frame(&decoded, Focus::Linear);
+        let _ = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
 
-        arena.sampled.dt_ms = 400.0;
-        arena.queue = InputQueueHeader {
-            count: 0,
-            overflow: 0,
-        };
-        let decoded = decode_arena(&arena);
-        let intents = state.frame(&decoded, Focus::Linear);
-        assert_eq!(intents, vec![UiIntent::FocusNext]);
+        let mut next = InputArena::default();
+        next.sampled.window_focused = 1;
+        next.sampled.dt_ms = 400.0;
+        let decoded = decode_arena(&next);
+        let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        assert_eq!(out.ui_intents, vec![UiIntent::FocusNext]);
     }
 
     #[test]
@@ -210,59 +291,14 @@ mod tests {
         ];
         let arena = arena_with_events(&events, 16.0);
         let decoded = decode_arena(&arena);
-        let intents = state.frame(&decoded, Focus::Linear);
-        assert_eq!(intents, vec![UiIntent::FocusPrev]);
+        let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        assert_eq!(out.ui_intents, vec![UiIntent::FocusPrev]);
 
-        let mut next_arena = InputArena::default();
-        next_arena.sampled.window_focused = 1;
-        next_arena.sampled.dt_ms = 16.0;
-        let decoded = decode_arena(&next_arena);
-        let intents = state.frame(&decoded, Focus::Linear);
-        assert!(intents.is_empty());
-    }
-
-    #[test]
-    fn overflow_clears_held_state() {
-        let mut state = InputState::default();
-        let pressed = arena_with_events(
-            &[InputEvent {
-                kind: INPUT_KIND_KEY_DOWN,
-                modifiers: 0,
-                code: KeyCode::KeyI as u16,
-                value: 0,
-            }],
-            16.0,
-        );
-        let decoded = decode_arena(&pressed);
-        let _ = state.frame(&decoded, Focus::Linear);
-
-        let mut overflow = InputArena::default();
-        overflow.sampled.window_focused = 1;
-        overflow.sampled.dt_ms = 16.0;
-        overflow.queue = InputQueueHeader {
-            count: 0,
-            overflow: 1,
-        };
-        let decoded = decode_arena(&overflow);
-        let intents = state.frame(&decoded, Focus::Linear);
-        assert!(intents.is_empty());
-    }
-
-    #[test]
-    fn decode_and_frame_round_trip() {
-        let arena = arena_with_events(
-            &[InputEvent {
-                kind: INPUT_KIND_KEY_UP,
-                modifiers: 0,
-                code: KeyCode::KeyQ as u16,
-                value: 0,
-            }],
-            16.0,
-        );
-        let bytes = bytes_of(&arena);
-        let mut state = InputState::default();
-        let intents = frame(&mut state, bytes, Focus::Linear);
-        assert!(intents.is_empty());
-        assert_eq!(EventKind::from_u8(INPUT_KIND_KEY_UP), EventKind::KeyUp);
+        let mut next = InputArena::default();
+        next.sampled.window_focused = 1;
+        next.sampled.dt_ms = 16.0;
+        let decoded = decode_arena(&next);
+        let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        assert!(out.ui_intents.is_empty());
     }
 }

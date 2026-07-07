@@ -15,6 +15,9 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = globalThis)]
     fn host_persist_settings(ptr: u32, len: u32);
+
+    #[wasm_bindgen(js_namespace = globalThis)]
+    fn host_set_text_capture(active: u32, x: f32, y: f32, w: f32, h: f32, max_len: u32);
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -105,6 +108,10 @@ impl UiEngine {
         ProgramId::Text.as_u32()
     }
 
+    pub fn debug_snapshot_json(&self) -> String {
+        self.engine.debug_snapshot_json()
+    }
+
     pub fn hydrate_settings(&mut self, bytes: &[u8]) {
         self.engine.hydrate_settings(bytes);
     }
@@ -137,5 +144,13 @@ fn dispatch_host_effect(effect: HostEffect) {
         HostEffect::PersistSettings(bytes) => {
             host_persist_settings(bytes.as_ptr() as u32, bytes.len() as u32);
         }
+        HostEffect::SetTextCapture {
+            active,
+            x,
+            y,
+            w,
+            h,
+            max_len,
+        } => host_set_text_capture(u32::from(active), x, y, w, h, max_len),
     }
 }

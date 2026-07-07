@@ -32,6 +32,7 @@ type EngineHandle = {
   abi_glyph_stride_floats(): number;
   abi_program_rect(): number;
   abi_program_text(): number;
+  debug_snapshot_json(): string;
 };
 
 type EngineRuntime = {
@@ -49,6 +50,8 @@ type EngineRuntime = {
   drawlist: DataView;
   input: DataView;
   inputCapture: InputCapture;
+  harnessEnabled: boolean;
+  syntheticNow: number;
 };
 
 const SETTINGS_STORAGE_KEY = "od.settings";
@@ -56,15 +59,39 @@ const SETTINGS_STORAGE_KEY = "od.settings";
 type EngineGlobals = typeof globalThis & {
   host_leave_game?: () => void;
   host_persist_settings?: (ptr: number, len: number) => void;
+  host_set_text_capture?: (
+    active: number,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    maxLen: number,
+  ) => void;
 };
 
 let leaveGameHandler: () => void = () => {};
 let persistSettingsHandler: (ptr: number, len: number) => void = () => {};
+let setTextCaptureHandler: (
+  active: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  maxLen: number,
+) => void = () => {};
 
 const engineGlobals = globalThis as EngineGlobals;
 engineGlobals.host_leave_game = () => leaveGameHandler();
 engineGlobals.host_persist_settings = (ptr: number, len: number) =>
   persistSettingsHandler(ptr, len);
+engineGlobals.host_set_text_capture = (
+  active: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  maxLen: number,
+) => setTextCaptureHandler(active, x, y, w, h, maxLen);
 
 type DrawCmdView = {
   program: number;
@@ -196,9 +223,188 @@ function createRuntime(
     drawlist: new DataView(new ArrayBuffer(0)),
     input: new DataView(new ArrayBuffer(0)),
     inputCapture: new InputCapture(canvas),
+    harnessEnabled: false,
+    syntheticNow: 0,
   };
   rederiveViews(runtime);
   return runtime;
+}
+
+function renderFrame(runtime: EngineRuntime, now: number) {
+  const { gl, canvas } = runtime;
+  syncCanvasSize(gl, canvas);
+  runtime.inputCapture.beginFrame(now);
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.11, 0.11, 0.13, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  const drawCount = runtime.engine.frame();
+  if (runtime.wasm.memory.buffer !== runtime.bufferRef) {
+    rederiveViews(runtime);
+  }
+
+  for (let i = 0; i < drawCount; i++) {
+    const cmd = readDrawCmd(runtime.drawlist, i);
+    uploadAndDraw(runtime, cmd, now);
+  }
+}
+
+function readSnapshot(runtime: EngineRuntime) {
+  return JSON.parse(runtime.engine.debug_snapshot_json()) as Record<
+    string,
+    unknown
+  >;
+}
+
+type EngineHarness = {
+  version: 1;
+  input: {
+    press(code: string, modifiers?: number): Promise<void>;
+    typeText(text: string): Promise<void>;
+    paste(text: string): Promise<void>;
+  };
+  stepFrame(n?: number): Promise<void>;
+  snapshot(): Record<string, unknown>;
+};
+
+type EngineGlobalHarness = typeof globalThis & {
+  __openDwarfEngineHarness?: EngineHarness;
+};
+
+function installHarness(
+  runtime: EngineRuntime,
+  canvas: HTMLCanvasElement,
+): EngineHarness {
+  const keyForCode = (code: string) => {
+    if (code.startsWith("Key")) {
+      return code.slice(3).toLowerCase();
+    }
+    if (code.startsWith("Digit")) {
+      return code.slice(5);
+    }
+    switch (code) {
+      case "Space":
+        return " ";
+      case "Slash":
+        return "/";
+      case "Enter":
+        return "Enter";
+      case "Escape":
+        return "Escape";
+      case "Backspace":
+        return "Backspace";
+      case "Delete":
+        return "Delete";
+      case "ArrowLeft":
+        return "ArrowLeft";
+      case "ArrowRight":
+        return "ArrowRight";
+      case "Home":
+        return "Home";
+      case "End":
+        return "End";
+      default:
+        return code;
+    }
+  };
+  const input = {
+    press: async (code: string, modifiers = 0) => {
+      const key = keyForCode(code);
+      const keyDown = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key,
+        code,
+        ctrlKey: (modifiers & ABI.INPUT_MODIFIER_CTRL) !== 0,
+        altKey: (modifiers & ABI.INPUT_MODIFIER_ALT) !== 0,
+        shiftKey: (modifiers & ABI.INPUT_MODIFIER_SHIFT) !== 0,
+        metaKey: (modifiers & ABI.INPUT_MODIFIER_META) !== 0,
+      });
+      const keyUp = new KeyboardEvent("keyup", {
+        bubbles: true,
+        cancelable: true,
+        key,
+        code,
+        ctrlKey: (modifiers & ABI.INPUT_MODIFIER_CTRL) !== 0,
+        altKey: (modifiers & ABI.INPUT_MODIFIER_ALT) !== 0,
+        shiftKey: (modifiers & ABI.INPUT_MODIFIER_SHIFT) !== 0,
+        metaKey: (modifiers & ABI.INPUT_MODIFIER_META) !== 0,
+      });
+      for (const event of [keyDown, keyUp]) {
+        try {
+          Object.defineProperty(event, "code", { get: () => code });
+          Object.defineProperty(event, "key", { get: () => key });
+        } catch {
+          // Best-effort; browser support varies for synthetic KeyboardEvent fields.
+        }
+      }
+      runtime.inputCapture.setArena(runtime.input);
+      window.dispatchEvent(keyDown);
+      window.dispatchEvent(keyUp);
+    },
+    typeText: async (text: string) => {
+      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      if (!inputEl) {
+        throw new Error("hidden text input is unavailable");
+      }
+      for (const ch of text) {
+        const ev = new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          data: ch,
+          inputType: "insertText",
+        });
+        inputEl.dispatchEvent(ev);
+      }
+    },
+    paste: async (text: string) => {
+      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      if (!inputEl) {
+        throw new Error("hidden text input is unavailable");
+      }
+      const ev = new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data: text,
+        inputType: "insertFromPaste",
+      });
+      inputEl.dispatchEvent(ev);
+    },
+  };
+
+  return {
+    version: 1,
+    input,
+    stepFrame: async (n = 1) => {
+      for (let index = 0; index < n; index++) {
+        runtime.syntheticNow += 16;
+        renderFrame(runtime, runtime.syntheticNow);
+      }
+    },
+    snapshot: () => {
+      const snapshot = readSnapshot(runtime);
+      const snapshotInput = (snapshot.input as Record<string, unknown>) ?? {};
+      const snapshotRender = (snapshot.render as Record<string, unknown>) ?? {};
+      return {
+        version: 1,
+        ...snapshot,
+        input: {
+          ...snapshotInput,
+          canvasFocused: document.activeElement === canvas,
+          textCaptureActive: runtime.inputCapture.isCaptureActive(),
+          hiddenInputFocused: runtime.inputCapture.isHiddenInputFocused(),
+        },
+        render: {
+          ...snapshotRender,
+          framebufferWidth: canvas.width,
+          framebufferHeight: canvas.height,
+        },
+      };
+    },
+  };
 }
 
 function uploadAndDraw(runtime: EngineRuntime, cmd: DrawCmdView, now: number) {
@@ -245,6 +451,7 @@ function uploadAndDraw(runtime: EngineRuntime, cmd: DrawCmdView, now: number) {
 
 export async function startEngineRenderLoop(
   canvas: HTMLCanvasElement,
+  options: { harness?: boolean } = {},
 ): Promise<() => void> {
   const boot = bootWebGl2Renderer(canvas);
   if (!boot) {
@@ -261,6 +468,7 @@ export async function startEngineRenderLoop(
   const engine = new UiEngine();
   engine.hydrate_settings(loadPersistedSettings());
   const runtime = createRuntime(gl, canvas, resources, wasm, engine);
+  runtime.harnessEnabled = Boolean(options.harness);
 
   let stopped = false;
   let rafId = 0;
@@ -277,51 +485,56 @@ export async function startEngineRenderLoop(
     const bytes = new Uint8Array(runtime.wasm.memory.buffer, _ptr, _len);
     savePersistedSettings(bytes);
   };
+  setTextCaptureHandler = (active, x, y, w, h, maxLen) => {
+    runtime.inputCapture.setTextCapture(
+      active !== 0,
+      x,
+      y,
+      w,
+      h,
+      maxLen,
+    );
+  };
 
   const frame = (now: number) => {
     if (stopped) {
       return;
     }
-
-    syncCanvasSize(gl, canvas);
-    runtime.inputCapture.beginFrame(now);
-
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0.11, 0.11, 0.13, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-    const drawCount = runtime.engine.frame();
-    // Grow-guard: if frame() grew wasm memory, the old ArrayBuffer is detached
-    // and our views point at freed memory — re-derive against the new buffer.
-    if (runtime.wasm.memory.buffer !== runtime.bufferRef) {
-      rederiveViews(runtime);
+    renderFrame(runtime, now);
+    if (!runtime.harnessEnabled) {
+      rafId = globalThis.requestAnimationFrame(frame);
     }
-
-    for (let i = 0; i < drawCount; i++) {
-      const cmd = readDrawCmd(runtime.drawlist, i);
-      uploadAndDraw(runtime, cmd, now);
-    }
-
-    rafId = globalThis.requestAnimationFrame(frame);
   };
 
-  rafId = globalThis.requestAnimationFrame(frame);
+  if (!runtime.harnessEnabled) {
+    rafId = globalThis.requestAnimationFrame(frame);
+  }
+
+  if (runtime.harnessEnabled) {
+    const harness = installHarness(runtime, canvas);
+    (globalThis as EngineGlobalHarness).__openDwarfEngineHarness = harness;
+  } else {
+    delete (globalThis as EngineGlobalHarness).__openDwarfEngineHarness;
+  }
 
   return () => {
     stopped = true;
     globalThis.cancelAnimationFrame(rafId);
     runtime.inputCapture.dispose();
+    leaveGameHandler = () => {};
+    persistSettingsHandler = () => {};
+    setTextCaptureHandler = () => {};
+    delete (globalThis as EngineGlobalHarness).__openDwarfEngineHarness;
   };
 }
 
 export async function startEngineClient(
   canvas: HTMLCanvasElement,
   errorOverlay?: HTMLElement | null,
+  options: { harness?: boolean } = {},
 ) {
   try {
-    const stopRender = await startEngineRenderLoop(canvas);
+    const stopRender = await startEngineRenderLoop(canvas, options);
     setErrorOverlay(errorOverlay ?? null, null);
     return () => {
       stopRender();

@@ -9,9 +9,10 @@ use crate::input::{
     INPUT_ARENA_EVENTS_OFFSET, INPUT_ARENA_QUEUE_OFFSET, INPUT_ARENA_SAMPLE_OFFSET,
     INPUT_ARENA_SIZE_BYTES, INPUT_EVENT_CODE_OFFSET, INPUT_EVENT_KIND_OFFSET,
     INPUT_EVENT_MODIFIERS_OFFSET, INPUT_EVENT_SIZE_BYTES, INPUT_EVENT_VALUE_OFFSET,
-    INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP, INPUT_KIND_RESYNC, INPUT_KIND_UNKNOWN,
-    INPUT_MODIFIER_ALT, INPUT_MODIFIER_CTRL, INPUT_MODIFIER_META, INPUT_MODIFIER_SHIFT,
-    INPUT_QUEUE_CAPACITY, INPUT_QUEUE_HEADER_COUNT_OFFSET, INPUT_QUEUE_HEADER_OVERFLOW_OFFSET,
+    INPUT_KIND_BLUR, INPUT_KIND_COMPOSITION, INPUT_KIND_KEY_DOWN, INPUT_KIND_KEY_UP,
+    INPUT_KIND_RESYNC, INPUT_KIND_TEXT, INPUT_KIND_UNKNOWN, INPUT_MODIFIER_ALT,
+    INPUT_MODIFIER_CTRL, INPUT_MODIFIER_META, INPUT_MODIFIER_SHIFT, INPUT_QUEUE_CAPACITY,
+    INPUT_QUEUE_HEADER_COUNT_OFFSET, INPUT_QUEUE_HEADER_OVERFLOW_OFFSET,
     INPUT_QUEUE_HEADER_SIZE_BYTES, INPUT_SAMPLE_BUTTONS_OFFSET, INPUT_SAMPLE_DPR_OFFSET,
     INPUT_SAMPLE_DT_MS_OFFSET, INPUT_SAMPLE_FRAMEBUFFER_H_OFFSET,
     INPUT_SAMPLE_FRAMEBUFFER_W_OFFSET, INPUT_SAMPLE_POINTER_X_OFFSET,
@@ -309,6 +310,11 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!("  INPUT_KIND_KEY_UP: {},\n", INPUT_KIND_KEY_UP));
     out.push_str(&format!("  INPUT_KIND_BLUR: {},\n", INPUT_KIND_BLUR));
     out.push_str(&format!("  INPUT_KIND_RESYNC: {},\n", INPUT_KIND_RESYNC));
+    out.push_str(&format!("  INPUT_KIND_TEXT: {},\n", INPUT_KIND_TEXT));
+    out.push_str(&format!(
+        "  INPUT_KIND_COMPOSITION: {},\n",
+        INPUT_KIND_COMPOSITION
+    ));
     out.push_str(&format!(
         "  INPUT_MODIFIER_SHIFT: {},\n",
         INPUT_MODIFIER_SHIFT
@@ -329,6 +335,16 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!("  KEYCODE_ENTER: {},\n", KeyCode::Enter as u16));
     out.push_str(&format!("  KEYCODE_ESCAPE: {},\n", KeyCode::Escape as u16));
     out.push_str(&format!("  KEYCODE_SPACE: {},\n", KeyCode::Space as u16));
+    out.push_str(&format!("  KEYCODE_BACKSPACE: {},\n", KeyCode::Backspace as u16));
+    out.push_str(&format!("  KEYCODE_DELETE: {},\n", KeyCode::Delete as u16));
+    out.push_str(&format!("  KEYCODE_ARROWLEFT: {},\n", KeyCode::ArrowLeft as u16));
+    out.push_str(&format!(
+        "  KEYCODE_ARROWRIGHT: {},\n",
+        KeyCode::ArrowRight as u16
+    ));
+    out.push_str(&format!("  KEYCODE_HOME: {},\n", KeyCode::Home as u16));
+    out.push_str(&format!("  KEYCODE_END: {},\n", KeyCode::End as u16));
+    out.push_str(&format!("  KEYCODE_SLASH: {},\n", KeyCode::Slash as u16));
     out.push_str(&format!("  KEYCODE_KEYI: {},\n", KeyCode::KeyI as u16));
     out.push_str(&format!("  KEYCODE_KEYJ: {},\n", KeyCode::KeyJ as u16));
     out.push_str(&format!("  KEYCODE_KEYK: {},\n", KeyCode::KeyK as u16));
@@ -338,15 +354,16 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!("  KEYCODE_KEYS: {},\n", KeyCode::KeyS as u16));
     out.push_str(&format!("  KEYCODE_KEYD: {},\n", KeyCode::KeyD as u16));
     out.push_str(&format!("  KEYCODE_KEYF: {},\n", KeyCode::KeyF as u16));
+    out.push_str(&format!("  KEYCODE_KEYT: {},\n", KeyCode::KeyT as u16));
     out.push_str("} as const);\n");
     out.push_str(
     "export type DrawCmdProgram = typeof ABI.DRAWCMD_PROGRAM_RECT | typeof ABI.DRAWCMD_PROGRAM_TEXT;\n",
   );
     out.push_str(
-        "export type EventKind = typeof ABI.INPUT_KIND_UNKNOWN | typeof ABI.INPUT_KIND_KEY_DOWN | typeof ABI.INPUT_KIND_KEY_UP | typeof ABI.INPUT_KIND_BLUR | typeof ABI.INPUT_KIND_RESYNC;\n",
+        "export type EventKind = typeof ABI.INPUT_KIND_UNKNOWN | typeof ABI.INPUT_KIND_KEY_DOWN | typeof ABI.INPUT_KIND_KEY_UP | typeof ABI.INPUT_KIND_BLUR | typeof ABI.INPUT_KIND_RESYNC | typeof ABI.INPUT_KIND_TEXT | typeof ABI.INPUT_KIND_COMPOSITION;\n",
     );
     out.push_str(
-        "export type KeyCode = typeof ABI.KEYCODE_UNKNOWN | typeof ABI.KEYCODE_ENTER | typeof ABI.KEYCODE_ESCAPE | typeof ABI.KEYCODE_SPACE | typeof ABI.KEYCODE_KEYI | typeof ABI.KEYCODE_KEYJ | typeof ABI.KEYCODE_KEYK | typeof ABI.KEYCODE_KEYL | typeof ABI.KEYCODE_KEYQ | typeof ABI.KEYCODE_KEYE | typeof ABI.KEYCODE_KEYS | typeof ABI.KEYCODE_KEYD | typeof ABI.KEYCODE_KEYF;\n",
+        "export type KeyCode = typeof ABI.KEYCODE_UNKNOWN | typeof ABI.KEYCODE_ENTER | typeof ABI.KEYCODE_ESCAPE | typeof ABI.KEYCODE_SPACE | typeof ABI.KEYCODE_BACKSPACE | typeof ABI.KEYCODE_DELETE | typeof ABI.KEYCODE_ARROWLEFT | typeof ABI.KEYCODE_ARROWRIGHT | typeof ABI.KEYCODE_HOME | typeof ABI.KEYCODE_END | typeof ABI.KEYCODE_SLASH | typeof ABI.KEYCODE_KEYI | typeof ABI.KEYCODE_KEYJ | typeof ABI.KEYCODE_KEYK | typeof ABI.KEYCODE_KEYL | typeof ABI.KEYCODE_KEYQ | typeof ABI.KEYCODE_KEYE | typeof ABI.KEYCODE_KEYS | typeof ABI.KEYCODE_KEYD | typeof ABI.KEYCODE_KEYF | typeof ABI.KEYCODE_KEYT;\n",
     );
     out
 }

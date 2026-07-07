@@ -2,7 +2,7 @@ use od_core::{DRAWCMD_PROGRAM_RECT, DRAWCMD_PROGRAM_TEXT, DrawCmd, GlyphInstance
 
 use crate::{
     font::FontMetrics,
-    primitives::EPS,
+    primitives::{EPS, Rect},
     text::{TextRun, text_color, text_px},
     theme::{ResolvedStyle, TextAlign, TextStyle},
     ui::{ContainerKind, FrameBuild, NodeKind},
@@ -54,6 +54,31 @@ impl<M: FontMetrics> FrameBuild<M> {
             NodeKind::Spacer => {}
             NodeKind::Text { runs, cfg } => {
                 self.emit_text(index, &runs, &cfg, false);
+            }
+            NodeKind::TextField {
+                text,
+                cfg,
+                caret,
+                scroll_px,
+                blink_ms,
+                active,
+                ..
+            } => {
+                let style = if active {
+                    ResolvedStyle {
+                        bg: self.theme.focus_bg,
+                        border: self.theme.focus_ring,
+                        border_px: 1.0,
+                    }
+                } else {
+                    ResolvedStyle {
+                        bg: self.theme.panel_bg,
+                        border: self.theme.border,
+                        border_px: 1.0,
+                    }
+                };
+                self.emit_rects_for_style(index, style);
+                self.emit_text_field(index, &text, &cfg, caret, scroll_px, blink_ms, active);
             }
             NodeKind::Button { label, cfg } => {
                 let focused = self.focus == Some(self.nodes[index].id);
@@ -211,5 +236,96 @@ impl<M: FontMetrics> FrameBuild<M> {
             scissor_h: -1,
             reserved: 0,
         });
+    }
+
+    fn emit_text_field(
+        &mut self,
+        index: usize,
+        text: &str,
+        cfg: &TextStyle,
+        caret: usize,
+        scroll_px: f32,
+        blink_ms: f32,
+        active: bool,
+    ) {
+        let Some(layout) = self.nodes[index].text_layout.clone() else {
+            return;
+        };
+        let px = text_px(cfg, self.theme, self.scale);
+        let rect = self.nodes[index].pos_to_rect();
+        let pad = self.nodes[index].layout.padding;
+        let inner = Rect::new(
+            rect.x + pad.left,
+            rect.y + pad.top,
+            (rect.w - pad.horizontal()).max(0.0),
+            (rect.h - pad.vertical()).max(0.0),
+        );
+        let start_glyph = self.glyphs.len();
+        let baseline_y = inner.y;
+        let mut visible_caret_x = 0.0_f32;
+        let mut char_cursor = 0_usize;
+        let mut x = 0.0_f32;
+        for ch in text.chars() {
+            if char_cursor == caret {
+                visible_caret_x = x;
+            }
+            let advance = self.font().advance(ch, px);
+            if let Some(meta) = self.font().glyph(ch, px)
+                && x + meta.size.x + pad.left >= scroll_px
+            {
+                self.glyphs.push(GlyphInstance {
+                    pos: [(inner.x + x - scroll_px).round(), baseline_y.round()],
+                    size: [meta.size.x.round(), meta.size.y.round()],
+                    uv_rect: meta.uv,
+                    tint: [
+                        f32::from(text_color(cfg, self.theme).r) / 255.0,
+                        f32::from(text_color(cfg, self.theme).g) / 255.0,
+                        f32::from(text_color(cfg, self.theme).b) / 255.0,
+                    ],
+                    alpha: f32::from(text_color(cfg, self.theme).a) / 255.0,
+                });
+            }
+            x += advance;
+            char_cursor += 1;
+        }
+        if caret == text.chars().count() {
+            visible_caret_x = x;
+        }
+        let glyph_count = self.glyphs.len() - start_glyph;
+        self.draw_cmds.push(DrawCmd {
+            program: DRAWCMD_PROGRAM_TEXT,
+            instance_offset: start_glyph as u32,
+            instance_count: glyph_count as u32,
+            scissor_x: inner.x.round() as i32,
+            scissor_y: inner.y.round() as i32,
+            scissor_w: inner.w.round() as i32,
+            scissor_h: inner.h.round() as i32,
+            reserved: 0,
+        });
+        let caret_visible = active && ((blink_ms % 1_060.0) < 530.0);
+        if caret_visible {
+            let caret_rect = RectInstance {
+                pos: [(inner.x + visible_caret_x - scroll_px).round(), inner.y.round()],
+                size: [1.0_f32.max(self.scale), layout.line_height.round()],
+                tint: [
+                    f32::from(self.theme.focus_ring.r) / 255.0,
+                    f32::from(self.theme.focus_ring.g) / 255.0,
+                    f32::from(self.theme.focus_ring.b) / 255.0,
+                ],
+                alpha: 1.0,
+            };
+            let start_rect = self.rects.len();
+            self.rects.push(caret_rect);
+            self.draw_cmds.push(DrawCmd {
+                program: DRAWCMD_PROGRAM_RECT,
+                instance_offset: start_rect as u32,
+                instance_count: 1,
+                scissor_x: inner.x.round() as i32,
+                scissor_y: inner.y.round() as i32,
+                scissor_w: inner.w.round() as i32,
+                scissor_h: inner.h.round() as i32,
+                reserved: 0,
+            });
+        }
     }
 }

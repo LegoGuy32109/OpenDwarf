@@ -43,6 +43,15 @@ pub(crate) enum NodeKind {
         runs: Vec<TextRun>,
         cfg: TextStyle,
     },
+    TextField {
+        text: String,
+        cfg: TextStyle,
+        caret: usize,
+        scroll_px: f32,
+        blink_ms: f32,
+        _max_len: usize,
+        active: bool,
+    },
     Button {
         label: String,
         cfg: TextStyle,
@@ -124,8 +133,16 @@ impl<M: FontMetrics> UiEngine<M> {
         &mut self.theme
     }
 
+    pub fn font(&self) -> &M {
+        &self.font
+    }
+
     pub fn focus(&self) -> Option<Id> {
         self.focus
+    }
+
+    pub fn rect_of(&self, id: Id) -> Option<Rect> {
+        self.retained.last_rect(id)
     }
 
     pub fn set_focus(&mut self, focus: Option<Id>) {
@@ -370,6 +387,40 @@ impl<M: FontMetrics> FrameBuild<M> {
         self.push_node(node)
     }
 
+    pub(crate) fn push_text_field(
+        &mut self,
+        key: &str,
+        text: String,
+        cfg: TextStyle,
+        caret: usize,
+        scroll_px: f32,
+        blink_ms: f32,
+        max_len: usize,
+        active: bool,
+    ) -> usize {
+        let node_id = self.alloc_child_id(Some(key));
+        let layout = Layout::new().row().pad(self.theme.pad).gap(self.theme.gap);
+        let node = Node {
+            id: node_id,
+            kind: NodeKind::TextField {
+                text,
+                cfg,
+                caret,
+                scroll_px,
+                blink_ms,
+                _max_len: max_len,
+                active,
+            },
+            layout,
+            children: Vec::new(),
+            content_size: Vec2::zero(),
+            size: Vec2::zero(),
+            pos: Vec2::zero(),
+            text_layout: None,
+        };
+        self.push_node(node)
+    }
+
     pub(crate) fn push_button(&mut self, key: &str, label: &str, cfg: TextStyle) -> Response {
         let node_id = self.alloc_child_id(Some(key));
         let layout = Layout::new().row().pad(self.theme.pad).gap(self.theme.gap);
@@ -480,6 +531,11 @@ impl<M: FontMetrics> FrameBuild<M> {
                 let px = text_px(&cfg, self.theme, self.scale);
                 text_fit_width(self.font(), &runs, px, cfg.wrap)
             }
+            NodeKind::TextField { text, cfg, .. } => {
+                let px = text_px(&cfg, self.theme, self.scale);
+                let text_width = self.font().measure_line(&text, px).x;
+                text_width + self.theme.pad.horizontal() + self.theme.gap
+            }
             NodeKind::Button { label, cfg } => {
                 let px = text_px(&cfg, self.theme, self.scale);
                 let inner_width = text_unwrapped_width(
@@ -585,6 +641,25 @@ impl<M: FontMetrics> FrameBuild<M> {
                 let layout = layout_text(self.font(), &runs, &cfg, self.theme, self.scale, inner);
                 self.nodes[index].text_layout = Some(layout);
             }
+            NodeKind::TextField { text, cfg, .. } => {
+                let inner = (width - layout.padding.horizontal()).max(0.0);
+                let layout = layout_text(
+                    self.font(),
+                    &[TextRun {
+                        text,
+                        color: text_color(&cfg, self.theme),
+                    }],
+                    &cfg.wrap(false),
+                    self.theme,
+                    self.scale,
+                    inner,
+                );
+                self.nodes[index].text_layout = Some(layout);
+                self.nodes[index].content_size.y =
+                    self.font().line_height(text_px(&cfg, self.theme, self.scale))
+                        + self.nodes[index].layout.padding.vertical()
+                        + 2.0;
+            }
             NodeKind::Button { label, cfg } => {
                 let inner = (width - layout.padding.horizontal() - layout.gap).max(0.0);
                 let text_layout = layout_text(
@@ -617,6 +692,12 @@ impl<M: FontMetrics> FrameBuild<M> {
             NodeKind::Text { .. } => {
                 if let Some(layout) = self.nodes[index].text_layout.clone() {
                     self.nodes[index].content_size.y = layout.height();
+                }
+            }
+            NodeKind::TextField { .. } => {
+                if let Some(layout) = self.nodes[index].text_layout.clone() {
+                    self.nodes[index].content_size.y =
+                        layout.height() + self.nodes[index].layout.padding.vertical() + 2.0;
                 }
             }
             NodeKind::Button { .. } => {
@@ -678,7 +759,9 @@ impl<M: FontMetrics> FrameBuild<M> {
             NodeKind::Spacer => {
                 solve::resolve_child_base_size(self.nodes[index].layout.sizing[1], 0.0)
             }
-            NodeKind::Text { .. } | NodeKind::Button { .. } => self.nodes[index].content_size.y,
+            NodeKind::Text { .. } | NodeKind::TextField { .. } | NodeKind::Button { .. } => {
+                self.nodes[index].content_size.y
+            }
         };
         self.nodes[index].content_size.y = content;
         content
@@ -764,7 +847,7 @@ impl<M: FontMetrics> FrameBuild<M> {
                 }
             }
             NodeKind::Spacer => {}
-            NodeKind::Text { .. } | NodeKind::Button { .. } => {}
+            NodeKind::Text { .. } | NodeKind::TextField { .. } | NodeKind::Button { .. } => {}
         }
     }
 
@@ -870,6 +953,7 @@ impl<M: FontMetrics> FrameBuild<M> {
             }
             NodeKind::Spacer => {}
             NodeKind::Text { .. } => {}
+            NodeKind::TextField { .. } => {}
             NodeKind::Button { .. } => {}
         }
     }

@@ -18,6 +18,8 @@ pub trait FontMetrics {
 
     fn advance(&self, ch: char, px: f32) -> f32;
 
+    fn has_glyph(&self, ch: char) -> bool;
+
     fn measure_line(&self, s: &str, px: f32) -> Vec2 {
         let w = s.chars().map(|ch| self.advance(ch, px)).sum();
         Vec2::new(w, self.line_height(px))

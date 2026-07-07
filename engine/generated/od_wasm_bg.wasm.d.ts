@@ -7,7 +7,9 @@ export const uiengine_abi_glyph_stride: (a: number) => number;
 export const uiengine_abi_glyph_stride_floats: (a: number) => number;
 export const uiengine_abi_program_rect: (a: number) => number;
 export const uiengine_abi_program_text: (a: number) => number;
+export const uiengine_abi_rect_stride: (a: number) => number;
 export const uiengine_abi_rect_stride_floats: (a: number) => number;
+export const uiengine_debug_snapshot_json: (a: number) => [number, number];
 export const uiengine_drawlist_capacity: (a: number) => number;
 export const uiengine_drawlist_ptr: (a: number) => number;
 export const uiengine_dropped_draw_cmds: (a: number) => number;
@@ -16,17 +18,13 @@ export const uiengine_dropped_rects: (a: number) => number;
 export const uiengine_frame: (a: number) => number;
 export const uiengine_glyph_capacity: (a: number) => number;
 export const uiengine_glyph_ptr: (a: number) => number;
-export const uiengine_hydrate_settings: (
-  a: number,
-  b: number,
-  c: number,
-) => void;
+export const uiengine_hydrate_settings: (a: number, b: number, c: number) => void;
 export const uiengine_input_capacity: (a: number) => number;
 export const uiengine_input_ptr: (a: number) => number;
 export const uiengine_new: () => number;
 export const uiengine_rect_capacity: (a: number) => number;
 export const uiengine_rect_ptr: (a: number) => number;
-export const uiengine_abi_rect_stride: (a: number) => number;
 export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_start: () => void;

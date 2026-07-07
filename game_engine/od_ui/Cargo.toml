@@ -6,4 +6,4 @@ edition.workspace = true
 [dependencies]
 bytemuck.workspace = true
 od_core = { path = "../od_core" }
-
+serde_json = "1.0.145"
