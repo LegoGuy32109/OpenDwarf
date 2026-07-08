@@ -107,6 +107,11 @@ function appendTextEvent(input: InputBuffer, codepoint: number) {
   appendEvent(input, ABI.INPUT_KIND_TEXT, 0, 0, codepoint);
 }
 
+function acceptsTextInputChar(ch: string) {
+  const code = ch.codePointAt(0);
+  return code !== undefined && (code === 32 || (code >= 33 && code <= 126));
+}
+
 export class InputCapture {
   private input: InputBuffer = new DataView(new ArrayBuffer(0));
   private lastFrameNow = 0;
@@ -179,6 +184,9 @@ export class InputCapture {
         if (inserted >= remaining) {
           break;
         }
+        if (!acceptsTextInputChar(ch)) {
+          continue;
+        }
         appendTextEvent(this.input, ch.codePointAt(0)!);
         inserted += 1;
       }
@@ -197,14 +205,20 @@ export class InputCapture {
   private readonly onFocus = () => {
     writeSampled(this.input, this.canvas, true);
     this.blurDispatched = false;
+    this.syncCaptureFocus();
   };
 
   private readonly onResize = () => {
     writeSampled(this.input, this.canvas, document.hasFocus());
+    this.syncCaptureFocus();
   };
 
   private readonly onPointerDown = () => {
-    this.canvas.focus();
+    if (this.captureActive) {
+      this.syncCaptureFocus();
+    } else {
+      this.canvas.focus();
+    }
   };
 
   private maxLen = 0;
@@ -212,13 +226,14 @@ export class InputCapture {
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.hiddenInput = document.createElement("input");
     this.hiddenInput.id = "od-text-capture";
-    this.hiddenInput.autocomplete = "off";
-    this.hiddenInput.autocorrect = "off";
-    this.hiddenInput.autocapitalize = "off";
-    this.hiddenInput.spellcheck = false;
-    this.hiddenInput.inputMode = "text";
+    this.hiddenInput.setAttribute("autocomplete", "off");
+    this.hiddenInput.setAttribute("autocorrect", "off");
+    this.hiddenInput.setAttribute("autocapitalize", "off");
+    this.hiddenInput.setAttribute("spellcheck", "false");
+    this.hiddenInput.setAttribute("inputmode", "text");
     this.hiddenInput.tabIndex = -1;
     this.hiddenInput.setAttribute("aria-hidden", "true");
+    this.hiddenInput.setAttribute("type", "text");
     this.hiddenInput.style.position = "fixed";
     this.hiddenInput.style.opacity = "0";
     this.hiddenInput.style.pointerEvents = "none";
@@ -252,9 +267,12 @@ export class InputCapture {
       appendEvent(this.input, ABI.INPUT_KIND_BLUR, 0, 0);
       this.blurDispatched = true;
     }
-    this.captureActive = false;
-    this.shadowDraftLen = 0;
-    this.lastOpenCommand = null;
+  }
+
+  private syncCaptureFocus() {
+    if (this.captureActive && document.activeElement !== this.hiddenInput) {
+      this.hiddenInput.focus();
+    }
   }
 
   setArena(input: DataView) {
@@ -272,6 +290,7 @@ export class InputCapture {
     this.lastFrameNow = now;
     writeSampled(this.input, this.canvas, document.hasFocus());
     this.input.setFloat32(ABI.INPUT_SAMPLE_DT_MS_OFFSET, dt, true);
+    this.syncCaptureFocus();
   }
 
   clearQueue() {
@@ -299,6 +318,7 @@ export class InputCapture {
     h: number,
     maxLen: number,
   ) {
+    const wasActive = this.captureActive;
     this.captureActive = active;
     this.maxLen = maxLen;
     const dpr = globalThis.devicePixelRatio || 1;
@@ -307,14 +327,16 @@ export class InputCapture {
     this.hiddenInput.style.width = `${Math.max(1, w / dpr)}px`;
     this.hiddenInput.style.height = `${Math.max(1, h / dpr)}px`;
     if (active) {
-      if (this.lastOpenCommand === "slash") {
-        this.shadowDraftLen = 1;
-      } else {
-        this.shadowDraftLen = 0;
+      if (!wasActive) {
+        if (this.lastOpenCommand === "slash") {
+          this.shadowDraftLen = 1;
+        } else {
+          this.shadowDraftLen = 0;
+        }
+        this.lastOpenCommand = null;
       }
-      this.lastOpenCommand = null;
       this.blurDispatched = false;
-      this.hiddenInput.focus();
+      this.syncCaptureFocus();
       this.hiddenInput.value = "";
     } else {
       this.suppressBlurEvent = true;

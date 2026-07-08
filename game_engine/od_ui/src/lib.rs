@@ -3,6 +3,7 @@
 
 pub mod domain;
 pub mod draw;
+pub mod chat;
 pub mod focus;
 pub mod font;
 pub mod id;

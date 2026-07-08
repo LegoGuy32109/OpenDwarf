@@ -18,7 +18,11 @@ pub trait FontMetrics {
 
     fn advance(&self, ch: char, px: f32) -> f32;
 
-    fn has_glyph(&self, ch: char) -> bool;
+    /// Returns whether the character is accepted by text ingestion and layout.
+    ///
+    /// This is broader than visible glyph availability: for example, ASCII
+    /// space is accepted even though it does not produce a glyph quad.
+    fn accepts_text_char(&self, ch: char) -> bool;
 
     fn measure_line(&self, s: &str, px: f32) -> Vec2 {
         let w = s.chars().map(|ch| self.advance(ch, px)).sum();

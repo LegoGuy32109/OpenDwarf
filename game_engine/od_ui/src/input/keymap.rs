@@ -89,7 +89,7 @@ impl InputState {
                 EventKind::Text => {
                     if matches!(mode, InputMode::TextField)
                         && let Some(ch) = char::from_u32(event.value)
-                        && font.has_glyph(ch)
+                        && font.accepts_text_char(ch)
                     {
                         out.session_intents
                             .push(SessionIntent::EditChat(TextEdit::InsertText(ch)));

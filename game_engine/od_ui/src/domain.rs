@@ -1,13 +1,13 @@
-use od_core::{ChatMsg, DrawCmd, GlyphInstance, RectInstance, SessionIntent, SessionModel};
+use od_core::{DrawCmd, GlyphInstance, RectInstance, SessionIntent, SessionModel};
 use serde_json::json;
 
 use crate::{
+    chat,
     draw::FrameOutput,
     font::{FontMetrics, MonospaceVga},
     input::{DecodedInput, InputState},
     primitives::{Rect, Vec2},
     router::{HostEffect, route},
-    text::state::TextState,
     settings::Settings,
     shell::{self, ShellIntent, ShellNav, ShellPage},
     ui::UiEngine,
@@ -202,6 +202,11 @@ impl<M: FontMetrics + Clone> Engine<M> {
             };
         };
 
+        chat::tick_chat(
+            &mut self.session.model,
+            decoded.sampled.dt_ms,
+            self.session.capture_active,
+        );
         let routed = route(&decoded, self.shell.open, self.session.capture_active);
         let shell_open = self.shell.open;
         if self.prev_shell_open != shell_open || self.prev_capture_active != self.session.capture_active {
@@ -246,9 +251,23 @@ impl<M: FontMetrics + Clone> Engine<M> {
                 ..
             } = &mut self.session;
             ui.frame(&[], |ui| {
-                chat_field_id = build_session(ui, model, *capture_active);
+                chat_field_id = chat::build_session(ui, model, *capture_active);
             })
         };
+        if self.session.capture_active {
+            if let Some(chat_field_id) = chat_field_id {
+                if let Some(field_rect) = self.session.ui.rect_of(chat_field_id) {
+                    let field_inner_width = (field_rect.w - self.session.ui.theme().pad.horizontal()).max(0.0);
+                    self.session.model.chat_scroll_px = chat::recommend_scroll_px(
+                        &self.session.model,
+                        self.session.ui.font(),
+                        self.session.ui.theme(),
+                        scale,
+                        field_inner_width,
+                    );
+                }
+            }
+        }
 
         let mut host_effects = Vec::new();
         let mut shell_intents = routed.shell_intents;
@@ -309,54 +328,26 @@ impl<M: FontMetrics + Clone> Engine<M> {
         match intent {
             SessionIntent::OpenChat { prefill } => {
                 self.session.capture_active = true;
-                let mut state = TextState::new(self.session.model.chat_draft.clone(), self.session.model.chat_caret, 256);
-                state.set_prefill(prefill);
-                self.session.model.chat_draft = state.buf;
-                self.session.model.chat_caret = state.caret;
-                self.session.model.chat_scroll_px = state.scroll_px;
-                self.session.model.chat_blink_ms = state.blink_ms;
+                chat::open_chat(&mut self.session.model, prefill);
             }
             SessionIntent::EditChat(edit) => {
                 if !self.session.capture_active {
                     return;
                 }
-                let mut state = TextState::new(
-                    self.session.model.chat_draft.clone(),
-                    self.session.model.chat_caret,
-                    256,
-                );
-                let _ = state.apply_edit(edit, |ch| self.session.ui.font().has_glyph(ch));
-                self.session.model.chat_draft = state.buf;
-                self.session.model.chat_caret = state.caret;
-                self.session.model.chat_scroll_px = state.scroll_px;
-                self.session.model.chat_blink_ms = state.blink_ms;
+                let _ = chat::apply_chat_edit(&mut self.session.model, edit, self.session.ui.font());
             }
             SessionIntent::SubmitChat => {
                 if !self.session.capture_active {
                     return;
                 }
-                let mut state = TextState::new(
-                    self.session.model.chat_draft.clone(),
-                    self.session.model.chat_caret,
-                    256,
-                );
-                if let Some(text) = state.submit_trimmed() {
-                    self.session.model.push_message(ChatMsg::new(text));
-                }
-                self.session.model.chat_draft = state.buf;
-                self.session.model.chat_caret = state.caret;
-                self.session.model.chat_scroll_px = state.scroll_px;
-                self.session.model.chat_blink_ms = state.blink_ms;
+                let _ = chat::submit_chat(&mut self.session.model);
                 self.session.capture_active = false;
             }
             SessionIntent::CancelChat => {
                 if !self.session.capture_active {
                     return;
                 }
-                self.session.model.chat_draft.clear();
-                self.session.model.chat_caret = 0;
-                self.session.model.chat_scroll_px = 0.0;
-                self.session.model.chat_blink_ms = 0.0;
+                chat::cancel_chat(&mut self.session.model);
                 self.session.capture_active = false;
             }
         }
@@ -436,62 +427,18 @@ impl<M: FontMetrics + Clone> Engine<M> {
     }
 }
 
-fn build_session<M: FontMetrics>(
-    ui: &mut crate::Ui<'_, M>,
-    model: &SessionModel,
-    capture_active: bool,
-) -> Option<crate::id::Id> {
-    let mut chat_field_id = None;
-    ui.column(
-        crate::Layout::new()
-            .grow()
-            .align(crate::Alignment::Center, crate::Alignment::End),
-        |ui| {
-            ui.panel(
-                crate::Style::default()
-                    .bg(ui.build.theme.panel_bg)
-                    .border_with(ui.build.theme.border, 1.0),
-                |ui| {
-                    ui.column(
-                        crate::Layout::new().pad(crate::Padding::all(10.0)).gap(6.0),
-                        |ui| {
-                            ui.text("Session", crate::TextStyle::default());
-                            ui.text(
-                                if capture_active { "Chat active" } else { "World" },
-                                crate::TextStyle::default(),
-                            );
-                            let visible = model.messages.iter().rev().take(3).rev();
-                            for msg in visible {
-                                ui.text(&msg.text, crate::TextStyle::default());
-                            }
-                            let state = TextState::new(model.chat_draft.clone(), model.chat_caret, 256);
-                            let response = ui.text_field(
-                                "chat_field",
-                                &state,
-                                crate::TextStyle::default().wrap(false),
-                                capture_active,
-                            );
-                            chat_field_id = Some(response.id);
-                        },
-                    );
-                },
-            );
-        },
-    );
-    chat_field_id
-}
-
 #[cfg(test)]
 mod tests {
     use od_core::{
-        INPUT_KIND_KEY_DOWN, InputArena, InputEvent, InputQueueHeader, InputSampled, KeyCode,
+        INPUT_KIND_BLUR, INPUT_KIND_KEY_DOWN, InputArena, InputEvent, InputQueueHeader,
+        InputSampled, KeyCode,
     };
 
     use crate::{router, shell::ShellIntent};
 
     use super::*;
 
-    fn arena_with(events: &[InputEvent], focused: bool) -> Vec<u8> {
+    fn arena_with(events: &[InputEvent], focused: bool, overflow: bool) -> Vec<u8> {
         let mut arena = InputArena::default();
         arena.sampled = InputSampled {
             framebuffer_w: 800,
@@ -505,7 +452,7 @@ mod tests {
         };
         arena.queue = InputQueueHeader {
             count: events.len() as u32,
-            overflow: 0,
+            overflow: u32::from(overflow),
         };
         for (idx, event) in events.iter().copied().enumerate() {
             arena.events[idx] = event;
@@ -524,6 +471,7 @@ mod tests {
                 value: 0,
             }],
             true,
+            false,
         );
         let out = engine.frame(&open);
         assert!(out.draw_list_count > 0);
@@ -558,5 +506,38 @@ mod tests {
         };
         let routed = router::route(&decoded, false, false);
         assert_eq!(routed.shell_intents, vec![ShellIntent::Open]);
+    }
+
+    #[test]
+    fn blur_and_overflow_preserve_active_chat_state() {
+        let mut engine = Engine::new();
+        engine.session.capture_active = true;
+        engine.session.model.chat_draft = "hello".to_owned();
+        engine.session.model.chat_caret = 5;
+        engine.session.model.chat_scroll_px = 18.0;
+        engine.session.model.chat_blink_ms = 31.0;
+
+        let overflow = arena_with(&[], true, true);
+        let _ = engine.frame(&overflow);
+        assert!(engine.session.capture_active);
+        assert_eq!(engine.session.model.chat_draft, "hello");
+        assert_eq!(engine.session.model.chat_caret, 5);
+        assert!(engine.session.model.chat_scroll_px >= 0.0);
+
+        let blur = arena_with(
+            &[InputEvent {
+                kind: INPUT_KIND_BLUR,
+                modifiers: 0,
+                code: 0,
+                value: 0,
+            }],
+            true,
+            false,
+        );
+        let _ = engine.frame(&blur);
+        assert!(engine.session.capture_active);
+        assert_eq!(engine.session.model.chat_draft, "hello");
+        assert_eq!(engine.session.model.chat_caret, 5);
+        assert!(engine.session.model.chat_scroll_px >= 0.0);
     }
 }

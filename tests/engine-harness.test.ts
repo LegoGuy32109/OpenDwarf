@@ -24,26 +24,54 @@ test("engine harness chat smoke", async ({ page }) => {
   expect(snapshot.session.uiMode).toBe("chat");
   expect(snapshot.session.chatDraft).toBe("");
 
-  await engineTypeText(page, "hello");
+  await engineTypeText(page, "hello world");
   await stepEngineFrame(page, 1);
 
   snapshot = await engineSnapshot(page);
   expect(snapshot.input.textCaptureActive).toBe(true);
-  expect(snapshot.session.chatDraft).toBe("hello");
-  expect(snapshot.session.chatCaret).toBe(5);
+  expect(snapshot.session.chatDraft).toBe("hello world");
+  expect(snapshot.session.chatCaret).toBe(11);
 
-  await page.keyboard.press("Enter");
+  await enginePress(page, "Enter");
   await stepEngineFrame(page, 1);
 
   snapshot = await engineSnapshot(page);
   expect(snapshot.input.textCaptureActive).toBe(false);
-  expect(snapshot.session.chatMessages).toContain("hello");
+  expect(snapshot.session.chatMessages).toContain("hello world");
   expect(snapshot.session.chatDraft).toBe("");
 
   await enginePress(page, "KeyT");
   await stepEngineFrame(page, 1);
-  await enginePaste(page, "cancel");
+  await engineTypeText(page, "blur");
   await stepEngineFrame(page, 1);
+  await page.evaluate(() =>
+    (document.querySelector("#od-text-capture") as HTMLInputElement | null)?.blur()
+  );
+
+  snapshot = await engineSnapshot(page);
+  expect(snapshot.input.textCaptureActive).toBe(true);
+  expect(snapshot.input.hiddenInputFocused).toBe(false);
+  expect(snapshot.session.chatDraft).toBe("blur");
+
+  await stepEngineFrame(page, 1);
+
+  snapshot = await engineSnapshot(page);
+  expect(snapshot.input.textCaptureActive).toBe(true);
+  expect(snapshot.input.hiddenInputFocused).toBe(true);
+
+  await page.focus("#engine-canvas");
+  await stepEngineFrame(page, 1);
+
+  snapshot = await engineSnapshot(page);
+  expect(snapshot.input.textCaptureActive).toBe(true);
+  expect(snapshot.input.hiddenInputFocused).toBe(true);
+
+  await enginePaste(page, " world");
+  await stepEngineFrame(page, 1);
+
+  snapshot = await engineSnapshot(page);
+  expect(snapshot.session.chatDraft).toBe("blur world");
+
   await enginePress(page, "Escape");
   await stepEngineFrame(page, 1);
 

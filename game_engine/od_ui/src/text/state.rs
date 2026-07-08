@@ -29,14 +29,27 @@ impl TextState {
         Self::new("", 0, max_len)
     }
 
+    pub fn from_model(
+        buf: impl Into<String>,
+        caret: usize,
+        max_len: usize,
+        scroll_px: f32,
+        blink_ms: f32,
+    ) -> Self {
+        let mut state = Self::new(buf, caret, max_len);
+        state.scroll_px = scroll_px.max(0.0);
+        state.blink_ms = blink_ms.max(0.0);
+        state
+    }
+
     pub fn apply_edit<F: FnMut(char) -> bool>(
         &mut self,
         edit: TextEdit,
-        mut has_glyph: F,
+        mut accepts_text_char: F,
     ) -> bool {
         let changed = match edit {
             TextEdit::InsertText(ch) => {
-                if !has_glyph(ch) || self.char_count() >= self.max_len {
+                if !accepts_text_char(ch) || self.char_count() >= self.max_len {
                     false
                 } else {
                     self.buf.insert(self.caret, ch);
@@ -63,6 +76,7 @@ impl TextState {
     pub fn set_prefill(&mut self, text: impl Into<String>) {
         self.buf = text.into();
         self.caret = self.buf.len();
+        self.scroll_px = 0.0;
         self.clamp_len();
         self.blink_ms = 0.0;
     }
@@ -93,7 +107,7 @@ impl TextState {
         let mut new = String::with_capacity(self.buf.len());
         let mut new_caret_chars = 0_usize;
         for (index, ch) in self.buf.chars().enumerate() {
-            if font.has_glyph(ch) {
+            if font.accepts_text_char(ch) {
                 if index < caret_chars {
                     new_caret_chars += 1;
                 }
@@ -180,10 +194,9 @@ impl TextState {
     }
 
     fn clamp_len(&mut self) {
-        let mut chars = self.buf.chars();
         let mut truncated = String::with_capacity(self.buf.len());
         let mut count = 0_usize;
-        for ch in chars.by_ref() {
+        for ch in self.buf.chars() {
             if count >= self.max_len {
                 break;
             }
@@ -264,5 +277,22 @@ mod tests {
         let mut state = TextState::new("a🙂b", 6, 8);
         state.prune_unrenderable(&MonospaceVga);
         assert_eq!(state.buf, "ab");
+    }
+
+    #[test]
+    fn accepts_text_char_allows_space_and_rejects_control_whitespace() {
+        let font = MonospaceVga;
+        assert!(font.accepts_text_char(' '));
+        assert!(!font.accepts_text_char('\t'));
+        assert!(!font.accepts_text_char('\n'));
+        assert!(!font.accepts_text_char('\r'));
+    }
+
+    #[test]
+    fn insert_preserves_spaces() {
+        let mut state = TextState::empty(8);
+        assert!(state.apply_edit(TextEdit::InsertText(' '), |_| true));
+        assert!(state.apply_edit(TextEdit::InsertText('a'), |_| true));
+        assert_eq!(state.buf, " a");
     }
 }

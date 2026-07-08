@@ -399,7 +399,11 @@ impl<M: FontMetrics> FrameBuild<M> {
         active: bool,
     ) -> usize {
         let node_id = self.alloc_child_id(Some(key));
-        let layout = Layout::new().row().pad(self.theme.pad).gap(self.theme.gap);
+        let layout = Layout::new()
+            .row()
+            .sizing(Axis::Row, Sizing::grow())
+            .pad(self.theme.pad)
+            .gap(0.0);
         let node = Node {
             id: node_id,
             kind: NodeKind::TextField {
@@ -531,11 +535,7 @@ impl<M: FontMetrics> FrameBuild<M> {
                 let px = text_px(&cfg, self.theme, self.scale);
                 text_fit_width(self.font(), &runs, px, cfg.wrap)
             }
-            NodeKind::TextField { text, cfg, .. } => {
-                let px = text_px(&cfg, self.theme, self.scale);
-                let text_width = self.font().measure_line(&text, px).x;
-                text_width + self.theme.pad.horizontal() + self.theme.gap
-            }
+            NodeKind::TextField { .. } => self.theme.pad.horizontal(),
             NodeKind::Button { label, cfg } => {
                 let px = text_px(&cfg, self.theme, self.scale);
                 let inner_width = text_unwrapped_width(
@@ -971,6 +971,7 @@ mod tests {
         assert_eq!(font.advance('A', 16.0), 8.0);
         assert!(font.glyph('A', 16.0).is_some());
         assert!(font.glyph(' ', 16.0).is_none());
+        assert!(font.accepts_text_char(' '));
     }
 
     #[test]
