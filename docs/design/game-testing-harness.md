@@ -277,11 +277,12 @@ Decision records:
 
 - **Stage A — done:** `od_scenario` + native runner (World / Engine / Assert) →
   record → `WorldReplay`; `deno task engine:test-scenario`.
-- **Stage B:** harness `runScenario` + thin Playwright; `importReplay` reserved;
-  Engine steps fail-closed in browser.
+- **Stage B — done:** harness v3 `runScenario` (Session/Shell/Input lowering);
+  Engine fail-closed; thin Playwright + `deno task engine:test-scenario-browser`.
+  `importReplay` / `stepSimTick` throw until wasm world exists.
 
 Still deferred outside Scenario: world render, worker protocol, client-view
-replay.
+replay, real browser `importReplay`.
 
 
 ---

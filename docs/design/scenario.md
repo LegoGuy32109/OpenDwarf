@@ -1,7 +1,8 @@
 # Scenario — Dual-Layer Authoring Contract
 
-**Status:** Design locked — 2026-07-11; **Stage A implemented** (native
-`od_scenario` runner + goldens). Stage B (browser) not started.
+**Status:** Design locked — 2026-07-11; **Stage A + Stage B implemented**.
+Stage B browser `runScenario` lowers Session/Shell/Input; `importReplay` /
+`stepSimTick` are **explicit unimplemented** stubs until wasm world exists.
 **Parent:** [`game-testing-harness.md`](./game-testing-harness.md) §3 / §7
 **Companions:** [`sim-replay.md`](./sim-replay.md) (`WorldReplay` proof),
 [`od-world.md`](./od-world.md) (`WorldSim`)
@@ -47,7 +48,7 @@ World steps drive the sim clock (`stepSimTick` / native tick), not `stepFrame`.
 
 | Deferred | Notes |
 | --- | --- |
-| Stage B browser harness (`runScenario` / Playwright) | After Stage A gates |
+| Wasm world surface + real `importReplay` / `stepSimTick` | Explicit stubs throw today |
 | Browser-controllable `Engine` escapes | Stage rule: fail-closed; revisit with a real allowlist |
 | Client-view / FOV replay | Separate from Scenario → `WorldReplay` |
 | Deleting legacy `world_sim` Scenario DSL | Inspiration only |
@@ -294,13 +295,18 @@ Done when:
 
 Done when:
 
-- [ ] Harness v3: `runScenario` landed; `importReplay` reserved and either
-      implemented or **explicit** unimplemented + failing doc test (no silent
-      no-op).
-- [ ] Engine-containing Scenario **fail-closed** in browser.
-- [ ] Thin Playwright: load Scenario → `runScenario` → assert
-      hashes/checkpoints.
-- [ ] Named `deno task` e2e target green.
+- [x] Harness v3: `runScenario` landed; `importReplay` reserved and
+      **explicit** unimplemented (throws; e2e asserts the error — no silent
+      no-op). `stepSimTick` same stub until wasm world.
+- [x] Engine-containing Scenario **fail-closed** in browser (reject up front).
+- [x] Thin Playwright: load Scenario JSON → `runScenario` → assert
+      draw-hash / shell checkpoints (`tests/engine-scenario.test.ts`).
+- [x] Named `deno task engine:test-scenario-browser` green.
+
+**Artifacts:** `tests/fixtures/scenarios/*.json`,
+`tests/goldens/engine/scenario_browser.json` (bless:
+`ENGINE_SCENARIO_BROWSER_BLESS=1`). World steps remain unavailable in-browser
+until the wasm sim surface lands.
 
 ---
 
@@ -326,4 +332,5 @@ Done when:
 - [x] `runScenario` + `importReplay` both reserved
 - [x] Stage A/B gates with verifiable tasks/artifacts
 - [x] Stage A implementation (`od_scenario`, native goldens, `engine:test-scenario`)
-- [ ] Stage B implementation (browser `runScenario` / Playwright)
+- [x] Stage B implementation (harness v3 `runScenario`, Playwright,
+      `engine:test-scenario-browser`; `importReplay`/`stepSimTick` stubs)

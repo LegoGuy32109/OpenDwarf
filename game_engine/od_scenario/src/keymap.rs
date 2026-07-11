@@ -5,7 +5,7 @@ use od_core::world::Dir;
 /// Default profile id (ESDF movement).
 pub const DEFAULT_KEYMAP_PROFILE: &str = "esdf";
 
-/// Maps abstract directions (and later Shell actions) to DOM `code` strings.
+/// Maps abstract directions (and Shell actions) to DOM `code` strings / sequences.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeymapProfile {
     pub id: &'static str,
@@ -14,7 +14,8 @@ pub struct KeymapProfile {
     pub east: &'static str,
     pub west: &'static str,
     pub open_shell: &'static str,
-    pub open_settings: &'static str,
+    /// After shell is open at root: FocusNext + Activate → Settings (matches UI).
+    pub open_settings: &'static [&'static str],
     pub close_shell: &'static str,
 }
 
@@ -37,7 +38,7 @@ const ESDF: KeymapProfile = KeymapProfile {
     east: "KeyF",
     west: "KeyS",
     open_shell: "Escape",
-    open_settings: "KeyO", // placeholder chord start; Stage B may refine
+    open_settings: &["KeyK", "Enter"],
     close_shell: "Escape",
 };
 
