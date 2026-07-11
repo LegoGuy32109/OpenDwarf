@@ -255,7 +255,8 @@ the native server, wasm, and tests share them with zero moves.
 
 ## 7. Increments
 
-**Increment 1 — build now (fully world-independent, actionable today):**
+**Increment 1 — done** (see
+[`game-testing-harness-increment-1-plan.md`](./game-testing-harness-increment-1-plan.md)):
 
 - `draw_hash()` in `od_core` (+ the §4 invariants) and `debug_draw_hash()`
   compute-on-call export.
@@ -271,12 +272,22 @@ the native server, wasm, and tests share them with zero moves.
   by `draw_hash` and the future `world_state_hash`) and a documented home for
   `Scenario` — zero world-specific types until `od_world` exists.
 
-**Increment 2 — design-doc'd here, implemented with `od_world`:** the native sim
-harness + unified intent-level `Scenario` + `WorldSnapshot` + world-state-hash
-(§6), plus the browser harness gaining `importReplay` that consumes the **same**
-shared format (so a natively-validated scenario replays in the browser). Built
-to the seam locked above; no throwaway browser-only recorder is built in the
-meantime — near-term coverage uses deterministic **scripted** input sequences.
+**Increment 2 — `od_world` replay substrate (design locked 2026-07-11):**
+
+Decision records:
+
+- [`od-world.md`](./od-world.md) — Bevy-free in-process `WorldSim`, module
+  layout, command API, port map.
+- [`sim-replay.md`](./sim-replay.md) — authoritative **sim/server**
+  `WorldReplay` v1, v1 `WorldSnapshot` subset, `world_state_hash`, native
+  goldens.
+
+**MVP implement now:** `WorldSim` + `WorldReplay` (record/replay) +
+`world_state_hash` + command-driven native goldens. **Defer:** intent-level
+Scenario authoring API, browser `importReplay`, world render, worker protocol.
+Long-term dual layer remains Scenario (author) → **record** → `WorldReplay`
+(proof); Scenario API gets its own interview.
+
 
 ---
 
