@@ -88,27 +88,23 @@ in-wasm world-state-hash matches native **and** the draw-hash matches its golden
 
 ---
 
-## 3. Shared contract (lives in `od_core`)
+## 3. Shared contract
 
 Authored once, consumed by every layer:
 
-- **`Scenario` / replay format** — a deterministic input program:
-  `{ seed / world_config, spawn, steps: [...] }`. Steps are expressed at the
-  **intent/semantic level** (e.g. "move player E", "advance N ticks", "type
-  'hello'", "press Escape"), plus a **native-only escape hatch** for sim-only
-  steps that have no keyboard equivalent (e.g. `SetChunkLoaded`) and assertion
-  steps. Ported from the proven `world_sim` `Scenario`/`ReplayFile` design
-  (versioned `bincode`, command + periodic snapshot checkpoints + final
-  snapshot), with the step vocabulary aligned to the engine's real
-  `SessionIntent`.
-  - **Native** applies intent steps directly to the sim.
-  - **Browser** _lowers_ input-bearing intent steps to real `keyDown`/`typeText`
-    DOM events, so it exercises the true DOM→arena→keymap→intent path rather
-    than injecting commands behind it.
+- **`Scenario` (intent/semantic authoring)** — full dual-layer contract is
+  locked in [`scenario.md`](./scenario.md): `od_scenario` crate, `WorldIntent`
+  in `od_core`, step kinds (Session / World / Engine / Assert / Shell / Input),
+  Rust builders + JSON schema, Stage A/B gates. Native applies world intents
+  and records `WorldReplay`; browser lowers Session/Shell/Input to real DOM
+  keys via a keymap profile.
+- **`WorldReplay` (command-level proof)** — see [`sim-replay.md`](./sim-replay.md).
+  Produced by recording a Scenario (or command-driven) run; not a second
+  authoring DSL.
 - **`StateHash` convention** — a **tagged hex string** (`"fnv1a64:<16hex>"`)
-  used by both the render **draw-hash** (§5.2) and the future
-  **world-state-hash**, so algorithms can evolve unambiguously. FNV-1a 64-bit,
-  reusing the `FnvHasher` already in `od_ui::id`.
+  used by both the render **draw-hash** (§5.2) and **world-state-hash**, so
+  algorithms can evolve unambiguously. FNV-1a 64-bit, reusing the `FnvHasher`
+  already in `od_ui::id` / `od_core`.
 
 ---
 
@@ -236,10 +232,11 @@ eye until cutover.
 - [`sim-replay.md`](./sim-replay.md) — `WorldReplay` v1 + `world_state_hash`
 
 Summary: authoritative **sim/server** replay (not client view); command-level
-`WorldReplay` recorded from `WorldSim`; intent-level Scenario authoring deferred.
-Port target remains the Bevy-free core in `game_library/world_sim/`
-(`world_core`, API types), without `WorldSimApp`/plugin. Types live in
-`od_core`; stepping lives in `od_world`.
+`WorldReplay` recorded from `WorldSim`. Intent-level Scenario authoring is
+designed in [`scenario.md`](./scenario.md) (not implemented yet). Port target
+remains the Bevy-free core in `game_library/world_sim/` (`world_core`, API
+types), without `WorldSimApp`/plugin. Wire types live in `od_core`; stepping
+lives in `od_world`; Scenario DSL/runners in `od_scenario`.
 
 
 ---
@@ -273,11 +270,19 @@ Decision records:
   `WorldReplay` v1, v1 `WorldSnapshot` subset, `world_state_hash`, native
   goldens.
 
-**MVP implement now:** `WorldSim` + `WorldReplay` (record/replay) +
-`world_state_hash` + command-driven native goldens. **Defer:** intent-level
-Scenario authoring API, browser `importReplay`, world render, worker protocol.
-Long-term dual layer remains Scenario (author) → **record** → `WorldReplay`
-(proof); Scenario API gets its own interview.
+**MVP (Increment 2):** `WorldSim` + `WorldReplay` (record/replay) +
+`world_state_hash` + command-driven native goldens — **implemented**.
+
+**Next — Scenario dual layer** (design locked in [`scenario.md`](./scenario.md);
+impl staged):
+
+- Stage A: `od_scenario` + native runner (World / Engine / Assert) → record →
+  `WorldReplay`.
+- Stage B: harness `runScenario` + thin Playwright; `importReplay` reserved;
+  Engine steps fail-closed in browser.
+
+Still deferred outside Scenario: world render, worker protocol, client-view
+replay.
 
 
 ---
@@ -286,12 +291,13 @@ Long-term dual layer remains Scenario (author) → **record** → `WorldReplay`
 
 | Deferred                                                     | Seam that keeps it cheap                                                   |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Native sim harness, world-state-hash, `WorldSnapshot` growth | Shared `StateHash` convention + `Scenario` home in `od_core` (Increment 1) |
-| `importReplay` / cross-layer replay in the browser           | Unified intent-level `Scenario` format (§3) designed with `od_world`       |
+| Native Scenario runner / `od_scenario` impl                  | Design locked: [`scenario.md`](./scenario.md) Stage A gates                |
+| Browser `runScenario` / `importReplay`                       | Design locked: [`scenario.md`](./scenario.md) Stage B gates                |
 | Pointer/wheel input                                          | Keyboard-only by design; add only with a deliberate mouse path             |
 | IME / composition                                            | ASCII font prunes CJK; `Composition` event kind reserved                   |
 | Pixel-diff golden gating                                     | Draw-hash is the gate; screenshots stay non-gating, parity by eye          |
 | Stripping the hash from release wasm                         | `debug_assertions` gate as a later fallback if lean-core size demands it   |
+| Browser-controllable `Engine` escapes                        | Fail-closed for now; revisit with an explicit allowlist                    |
 
 ---
 
@@ -322,10 +328,12 @@ type EngineHarness = {
   snapshot(): EngineSnapshot; // includes frame.drawHash
   captureCheckpoint(name: string): Promise<EngineCheckpoint>;
   exportBundle(): EngineBundle;
-  importReplay(replay: Scenario): Promise<void>; // with od_world
+  runScenario(scenario: ScenarioDocument): Promise<RunScenarioResult>; // v3
+  importReplay(worldReplay: WorldReplayDocument): Promise<ImportReplayResult>; // v3
   reset(config?: unknown): Promise<void>;
 };
 ```
 
-Everything past Increment 1 (`stepSimTick`, `flush`, `importReplay`, `reset`,
-richer snapshot) lands only when there is stable world state worth recording.
+Harness v3 Scenario APIs are specified in [`scenario.md`](./scenario.md) §7
+(`runScenario` = author path, `importReplay` = `WorldReplay` proof path).
+`stepSimTick` / richer world snapshot land with the wasm world surface.

@@ -1,9 +1,8 @@
-//! Documented home for the shared deterministic `Scenario` / replay format.
+//! Documented home (Increment 1) for the shared deterministic Scenario format.
 //!
-//! Increment 1 lands only this module path so native sim harness, browser
-//! goldens, and future `od_world` share one place to hang types. **No**
-//! world-specific or typed step vocabulary lives here yet — those land with
-//! Increment 2 / the `od_world` design interview, aligned to real
-//! `SessionIntent` and world commands rather than guessed ahead of the model.
+//! **Superseded by design:** typed Scenario / `WorldIntent` / runners are
+//! specified in `docs/design/scenario.md`. Implementation lands in a new
+//! `od_scenario` crate (`WorldIntent` in `od_core`); this module remains only
+//! as a pointer until that crate replaces it.
 //!
-//! See `docs/design/game-testing-harness.md` §3 and §7.
+//! See also `docs/design/game-testing-harness.md` §3.

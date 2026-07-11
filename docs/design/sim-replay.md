@@ -4,7 +4,7 @@
 **Parent:** [`game-testing-harness.md`](./game-testing-harness.md) §3 / §6 / §7
 Increment 2; [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md)
 **Companion:** [`od-world.md`](./od-world.md) — `WorldSim`, type placement, port
-map
+map; [`scenario.md`](./scenario.md) — Scenario → record → `WorldReplay`
 
 This document defines the **authoritative sim/server replay** contract for the
 new engine: what is recorded, what a snapshot contains, how
@@ -16,7 +16,7 @@ format and hash layout can evolve without rewriting the sim narrative.
 
 ## 0. North star vs Increment 2 MVP
 
-### Long-term (harness dual layer — not implemented yet)
+### Long-term (harness dual layer)
 
 ```
 Scenario (intent-level, authored)
@@ -26,23 +26,23 @@ WorldReplay (command-level, recorded)  ←── deterministic proof artifact
 ```
 
 - **Scenario** — human/agent-authored program at intent/semantic level; browser
-  will later *lower* input-bearing steps to real DOM keys.
+  *lowers* input-bearing steps to real DOM keys. **Design locked:**
+  [`scenario.md`](./scenario.md) (impl staged A→B).
 - **WorldReplay** — observed **server/sim** command log + proof snapshots.
   Produced by **recording** a run (not by naïvely compiling intents without
   executing sim policy).
 
-### Increment 2 MVP (this doc)
+### Increment 2 MVP (this doc) — implemented
 
-| Build now | Defer |
+| Build now | Defer (see scenario.md) |
 | --- | --- |
 | `WorldReplay` v1 format + I/O | Intent-level Scenario API / step enum |
-| `WorldReplayRecorder` | Browser `importReplay` |
+| `WorldReplayRecorder` | Browser `runScenario` / `importReplay` |
 | `world_state_hash` + canonical encode | Client-view replay format |
-| Command-driven native goldens | ScenarioBuilder port |
+| Command-driven native goldens | ScenarioBuilder / `od_scenario` |
 
-**Do not** freeze Scenario authoring types in this increment. Keep
-`od_core::scenario` as the docs-only home from Increment 1 until a dedicated
-Scenario interview.
+Scenario authoring types are designed in [`scenario.md`](./scenario.md); do not
+invent parallel step enums inside this replay doc.
 
 ---
 
@@ -362,8 +362,8 @@ analogous to Increment 1 UI bless tasks — wire a deno task when useful.
 
 | Seam | Use later |
 | --- | --- |
-| Intent `Scenario` → record → `WorldReplay` | Dual-layer harness §3 |
-| Browser lowers Scenario to DOM; compares `world_state_hash` | `importReplay` |
+| Intent `Scenario` → record → `WorldReplay` | [`scenario.md`](./scenario.md) Stage A |
+| Browser lowers Scenario to DOM; compares `world_state_hash` | `runScenario` / `importReplay` — [`scenario.md`](./scenario.md) Stage B |
 | Worker: commands in / snapshots out | Same `WorldCommand` / `WorldSnapshot` types |
 | `ClientReplay` | Separate format over `ClientView` |
 | Integer/noise-crate terrain | If wasm hash parity is required |
@@ -378,6 +378,6 @@ analogous to Increment 1 UI bless tasks — wire a deno task when useful.
 - [ ] Snapshot type has no visibility fields
 - [ ] `world_state_hash` uses documented canonical layout + FNV `StateHash`
 - [ ] Default checkpoint interval 128 (overridable)
-- [ ] Core golden suite green on native
-- [ ] No Scenario authoring types shipped
-- [ ] Noise wasm risk documented in code module docs as well as here
+- [x] Core golden suite green on native
+- [x] No Scenario authoring types shipped (Scenario design: [`scenario.md`](./scenario.md))
+- [x] Noise wasm risk documented in code module docs as well as here
