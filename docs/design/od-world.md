@@ -5,13 +5,16 @@
 parallel `od_world` track; harness
 [`game-testing-harness.md`](./game-testing-harness.md) §6 / §7 Increment 2
 **Companion:** [`sim-replay.md`](./sim-replay.md) — `WorldReplay` v1,
-`WorldSnapshot` subset, `world_state_hash`, native goldens
+`WorldSnapshot` subset, `world_state_hash`, native goldens;
+[`scenario.md`](./scenario.md) — intent-level Scenario dual-layer (design)
 
 This document is the decision record for the **first `od_world` implementation
 slice**: a headless, Bevy-free, in-process world simulator that can be driven by
 commands, snapshotted, and recorded into an authoritative sim replay (see
-companion). It does **not** design the intent-level Scenario authoring API,
-browser `importReplay`, world rendering on `/engine`, or the worker protocol.
+companion). Intent-level Scenario authoring is designed separately in
+[`scenario.md`](./scenario.md). This doc does **not** cover browser
+`runScenario`/`importReplay`, world rendering on `/engine`, or the worker
+protocol.
 
 ---
 
@@ -45,14 +48,14 @@ server/wasm/tests share one schema with zero later moves.
 
 | Deferred | Why / where |
 | --- | --- |
-| Intent-level `Scenario` authoring API | Dual-layer north star remains; API not frozen yet ([`sim-replay.md`](./sim-replay.md) §0) |
-| Browser `importReplay` / `stepSimTick` | Needs Scenario + (later) wasm sim surface |
+| Intent-level `Scenario` authoring API | Design locked: [`scenario.md`](./scenario.md); impl is Stage A/B |
+| Browser `runScenario` / `importReplay` / `stepSimTick` | [`scenario.md`](./scenario.md) Stage B + wasm sim surface |
 | `/engine` world rendering / draw-hash of tiles | Separate render/`ClientView` work (Phase 5+) |
 | Worker / multi-instance protocol | Separate architecture track; in-process only now |
 | `drain_updates` / live delta bus | No consumer in Increment 2 |
 | Client-view replay format | Different artifact; needs `ClientView` |
 | Rewriting terrain noise for wasm float parity | Port f64 as-is; call out risk (companion §6) |
-| Extending `SessionIntent` with movement | Gameplay intents still deferred; tests speak `WorldCommand` |
+| Extending `SessionIntent` with movement | `WorldIntent` designed in [`scenario.md`](./scenario.md); live game loop may adopt later |
 
 ---
 
@@ -71,7 +74,7 @@ server/wasm/tests share one schema with zero later moves.
 ```
 od_core/
   hash.rs          # existing StateHash / FNV / draw_hash
-  scenario.rs      # docs-only home (Increment 1); still no Scenario types
+  scenario.rs      # removed — Scenario lives in `od_scenario` (see scenario.md)
   world/
     mod.rs         # re-exports
     vec.rs         # Vec3i, Vec3u
@@ -111,7 +114,7 @@ od_world/
 | `world_core.rs` | `od_world::{state,terrain,movement}` |
 | `fov.rs` | `od_world::fov` (optional this increment) |
 | `bevy_app.rs` | **Deleted for new path** — replaced by `WorldSim` |
-| `scenario.rs` | **Not ported** (Scenario API deferred) |
+| `scenario.rs` | **Deleted** from `od_core`; see [`scenario.md`](./scenario.md) / `od_scenario` |
 | `replay.rs` | Replaced by `od_core::replay` (`WorldReplay` v1) — inspired by, not compatible with, legacy v5 |
 
 Legacy `game_library/world_sim` remains in-tree until cutover; new code must not

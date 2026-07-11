@@ -76,6 +76,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "od_scenario"
+version = "0.1.0"
+dependencies = [
+ "od_core",
+ "od_world",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "od_ui"
 version = "0.1.0"
 dependencies = [

@@ -7,7 +7,6 @@ pub mod input;
 pub mod intent;
 pub mod keycode;
 pub mod replay;
-pub mod scenario;
 pub mod session;
 pub mod world;
 
@@ -49,7 +48,7 @@ pub use input::{
 pub use session::{ChatMsg, SessionIntent, SessionModel, TextEdit};
 pub use keycode::KeyCode;
 pub use world::{
-    BlockType, DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE, DEFAULT_WORLD_CHUNKS,
+    BlockType, DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE, DEFAULT_WORLD_CHUNKS, Dir,
     EntityMovementSnapshot, EntitySnapshot, MoveEntityError, TerrainConfig, Vec3i, Vec3u,
-    WorldCommand, WorldCommandError, WorldConfig, WorldSnapshot,
+    WorldCommand, WorldCommandError, WorldConfig, WorldIntent, WorldSnapshot,
 };

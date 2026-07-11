@@ -9,6 +9,8 @@ import { TEXTURE_UNITS, uploadWhiteTo } from "../webgl2/texture-units.ts";
 import { loadUiFontAtlas } from "../webgl2/ui-text.ts";
 import initEngine, { UiEngine } from "../engine/generated/od_wasm.js";
 import { InputCapture } from "./input.ts";
+import { runScenarioBrowser } from "./scenario-runner.ts";
+import type { RunScenarioResult, ScenarioDocument } from "./scenario-types.ts";
 
 type EngineWasmExports = {
   memory: WebAssembly.Memory;
@@ -280,7 +282,7 @@ type EngineBundle = {
 };
 
 type EngineHarness = {
-  version: 2;
+  version: 3;
   input: {
     keyDown(code: string, modifiers?: number): Promise<void>;
     keyUp(code: string, modifiers?: number): Promise<void>;
@@ -291,12 +293,21 @@ type EngineHarness = {
     focus(): Promise<void>;
   };
   stepFrame(n?: number): Promise<void>;
+  /** Reserved — requires wasm world surface. Throws until implemented. */
+  stepSimTick(n?: number): Promise<void>;
   snapshot(): Record<string, unknown>;
   captureCheckpoint(
     name: string,
     options?: { screenshot?: boolean },
   ): Promise<EngineCheckpoint>;
   exportBundle(): EngineBundle;
+  /** Author path — intent/semantic Scenario document. */
+  runScenario(scenario: ScenarioDocument): Promise<RunScenarioResult>;
+  /**
+   * Proof path — WorldReplay. Explicitly unimplemented until wasm world
+   * surface exists (throws; never silent no-op).
+   */
+  importReplay(worldReplay: unknown): Promise<never>;
 };
 
 type EngineGlobalHarness = typeof globalThis & {
@@ -399,7 +410,7 @@ function installHarness(
       frame.drawHash = runtime.engine.debug_draw_hash();
     }
     return {
-      version: 2,
+      version: 3,
       ...snapshot,
       frame,
       input: {
@@ -473,13 +484,18 @@ function installHarness(
   };
 
   return {
-    version: 2,
+    version: 3,
     input,
     stepFrame: async (n = 1) => {
       for (let index = 0; index < n; index++) {
         runtime.syntheticNow += 16;
         renderFrame(runtime, runtime.syntheticNow);
       }
+    },
+    stepSimTick: async (_n = 1) => {
+      throw new Error(
+        "stepSimTick: unimplemented — requires wasm world surface (Stage B stub)",
+      );
     },
     snapshot: () => buildSnapshot(),
     captureCheckpoint: async (name, options = {}) => {
@@ -510,13 +526,51 @@ function installHarness(
         }));
       return {
         manifest: {
-          version: 2,
+          version: 3,
           checkpointCount: checkpoints.length,
           screenshotCount: screenshots.length,
         },
         checkpoints: checkpoints.map(({ screenshot: _screenshot, ...rest }) => rest),
         screenshots,
       };
+    },
+    runScenario: async (scenario: ScenarioDocument) => {
+      return await runScenarioBrowser(
+        {
+          input,
+          stepFrame: async (n = 1) => {
+            for (let index = 0; index < n; index++) {
+              runtime.syntheticNow += 16;
+              renderFrame(runtime, runtime.syntheticNow);
+            }
+          },
+          snapshot: () => buildSnapshot(),
+          captureCheckpoint: async (name) => {
+            runtime.syntheticNow += 16;
+            renderFrame(runtime, runtime.syntheticNow);
+            const snapshot = buildSnapshot();
+            const frame = snapshot.frame as Record<string, unknown>;
+            const drawHash = String(
+              frame.drawHash ?? runtime.engine.debug_draw_hash(),
+            );
+            const checkpoint: EngineCheckpoint = {
+              name,
+              ordinal: checkpoints.length,
+              frame: Number(frame.number ?? 0),
+              drawHash,
+              snapshot,
+            };
+            checkpoints.push(checkpoint);
+            return checkpoint;
+          },
+        },
+        scenario,
+      );
+    },
+    importReplay: async (_worldReplay: unknown): Promise<never> => {
+      throw new Error(
+        "importReplay: unimplemented — requires wasm world surface (Stage B stub; not a silent no-op)",
+      );
     },
   };
 }

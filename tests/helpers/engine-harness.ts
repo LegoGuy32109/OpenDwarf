@@ -66,12 +66,23 @@ type BrowserGlobal = {
       focus(): Promise<void>;
     };
     stepFrame(n?: number): Promise<void>;
+    stepSimTick(n?: number): Promise<void>;
     snapshot(): EngineSnapshot;
     captureCheckpoint(
       name: string,
       options?: { screenshot?: boolean },
     ): Promise<EngineCheckpoint>;
     exportBundle(): EngineBundle;
+    runScenario(scenario: unknown): Promise<{
+      name: string;
+      checkpoints: {
+        name: string;
+        drawHash: string;
+        snapshot: EngineSnapshot;
+      }[];
+      finalSnapshot: EngineSnapshot;
+    }>;
+    importReplay(worldReplay: unknown): Promise<never>;
   };
 };
 
@@ -89,7 +100,7 @@ export async function waitForEngineHarness(page: Page, timeout = 15_000) {
     () => {
       const harness =
         (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness;
-      return !!harness && harness.version >= 2;
+      return !!harness && harness.version >= 3;
     },
     { timeout },
   );
@@ -197,6 +208,53 @@ export function exportEngineBundle(page: Page) {
   return page.evaluate(() =>
     (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
       .exportBundle()
+  );
+}
+
+export function engineRunScenario(page: Page, scenario: unknown) {
+  return page.evaluate(
+    (scenario) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+        .runScenario(scenario),
+    scenario,
+  );
+}
+
+export function engineImportReplay(page: Page, worldReplay: unknown) {
+  return page.evaluate(
+    async (worldReplay) => {
+      const harness =
+        (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!;
+      try {
+        await harness.importReplay(worldReplay);
+        return { ok: true as const };
+      } catch (err) {
+        return {
+          ok: false as const,
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+    worldReplay,
+  );
+}
+
+export function engineStepSimTick(page: Page, n = 1) {
+  return page.evaluate(
+    async (n) => {
+      const harness =
+        (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!;
+      try {
+        await harness.stepSimTick(n);
+        return { ok: true as const };
+      } catch (err) {
+        return {
+          ok: false as const,
+          message: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+    n,
   );
 }
 
