@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
+# Native Stage A Scenario suite (`od_scenario`).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR/game_engine"
 
-cargo test --manifest-path Cargo.toml -p od_core -p od_ui -p od_world -p od_scenario
-
+cargo test --manifest-path Cargo.toml -p od_scenario

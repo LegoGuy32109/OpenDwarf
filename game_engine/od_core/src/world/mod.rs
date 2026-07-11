@@ -6,6 +6,7 @@
 mod block;
 mod command;
 mod config;
+mod intent;
 mod snapshot;
 mod vec;
 
@@ -15,5 +16,6 @@ pub use config::{
     DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE, DEFAULT_WORLD_CHUNKS, TerrainConfig,
     WorldConfig,
 };
+pub use intent::{Dir, WorldIntent};
 pub use snapshot::{EntityMovementSnapshot, EntitySnapshot, WorldSnapshot};
 pub use vec::{Vec3i, Vec3u};

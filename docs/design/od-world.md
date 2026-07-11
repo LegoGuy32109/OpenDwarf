@@ -74,7 +74,7 @@ server/wasm/tests share one schema with zero later moves.
 ```
 od_core/
   hash.rs          # existing StateHash / FNV / draw_hash
-  scenario.rs      # docs-only home (Increment 1); still no Scenario types
+  scenario.rs      # removed — Scenario lives in `od_scenario` (see scenario.md)
   world/
     mod.rs         # re-exports
     vec.rs         # Vec3i, Vec3u
@@ -114,7 +114,7 @@ od_world/
 | `world_core.rs` | `od_world::{state,terrain,movement}` |
 | `fov.rs` | `od_world::fov` (optional this increment) |
 | `bevy_app.rs` | **Deleted for new path** — replaced by `WorldSim` |
-| `scenario.rs` | **Not ported** (Scenario API deferred) |
+| `scenario.rs` | **Deleted** from `od_core`; see [`scenario.md`](./scenario.md) / `od_scenario` |
 | `replay.rs` | Replaced by `od_core::replay` (`WorldReplay` v1) — inspired by, not compatible with, legacy v5 |
 
 Legacy `game_library/world_sim` remains in-tree until cutover; new code must not

@@ -1,6 +1,7 @@
 # Scenario — Dual-Layer Authoring Contract
 
-**Status:** Design locked — 2026-07-11 (interview); **not implemented**
+**Status:** Design locked — 2026-07-11; **Stage A implemented** (native
+`od_scenario` runner + goldens). Stage B (browser) not started.
 **Parent:** [`game-testing-harness.md`](./game-testing-harness.md) §3 / §7
 **Companions:** [`sim-replay.md`](./sim-replay.md) (`WorldReplay` proof),
 [`od-world.md`](./od-world.md) (`WorldSim`)
@@ -8,7 +9,7 @@
 This document is the decision record for the **intent-level Scenario** layer:
 authoring surface, step vocabulary, crate placement, lowering rules, harness
 APIs (`runScenario` / `importReplay`), and staged delivery with verifiable exit
-gates. It does **not** implement code.
+gates.
 
 ---
 
@@ -46,7 +47,7 @@ World steps drive the sim clock (`stepSimTick` / native tick), not `stepFrame`.
 
 | Deferred | Notes |
 | --- | --- |
-| Implementation of `od_scenario` / harness v3 | Design only in this PR |
+| Stage B browser harness (`runScenario` / Playwright) | After Stage A gates |
 | Browser-controllable `Engine` escapes | Stage rule: fail-closed; revisit with a real allowlist |
 | Client-view / FOV replay | Separate from Scenario → `WorldReplay` |
 | Deleting legacy `world_sim` Scenario DSL | Inspiration only |
@@ -86,11 +87,11 @@ scenarios. Scenario volume is **harness-supplemental**, not game TCB.
 `SessionIntent` / `WorldCommand` live in core). Sugar and runners stay in
 `od_scenario`.
 
-### Retire docs-only `od_core::scenario`
+### Delete `od_core::scenario`
 
-Increment 1’s empty `od_core::scenario` module is replaced: delete or turn into
-a short `doc(inline)` pointer to this design / `od_scenario` once the crate
-exists.
+Increment 1’s empty `od_core::scenario` module is **deleted**. Do not leave a
+redirect stub. Scenario lives only in **`od_scenario`** (plus this design doc).
+`WorldIntent` / `Dir` live in `od_core::world`.
 
 ---
 
@@ -108,19 +109,21 @@ exists.
 Scenario wraps **real** intents where they exist. It does not invent a second
 movement ontology for the live game.
 
-### `WorldIntent` v1 (sketch)
+### `WorldIntent` v1
 
 ```rust
-// od_core — illustrative; exact derives/serde tags settled at impl
+// od_core::world
+pub enum Dir { N, S, E, W }
+
 pub enum WorldIntent {
-    MovePlayer { direction: Dir }, // abstract cardinal/ordinal as needed
-    WaitTicks { ticks: u32 },      // synonym AdvanceSimTicks — pick one name at impl
+    MovePlayer { direction: Dir },
+    WaitTicks { ticks: u32 },
 }
 ```
 
 - **`SetChunkLoaded` is not a `WorldIntent`.** It is an **`Engine`** step
   (native escape), mapping to the existing `WorldCommand::SetChunkLoaded`.
-- Movement sugar (`MovePlayerExact`, `wait_until_idle`) lives in `od_scenario`
+- Movement sugar (`MovePlayerExact`, `WaitUntilIdle`) lives in `od_scenario`
   and **expands** into raw intents / recorded `WorldCommand`s. Interruptions
   (attack/effects) are why raw `MovePlayer` + `WaitTicks` stay first-class.
 
@@ -275,17 +278,17 @@ A stage is **not done** until the named commands/artifacts pass.
 
 Done when:
 
-- [ ] `od_scenario` crate + `WorldIntent` in `od_core` compile.
-- [ ] Scenario JSON schema serde round-trips (builder ↔ JSON).
-- [ ] Native golden(s): Scenario → record → `WorldReplay` verify (hash match).
-- [ ] ≥1 Scenario using **Engine** (e.g. chunk gate) and ≥1 **Assert** on
+- [x] `od_scenario` crate + `WorldIntent` in `od_core` compile.
+- [x] Scenario JSON schema serde round-trips (builder ↔ JSON).
+- [x] Native golden(s): Scenario → record → `WorldReplay` verify (hash match).
+- [x] ≥1 Scenario using **Engine** (e.g. chunk gate) and ≥1 **Assert** on
       `world_state_hash`.
-- [ ] Fixture with Session/Shell steps **fail-closed** on Stage A runner.
-- [ ] Task green: e.g. `engine:test-scenario` (or folded into `engine:test`) in
-      CI.
+- [x] Fixture with Session/Shell steps **fail-closed** on Stage A runner.
+- [x] Task green: `deno task engine:test-scenario` (also folded into
+      `engine:test`).
 
-**Artifacts:** checked-in fixtures (Rust-emitted JSON ok), golden hashes, and/or
-exported `WorldReplay` under a known path; bless via explicit flag/task.
+**Artifacts:** `od_scenario/goldens/world_state_hash.json`; bless via
+`OD_BLESS_SCENARIO_GOLDENS=1`. `od_core::scenario` module **deleted**.
 
 ### Stage B — browser
 
@@ -308,7 +311,7 @@ Done when:
 | [`game-testing-harness.md`](./game-testing-harness.md) §3 | Scenario contract lives here; harness doc points here |
 | [`sim-replay.md`](./sim-replay.md) | `WorldReplay` remains proof format; Scenario authoring no longer “deferred forever” — deferred only until Stage A impl |
 | [`od-world.md`](./od-world.md) | Sim unchanged; Scenario runner consumes `WorldSim` from `od_scenario` |
-| Increment 1 `od_core::scenario` stub | Superseded by `od_scenario` + this doc |
+| Increment 1 `od_core::scenario` stub | **Deleted**; use `od_scenario` + this doc |
 
 ---
 
@@ -322,4 +325,5 @@ Done when:
 - [x] Rust builders + JSON schema; Rust-primary goldens
 - [x] `runScenario` + `importReplay` both reserved
 - [x] Stage A/B gates with verifiable tasks/artifacts
-- [ ] Implementation PRs follow Stage A then Stage B (out of scope here)
+- [x] Stage A implementation (`od_scenario`, native goldens, `engine:test-scenario`)
+- [ ] Stage B implementation (browser `runScenario` / Playwright)

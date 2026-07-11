@@ -14,6 +14,7 @@
     "engine:dev": "bash scripts/bash/engine-dev.sh",
     "engine:check": "bash scripts/bash/engine-check.sh",
     "engine:test": "bash scripts/bash/engine-test.sh",
+    "engine:test-scenario": "bash scripts/bash/engine-test-scenario.sh",
     "engine:bless-goldens": "bash scripts/bash/engine-bless-goldens.sh",
     "engine:bless-goldens-native": "bash scripts/bash/engine-bless-goldens-native.sh",
     "engine:bless-goldens-browser": "bash scripts/bash/engine-bless-goldens-browser.sh",

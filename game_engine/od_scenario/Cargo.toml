@@ -1,0 +1,10 @@
+[package]
+name = "od_scenario"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+od_core = { path = "../od_core" }
+od_world = { path = "../od_world" }
+serde = { workspace = true }
+serde_json = "1.0.145"

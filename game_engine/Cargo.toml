@@ -1,5 +1,5 @@
 [workspace]
-members = ["od_core", "od_ui", "od_world", "od_wasm"]
+members = ["od_core", "od_ui", "od_world", "od_scenario", "od_wasm"]
 resolver = "2"
 
 [workspace.package]

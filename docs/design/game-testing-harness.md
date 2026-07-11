@@ -273,12 +273,11 @@ Decision records:
 **MVP (Increment 2):** `WorldSim` + `WorldReplay` (record/replay) +
 `world_state_hash` + command-driven native goldens — **implemented**.
 
-**Next — Scenario dual layer** (design locked in [`scenario.md`](./scenario.md);
-impl staged):
+**Next — Scenario dual layer** ([`scenario.md`](./scenario.md)):
 
-- Stage A: `od_scenario` + native runner (World / Engine / Assert) → record →
-  `WorldReplay`.
-- Stage B: harness `runScenario` + thin Playwright; `importReplay` reserved;
+- **Stage A — done:** `od_scenario` + native runner (World / Engine / Assert) →
+  record → `WorldReplay`; `deno task engine:test-scenario`.
+- **Stage B:** harness `runScenario` + thin Playwright; `importReplay` reserved;
   Engine steps fail-closed in browser.
 
 Still deferred outside Scenario: world render, worker protocol, client-view

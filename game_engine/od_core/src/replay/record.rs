@@ -73,13 +73,19 @@ impl WorldReplayRecorder {
         if snapshot.tick < self.next_checkpoint_tick {
             return;
         }
-        let hash = world_state_hash(snapshot);
+        self.record_checkpoint(snapshot.clone());
+    }
+
+    /// Force a named/manual checkpoint (Scenario `RecordCheckpoint`, tests).
+    pub fn record_checkpoint(&mut self, snapshot: WorldSnapshot) {
+        let hash = world_state_hash(&snapshot);
+        let tick = snapshot.tick;
         self.events.push(WorldReplayEvent::Checkpoint {
-            snapshot: snapshot.clone(),
+            snapshot,
             state_hash: hash,
         });
         let interval = self.options.checkpoint_interval_ticks.max(1);
-        self.next_checkpoint_tick = snapshot.tick.saturating_add(interval);
+        self.next_checkpoint_tick = tick.saturating_add(interval);
     }
 
     /// Finish the recording with the final snapshot.
