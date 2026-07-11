@@ -8,6 +8,7 @@ pub mod intent;
 pub mod keycode;
 pub mod scenario;
 pub mod session;
+pub mod world;
 
 pub use abi::{
     DRAWCMD_INSTANCE_COUNT_OFFSET, DRAWCMD_INSTANCE_OFFSET_OFFSET, DRAWCMD_PROGRAM_OFFSET,
@@ -40,3 +41,8 @@ pub use input::{
 };
 pub use session::{ChatMsg, SessionIntent, SessionModel, TextEdit};
 pub use keycode::KeyCode;
+pub use world::{
+    BlockType, DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE, DEFAULT_WORLD_CHUNKS,
+    EntityMovementSnapshot, EntitySnapshot, MoveEntityError, TerrainConfig, Vec3i, Vec3u,
+    WorldCommand, WorldCommandError, WorldConfig, WorldSnapshot,
+};

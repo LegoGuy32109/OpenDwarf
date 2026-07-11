@@ -228,28 +228,19 @@ eye until cutover.
 
 ---
 
-## 6. Native world-core sim harness (`od_world`) — design now, build with the world
+## 6. Native world-core sim harness (`od_world`) — see dedicated design
 
-`od_world` is currently a stub; its sim (worldgen, FOV, chunkgen, movement) is
-not yet ported off the deprecating Bevy-era `world_sim`. The native harness is
-therefore **designed here but implemented alongside the `od_world` track**,
-which earns **its own focused design interview + `docs/design/*.md`** (per the
-architecture doc's per-track rule) so the `Scenario`/`WorldSnapshot` format is
-designed against the real world model, not a guess.
+`od_world` Increment 2 design is locked in:
 
-Port target (proven, in `game_library/world_sim/`):
+- [`od-world.md`](./od-world.md) — Bevy-free `WorldSim`
+- [`sim-replay.md`](./sim-replay.md) — `WorldReplay` v1 + `world_state_hash`
 
-- `Scenario`/`ScenarioBuilder` + `run_scenario()` — headless, `step_ticks()`
-  fast-forward, no wall clock.
-- `ReplayFile`/`ReplayRecorder` — versioned `bincode`, commands + periodic
-  `WorldSnapshot` checkpoints + final snapshot; `save_replay`/`load_replay`;
-  `replay_commands_to_snapshot()`.
-- `WorldSnapshot` + a `world_state_hash` (§3 `StateHash` convention, computed
-  identically native and in-wasm per §4).
+Summary: authoritative **sim/server** replay (not client view); command-level
+`WorldReplay` recorded from `WorldSim`; intent-level Scenario authoring deferred.
+Port target remains the Bevy-free core in `game_library/world_sim/`
+(`world_core`, API types), without `WorldSimApp`/plugin. Types live in
+`od_core`; stepping lives in `od_world`.
 
-Differences from the old crate: Bevy-free (no `WorldSimApp`/plugin), step
-vocabulary aligned to `od_core` `SessionIntent`, types placed in `od_core` so
-the native server, wasm, and tests share them with zero moves.
 
 ---
 

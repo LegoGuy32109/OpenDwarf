@@ -96,6 +96,9 @@ dependencies = [
 [[package]]
 name = "od_world"
 version = "0.1.0"
+dependencies = [
+ "od_core",
+]
 
 [[package]]
 name = "once_cell"
