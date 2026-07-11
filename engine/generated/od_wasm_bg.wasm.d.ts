@@ -9,6 +9,7 @@ export const uiengine_abi_program_rect: (a: number) => number;
 export const uiengine_abi_program_text: (a: number) => number;
 export const uiengine_abi_rect_stride: (a: number) => number;
 export const uiengine_abi_rect_stride_floats: (a: number) => number;
+export const uiengine_debug_draw_hash: (a: number) => [number, number];
 export const uiengine_debug_snapshot_json: (a: number) => [number, number];
 export const uiengine_drawlist_capacity: (a: number) => number;
 export const uiengine_drawlist_ptr: (a: number) => number;

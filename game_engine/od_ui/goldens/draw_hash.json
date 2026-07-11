@@ -1,0 +1,9 @@
+{
+  "boot_idle": "fnv1a64:7e498a26867e936e",
+  "chat_open_empty": "fnv1a64:74f1dbfaf0ceb0b5",
+  "chat_submitted": "fnv1a64:cee0f072954b9cc2",
+  "chat_typed": "fnv1a64:ac611efa65f1b34c",
+  "shell_root": "fnv1a64:b22e443b6a7bb9fb",
+  "shell_settings": "fnv1a64:2e50e6b050643db5",
+  "shell_settings_scale": "fnv1a64:27b2bdcb8519df0f"
+}

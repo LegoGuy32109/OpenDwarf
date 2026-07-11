@@ -61,6 +61,22 @@ export class UiEngine {
         return ret >>> 0;
     }
     /**
+     * Compute-on-call draw hash (`"fnv1a64:<hex>"`). Not paid on the RAF path.
+     * @returns {string}
+     */
+    debug_draw_hash() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.uiengine_debug_draw_hash(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @returns {string}
      */
     debug_snapshot_json() {

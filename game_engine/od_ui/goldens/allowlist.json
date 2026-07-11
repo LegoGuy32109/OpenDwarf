@@ -1,0 +1,109 @@
+{
+  "boot_idle": {
+    "drawHash": "fnv1a64:7e498a26867e936e",
+    "input": {
+      "textCaptureActive": false
+    },
+    "session": {
+      "chatDraft": "",
+      "chatMessages": [],
+      "uiMode": "world"
+    },
+    "shell": {
+      "open": false,
+      "page": "root"
+    }
+  },
+  "chat_open_empty": {
+    "drawHash": "fnv1a64:74f1dbfaf0ceb0b5",
+    "input": {
+      "textCaptureActive": true
+    },
+    "session": {
+      "chatDraft": "",
+      "chatMessages": [],
+      "uiMode": "chat"
+    },
+    "shell": {
+      "open": false,
+      "page": "root"
+    }
+  },
+  "chat_submitted": {
+    "drawHash": "fnv1a64:cee0f072954b9cc2",
+    "input": {
+      "textCaptureActive": false
+    },
+    "session": {
+      "chatDraft": "",
+      "chatMessages": [
+        "hello"
+      ],
+      "uiMode": "world"
+    },
+    "shell": {
+      "open": false,
+      "page": "root"
+    }
+  },
+  "chat_typed": {
+    "drawHash": "fnv1a64:ac611efa65f1b34c",
+    "input": {
+      "textCaptureActive": true
+    },
+    "session": {
+      "chatDraft": "hello",
+      "chatMessages": [],
+      "uiMode": "chat"
+    },
+    "shell": {
+      "open": false,
+      "page": "root"
+    }
+  },
+  "shell_root": {
+    "drawHash": "fnv1a64:b22e443b6a7bb9fb",
+    "input": {
+      "textCaptureActive": false
+    },
+    "session": {
+      "chatDraft": "",
+      "chatMessages": [],
+      "uiMode": "world"
+    },
+    "shell": {
+      "open": true,
+      "page": "root"
+    }
+  },
+  "shell_settings": {
+    "drawHash": "fnv1a64:2e50e6b050643db5",
+    "input": {
+      "textCaptureActive": false
+    },
+    "session": {
+      "chatDraft": "",
+      "chatMessages": [],
+      "uiMode": "world"
+    },
+    "shell": {
+      "open": true,
+      "page": "settings"
+    }
+  },
+  "shell_settings_scale": {
+    "drawHash": "fnv1a64:27b2bdcb8519df0f",
+    "input": {
+      "textCaptureActive": false
+    },
+    "session": {
+      "chatDraft": "",
+      "chatMessages": [],
+      "uiMode": "world"
+    },
+    "shell": {
+      "open": true,
+      "page": "settings"
+    }
+  }
+}

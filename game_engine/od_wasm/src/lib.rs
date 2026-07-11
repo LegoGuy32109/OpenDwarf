@@ -112,6 +112,11 @@ impl UiEngine {
         self.engine.debug_snapshot_json()
     }
 
+    /// Compute-on-call draw hash (`"fnv1a64:<hex>"`). Not paid on the RAF path.
+    pub fn debug_draw_hash(&self) -> String {
+        self.engine.debug_draw_hash()
+    }
+
     pub fn hydrate_settings(&mut self, bytes: &[u8]) {
         self.engine.hydrate_settings(bytes);
     }

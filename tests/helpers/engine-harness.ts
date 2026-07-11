@@ -1,13 +1,17 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import type { Page } from "@playwright/test";
 
-type EngineSnapshot = {
-  version: 1;
+export type EngineSnapshot = {
+  version: number;
   frame: {
     number: number;
     drawCount: number;
     droppedRects: number;
     droppedGlyphs: number;
     droppedDrawCmds: number;
+    drawHash?: string;
   };
   shell: {
     open: boolean;
@@ -30,24 +34,76 @@ type EngineSnapshot = {
   };
 };
 
+export type EngineCheckpoint = {
+  name: string;
+  ordinal: number;
+  frame: number;
+  drawHash: string;
+  snapshot: EngineSnapshot;
+  screenshot?: string;
+};
+
+export type EngineBundle = {
+  manifest: {
+    version: number;
+    checkpointCount: number;
+    screenshotCount: number;
+  };
+  checkpoints: Omit<EngineCheckpoint, "screenshot">[];
+  screenshots: { name: string; dataUrl: string }[];
+};
+
 type BrowserGlobal = {
   __openDwarfEngineHarness?: {
-    version: 1;
+    version: number;
     input: {
+      keyDown(code: string, modifiers?: number): Promise<void>;
+      keyUp(code: string, modifiers?: number): Promise<void>;
       press(code: string, modifiers?: number): Promise<void>;
       typeText(text: string): Promise<void>;
       paste(text: string): Promise<void>;
+      blur(): Promise<void>;
+      focus(): Promise<void>;
     };
     stepFrame(n?: number): Promise<void>;
     snapshot(): EngineSnapshot;
+    captureCheckpoint(
+      name: string,
+      options?: { screenshot?: boolean },
+    ): Promise<EngineCheckpoint>;
+    exportBundle(): EngineBundle;
   };
 };
 
+export const GOLDEN_ALLOWLIST_KEYS = [
+  "shell.open",
+  "shell.page",
+  "session.uiMode",
+  "session.chatDraft",
+  "session.chatMessages",
+  "input.textCaptureActive",
+] as const;
+
 export async function waitForEngineHarness(page: Page, timeout = 15_000) {
   await page.waitForFunction(
-    () => !!(globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness,
+    () => {
+      const harness =
+        (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness;
+      return !!harness && harness.version >= 2;
+    },
     { timeout },
   );
+}
+
+function harness(page: Page) {
+  return page.evaluate(() => {
+    const value =
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness;
+    if (!value) {
+      throw new Error("engine harness missing");
+    }
+    return true;
+  });
 }
 
 export function engineSnapshot(page: Page) {
@@ -65,24 +121,157 @@ export function enginePress(page: Page, code: string, modifiers?: number) {
   );
 }
 
+export function engineKeyDown(page: Page, code: string, modifiers?: number) {
+  return page.evaluate(
+    ([code, modifiers]) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.input
+        .keyDown(code, modifiers),
+    [code, modifiers] as [string, number | undefined],
+  );
+}
+
+export function engineKeyUp(page: Page, code: string, modifiers?: number) {
+  return page.evaluate(
+    ([code, modifiers]) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.input
+        .keyUp(code, modifiers),
+    [code, modifiers] as [string, number | undefined],
+  );
+}
+
 export function engineTypeText(page: Page, text: string) {
-  return page.evaluate((text) =>
-    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.input
-      .typeText(text)
-  , text);
+  return page.evaluate(
+    (text) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.input
+        .typeText(text),
+    text,
+  );
 }
 
 export function enginePaste(page: Page, text: string) {
-  return page.evaluate((text) =>
+  return page.evaluate(
+    (text) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.input
+        .paste(text),
+    text,
+  );
+}
+
+export function engineBlur(page: Page) {
+  return page.evaluate(() =>
     (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.input
-      .paste(text)
-  , text);
+      .blur()
+  );
+}
+
+export function engineFocus(page: Page) {
+  return page.evaluate(() =>
+    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.input
+      .focus()
+  );
 }
 
 export function stepEngineFrame(page: Page, n = 1) {
-  return page.evaluate((n) =>
-    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.stepFrame(
-      n,
-    )
-  , n);
+  return page.evaluate(
+    (n) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+        .stepFrame(n),
+    n,
+  );
+}
+
+export function captureEngineCheckpoint(
+  page: Page,
+  name: string,
+  options?: { screenshot?: boolean },
+) {
+  return page.evaluate(
+    ([name, options]) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+        .captureCheckpoint(name, options ?? undefined),
+    [name, options] as [string, { screenshot?: boolean } | undefined],
+  );
+}
+
+export function exportEngineBundle(page: Page) {
+  return page.evaluate(() =>
+    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+      .exportBundle()
+  );
+}
+
+export function allowlistFromSnapshot(snapshot: EngineSnapshot) {
+  return {
+    drawHash: snapshot.frame.drawHash,
+    shell: {
+      open: snapshot.shell.open,
+      page: snapshot.shell.page,
+    },
+    session: {
+      uiMode: snapshot.session.uiMode,
+      chatDraft: snapshot.session.chatDraft,
+      chatMessages: snapshot.session.chatMessages,
+    },
+    input: {
+      textCaptureActive: snapshot.input.textCaptureActive,
+    },
+  };
+}
+
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.split(",")[1] ?? "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export async function writeEngineGoldenArtifacts(
+  bundle: EngineBundle,
+  options?: { runId?: string; copyCloud?: boolean },
+) {
+  const runId = options?.runId ??
+    new Date().toISOString().replace(/[:.]/g, "-");
+  const root = path.join("exports", "engine-golden", runId);
+  const shotDir = path.join(root, "screenshots");
+  await mkdir(shotDir, { recursive: true });
+  await writeFile(
+    path.join(root, "manifest.json"),
+    `${JSON.stringify(bundle.manifest, null, 2)}\n`,
+  );
+  await writeFile(
+    path.join(root, "checkpoints.json"),
+    `${JSON.stringify(bundle.checkpoints, null, 2)}\n`,
+  );
+
+  const ordered = bundle.screenshots;
+  for (let index = 0; index < ordered.length; index++) {
+    const shot = ordered[index]!;
+    const filename = `${String(index + 1).padStart(2, "0")}-${shot.name}.png`;
+    const bytes = dataUrlToBytes(shot.dataUrl);
+    await writeFile(path.join(shotDir, filename), bytes);
+    if (options?.copyCloud) {
+      const cloudDir = "/opt/cursor/artifacts/engine-golden";
+      await mkdir(cloudDir, { recursive: true });
+      await writeFile(path.join(cloudDir, filename), bytes);
+    }
+  }
+
+  if (options?.copyCloud) {
+    const cloudDir = "/opt/cursor/artifacts/engine-golden";
+    await mkdir(cloudDir, { recursive: true });
+    await writeFile(
+      path.join(cloudDir, "manifest.json"),
+      `${JSON.stringify(bundle.manifest, null, 2)}\n`,
+    );
+  }
+
+  return root;
+}
+
+/** Silence unused helper warning when only side imports are used. */
+export async function ensureHarnessReady(page: Page) {
+  await harness(page);
 }

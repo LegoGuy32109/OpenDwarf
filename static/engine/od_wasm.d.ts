@@ -11,6 +11,10 @@ export class UiEngine {
     abi_program_text(): number;
     abi_rect_stride(): number;
     abi_rect_stride_floats(): number;
+    /**
+     * Compute-on-call draw hash (`"fnv1a64:<hex>"`). Not paid on the RAF path.
+     */
+    debug_draw_hash(): string;
     debug_snapshot_json(): string;
     drawlist_capacity(): number;
     drawlist_ptr(): number;
@@ -40,6 +44,7 @@ export interface InitOutput {
     readonly uiengine_abi_program_text: (a: number) => number;
     readonly uiengine_abi_rect_stride: (a: number) => number;
     readonly uiengine_abi_rect_stride_floats: (a: number) => number;
+    readonly uiengine_debug_draw_hash: (a: number) => [number, number];
     readonly uiengine_debug_snapshot_json: (a: number) => [number, number];
     readonly uiengine_drawlist_capacity: (a: number) => number;
     readonly uiengine_drawlist_ptr: (a: number) => number;

@@ -2,9 +2,11 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod abi;
+pub mod hash;
 pub mod input;
 pub mod intent;
 pub mod keycode;
+pub mod scenario;
 pub mod session;
 
 pub use abi::{
@@ -17,6 +19,10 @@ pub use abi::{
     RECT_INSTANCE_ALPHA_OFFSET, RECT_INSTANCE_POS_OFFSET, RECT_INSTANCE_SIZE_OFFSET,
     RECT_INSTANCE_STRIDE_BYTES, RECT_INSTANCE_STRIDE_FLOATS, RECT_INSTANCE_TINT_OFFSET,
     RectInstance,
+};
+pub use hash::{
+    FNV_OFFSET_BASIS, FNV_PRIME, FnvHasher, StateHash, canonicalize_f32, draw_hash,
+    draw_state_hash, format_state_hash,
 };
 pub use input::{
     EventKind, INPUT_ARENA_EVENTS_OFFSET, INPUT_ARENA_QUEUE_OFFSET, INPUT_ARENA_SAMPLE_OFFSET,

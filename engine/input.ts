@@ -121,6 +121,8 @@ export class InputCapture {
   private readonly hiddenInput: HTMLInputElement;
   private suppressBlurEvent = false;
   private blurDispatched = false;
+  /** When set, sampled window_focused is forced on for deterministic harness runs. */
+  private pinWindowFocused = false;
 
   private readonly onKeyDown = (event: KeyboardEvent) => {
     const code = CODE_TO_KEYCODE[event.code];
@@ -198,6 +200,9 @@ export class InputCapture {
   };
 
   private readonly onBlur = () => {
+    if (this.pinWindowFocused) {
+      return;
+    }
     writeSampled(this.input, this.canvas, false);
     this.dispatchBlur();
   };
@@ -209,7 +214,11 @@ export class InputCapture {
   };
 
   private readonly onResize = () => {
-    writeSampled(this.input, this.canvas, document.hasFocus());
+    writeSampled(
+      this.input,
+      this.canvas,
+      this.pinWindowFocused || document.hasFocus(),
+    );
     this.syncCaptureFocus();
   };
 
@@ -277,7 +286,15 @@ export class InputCapture {
 
   setArena(input: DataView) {
     this.input = input;
-    writeSampled(this.input, this.canvas, document.hasFocus());
+    writeSampled(
+      this.input,
+      this.canvas,
+      this.pinWindowFocused || document.hasFocus(),
+    );
+  }
+
+  setHarnessPinned(pinned: boolean) {
+    this.pinWindowFocused = pinned;
   }
 
   beginFrame(now: number) {
@@ -288,7 +305,11 @@ export class InputCapture {
       ? 16.0
       : Math.max(0, now - this.lastFrameNow);
     this.lastFrameNow = now;
-    writeSampled(this.input, this.canvas, document.hasFocus());
+    writeSampled(
+      this.input,
+      this.canvas,
+      this.pinWindowFocused || document.hasFocus(),
+    );
     this.input.setFloat32(ABI.INPUT_SAMPLE_DT_MS_OFFSET, dt, true);
     this.syncCaptureFocus();
   }
