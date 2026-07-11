@@ -46,8 +46,9 @@ Notes below are the non-obvious bits for working in the cloud VM.
   path (persisted in the snapshot). If a fresh pod lacks it, recreate:
   `ln -sf "$(command -v google-chrome-stable)" /usr/bin/chromium`.
 - **Harness:** the working browser harness is `/engine?harness=1`
-  (`globalThis.__openDwarfEngineHarness`), covered by
-  `tests/engine-harness.test.ts` (passes). The `tests/webgl-step*.test.ts` files
-  **fail**: they wait for `__openDwarfWebGlHarness`, which is not wired into the
-  live `webgl2-entry.ts`. Per `docs/design/game-testing-harness.md` these are
-  being **retired**; do not treat them as a regression you introduced.
+  (`globalThis.__openDwarfEngineHarness`, version 2), covered by
+  `tests/engine-harness.test.ts`, `tests/engine-golden.test.ts`, and
+  `tests/engine-held-key.test.ts`. Bless draw-hash fixtures with
+  `deno task engine:bless-goldens` (or the `-native` / `-browser` variants).
+  The old `/webgl` harness surface has been retired; keep `/webgl` only as a
+  manual visual-parity reference.

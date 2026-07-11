@@ -1,4 +1,6 @@
-use od_core::{DrawCmd, GlyphInstance, RectInstance, SessionIntent, SessionModel};
+use od_core::{
+    DrawCmd, GlyphInstance, RectInstance, SessionIntent, SessionModel, draw_state_hash,
+};
 use serde_json::json;
 
 use crate::{
@@ -135,6 +137,10 @@ impl<M: FontMetrics + Clone> Engine<M> {
         self.dropped_draw_cmds
     }
 
+    pub fn debug_draw_hash(&self) -> String {
+        draw_state_hash(&self.draw_cmds, &self.rects, &self.glyphs)
+    }
+
     pub fn debug_snapshot_json(&self) -> String {
         let shell_page = match self.shell.nav.current() {
             ShellPage::Root => "root",
@@ -153,7 +159,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
             .map(|msg| msg.text.clone())
             .collect::<Vec<_>>();
         json!({
-            "version": 1,
+            "version": 2,
             "frame": {
                 "number": self.frame_number,
                 "drawCount": self.draw_cmds.len() as u32,
@@ -161,6 +167,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
                 "droppedGlyphs": self.dropped_glyphs,
                 "droppedDrawCmds": self.dropped_draw_cmds,
                 "sessionIntentCount": self.last_session_intent_count,
+                "drawHash": self.debug_draw_hash(),
             },
             "shell": {
                 "open": self.shell.open,

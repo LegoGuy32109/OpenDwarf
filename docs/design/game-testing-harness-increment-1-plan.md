@@ -1,6 +1,6 @@
 # Game Testing Harness — Increment 1 Implementation Plan
 
-**Status:** Draft for verification (interview-locked 2026-07-11)
+**Status:** Implemented (interview-locked 2026-07-11)
 **Parent:** [`game-testing-harness.md`](./game-testing-harness.md) §7 Increment 1
 **Out of scope:** Increment 2 / `od_world` (separate interview after this lands)
 

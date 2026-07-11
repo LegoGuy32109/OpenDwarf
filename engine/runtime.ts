@@ -33,6 +33,7 @@ type EngineHandle = {
   abi_program_rect(): number;
   abi_program_text(): number;
   debug_snapshot_json(): string;
+  debug_draw_hash(): string;
 };
 
 type EngineRuntime = {
@@ -259,25 +260,81 @@ function readSnapshot(runtime: EngineRuntime) {
   >;
 }
 
+type EngineCheckpoint = {
+  name: string;
+  ordinal: number;
+  frame: number;
+  drawHash: string;
+  snapshot: Record<string, unknown>;
+  screenshot?: string;
+};
+
+type EngineBundle = {
+  manifest: {
+    version: number;
+    checkpointCount: number;
+    screenshotCount: number;
+  };
+  checkpoints: EngineCheckpoint[];
+  screenshots: { name: string; dataUrl: string }[];
+};
+
 type EngineHarness = {
-  version: 1;
+  version: 2;
   input: {
+    keyDown(code: string, modifiers?: number): Promise<void>;
+    keyUp(code: string, modifiers?: number): Promise<void>;
     press(code: string, modifiers?: number): Promise<void>;
     typeText(text: string): Promise<void>;
     paste(text: string): Promise<void>;
+    blur(): Promise<void>;
+    focus(): Promise<void>;
   };
   stepFrame(n?: number): Promise<void>;
   snapshot(): Record<string, unknown>;
+  captureCheckpoint(
+    name: string,
+    options?: { screenshot?: boolean },
+  ): Promise<EngineCheckpoint>;
+  exportBundle(): EngineBundle;
 };
 
 type EngineGlobalHarness = typeof globalThis & {
   __openDwarfEngineHarness?: EngineHarness;
 };
 
+function captureGlScreenshot(
+  gl: WebGL2RenderingContext,
+  canvas: HTMLCanvasElement,
+): string {
+  const width = canvas.width;
+  const height = canvas.height;
+  const pixels = new Uint8Array(width * height * 4);
+  gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  const flipped = new Uint8ClampedArray(width * height * 4);
+  const rowBytes = width * 4;
+  for (let y = 0; y < height; y++) {
+    const src = (height - 1 - y) * rowBytes;
+    const dst = y * rowBytes;
+    flipped.set(pixels.subarray(src, src + rowBytes), dst);
+  }
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = width;
+  exportCanvas.height = height;
+  const ctx = exportCanvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("2d canvas unavailable for screenshot encode");
+  }
+  ctx.putImageData(new ImageData(flipped, width, height), 0, 0);
+  return exportCanvas.toDataURL("image/png");
+}
+
 function installHarness(
   runtime: EngineRuntime,
   canvas: HTMLCanvasElement,
 ): EngineHarness {
+  const checkpoints: EngineCheckpoint[] = [];
+
   const keyForCode = (code: string) => {
     if (code.startsWith("Key")) {
       return code.slice(3).toLowerCase();
@@ -310,40 +367,65 @@ function installHarness(
         return code;
     }
   };
+
+  const dispatchKey = (type: "keydown" | "keyup", code: string, modifiers: number) => {
+    const key = keyForCode(code);
+    const event = new KeyboardEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      key,
+      code,
+      ctrlKey: (modifiers & ABI.INPUT_MODIFIER_CTRL) !== 0,
+      altKey: (modifiers & ABI.INPUT_MODIFIER_ALT) !== 0,
+      shiftKey: (modifiers & ABI.INPUT_MODIFIER_SHIFT) !== 0,
+      metaKey: (modifiers & ABI.INPUT_MODIFIER_META) !== 0,
+    });
+    try {
+      Object.defineProperty(event, "code", { get: () => code });
+      Object.defineProperty(event, "key", { get: () => key });
+    } catch {
+      // Best-effort; browser support varies for synthetic KeyboardEvent fields.
+    }
+    runtime.inputCapture.setArena(runtime.input);
+    window.dispatchEvent(event);
+  };
+
+  const buildSnapshot = () => {
+    const snapshot = readSnapshot(runtime);
+    const snapshotInput = (snapshot.input as Record<string, unknown>) ?? {};
+    const snapshotRender = (snapshot.render as Record<string, unknown>) ?? {};
+    const frame = (snapshot.frame as Record<string, unknown>) ?? {};
+    if (typeof frame.drawHash !== "string") {
+      frame.drawHash = runtime.engine.debug_draw_hash();
+    }
+    return {
+      version: 2,
+      ...snapshot,
+      frame,
+      input: {
+        ...snapshotInput,
+        canvasFocused: document.activeElement === canvas,
+        textCaptureActive: runtime.inputCapture.isCaptureActive(),
+        hiddenInputFocused: runtime.inputCapture.isHiddenInputFocused(),
+      },
+      render: {
+        ...snapshotRender,
+        framebufferWidth: canvas.width,
+        framebufferHeight: canvas.height,
+      },
+    };
+  };
+
   const input = {
+    keyDown: async (code: string, modifiers = 0) => {
+      dispatchKey("keydown", code, modifiers);
+    },
+    keyUp: async (code: string, modifiers = 0) => {
+      dispatchKey("keyup", code, modifiers);
+    },
     press: async (code: string, modifiers = 0) => {
-      const key = keyForCode(code);
-      const keyDown = new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        key,
-        code,
-        ctrlKey: (modifiers & ABI.INPUT_MODIFIER_CTRL) !== 0,
-        altKey: (modifiers & ABI.INPUT_MODIFIER_ALT) !== 0,
-        shiftKey: (modifiers & ABI.INPUT_MODIFIER_SHIFT) !== 0,
-        metaKey: (modifiers & ABI.INPUT_MODIFIER_META) !== 0,
-      });
-      const keyUp = new KeyboardEvent("keyup", {
-        bubbles: true,
-        cancelable: true,
-        key,
-        code,
-        ctrlKey: (modifiers & ABI.INPUT_MODIFIER_CTRL) !== 0,
-        altKey: (modifiers & ABI.INPUT_MODIFIER_ALT) !== 0,
-        shiftKey: (modifiers & ABI.INPUT_MODIFIER_SHIFT) !== 0,
-        metaKey: (modifiers & ABI.INPUT_MODIFIER_META) !== 0,
-      });
-      for (const event of [keyDown, keyUp]) {
-        try {
-          Object.defineProperty(event, "code", { get: () => code });
-          Object.defineProperty(event, "key", { get: () => key });
-        } catch {
-          // Best-effort; browser support varies for synthetic KeyboardEvent fields.
-        }
-      }
-      runtime.inputCapture.setArena(runtime.input);
-      window.dispatchEvent(keyDown);
-      window.dispatchEvent(keyUp);
+      await input.keyDown(code, modifiers);
+      await input.keyUp(code, modifiers);
     },
     typeText: async (text: string) => {
       const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
@@ -373,10 +455,25 @@ function installHarness(
       });
       inputEl.dispatchEvent(ev);
     },
+    blur: async () => {
+      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      inputEl?.blur();
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    },
+    focus: async () => {
+      if (runtime.inputCapture.isCaptureActive()) {
+        const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+        inputEl?.focus();
+      } else {
+        canvas.focus();
+      }
+    },
   };
 
   return {
-    version: 1,
+    version: 2,
     input,
     stepFrame: async (n = 1) => {
       for (let index = 0; index < n; index++) {
@@ -384,24 +481,41 @@ function installHarness(
         renderFrame(runtime, runtime.syntheticNow);
       }
     },
-    snapshot: () => {
-      const snapshot = readSnapshot(runtime);
-      const snapshotInput = (snapshot.input as Record<string, unknown>) ?? {};
-      const snapshotRender = (snapshot.render as Record<string, unknown>) ?? {};
+    snapshot: () => buildSnapshot(),
+    captureCheckpoint: async (name, options = {}) => {
+      runtime.syntheticNow += 16;
+      renderFrame(runtime, runtime.syntheticNow);
+      const snapshot = buildSnapshot();
+      const frame = snapshot.frame as Record<string, unknown>;
+      const drawHash = String(frame.drawHash ?? runtime.engine.debug_draw_hash());
+      const checkpoint: EngineCheckpoint = {
+        name,
+        ordinal: checkpoints.length,
+        frame: Number(frame.number ?? 0),
+        drawHash,
+        snapshot,
+      };
+      if (options.screenshot) {
+        checkpoint.screenshot = captureGlScreenshot(runtime.gl, canvas);
+      }
+      checkpoints.push(checkpoint);
+      return checkpoint;
+    },
+    exportBundle: () => {
+      const screenshots = checkpoints
+        .filter((checkpoint) => typeof checkpoint.screenshot === "string")
+        .map((checkpoint) => ({
+          name: checkpoint.name,
+          dataUrl: checkpoint.screenshot!,
+        }));
       return {
-        version: 1,
-        ...snapshot,
-        input: {
-          ...snapshotInput,
-          canvasFocused: document.activeElement === canvas,
-          textCaptureActive: runtime.inputCapture.isCaptureActive(),
-          hiddenInputFocused: runtime.inputCapture.isHiddenInputFocused(),
+        manifest: {
+          version: 2,
+          checkpointCount: checkpoints.length,
+          screenshotCount: screenshots.length,
         },
-        render: {
-          ...snapshotRender,
-          framebufferWidth: canvas.width,
-          framebufferHeight: canvas.height,
-        },
+        checkpoints: checkpoints.map(({ screenshot: _screenshot, ...rest }) => rest),
+        screenshots,
       };
     },
   };
@@ -466,9 +580,16 @@ export async function startEngineRenderLoop(
 
   const wasm = await initEngine();
   const engine = new UiEngine();
-  engine.hydrate_settings(loadPersistedSettings());
+  // Harness mode pins Settings::default(); ignore localStorage so goldens
+  // cannot flake on a previous session's ui_scale.
+  if (!options.harness) {
+    engine.hydrate_settings(loadPersistedSettings());
+  }
   const runtime = createRuntime(gl, canvas, resources, wasm, engine);
   runtime.harnessEnabled = Boolean(options.harness);
+  if (runtime.harnessEnabled) {
+    runtime.inputCapture.setHarnessPinned(true);
+  }
 
   let stopped = false;
   let rafId = 0;

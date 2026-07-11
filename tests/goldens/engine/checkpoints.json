@@ -1,0 +1,115 @@
+{
+  "boot_idle": {
+    "drawHash": "fnv1a64:7e498a26867e936e",
+    "shell": {
+      "open": false,
+      "page": "root"
+    },
+    "session": {
+      "uiMode": "world",
+      "chatDraft": "",
+      "chatMessages": []
+    },
+    "input": {
+      "textCaptureActive": false
+    }
+  },
+  "chat_open_empty": {
+    "drawHash": "fnv1a64:74f1dbfaf0ceb0b5",
+    "shell": {
+      "open": false,
+      "page": "root"
+    },
+    "session": {
+      "uiMode": "chat",
+      "chatDraft": "",
+      "chatMessages": []
+    },
+    "input": {
+      "textCaptureActive": true
+    }
+  },
+  "chat_typed": {
+    "drawHash": "fnv1a64:ac611efa65f1b34c",
+    "shell": {
+      "open": false,
+      "page": "root"
+    },
+    "session": {
+      "uiMode": "chat",
+      "chatDraft": "hello",
+      "chatMessages": []
+    },
+    "input": {
+      "textCaptureActive": true
+    }
+  },
+  "chat_submitted": {
+    "drawHash": "fnv1a64:cee0f072954b9cc2",
+    "shell": {
+      "open": false,
+      "page": "root"
+    },
+    "session": {
+      "uiMode": "world",
+      "chatDraft": "",
+      "chatMessages": [
+        "hello"
+      ]
+    },
+    "input": {
+      "textCaptureActive": false
+    }
+  },
+  "shell_root": {
+    "drawHash": "fnv1a64:b27069691f4ae29a",
+    "shell": {
+      "open": true,
+      "page": "root"
+    },
+    "session": {
+      "uiMode": "world",
+      "chatDraft": "",
+      "chatMessages": [
+        "hello"
+      ]
+    },
+    "input": {
+      "textCaptureActive": false
+    }
+  },
+  "shell_settings": {
+    "drawHash": "fnv1a64:bf1045ec08e4c6dd",
+    "shell": {
+      "open": true,
+      "page": "settings"
+    },
+    "session": {
+      "uiMode": "world",
+      "chatDraft": "",
+      "chatMessages": [
+        "hello"
+      ]
+    },
+    "input": {
+      "textCaptureActive": false
+    }
+  },
+  "shell_settings_scale": {
+    "drawHash": "fnv1a64:d2e54b2c2f281eda",
+    "shell": {
+      "open": true,
+      "page": "settings"
+    },
+    "session": {
+      "uiMode": "world",
+      "chatDraft": "",
+      "chatMessages": [
+        "hello"
+      ]
+    },
+    "input": {
+      "textCaptureActive": false
+    }
+  }
+}
