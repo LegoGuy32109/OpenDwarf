@@ -6,6 +6,7 @@ pub mod hash;
 pub mod input;
 pub mod intent;
 pub mod keycode;
+pub mod replay;
 pub mod scenario;
 pub mod session;
 pub mod world;
@@ -24,6 +25,12 @@ pub use abi::{
 pub use hash::{
     FNV_OFFSET_BASIS, FNV_PRIME, FnvHasher, StateHash, canonicalize_f32, draw_hash,
     draw_state_hash, format_state_hash,
+};
+pub use replay::{
+    WORLD_REPLAY_FORMAT_VERSION, WORLD_SNAPSHOT_ENCODING_VERSION, WorldReplay,
+    WorldReplayEvent, WorldReplayIoError, WorldReplayMetadata, WorldReplayRecorder,
+    WorldReplayRecorderOptions, encode_world_snapshot_canonical, load_world_replay,
+    save_world_replay, world_state_hash,
 };
 pub use input::{
     EventKind, INPUT_ARENA_EVENTS_OFFSET, INPUT_ARENA_QUEUE_OFFSET, INPUT_ARENA_SAMPLE_OFFSET,

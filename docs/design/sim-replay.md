@@ -1,6 +1,6 @@
 # Sim Replay — `WorldReplay` v1 & `world_state_hash`
 
-**Status:** Approved design — 2026-07-11 (interview-locked)
+**Status:** Implemented — 2026-07-11 (interview-locked design)
 **Parent:** [`game-testing-harness.md`](./game-testing-harness.md) §3 / §6 / §7
 Increment 2; [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md)
 **Companion:** [`od-world.md`](./od-world.md) — `WorldSim`, type placement, port

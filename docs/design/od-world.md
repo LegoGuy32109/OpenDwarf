@@ -1,6 +1,6 @@
 # `od_world` — Bevy-free World Simulation (Increment 2)
 
-**Status:** Approved design — 2026-07-11 (interview-locked)
+**Status:** Implemented — 2026-07-11 (interview-locked design)
 **Parent:** [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md) →
 parallel `od_world` track; harness
 [`game-testing-harness.md`](./game-testing-harness.md) §6 / §7 Increment 2

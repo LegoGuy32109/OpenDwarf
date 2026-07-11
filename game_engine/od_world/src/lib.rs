@@ -1,14 +1,20 @@
 //! Bevy-free world simulation (`WorldSim`).
 //!
 //! See `docs/design/od-world.md`. Wire types live in [`od_core::world`].
+//! Replay helpers that need [`WorldSim`] live in [`replay_util`].
 
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+mod replay_util;
 mod sim;
 mod state;
 mod terrain;
 
+pub use replay_util::{
+    finish_and_verify_replay, replay_commands_to_snapshot, send_command_recorded,
+    step_ticks_recorded, step_until_idle_recorded, ReplayApplyError,
+};
 pub use sim::WorldSim;
 pub use state::WorldState;
 
