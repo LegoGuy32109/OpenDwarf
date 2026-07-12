@@ -1,9 +1,13 @@
 mod intent;
 
 use crate::{
-    Color, FontMetrics, Layout, Padding, Style, TextStyle, UiIntent, domain::ShellDomain,
-    draw::FrameOutput, primitives::Vec2, settings::Settings, theme::TextAlign,
+    Axis, Color, FontMetrics, Layout, Padding, Sizing, Style, TextStyle, UiIntent,
+    domain::ShellDomain, draw::FrameOutput, primitives::Vec2, settings::Settings,
+    theme::TextAlign,
 };
+
+/// Keep shell titles/buttons on one line ("Open Dwarf", not "Open D\\nwarf").
+const SHELL_MENU_MIN_WIDTH: f32 = 320.0;
 
 pub use intent::{SettingChange, ShellIntent};
 
@@ -84,9 +88,24 @@ pub fn frame<M: FontMetrics>(
     (output, shell_intents)
 }
 
+fn shell_menu_column() -> Layout {
+    Layout::new()
+        .pad(Padding::all(16.0))
+        .gap(10.0)
+        .align(crate::Alignment::Start, crate::Alignment::Center)
+        .sizing(
+            Axis::Row,
+            Sizing::Fit {
+                min: SHELL_MENU_MIN_WIDTH,
+                max: f32::INFINITY,
+            },
+        )
+}
+
 fn build_root<M: FontMetrics>(ui: &mut crate::Ui<'_, M>, shell_intents: &mut Vec<ShellIntent>) {
-    ui.column(Layout::new().pad(Padding::all(8.0)).gap(6.0), |ui| {
-        ui.text("Open Dwarf", TextStyle::default().align(TextAlign::Center));
+    let title = TextStyle::default().align(TextAlign::Center).wrap(false);
+    ui.column(shell_menu_column(), |ui| {
+        ui.text("Open Dwarf", title);
         if ui.button("resume", "Resume").activated {
             shell_intents.push(ShellIntent::Back);
         }
@@ -104,16 +123,18 @@ fn build_settings<M: FontMetrics>(
     ui_scale: u8,
     shell_intents: &mut Vec<ShellIntent>,
 ) {
-    ui.column(Layout::new().pad(Padding::all(8.0)).gap(6.0), |ui| {
-        ui.text("Settings", TextStyle::default().align(TextAlign::Center));
+    let title = TextStyle::default().align(TextAlign::Center).wrap(false);
+    let label = TextStyle::default().wrap(false);
+    ui.column(shell_menu_column(), |ui| {
+        ui.text("Settings", title);
         ui.row(Layout::new().gap(8.0), |ui| {
-            ui.text("UI Scale", TextStyle::default());
+            ui.text("UI Scale", label);
             if ui.button("scale_dec", "-").activated {
                 shell_intents.push(ShellIntent::ChangeSetting(SettingChange::UiScale(
                     ui_scale.saturating_sub(1),
                 )));
             }
-            ui.text(&ui_scale.to_string(), TextStyle::default());
+            ui.text(&ui_scale.to_string(), label);
             if ui.button("scale_inc", "+").activated {
                 shell_intents.push(ShellIntent::ChangeSetting(SettingChange::UiScale(
                     ui_scale.saturating_add(1),
@@ -206,6 +227,33 @@ mod tests {
             intent,
             ShellIntent::ChangeSetting(SettingChange::UiScale(1))
         )));
+    }
+
+    #[test]
+    fn root_title_is_single_line() {
+        let mut shell = ShellDomain {
+            ui: UiEngine::new(),
+            open: true,
+            nav: ShellNav::default(),
+        };
+        let settings = Settings::default();
+        let (output, _) = frame(&mut shell, Vec2::new(800.0, 600.0), 1.0, &settings, &[]);
+        let mut y_counts: std::collections::BTreeMap<i32, usize> =
+            std::collections::BTreeMap::new();
+        for g in &output.glyphs {
+            *y_counts.entry(g.pos[1].round() as i32).or_default() += 1;
+        }
+        let bands: Vec<_> = y_counts.into_iter().collect();
+        assert!(!bands.is_empty(), "no glyphs");
+        // "Open Dwarf" without the space glyph (~9 letters) must share one baseline.
+        let first_text = bands.iter().find(|(_, c)| *c >= 4).expect("title band");
+        assert!(
+            first_text.1 >= 8,
+            "expected Open Dwarf on one line, first band y={} count={} bands={:?}",
+            first_text.0,
+            first_text.1,
+            bands
+        );
     }
 
     #[test]

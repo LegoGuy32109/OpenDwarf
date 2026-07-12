@@ -107,6 +107,10 @@ pub fn recommend_scroll_from_state<M: FontMetrics>(
     scroll.clamp(0.0, max_scroll)
 }
 
+/// Comfortable min width so HUD lines (`mode: entity  z: …`) stay on one line
+/// instead of collapsing to widest-word and wrapping by character.
+const SESSION_HUD_MIN_WIDTH: f32 = 320.0;
+
 pub fn build_session<M: FontMetrics>(
     ui: &mut Ui<'_, M>,
     model: &SessionModel,
@@ -114,44 +118,59 @@ pub fn build_session<M: FontMetrics>(
     hud_lines: &[String],
 ) -> Option<crate::Id> {
     let mut chat_field_id = None;
+    let line_style = TextStyle::default().wrap(false);
     ui.column(
         Layout::new()
             .grow()
-            .align(Alignment::Center, Alignment::End),
+            .align(Alignment::Start, Alignment::Start)
+            .pad(Padding::all(12.0)),
         |ui| {
             ui.panel(
                 crate::Style::default()
                     .bg(ui.build.theme.panel_bg)
                     .border_with(ui.build.theme.border, 1.0),
                 |ui| {
-                    ui.column(Layout::new().pad(Padding::all(10.0)).gap(6.0), |ui| {
-                        ui.text("Session", TextStyle::default());
-                        for line in hud_lines {
-                            ui.text(line, TextStyle::default());
-                        }
-                        if hud_lines.is_empty() {
-                            ui.text(
-                                if capture_active {
-                                    "Chat active"
-                                } else {
-                                    "World"
+                    ui.column(
+                        Layout::new()
+                            .pad(Padding::all(10.0))
+                            .gap(6.0)
+                            .sizing(
+                                Axis::Row,
+                                Sizing::Fit {
+                                    min: SESSION_HUD_MIN_WIDTH,
+                                    max: f32::INFINITY,
                                 },
-                                TextStyle::default(),
-                            );
-                        }
-                        let visible = model.messages.iter().rev().take(3).rev();
-                        for msg in visible {
-                            ui.text(&msg.text, TextStyle::default());
-                        }
-                    });
+                            ),
+                        |ui| {
+                            ui.text("Session", line_style);
+                            for line in hud_lines {
+                                ui.text(line, line_style);
+                            }
+                            if hud_lines.is_empty() {
+                                ui.text(
+                                    if capture_active {
+                                        "Chat active"
+                                    } else {
+                                        "World"
+                                    },
+                                    line_style,
+                                );
+                            }
+                            let visible = model.messages.iter().rev().take(3).rev();
+                            for msg in visible {
+                                ui.text(&msg.text, line_style);
+                            }
+                        },
+                    );
                 },
             );
             if capture_active {
+                ui.spacer(Layout::new().grow());
                 ui.row(
                     Layout::new()
                         .row()
                         .sizing(Axis::Row, Sizing::grow())
-                        .pad(Padding::xy(12.0, 12.0)),
+                        .pad(Padding::xy(0.0, 12.0)),
                     |ui| {
                         let state = chat_state(model);
                         let response = ui.text_field(

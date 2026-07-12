@@ -1,4 +1,4 @@
-use std::{collections::HashSet, hash::Hash};
+use std::hash::Hash;
 
 use crate::{
     Axis, Id, Layout,
@@ -112,6 +112,6 @@ impl<'a, M: FontMetrics> Ui<'a, M> {
     }
 
     pub fn button(&mut self, key: &str, label: &str) -> Response {
-        self.build.push_button(key, label, TextStyle::default())
+        self.build.push_button(key, label, TextStyle::default().wrap(false))
     }
 }

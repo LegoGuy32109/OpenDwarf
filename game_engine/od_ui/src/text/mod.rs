@@ -127,6 +127,8 @@ pub(crate) fn layout_text<M: FontMetrics>(
 ) -> TextLayout {
     let px = text_px(cfg, theme, scale);
     let line_height = metrics.line_height(px);
+    // When wrap is disabled, ignore the box width so labels never hard-break by character.
+    let box_width = if cfg.wrap { box_width } else { f32::INFINITY };
     let mut lines: Vec<FontLine> = Vec::new();
     let mut current = FontLine::default();
     let mut pending_space = false;
