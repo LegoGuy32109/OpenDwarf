@@ -1,0 +1,669 @@
+{
+  "boot_entity": {
+    "world": {
+      "tick": 0,
+      "world_state_hash": "fnv1a64:67cc7ef26a6cfaf6",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 763,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 0
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "fov_stable_second_frame": {
+    "world": {
+      "tick": 0,
+      "world_state_hash": "fnv1a64:67cc7ef26a6cfaf6",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 763,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 0
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "view_z_up": {
+    "world": {
+      "tick": 0,
+      "world_state_hash": "fnv1a64:67cc7ef26a6cfaf6",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 2,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 133,
+      "playerQuadCount": 0,
+      "atlasQuadCount": 133,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 763,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 2,
+      "simTick": 0
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 2  zoom: 1.00"
+    }
+  },
+  "view_z_restored": {
+    "world": {
+      "tick": 1,
+      "world_state_hash": "fnv1a64:6d713fbeb31c780b",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 763,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 1
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "view_zoom_in": {
+    "world": {
+      "tick": 1,
+      "world_state_hash": "fnv1a64:6d713fbeb31c780b",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1.5,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 763,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1.5,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 1
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.50"
+    }
+  },
+  "master_mode": {
+    "world": {
+      "tick": 1,
+      "world_state_hash": "fnv1a64:6d713fbeb31c780b",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "master",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 256,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 257,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 0,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 1
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: master  z: 1  zoom: 1.00"
+    }
+  },
+  "after_move_west": {
+    "world": {
+      "tick": 16,
+      "world_state_hash": "fnv1a64:45fc5e51c8084654",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -5,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 612,
+      "rememberedTileCount": 181,
+      "fovDirty": false,
+      "fovRecomputeCount": 2
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 16
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "master_keeps_memory": {
+    "world": {
+      "tick": 17,
+      "world_state_hash": "fnv1a64:3a04fefdaa85a8b5",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -5,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "master",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 256,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 257,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 0,
+      "rememberedTileCount": 181,
+      "fovDirty": false,
+      "fovRecomputeCount": 2
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 17
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: master  z: 1  zoom: 1.00"
+    }
+  },
+  "entity_restores_fov": {
+    "world": {
+      "tick": 19,
+      "world_state_hash": "fnv1a64:e31b414ee54bad3f",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -5,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 612,
+      "rememberedTileCount": 181,
+      "fovDirty": false,
+      "fovRecomputeCount": 3
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 19
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "play_streaming": {
+    "world": {
+      "tick": 0,
+      "world_state_hash": "fnv1a64:c47278038a501a18",
+      "loadedChunkCount": 12,
+      "worldChunks": {
+        "x": 9,
+        "y": 9,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 2,
+      "streamingChunkCount": 12
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 412,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 0
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "diagonal_sw_start": {
+    "world": {
+      "tick": 1,
+      "world_state_hash": "fnv1a64:1de11cf87c360123",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": true,
+        "movementTarget": {
+          "x": -5,
+          "y": 1,
+          "z": 1
+        }
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 763,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 1
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "chat_sim_advances": {
+    "world": {
+      "tick": 1,
+      "world_state_hash": "fnv1a64:6d713fbeb31c780b",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -4,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 763,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 1
+    },
+    "session": {
+      "uiMode": "chat",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  },
+  "import_move_west": {
+    "world": {
+      "tick": 10,
+      "world_state_hash": "fnv1a64:8dad77ad6066915e",
+      "loadedChunkCount": 1,
+      "worldChunks": {
+        "x": 1,
+        "y": 1,
+        "z": 1
+      },
+      "primaryEntity": {
+        "id": 1,
+        "position": {
+          "x": -5,
+          "y": 0,
+          "z": 1
+        },
+        "moving": false,
+        "movementTarget": null
+      }
+    },
+    "localWorldView": {
+      "viewMode": "entity",
+      "viewZ": 1,
+      "zoom": 1,
+      "visibleChunkCount": 1,
+      "streamingChunkCount": 1
+    },
+    "worldRender": {
+      "floorQuadCount": 83,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 84,
+      "solidQuadCount": 0,
+      "droppedAtlasQuads": 0,
+      "droppedDrawCmds": 0,
+      "visibleTileCount": 612,
+      "rememberedTileCount": 0,
+      "fovDirty": false,
+      "fovRecomputeCount": 1
+    },
+    "viewGlobals": {
+      "zoom": 1,
+      "dpr": 1,
+      "viewZ": 1,
+      "simTick": 10
+    },
+    "session": {
+      "uiMode": "world",
+      "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
+    }
+  }
+}

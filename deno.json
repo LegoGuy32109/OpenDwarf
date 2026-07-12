@@ -19,6 +19,7 @@
     "engine:bless-goldens": "bash scripts/bash/engine-bless-goldens.sh",
     "engine:bless-goldens-native": "bash scripts/bash/engine-bless-goldens-native.sh",
     "engine:bless-goldens-browser": "bash scripts/bash/engine-bless-goldens-browser.sh",
+    "engine:bless-mvp-goldens-browser": "bash scripts/bash/engine-bless-mvp-goldens-browser.sh",
     "font:msdf": "deno run -A scripts/generate_vga_msdf.ts",
     "unit": "deno test tests/unit/",
     "test": "npx playwright test",
