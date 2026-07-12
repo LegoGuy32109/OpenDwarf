@@ -549,6 +549,8 @@ impl<M: FontMetrics> FrameBuild<M> {
                 inner_width + self.theme.pad.horizontal() + self.theme.gap
             }
         };
+        let (min, max) = solve::sizing_bounds(layout.sizing[0]);
+        let content = solve::clamp_size(content, min, max);
         self.nodes[index].content_size.x = content;
         content
     }
@@ -763,6 +765,8 @@ impl<M: FontMetrics> FrameBuild<M> {
                 self.nodes[index].content_size.y
             }
         };
+        let (min, max) = solve::sizing_bounds(layout.sizing[1]);
+        let content = solve::clamp_size(content, min, max);
         self.nodes[index].content_size.y = content;
         content
     }

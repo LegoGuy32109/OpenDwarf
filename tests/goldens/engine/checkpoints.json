@@ -1,6 +1,6 @@
 {
   "boot_idle": {
-    "drawHash": "fnv1a64:e74694536cbb609c",
+    "drawHash": "fnv1a64:39e918e2a07aade5",
     "shell": {
       "open": false,
       "page": "root"
@@ -15,7 +15,7 @@
     }
   },
   "chat_open_empty": {
-    "drawHash": "fnv1a64:566edbe0521b0b27",
+    "drawHash": "fnv1a64:dcc4c36fc47e1a99",
     "shell": {
       "open": false,
       "page": "root"
@@ -30,7 +30,7 @@
     }
   },
   "chat_typed": {
-    "drawHash": "fnv1a64:e9f64a267c378975",
+    "drawHash": "fnv1a64:d8168e09c71bf254",
     "shell": {
       "open": false,
       "page": "root"
@@ -45,7 +45,7 @@
     }
   },
   "chat_submitted": {
-    "drawHash": "fnv1a64:7af090e130a28988",
+    "drawHash": "fnv1a64:70236bf6d2edd5eb",
     "shell": {
       "open": false,
       "page": "root"
@@ -62,7 +62,7 @@
     }
   },
   "shell_root": {
-    "drawHash": "fnv1a64:d1b69acdaa4f6a08",
+    "drawHash": "fnv1a64:d65964ccf65c67c1",
     "shell": {
       "open": true,
       "page": "root"
@@ -79,7 +79,7 @@
     }
   },
   "shell_settings": {
-    "drawHash": "fnv1a64:4537ed4fb122258d",
+    "drawHash": "fnv1a64:8f4bda588aaace75",
     "shell": {
       "open": true,
       "page": "settings"
@@ -96,7 +96,7 @@
     }
   },
   "shell_settings_scale": {
-    "drawHash": "fnv1a64:b8592312d9625cf5",
+    "drawHash": "fnv1a64:828be9d64decaf01",
     "shell": {
       "open": true,
       "page": "settings"

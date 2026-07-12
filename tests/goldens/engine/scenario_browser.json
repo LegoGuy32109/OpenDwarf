@@ -1,13 +1,13 @@
 {
   "shell_root": {
-    "drawHash": "fnv1a64:0196c656acdb4aba",
+    "drawHash": "fnv1a64:2cfda98691097d41",
     "shell": {
       "open": true,
       "page": "root"
     }
   },
   "shell_settings": {
-    "drawHash": "fnv1a64:5a19e845528916d0",
+    "drawHash": "fnv1a64:3075c8d432221416",
     "shell": {
       "open": true,
       "page": "settings"
