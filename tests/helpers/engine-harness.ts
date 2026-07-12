@@ -78,6 +78,7 @@ export type EngineSnapshot = {
     rememberedTileCount: number;
     fovDirty?: boolean;
     fovRecomputeCount?: number;
+    snapshotCallsLastFrame?: number;
   };
 };
 

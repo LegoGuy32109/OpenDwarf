@@ -1,31 +1,4 @@
-import { existsSync } from "node:fs";
-
-// Use hardware Vulkan if a DRI render node is present, otherwise fall back to
-// SwiftShader so tests still run on headless CI machines without a GPU.
-const gpu = existsSync("/dev/dri/renderD128");
-
-const launchArgs = [
-  "--no-sandbox",
-  "--disable-dev-shm-usage",
-  "--no-first-run",
-  "--no-default-browser-check",
-  "--enable-webgl",
-  "--ignore-gpu-blocklist",
-  "--force-color-profile=srgb",
-  ...(gpu
-    ? [
-      "--use-angle=vulkan",
-      "--enable-gpu-rasterization",
-      "--disable-gpu-sandbox",
-    ]
-    : [
-      "--use-angle=swiftshader",
-      "--enable-unsafe-swiftshader",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      "--disable-partial-raster",
-    ]),
-];
+import { chromiumLaunchArgs } from "./tests/helpers/chromium.ts";
 
 export default {
   testDir: "./tests",
@@ -53,7 +26,7 @@ export default {
     screenshot: "on",
     launchOptions: {
       executablePath: "/usr/bin/chromium",
-      args: launchArgs,
+      args: chromiumLaunchArgs,
     },
   },
 };

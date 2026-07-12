@@ -919,3 +919,17 @@ Residual risks:
 
 An agent must not proceed on a red correctness gate, unexplained draw/hash
 change, arena drop, or missing benchmark record.
+
+Stage 0 implementation record (2026-07-12):
+
+```text
+Stage: 0 — trustworthy baseline and test prerequisites
+Commit/artifact: rebuilt release engine wasm; exports/engine-perf/2026-07-12T22-55-38-714Z.json
+Environment: Chromium 148.0.7778.215, WebKit WebGL, production static engine wasm, 1920x1080 @ DPR 1
+Snapshot calls last frame: 4 idle-frame snapshots (observability baseline)
+20-frame median / p95: 3324.9 ms / 3638.7 ms (isolated play-world harness)
+RAF median / p95: /engine 468.6 ms / 482.8 ms; /webgl 13.5 ms / 20.8 ms
+Commands run: cargo test --workspace; deno task unit; deno task engine:test-perf-browser; deno task engine:perf
+Golden changes and reason: none
+Residual risks: this is the intentionally slow baseline; Stage 1 must reduce snapshots without changing render output.
+```

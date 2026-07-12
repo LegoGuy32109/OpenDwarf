@@ -108,6 +108,8 @@ pub struct RenderStats {
     pub player_quads: u32,
     pub dropped_atlas_quads: u32,
     pub dropped_draw_cmds: u32,
+    /// Canonical snapshots constructed by the current RAF frame.
+    pub snapshot_calls_last_frame: u32,
     pub visible_tiles: u32,
     pub remembered_tiles: u32,
 }

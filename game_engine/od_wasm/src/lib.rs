@@ -306,6 +306,7 @@ impl UiEngine {
     }
 
     pub fn frame(&mut self) -> u32 {
+        self.world_render_stats.snapshot_calls_last_frame = 0;
         let input_bytes = unsafe {
             std::slice::from_raw_parts(
                 (&self.input as *const InputArena).cast::<u8>(),
@@ -358,7 +359,8 @@ impl UiEngine {
         self.world_atlas_quads.clear();
         self.world_solid_quads.clear();
         self.draw_cmds.clear();
-        let snapshot = self.world.snapshot();
+        let snapshot = self.hot_path_snapshot();
+        let snapshot_calls_last_frame = self.world_render_stats.snapshot_calls_last_frame;
         let output = od_world::render::render(
             RenderInput {
                 snapshot: &snapshot,
@@ -371,6 +373,7 @@ impl UiEngine {
             &mut self.draw_cmds,
         );
         self.world_render_stats = output.stats;
+        self.world_render_stats.snapshot_calls_last_frame = snapshot_calls_last_frame;
     }
 
     fn append_ui_draw_cmds(&mut self) {
@@ -437,7 +440,7 @@ impl UiEngine {
             self.world_input.clear_just_pressed();
             return;
         };
-        let snapshot = self.world.snapshot();
+        let snapshot = self.hot_path_snapshot();
         let active_entity = snapshot
             .entities
             .iter()
@@ -504,8 +507,8 @@ impl UiEngine {
         }
     }
 
-    fn primary_entity_position(&self) -> Option<Vec3i> {
-        let snapshot = self.world.snapshot();
+    fn primary_entity_position(&mut self) -> Option<Vec3i> {
+        let snapshot = self.hot_path_snapshot();
         let primary_entity_id = self.world.primary_entity_id()?;
         snapshot
             .entities
@@ -602,7 +605,7 @@ impl UiEngine {
 
     fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32), apply_streaming: bool) {
         self.counters.record_frame(dt_ms);
-        let snapshot = self.world.snapshot();
+        let snapshot = self.hot_path_snapshot();
         let Some(primary_entity_id) = self.world.primary_entity_id() else {
             self.write_view_globals(framebuffer.0, framebuffer.1);
             return;
@@ -698,7 +701,7 @@ impl UiEngine {
     }
 
     fn write_view_globals(&mut self, framebuffer_w: u32, framebuffer_h: u32) {
-        let snapshot = self.world.snapshot();
+        let snapshot = self.hot_path_snapshot();
         self.view_globals = ViewGlobals {
             camera: [
                 self.view.camera.x,
@@ -803,6 +806,7 @@ impl UiEngine {
                     "rememberedTileCount": self.world_render_stats.remembered_tiles,
                     "fovDirty": self.world_visibility.fov_dirty(),
                     "fovRecomputeCount": self.world_visibility.fov_recompute_count(),
+                    "snapshotCallsLastFrame": self.world_render_stats.snapshot_calls_last_frame,
                 }),
             );
         }
@@ -853,6 +857,17 @@ impl UiEngine {
             "loadedChunkCount": snapshot.loaded_chunks.len(),
             "loadedChunks": loaded_chunks,
         })
+    }
+
+    /// Counts temporary canonical snapshots created during a production RAF
+    /// frame. Replay, import/export, and debug/harness snapshots deliberately
+    /// bypass this helper.
+    fn hot_path_snapshot(&mut self) -> od_core::WorldSnapshot {
+        self.world_render_stats.snapshot_calls_last_frame = self
+            .world_render_stats
+            .snapshot_calls_last_frame
+            .saturating_add(1);
+        self.world.snapshot()
     }
 }
 
@@ -1220,6 +1235,17 @@ mod tests {
         let _ = engine.frame();
 
         assert_eq!(engine.view_globals.canvas[2], 2.5);
+    }
+
+    #[test]
+    fn frame_reports_hot_path_snapshot_count_without_counting_debug_reads() {
+        let mut engine = UiEngine::new();
+        engine.frame();
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["worldRender"]["snapshotCallsLastFrame"].as_u64(),
+            Some(4)
+        );
     }
 
     #[test]
