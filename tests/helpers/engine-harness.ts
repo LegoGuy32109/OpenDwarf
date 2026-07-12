@@ -76,6 +76,8 @@ export type EngineSnapshot = {
     droppedDrawCmds: number;
     visibleTileCount: number;
     rememberedTileCount: number;
+    fovDirty?: boolean;
+    fovRecomputeCount?: number;
   };
 };
 
@@ -331,6 +333,60 @@ export function allowlistFromSnapshot(snapshot: EngineSnapshot) {
     },
     input: {
       textCaptureActive: snapshot.input.textCaptureActive,
+    },
+  };
+}
+
+/** Stable MVP world/view/render fields (excludes fps/tps HUD and drawHash). */
+export function mvpAllowlistFromSnapshot(snapshot: EngineSnapshot) {
+  const hudModeLine = snapshot.session.hud?.[0] ?? "";
+  return {
+    world: {
+      tick: snapshot.world.tick,
+      world_state_hash: snapshot.world.world_state_hash,
+      loadedChunkCount: snapshot.world.loadedChunkCount,
+      worldChunks: snapshot.world.worldChunks,
+      primaryEntity: snapshot.world.primaryEntity
+        ? {
+          id: snapshot.world.primaryEntity.id,
+          position: snapshot.world.primaryEntity.position,
+          moving: snapshot.world.primaryEntity.movement != null,
+          movementTarget: snapshot.world.primaryEntity.movement
+            ? (snapshot.world.primaryEntity.movement as {
+              target?: { x: number; y: number; z: number };
+            }).target ?? null
+            : null,
+        }
+        : null,
+    },
+    localWorldView: {
+      viewMode: snapshot.localWorldView.viewMode,
+      viewZ: snapshot.localWorldView.viewZ,
+      zoom: snapshot.localWorldView.camera.zoom,
+      visibleChunkCount: snapshot.localWorldView.visibleChunks.length,
+      streamingChunkCount: snapshot.localWorldView.streamingChunks.length,
+    },
+    worldRender: {
+      floorQuadCount: snapshot.worldRender.floorQuadCount,
+      playerQuadCount: snapshot.worldRender.playerQuadCount,
+      atlasQuadCount: snapshot.worldRender.atlasQuadCount,
+      solidQuadCount: snapshot.worldRender.solidQuadCount,
+      droppedAtlasQuads: snapshot.worldRender.droppedAtlasQuads,
+      droppedDrawCmds: snapshot.worldRender.droppedDrawCmds,
+      visibleTileCount: snapshot.worldRender.visibleTileCount,
+      rememberedTileCount: snapshot.worldRender.rememberedTileCount,
+      fovDirty: snapshot.worldRender.fovDirty ?? false,
+      fovRecomputeCount: snapshot.worldRender.fovRecomputeCount ?? 0,
+    },
+    viewGlobals: {
+      zoom: snapshot.viewGlobals.camera[2],
+      dpr: snapshot.viewGlobals.canvas[2],
+      viewZ: snapshot.viewGlobals.sim[1],
+      simTick: snapshot.viewGlobals.sim[0],
+    },
+    session: {
+      uiMode: snapshot.session.uiMode,
+      hudModeLine,
     },
   };
 }

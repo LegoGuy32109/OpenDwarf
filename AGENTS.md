@@ -48,10 +48,12 @@ Notes below are the non-obvious bits for working in the cloud VM.
 - **Harness:** the working browser harness is `/engine?harness=1`
   (`globalThis.__openDwarfEngineHarness`, version 3 — `runScenario` + reserved
   `importReplay`/`stepSimTick` stubs), covered by `tests/engine-harness.test.ts`,
-  `tests/engine-golden.test.ts`, `tests/engine-held-key.test.ts`, and
+  `tests/engine-golden.test.ts`, `tests/engine-mvp-golden.test.ts` (world/view/render
+  MVP checkpoints), `tests/engine-held-key.test.ts`, and
   `tests/engine-scenario.test.ts` (`deno task engine:test-scenario-browser`).
   Bless draw-hash fixtures with `deno task engine:bless-goldens` (or the
-  `-native` / `-browser` variants). Scenario browser goldens:
+  `-native` / `-browser` variants). MVP world goldens:
+  `deno task engine:bless-mvp-goldens-browser`. Scenario browser goldens:
   `ENGINE_SCENARIO_BROWSER_BLESS=1`. Native Scenario: `deno task engine:test-scenario`.
   The old `/webgl` harness surface has been retired; keep `/webgl` only as a
   manual visual-parity reference.
