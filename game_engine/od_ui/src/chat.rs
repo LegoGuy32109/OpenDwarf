@@ -31,11 +31,7 @@ pub fn open_chat(model: &mut SessionModel, prefill: String) {
     apply_state(model, state);
 }
 
-pub fn apply_chat_edit<M: FontMetrics>(
-    model: &mut SessionModel,
-    edit: TextEdit,
-    font: &M,
-) -> bool {
+pub fn apply_chat_edit<M: FontMetrics>(model: &mut SessionModel, edit: TextEdit, font: &M) -> bool {
     let mut state = chat_state(model);
     let changed = state.apply_edit(edit, |ch| font.accepts_text_char(ch));
     if changed {
@@ -44,13 +40,18 @@ pub fn apply_chat_edit<M: FontMetrics>(
     changed
 }
 
-pub fn submit_chat(model: &mut SessionModel) -> Option<String> {
+pub fn submit_chat_text(model: &mut SessionModel) -> Option<String> {
     let mut state = chat_state(model);
     let submitted = state.submit_trimmed();
+    apply_state(model, state);
+    submitted
+}
+
+pub fn submit_chat(model: &mut SessionModel) -> Option<String> {
+    let submitted = submit_chat_text(model);
     if let Some(text) = submitted.as_ref() {
         model.push_message(ChatMsg::new(text.clone()));
     }
-    apply_state(model, state);
     submitted
 }
 
@@ -110,6 +111,7 @@ pub fn build_session<M: FontMetrics>(
     ui: &mut Ui<'_, M>,
     model: &SessionModel,
     capture_active: bool,
+    hud_lines: &[String],
 ) -> Option<crate::Id> {
     let mut chat_field_id = None;
     ui.column(
@@ -122,20 +124,26 @@ pub fn build_session<M: FontMetrics>(
                     .bg(ui.build.theme.panel_bg)
                     .border_with(ui.build.theme.border, 1.0),
                 |ui| {
-                    ui.column(
-                        Layout::new().pad(Padding::all(10.0)).gap(6.0),
-                        |ui| {
-                            ui.text("Session", TextStyle::default());
+                    ui.column(Layout::new().pad(Padding::all(10.0)).gap(6.0), |ui| {
+                        ui.text("Session", TextStyle::default());
+                        for line in hud_lines {
+                            ui.text(line, TextStyle::default());
+                        }
+                        if hud_lines.is_empty() {
                             ui.text(
-                                if capture_active { "Chat active" } else { "World" },
+                                if capture_active {
+                                    "Chat active"
+                                } else {
+                                    "World"
+                                },
                                 TextStyle::default(),
                             );
-                            let visible = model.messages.iter().rev().take(3).rev();
-                            for msg in visible {
-                                ui.text(&msg.text, TextStyle::default());
-                            }
-                        },
-                    );
+                        }
+                        let visible = model.messages.iter().rev().take(3).rev();
+                        for msg in visible {
+                            ui.text(&msg.text, TextStyle::default());
+                        }
+                    });
                 },
             );
             if capture_active {
@@ -179,13 +187,25 @@ mod tests {
         assert_eq!(model.chat_blink_ms, 0.0);
 
         model.chat_blink_ms = 32.0;
-        assert!(apply_chat_edit(&mut model, TextEdit::InsertText(' '), &MonospaceVga));
+        assert!(apply_chat_edit(
+            &mut model,
+            TextEdit::InsertText(' '),
+            &MonospaceVga
+        ));
         assert_eq!(model.chat_draft, "hello ");
         assert_eq!(model.chat_blink_ms, 0.0);
 
-        assert!(apply_chat_edit(&mut model, TextEdit::InsertText('w'), &MonospaceVga));
+        assert!(apply_chat_edit(
+            &mut model,
+            TextEdit::InsertText('w'),
+            &MonospaceVga
+        ));
         assert_eq!(model.chat_draft, "hello w");
-        assert!(apply_chat_edit(&mut model, TextEdit::CaretLeft, &MonospaceVga));
+        assert!(apply_chat_edit(
+            &mut model,
+            TextEdit::CaretLeft,
+            &MonospaceVga
+        ));
         assert_eq!(model.chat_blink_ms, 0.0);
 
         let submitted = submit_chat(&mut model);

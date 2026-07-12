@@ -25,7 +25,11 @@ type EngineHandle = {
   drawlist_capacity(): number;
   input_ptr(): number;
   input_capacity(): number;
+  view_globals_ptr(): number;
+  view_globals_capacity(): number;
   hydrate_settings(bytes: Uint8Array): void;
+  reset_for_harness(): void;
+  reset_play_world(): void;
   frame(): number;
   abi_drawcmd_stride(): number;
   abi_rect_stride(): number;
@@ -55,6 +59,7 @@ type EngineRuntime = {
   glyphs: Float32Array;
   drawlist: DataView;
   input: DataView;
+  viewGlobals: DataView;
   inputCapture: InputCapture;
   harnessEnabled: boolean;
   syntheticNow: number;
@@ -207,6 +212,11 @@ function rederiveViews(runtime: EngineRuntime) {
     engine.input_ptr(),
     engine.input_capacity(),
   );
+  runtime.viewGlobals = new DataView(
+    memory.buffer,
+    engine.view_globals_ptr(),
+    engine.view_globals_capacity(),
+  );
   runtime.inputCapture.setArena(runtime.input);
 }
 
@@ -234,6 +244,7 @@ function createRuntime(
     glyphs: new Float32Array(),
     drawlist: new DataView(new ArrayBuffer(0)),
     input: new DataView(new ArrayBuffer(0)),
+    viewGlobals: new DataView(new ArrayBuffer(0)),
     inputCapture: new InputCapture(canvas),
     harnessEnabled: false,
     syntheticNow: 0,
@@ -315,6 +326,7 @@ type EngineHarness = {
   runScenario(scenario: ScenarioDocument): Promise<RunScenarioResult>;
   /** Proof path — WorldReplay JSON document. */
   importReplay(worldReplay: unknown): Promise<Record<string, unknown>>;
+  resetWorld(kind?: "default" | "play"): Promise<void>;
 };
 
 type EngineGlobalHarness = typeof globalThis & {
@@ -613,6 +625,15 @@ function installHarness(
       refreshViewsIfNeeded(runtime);
       return snapshot;
     },
+    resetWorld: async (kind = "default") => {
+      refreshViewsIfNeeded(runtime);
+      if (kind === "play") {
+        runtime.engine.reset_play_world();
+      } else {
+        runtime.engine.reset_for_harness();
+      }
+      refreshViewsIfNeeded(runtime);
+    },
   };
 }
 
@@ -677,7 +698,9 @@ export async function startEngineRenderLoop(
   const engine = new UiEngine();
   // Harness mode pins Settings::default(); ignore localStorage so goldens
   // cannot flake on a previous session's ui_scale.
-  if (!options.harness) {
+  if (options.harness) {
+    engine.reset_for_harness();
+  } else {
     engine.hydrate_settings(loadPersistedSettings());
   }
   const runtime = createRuntime(gl, canvas, resources, wasm, engine);

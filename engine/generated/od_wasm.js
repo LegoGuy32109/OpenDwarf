@@ -50,7 +50,7 @@ export class UiEngine {
      * @returns {number}
      */
     abi_rect_stride() {
-        const ret = wasm.uiengine_abi_rect_stride(this.__wbg_ptr);
+        const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
         return ret >>> 0;
     }
     /**
@@ -228,11 +228,31 @@ export class UiEngine {
         const ret = wasm.uiengine_rect_ptr(this.__wbg_ptr);
         return ret >>> 0;
     }
+    reset_for_harness() {
+        wasm.uiengine_reset_for_harness(this.__wbg_ptr);
+    }
+    reset_play_world() {
+        wasm.uiengine_reset_play_world(this.__wbg_ptr);
+    }
     /**
      * @param {number} n
      */
     step_sim_ticks(n) {
         wasm.uiengine_step_sim_ticks(this.__wbg_ptr, n);
+    }
+    /**
+     * @returns {number}
+     */
+    view_globals_capacity() {
+        const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    view_globals_ptr() {
+        const ret = wasm.uiengine_view_globals_ptr(this.__wbg_ptr);
+        return ret >>> 0;
     }
 }
 if (Symbol.dispose) UiEngine.prototype[Symbol.dispose] = UiEngine.prototype.free;

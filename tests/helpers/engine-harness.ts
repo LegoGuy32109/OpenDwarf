@@ -22,6 +22,7 @@ export type EngineSnapshot = {
     chatDraft: string;
     chatCaret: number;
     chatMessages: string[];
+    hud?: string[];
   };
   input: {
     canvasFocused: boolean;
@@ -34,6 +35,8 @@ export type EngineSnapshot = {
   };
   world: {
     tick: number;
+    chunkEdge: number;
+    worldChunks: { x: number; y: number; z: number };
     world_state_hash: string;
     worldStateHash: string;
     primary_entity_id: number | null;
@@ -46,6 +49,22 @@ export type EngineSnapshot = {
     } | null;
     entityCount: number;
     loadedChunkCount: number;
+    loadedChunks: { x: number; y: number; z: number }[];
+  };
+  localWorldView: {
+    camera: { x: number; y: number; zoom: number };
+    viewZ: number;
+    viewMode: "entity" | "master";
+    lookOffset: { x: number; y: number };
+    fps: number;
+    tps: number;
+    visibleChunks: { x: number; y: number; z: number }[];
+    streamingChunks: { x: number; y: number; z: number }[];
+  };
+  viewGlobals: {
+    camera: [number, number, number, number];
+    canvas: [number, number, number, number];
+    sim: [number, number, number, number];
   };
 };
 
@@ -98,6 +117,7 @@ type BrowserGlobal = {
       finalSnapshot: EngineSnapshot;
     }>;
     importReplay(worldReplay: unknown): Promise<Record<string, unknown>>;
+    resetWorld(kind?: "default" | "play"): Promise<void>;
   };
 };
 
@@ -271,6 +291,18 @@ export function engineStepSimTick(page: Page, n = 1) {
       }
     },
     n,
+  );
+}
+
+export function engineResetWorld(
+  page: Page,
+  kind: "default" | "play" = "default",
+) {
+  return page.evaluate(
+    (kind) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+        .resetWorld(kind),
+    kind,
   );
 }
 

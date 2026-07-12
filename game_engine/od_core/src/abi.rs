@@ -48,6 +48,11 @@ pub const GLYPH_INSTANCE_UV_OFFSET: usize = 16;
 pub const GLYPH_INSTANCE_TINT_OFFSET: usize = 32;
 pub const GLYPH_INSTANCE_ALPHA_OFFSET: usize = 44;
 
+pub const VIEW_GLOBALS_SIZE_BYTES: u32 = 48;
+pub const VIEW_GLOBALS_CAMERA_OFFSET: usize = 0;
+pub const VIEW_GLOBALS_CANVAS_OFFSET: usize = 16;
+pub const VIEW_GLOBALS_SIM_OFFSET: usize = 32;
+
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ProgramId {
@@ -93,6 +98,18 @@ pub struct DrawCmd {
     pub reserved: u32,
 }
 
+/// UBO-ready view globals (`std140`-friendly vec4 slots).
+///
+/// `camera = [x, y, zoom, _]`, `canvas = [w, h, dpr, _]`,
+/// `sim = [tick, view_z, view_mode, _]`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Serialize, Deserialize)]
+pub struct ViewGlobals {
+    pub camera: [f32; 4],
+    pub canvas: [f32; 4],
+    pub sim: [f32; 4],
+}
+
 const _: () = assert!(mem::size_of::<DrawCmd>() == DRAWCMD_SIZE_BYTES as usize);
 const _: () = assert!(mem::offset_of!(DrawCmd, program) == DRAWCMD_PROGRAM_OFFSET);
 const _: () = assert!(mem::offset_of!(DrawCmd, instance_offset) == DRAWCMD_INSTANCE_OFFSET_OFFSET,);
@@ -115,6 +132,11 @@ const _: () = assert!(mem::offset_of!(GlyphInstance, size) == GLYPH_INSTANCE_SIZ
 const _: () = assert!(mem::offset_of!(GlyphInstance, uv_rect) == GLYPH_INSTANCE_UV_OFFSET);
 const _: () = assert!(mem::offset_of!(GlyphInstance, tint) == GLYPH_INSTANCE_TINT_OFFSET);
 const _: () = assert!(mem::offset_of!(GlyphInstance, alpha) == GLYPH_INSTANCE_ALPHA_OFFSET);
+
+const _: () = assert!(mem::size_of::<ViewGlobals>() == VIEW_GLOBALS_SIZE_BYTES as usize);
+const _: () = assert!(mem::offset_of!(ViewGlobals, camera) == VIEW_GLOBALS_CAMERA_OFFSET);
+const _: () = assert!(mem::offset_of!(ViewGlobals, canvas) == VIEW_GLOBALS_CANVAS_OFFSET);
+const _: () = assert!(mem::offset_of!(ViewGlobals, sim) == VIEW_GLOBALS_SIM_OFFSET);
 
 pub fn ts_abi_source() -> String {
     let mut out = String::new();
@@ -213,6 +235,22 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!(
         "  GLYPH_INSTANCE_ALPHA_OFFSET: {},\n",
         GLYPH_INSTANCE_ALPHA_OFFSET
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_SIZE_BYTES: {},\n",
+        VIEW_GLOBALS_SIZE_BYTES
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_CAMERA_OFFSET: {},\n",
+        VIEW_GLOBALS_CAMERA_OFFSET
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_CANVAS_OFFSET: {},\n",
+        VIEW_GLOBALS_CANVAS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_SIM_OFFSET: {},\n",
+        VIEW_GLOBALS_SIM_OFFSET
     ));
     out.push_str(&format!(
         "  INPUT_SAMPLED_SIZE_BYTES: {},\n",

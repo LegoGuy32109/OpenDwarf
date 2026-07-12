@@ -32,7 +32,11 @@ export class UiEngine {
     constructor();
     rect_capacity(): number;
     rect_ptr(): number;
+    reset_for_harness(): void;
+    reset_play_world(): void;
     step_sim_ticks(n: number): void;
+    view_globals_capacity(): number;
+    view_globals_ptr(): number;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -49,11 +53,11 @@ export interface InitOutput {
     readonly uiengine_drawlist_capacity: (a: number) => number;
     readonly uiengine_input_ptr: (a: number) => number;
     readonly uiengine_input_capacity: (a: number) => number;
+    readonly uiengine_view_globals_ptr: (a: number) => number;
     readonly uiengine_dropped_rects: (a: number) => number;
     readonly uiengine_dropped_glyphs: (a: number) => number;
     readonly uiengine_dropped_draw_cmds: (a: number) => number;
     readonly uiengine_abi_drawcmd_stride: (a: number) => number;
-    readonly uiengine_abi_rect_stride: (a: number) => number;
     readonly uiengine_abi_rect_stride_floats: (a: number) => number;
     readonly uiengine_abi_glyph_stride: (a: number) => number;
     readonly uiengine_abi_glyph_stride_floats: (a: number) => number;
@@ -63,9 +67,13 @@ export interface InitOutput {
     readonly uiengine_debug_world_snapshot_json: (a: number) => [number, number];
     readonly uiengine_debug_draw_hash: (a: number) => [number, number];
     readonly uiengine_hydrate_settings: (a: number, b: number, c: number) => void;
+    readonly uiengine_reset_for_harness: (a: number) => void;
+    readonly uiengine_reset_play_world: (a: number) => void;
     readonly uiengine_step_sim_ticks: (a: number, b: number) => void;
     readonly uiengine_import_replay_json: (a: number, b: number, c: number) => [number, number, number, number];
     readonly uiengine_frame: (a: number) => number;
+    readonly uiengine_abi_rect_stride: (a: number) => number;
+    readonly uiengine_view_globals_capacity: (a: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

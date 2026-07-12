@@ -8,6 +8,7 @@ pub mod intent;
 pub mod keycode;
 pub mod replay;
 pub mod session;
+pub mod view;
 pub mod world;
 
 pub use abi::{
@@ -19,17 +20,12 @@ pub use abi::{
     GLYPH_INSTANCE_TINT_OFFSET, GLYPH_INSTANCE_UV_OFFSET, GlyphInstance, ProgramId,
     RECT_INSTANCE_ALPHA_OFFSET, RECT_INSTANCE_POS_OFFSET, RECT_INSTANCE_SIZE_OFFSET,
     RECT_INSTANCE_STRIDE_BYTES, RECT_INSTANCE_STRIDE_FLOATS, RECT_INSTANCE_TINT_OFFSET,
-    RectInstance,
+    RectInstance, VIEW_GLOBALS_CAMERA_OFFSET, VIEW_GLOBALS_CANVAS_OFFSET, VIEW_GLOBALS_SIM_OFFSET,
+    VIEW_GLOBALS_SIZE_BYTES, ViewGlobals,
 };
 pub use hash::{
     FNV_OFFSET_BASIS, FNV_PRIME, FnvHasher, StateHash, canonicalize_f32, draw_hash,
     draw_state_hash, format_state_hash,
-};
-pub use replay::{
-    WORLD_REPLAY_FORMAT_VERSION, WORLD_SNAPSHOT_ENCODING_VERSION, WorldReplay,
-    WorldReplayEvent, WorldReplayIoError, WorldReplayMetadata, WorldReplayRecorder,
-    WorldReplayRecorderOptions, encode_world_snapshot_canonical, load_world_replay,
-    save_world_replay, world_state_hash,
 };
 pub use input::{
     EventKind, INPUT_ARENA_EVENTS_OFFSET, INPUT_ARENA_QUEUE_OFFSET, INPUT_ARENA_SAMPLE_OFFSET,
@@ -45,8 +41,14 @@ pub use input::{
     INPUT_SAMPLE_POINTER_Y_OFFSET, INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET, INPUT_SAMPLED_SIZE_BYTES,
     InputArena, InputEvent, InputQueueHeader, InputSampled,
 };
-pub use session::{ChatMsg, SessionIntent, SessionModel, TextEdit};
 pub use keycode::KeyCode;
+pub use replay::{
+    WORLD_REPLAY_FORMAT_VERSION, WORLD_SNAPSHOT_ENCODING_VERSION, WorldReplay, WorldReplayEvent,
+    WorldReplayIoError, WorldReplayMetadata, WorldReplayRecorder, WorldReplayRecorderOptions,
+    encode_world_snapshot_canonical, load_world_replay, save_world_replay, world_state_hash,
+};
+pub use session::{ChatMsg, SessionIntent, SessionModel, TextEdit};
+pub use view::{LocalWorldView, WORLD_ZOOM_LEVELS, WorldCamera, WorldLookOffset, WorldViewMode};
 pub use world::{
     BlockType, DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE, DEFAULT_WORLD_CHUNKS, Dir,
     EntityMovementSnapshot, EntitySnapshot, MoveEntityError, TerrainConfig, Vec3i, Vec3u,

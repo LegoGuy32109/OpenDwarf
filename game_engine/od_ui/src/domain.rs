@@ -36,6 +36,7 @@ pub struct SessionDomain<M: FontMetrics> {
 pub struct FrameOut {
     pub draw_list_count: u32,
     pub host_effects: Vec<HostEffect>,
+    pub submitted_chat: Vec<String>,
 }
 
 pub struct Engine<M: FontMetrics> {
@@ -49,6 +50,7 @@ pub struct Engine<M: FontMetrics> {
     framebuffer_w: u32,
     framebuffer_h: u32,
     last_session_intent_count: u32,
+    session_hud_lines: Vec<String>,
     rects: Vec<RectInstance>,
     glyphs: Vec<GlyphInstance>,
     draw_cmds: Vec<DrawCmd>,
@@ -90,6 +92,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
             framebuffer_w: 0,
             framebuffer_h: 0,
             last_session_intent_count: 0,
+            session_hud_lines: Vec::new(),
             rects: vec![RectInstance::default(); RECT_CAPACITY],
             glyphs: vec![GlyphInstance::default(); GLYPH_CAPACITY],
             draw_cmds: vec![DrawCmd::default(); DRAWCMD_CAPACITY],
@@ -143,6 +146,10 @@ impl<M: FontMetrics + Clone> Engine<M> {
         draw_state_hash(&self.draw_cmds, &self.rects, &self.glyphs)
     }
 
+    pub fn set_session_hud_lines(&mut self, lines: Vec<String>) {
+        self.session_hud_lines = lines;
+    }
+
     pub fn debug_snapshot_json(&self) -> String {
         let shell_page = match self.shell.nav.current() {
             ShellPage::Root => "root",
@@ -180,6 +187,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
                 "chatDraft": self.session.model.chat_draft.clone(),
                 "chatCaret": self.session.model.chat_caret,
                 "chatMessages": messages,
+                "hud": self.session_hud_lines.clone(),
             },
             "render": {
                 "framebufferWidth": self.framebuffer_w,
@@ -208,6 +216,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
             return FrameOut {
                 draw_list_count: 0,
                 host_effects: Vec::new(),
+                submitted_chat: Vec::new(),
             };
         };
 
@@ -264,7 +273,8 @@ impl<M: FontMetrics + Clone> Engine<M> {
                 ..
             } = &mut self.session;
             ui.frame(&[], |ui| {
-                chat_field_id = chat::build_session(ui, model, *capture_active);
+                chat_field_id =
+                    chat::build_session(ui, model, *capture_active, &self.session_hud_lines);
             })
         };
         if self.session.capture_active {
@@ -284,6 +294,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
         }
 
         let mut host_effects = Vec::new();
+        let mut submitted_chat = Vec::new();
         let mut shell_intents = routed.shell_intents;
         let shell_output = if shell_open {
             let (output, intents) =
@@ -298,7 +309,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
             self.apply_shell_intent(intent, &mut host_effects);
         }
         for intent in session_intents {
-            self.apply_session_intent(intent, &mut host_effects);
+            self.apply_session_intent(intent, &mut host_effects, &mut submitted_chat);
         }
 
         self.update_text_capture_effects(&mut host_effects, chat_field_id);
@@ -309,6 +320,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
         FrameOut {
             draw_list_count: self.draw_cmds.len() as u32,
             host_effects,
+            submitted_chat,
         }
     }
 
@@ -338,7 +350,12 @@ impl<M: FontMetrics + Clone> Engine<M> {
         }
     }
 
-    fn apply_session_intent(&mut self, intent: SessionIntent, _host_effects: &mut Vec<HostEffect>) {
+    fn apply_session_intent(
+        &mut self,
+        intent: SessionIntent,
+        _host_effects: &mut Vec<HostEffect>,
+        submitted_chat: &mut Vec<String>,
+    ) {
         match intent {
             SessionIntent::OpenChat { prefill } => {
                 self.session.capture_active = true;
@@ -355,7 +372,14 @@ impl<M: FontMetrics + Clone> Engine<M> {
                 if !self.session.capture_active {
                     return;
                 }
-                let _ = chat::submit_chat(&mut self.session.model);
+                if let Some(text) = chat::submit_chat_text(&mut self.session.model) {
+                    if !text.starts_with('/') {
+                        self.session
+                            .model
+                            .push_message(od_core::ChatMsg::new(text.clone()));
+                    }
+                    submitted_chat.push(text);
+                }
                 self.session.capture_active = false;
             }
             SessionIntent::CancelChat => {
