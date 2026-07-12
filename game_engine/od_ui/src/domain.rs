@@ -146,6 +146,18 @@ impl<M: FontMetrics + Clone> Engine<M> {
         draw_state_hash(&self.draw_cmds, &self.rects, &self.glyphs)
     }
 
+    pub fn rects(&self) -> &[RectInstance] {
+        &self.rects
+    }
+
+    pub fn glyphs(&self) -> &[GlyphInstance] {
+        &self.glyphs
+    }
+
+    pub fn draw_cmds(&self) -> &[DrawCmd] {
+        &self.draw_cmds
+    }
+
     pub fn set_session_hud_lines(&mut self, lines: Vec<String>) {
         self.session_hud_lines = lines;
     }

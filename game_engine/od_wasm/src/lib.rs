@@ -3,8 +3,9 @@
 use std::collections::BTreeSet;
 
 use od_core::{
-    Dir, EventKind, InputArena, KeyCode, LocalWorldView, ProgramId, Vec3i, Vec3u, ViewGlobals,
-    WorldCommand, WorldConfig, WorldIntent, WorldReplay, WorldReplayEvent, WorldViewMode,
+    Dir, DrawCmd, EventKind, InputArena, KeyCode, LocalWorldView, ProgramId, Vec3i, Vec3u,
+    ViewGlobals, WorldAtlasQuadInstance, WorldCommand, WorldConfig, WorldIntent, WorldReplay,
+    WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode, draw_state_hash_with_world,
     world_state_hash,
 };
 #[cfg(target_arch = "wasm32")]
@@ -12,16 +13,20 @@ use od_ui::HostEffect;
 use od_ui::input::{HeldSet, decode};
 use od_ui::{DomainEngine, MonospaceVga};
 use od_world::WorldSim;
+use od_world::render::{RenderInput, RenderStats, VisibilityState};
 use serde_json::{Value, json};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 const SIM_TICK_MS: f32 = 1000.0 / 20.0;
 const MAX_SIM_TICKS_PER_FRAME: u32 = 3;
-const TILE_SIZE_PX: f32 = 16.0;
+const TILE_SIZE_PX: f32 = 64.0;
 const CAMERA_PAN_PX_PER_SEC: f32 = 480.0;
 const ENTITY_CAMERA_SMOOTH_RATE: f32 = 10.0;
 const LOOK_OFFSET_DECAY_RATE: f32 = 5.0;
+const WORLD_ATLAS_CAPACITY: usize = 16_384;
+const WORLD_SOLID_CAPACITY: usize = 4_096;
+const COMBINED_DRAWCMD_CAPACITY: usize = 32;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -43,6 +48,11 @@ pub struct UiEngine {
     world: WorldSim,
     view: LocalWorldView,
     view_globals: ViewGlobals,
+    world_visibility: VisibilityState,
+    world_render_stats: RenderStats,
+    world_atlas_quads: Vec<WorldAtlasQuadInstance>,
+    world_solid_quads: Vec<WorldSolidQuadInstance>,
+    draw_cmds: Vec<DrawCmd>,
     world_input: WorldInputState,
     smooth_player_world_pos: Option<[f32; 2]>,
     counters: FrameCounters,
@@ -59,6 +69,11 @@ impl UiEngine {
             world: WorldSim::new(play_world_config(), true),
             view: LocalWorldView::default(),
             view_globals: ViewGlobals::default(),
+            world_visibility: VisibilityState::default(),
+            world_render_stats: RenderStats::default(),
+            world_atlas_quads: Vec::with_capacity(WORLD_ATLAS_CAPACITY),
+            world_solid_quads: Vec::with_capacity(WORLD_SOLID_CAPACITY),
+            draw_cmds: Vec::with_capacity(COMBINED_DRAWCMD_CAPACITY),
             world_input: WorldInputState::default(),
             smooth_player_world_pos: None,
             counters: FrameCounters::default(),
@@ -82,12 +97,28 @@ impl UiEngine {
         self.engine.glyph_capacity()
     }
 
+    pub fn world_atlas_ptr(&self) -> u32 {
+        self.world_atlas_quads.as_ptr() as u32
+    }
+
+    pub fn world_atlas_capacity(&self) -> u32 {
+        self.world_atlas_quads.capacity() as u32
+    }
+
+    pub fn world_solid_ptr(&self) -> u32 {
+        self.world_solid_quads.as_ptr() as u32
+    }
+
+    pub fn world_solid_capacity(&self) -> u32 {
+        self.world_solid_quads.capacity() as u32
+    }
+
     pub fn drawlist_ptr(&self) -> u32 {
-        self.engine.drawlist_ptr()
+        self.draw_cmds.as_ptr() as *const u8 as u32
     }
 
     pub fn drawlist_capacity(&self) -> u32 {
-        self.engine.drawlist_capacity()
+        self.draw_cmds.capacity() as u32
     }
 
     pub fn input_ptr(&self) -> u32 {
@@ -138,12 +169,36 @@ impl UiEngine {
         od_core::GLYPH_INSTANCE_STRIDE_FLOATS
     }
 
+    pub fn abi_world_atlas_stride(&self) -> u32 {
+        od_core::WORLD_ATLAS_QUAD_STRIDE_BYTES
+    }
+
+    pub fn abi_world_atlas_stride_floats(&self) -> u32 {
+        od_core::WORLD_ATLAS_QUAD_STRIDE_FLOATS
+    }
+
+    pub fn abi_world_solid_stride(&self) -> u32 {
+        od_core::WORLD_SOLID_QUAD_STRIDE_BYTES
+    }
+
+    pub fn abi_world_solid_stride_floats(&self) -> u32 {
+        od_core::WORLD_SOLID_QUAD_STRIDE_FLOATS
+    }
+
     pub fn abi_program_rect(&self) -> u32 {
         ProgramId::Rect.as_u32()
     }
 
     pub fn abi_program_text(&self) -> u32 {
         ProgramId::Text.as_u32()
+    }
+
+    pub fn abi_program_world_atlas_quad(&self) -> u32 {
+        ProgramId::WorldAtlasQuad.as_u32()
+    }
+
+    pub fn abi_program_world_solid_quad(&self) -> u32 {
+        ProgramId::WorldSolidQuad.as_u32()
     }
 
     pub fn debug_snapshot_json(&self) -> String {
@@ -156,7 +211,7 @@ impl UiEngine {
 
     /// Compute-on-call draw hash (`"fnv1a64:<hex>"`). Not paid on the RAF path.
     pub fn debug_draw_hash(&self) -> String {
-        self.engine.debug_draw_hash()
+        self.combined_draw_hash()
     }
 
     pub fn hydrate_settings(&mut self, bytes: &[u8]) {
@@ -181,6 +236,7 @@ impl UiEngine {
             self.advance_one_sim_tick();
         }
         self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size());
+        self.render_world();
     }
 
     pub fn import_replay_json(&mut self, bytes: &[u8]) -> Result<String, String> {
@@ -228,6 +284,11 @@ impl UiEngine {
         self.world = world;
         self.world_input.clear();
         self.view = LocalWorldView::default();
+        self.world_visibility.reset();
+        self.world_render_stats = RenderStats::default();
+        self.world_atlas_quads.clear();
+        self.world_solid_quads.clear();
+        self.draw_cmds.clear();
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
         self.sync_local_view(0.0, self.last_framebuffer_size());
@@ -264,8 +325,10 @@ impl UiEngine {
                 |sample| (sample.framebuffer_w, sample.framebuffer_h),
             ),
         );
+        self.render_world();
         self.engine.set_session_hud_lines(self.session_hud_lines());
         let out = self.engine.frame(input_bytes);
+        self.append_ui_draw_cmds();
         self.apply_submitted_chat(out.submitted_chat);
         self.input.clear_queue();
 
@@ -276,7 +339,47 @@ impl UiEngine {
             }
         }
 
-        out.draw_list_count
+        self.draw_cmds.len() as u32
+    }
+
+    fn render_world(&mut self) {
+        self.world_atlas_quads.clear();
+        self.world_solid_quads.clear();
+        self.draw_cmds.clear();
+        let snapshot = self.world.snapshot();
+        let output = od_world::render::render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &self.view,
+                primary_entity_id: self.world.primary_entity_id(),
+                smooth_player_xy: self.smooth_player_world_pos,
+            },
+            &mut self.world_visibility,
+            &mut self.world_atlas_quads,
+            &mut self.draw_cmds,
+        );
+        self.world_render_stats = output.stats;
+    }
+
+    fn append_ui_draw_cmds(&mut self) {
+        for cmd in self.engine.draw_cmds() {
+            if self.draw_cmds.len() >= self.draw_cmds.capacity() {
+                self.world_render_stats.dropped_draw_cmds =
+                    self.world_render_stats.dropped_draw_cmds.saturating_add(1);
+                continue;
+            }
+            self.draw_cmds.push(*cmd);
+        }
+    }
+
+    fn combined_draw_hash(&self) -> String {
+        draw_state_hash_with_world(
+            &self.draw_cmds,
+            self.engine.rects(),
+            self.engine.glyphs(),
+            &self.world_atlas_quads,
+            &self.world_solid_quads,
+        )
     }
 
     fn ingest_world_input_from_arena(&mut self) -> Option<od_core::InputSampled> {
@@ -390,6 +493,11 @@ impl UiEngine {
         self.world_input.clear();
         self.view = LocalWorldView::default();
         self.view_globals = ViewGlobals::default();
+        self.world_visibility.reset();
+        self.world_render_stats = RenderStats::default();
+        self.world_atlas_quads.clear();
+        self.world_solid_quads.clear();
+        self.draw_cmds.clear();
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
         self.sync_local_view(0.0, self.last_framebuffer_size());
@@ -594,6 +702,18 @@ impl UiEngine {
         let mut snapshot = serde_json::from_str::<Value>(&self.engine.debug_snapshot_json())
             .unwrap_or_else(|_| json!({ "version": 2 }));
         if let Some(object) = snapshot.as_object_mut() {
+            if let Some(frame) = object.get_mut("frame").and_then(Value::as_object_mut) {
+                frame.insert("drawCount".to_owned(), json!(self.draw_cmds.len() as u32));
+                frame.insert(
+                    "droppedDrawCmds".to_owned(),
+                    json!(
+                        self.engine
+                            .dropped_draw_cmds()
+                            .saturating_add(self.world_render_stats.dropped_draw_cmds)
+                    ),
+                );
+                frame.insert("drawHash".to_owned(), json!(self.combined_draw_hash()));
+            }
             object.insert("world".to_owned(), self.world_debug_value());
             let local_view = serde_json::to_value(&self.view).unwrap_or_else(|_| json!({}));
             object.insert("localWorldView".to_owned(), local_view.clone());
@@ -604,6 +724,20 @@ impl UiEngine {
                     "camera": self.view_globals.camera,
                     "canvas": self.view_globals.canvas,
                     "sim": self.view_globals.sim,
+                }),
+            );
+            object.insert(
+                "worldRender".to_owned(),
+                json!({
+                    "atlasQuadCount": self.world_atlas_quads.len(),
+                    "solidQuadCount": self.world_solid_quads.len(),
+                    "floorQuadCount": self.world_render_stats.floor_quads,
+                    "playerQuadCount": self.world_render_stats.player_quads,
+                    "droppedAtlasQuads": self.world_render_stats.dropped_atlas_quads,
+                    "droppedSolidQuads": 0,
+                    "droppedDrawCmds": self.world_render_stats.dropped_draw_cmds,
+                    "visibleTileCount": self.world_render_stats.visible_tiles,
+                    "rememberedTileCount": self.world_render_stats.remembered_tiles,
                 }),
             );
         }

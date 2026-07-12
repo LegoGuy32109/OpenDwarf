@@ -5,7 +5,11 @@ import { assertNoGlError } from "../webgl2/gl-errors.ts";
 import { bootWebGl2Renderer } from "../webgl2/gpu-init.ts";
 import { syncCanvasSize } from "../webgl2/canvas.ts";
 import { compilePrograms } from "../webgl2/programs/index.ts";
-import { TEXTURE_UNITS, uploadWhiteTo } from "../webgl2/texture-units.ts";
+import {
+  loadAtlasInto,
+  TEXTURE_UNITS,
+  uploadWhiteTo,
+} from "../webgl2/texture-units.ts";
 import { loadUiFontAtlas } from "../webgl2/ui-text.ts";
 import initEngine, { UiEngine } from "../engine/generated/od_wasm.js";
 import { InputCapture } from "./input.ts";
@@ -21,6 +25,10 @@ type EngineHandle = {
   rect_capacity(): number;
   glyph_ptr(): number;
   glyph_capacity(): number;
+  world_atlas_ptr(): number;
+  world_atlas_capacity(): number;
+  world_solid_ptr(): number;
+  world_solid_capacity(): number;
   drawlist_ptr(): number;
   drawlist_capacity(): number;
   input_ptr(): number;
@@ -36,8 +44,14 @@ type EngineHandle = {
   abi_rect_stride_floats(): number;
   abi_glyph_stride(): number;
   abi_glyph_stride_floats(): number;
+  abi_world_atlas_stride(): number;
+  abi_world_atlas_stride_floats(): number;
+  abi_world_solid_stride(): number;
+  abi_world_solid_stride_floats(): number;
   abi_program_rect(): number;
   abi_program_text(): number;
+  abi_program_world_atlas_quad(): number;
+  abi_program_world_solid_quad(): number;
   debug_snapshot_json(): string;
   debug_world_snapshot_json(): string;
   debug_draw_hash(): string;
@@ -57,6 +71,8 @@ type EngineRuntime = {
   bufferRef: ArrayBuffer;
   rects: Float32Array;
   glyphs: Float32Array;
+  worldAtlasQuads: Float32Array;
+  worldSolidQuads: Float32Array;
   drawlist: DataView;
   input: DataView;
   viewGlobals: DataView;
@@ -66,6 +82,8 @@ type EngineRuntime = {
 };
 
 const SETTINGS_STORAGE_KEY = "od.settings";
+const FLOOR_ATLAS_SRC = "/assets/sprites/StackedTextures.png";
+const SPRITE_ATLAS_SRC = "/assets/sprites/Dwarf_16x16.png";
 
 type EngineGlobals = typeof globalThis & {
   host_leave_game?: () => void;
@@ -112,6 +130,7 @@ type DrawCmdView = {
   scissorY: number;
   scissorW: number;
   scissorH: number;
+  textureId: number;
 };
 
 function setErrorOverlay(
@@ -185,6 +204,7 @@ function readDrawCmd(drawlist: DataView, index: number): DrawCmdView {
     scissorY: drawlist.getInt32(base + ABI.DRAWCMD_SCISSOR_Y_OFFSET, true),
     scissorW: drawlist.getInt32(base + ABI.DRAWCMD_SCISSOR_W_OFFSET, true),
     scissorH: drawlist.getInt32(base + ABI.DRAWCMD_SCISSOR_H_OFFSET, true),
+    textureId: drawlist.getUint32(base + ABI.DRAWCMD_RESERVED_OFFSET, true),
   };
 }
 
@@ -201,6 +221,16 @@ function rederiveViews(runtime: EngineRuntime) {
     memory.buffer,
     engine.glyph_ptr(),
     engine.glyph_capacity() * ABI.GLYPH_INSTANCE_STRIDE_FLOATS,
+  );
+  runtime.worldAtlasQuads = new Float32Array(
+    memory.buffer,
+    engine.world_atlas_ptr(),
+    engine.world_atlas_capacity() * ABI.WORLD_ATLAS_QUAD_STRIDE_FLOATS,
+  );
+  runtime.worldSolidQuads = new Float32Array(
+    memory.buffer,
+    engine.world_solid_ptr(),
+    engine.world_solid_capacity() * ABI.WORLD_SOLID_QUAD_STRIDE_FLOATS,
   );
   runtime.drawlist = new DataView(
     memory.buffer,
@@ -242,6 +272,8 @@ function createRuntime(
     bufferRef: wasm.memory.buffer,
     rects: new Float32Array(),
     glyphs: new Float32Array(),
+    worldAtlasQuads: new Float32Array(),
+    worldSolidQuads: new Float32Array(),
     drawlist: new DataView(new ArrayBuffer(0)),
     input: new DataView(new ArrayBuffer(0)),
     viewGlobals: new DataView(new ArrayBuffer(0)),
@@ -637,12 +669,54 @@ function installHarness(
   };
 }
 
+function readViewGlobals(runtime: EngineRuntime) {
+  return {
+    camera: {
+      x: runtime.viewGlobals.getFloat32(ABI.VIEW_GLOBALS_CAMERA_OFFSET, true),
+      y: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CAMERA_OFFSET + 4,
+        true,
+      ),
+      zoom: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CAMERA_OFFSET + 8,
+        true,
+      ),
+    },
+    canvas: {
+      width: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CANVAS_OFFSET,
+        true,
+      ),
+      height: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CANVAS_OFFSET + 4,
+        true,
+      ),
+    },
+    simTick: runtime.viewGlobals.getFloat32(ABI.VIEW_GLOBALS_SIM_OFFSET, true),
+  };
+}
+
+function setProgramTexture(
+  gl: WebGL2RenderingContext,
+  handle: WebGLProgram,
+  textureId: number,
+) {
+  const samplerLoc = gl.getUniformLocation(handle, "u_texture");
+  if (samplerLoc) {
+    gl.uniform1i(samplerLoc, textureId);
+  }
+}
+
 function uploadAndDraw(runtime: EngineRuntime, cmd: DrawCmdView, now: number) {
   const { gl, resources } = runtime;
   const program = cmd.program === ABI.DRAWCMD_PROGRAM_RECT
     ? resources.programs.uiRect
     : cmd.program === ABI.DRAWCMD_PROGRAM_TEXT
     ? resources.programs.uiText
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD
+    ? resources.programs.worldAtlasQuad
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_SOLID_QUAD
+    ? resources.programs.worldSolidQuad
     : null;
   if (!program) {
     throw new Error(`unknown draw program ${cmd.program}`);
@@ -650,21 +724,49 @@ function uploadAndDraw(runtime: EngineRuntime, cmd: DrawCmdView, now: number) {
 
   const source = cmd.program === ABI.DRAWCMD_PROGRAM_RECT
     ? runtime.rects
-    : runtime.glyphs;
+    : cmd.program === ABI.DRAWCMD_PROGRAM_TEXT
+    ? runtime.glyphs
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD
+    ? runtime.worldAtlasQuads
+    : runtime.worldSolidQuads;
   const strideFloats = cmd.program === ABI.DRAWCMD_PROGRAM_RECT
     ? ABI.RECT_INSTANCE_STRIDE_FLOATS
-    : ABI.GLYPH_INSTANCE_STRIDE_FLOATS;
+    : cmd.program === ABI.DRAWCMD_PROGRAM_TEXT
+    ? ABI.GLYPH_INSTANCE_STRIDE_FLOATS
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD
+    ? ABI.WORLD_ATLAS_QUAD_STRIDE_FLOATS
+    : ABI.WORLD_SOLID_QUAD_STRIDE_FLOATS;
   const start = cmd.instanceOffset * strideFloats;
   const end = start + cmd.instanceCount * strideFloats;
+  const isWorld = cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD ||
+    cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_SOLID_QUAD;
 
   gl.bindVertexArray(program.vao);
   gl.useProgram(program.handle);
-  program.setGlobals(
-    { x: 0, y: 0, zoom: 1 },
-    1,
-    { width: runtime.canvas.width, height: runtime.canvas.height },
-    now,
-  );
+  if (isWorld) {
+    const globals = readViewGlobals(runtime);
+    program.setGlobals(
+      globals.camera,
+      globals.camera.zoom,
+      globals.canvas,
+      globals.simTick,
+    );
+    setProgramTexture(gl, program.handle, cmd.textureId);
+  } else {
+    program.setGlobals(
+      { x: 0, y: 0, zoom: 1 },
+      1,
+      { width: runtime.canvas.width, height: runtime.canvas.height },
+      now,
+    );
+  }
+
+  if (isWorld && cmd.textureId === ABI.TEXTURE_ID_FLOOR) {
+    gl.disable(gl.BLEND);
+  } else {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  }
 
   if (cmd.scissorW < 0 || cmd.scissorH < 0) {
     gl.disable(gl.SCISSOR_TEST);
@@ -691,7 +793,21 @@ export async function startEngineRenderLoop(
   const { gl } = boot;
   const resources = compilePrograms(gl);
   uploadWhiteTo(gl, TEXTURE_UNITS.white, resources.whiteTexture);
-  await loadUiFontAtlas(gl, resources.fontTexture);
+  await Promise.all([
+    loadAtlasInto(
+      gl,
+      TEXTURE_UNITS.floor,
+      FLOOR_ATLAS_SRC,
+      resources.floorTexture,
+    ),
+    loadAtlasInto(
+      gl,
+      TEXTURE_UNITS.sprite,
+      SPRITE_ATLAS_SRC,
+      resources.spriteTexture,
+    ),
+    loadUiFontAtlas(gl, resources.fontTexture),
+  ]);
   assertNoGlError(gl, "engine init");
 
   const wasm = await initEngine();

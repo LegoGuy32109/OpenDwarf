@@ -66,6 +66,17 @@ export type EngineSnapshot = {
     canvas: [number, number, number, number];
     sim: [number, number, number, number];
   };
+  worldRender: {
+    atlasQuadCount: number;
+    solidQuadCount: number;
+    floorQuadCount: number;
+    playerQuadCount: number;
+    droppedAtlasQuads: number;
+    droppedSolidQuads: number;
+    droppedDrawCmds: number;
+    visibleTileCount: number;
+    rememberedTileCount: number;
+  };
 };
 
 export type EngineCheckpoint = {

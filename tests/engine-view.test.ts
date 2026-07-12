@@ -92,6 +92,7 @@ test("engine LocalWorldView handles viewZ, zoom, slash modes, and camera behavio
   expect(snapshot.localWorldView.camera.x).not.toBe(
     entityBefore.localWorldView.camera.x,
   );
+  expect(snapshot.worldRender.rememberedTileCount).toBeGreaterThan(0);
 });
 
 test("engine play world streams a viewport window plus entity safety chunks", async ({ page }) => {

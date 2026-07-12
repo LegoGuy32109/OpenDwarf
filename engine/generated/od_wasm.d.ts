@@ -9,8 +9,14 @@ export class UiEngine {
     abi_glyph_stride_floats(): number;
     abi_program_rect(): number;
     abi_program_text(): number;
+    abi_program_world_atlas_quad(): number;
+    abi_program_world_solid_quad(): number;
     abi_rect_stride(): number;
     abi_rect_stride_floats(): number;
+    abi_world_atlas_stride(): number;
+    abi_world_atlas_stride_floats(): number;
+    abi_world_solid_stride(): number;
+    abi_world_solid_stride_floats(): number;
     /**
      * Compute-on-call draw hash (`"fnv1a64:<hex>"`). Not paid on the RAF path.
      */
@@ -37,6 +43,10 @@ export class UiEngine {
     step_sim_ticks(n: number): void;
     view_globals_capacity(): number;
     view_globals_ptr(): number;
+    world_atlas_capacity(): number;
+    world_atlas_ptr(): number;
+    world_solid_capacity(): number;
+    world_solid_ptr(): number;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -49,6 +59,10 @@ export interface InitOutput {
     readonly uiengine_rect_capacity: (a: number) => number;
     readonly uiengine_glyph_ptr: (a: number) => number;
     readonly uiengine_glyph_capacity: (a: number) => number;
+    readonly uiengine_world_atlas_ptr: (a: number) => number;
+    readonly uiengine_world_atlas_capacity: (a: number) => number;
+    readonly uiengine_world_solid_ptr: (a: number) => number;
+    readonly uiengine_world_solid_capacity: (a: number) => number;
     readonly uiengine_drawlist_ptr: (a: number) => number;
     readonly uiengine_drawlist_capacity: (a: number) => number;
     readonly uiengine_input_ptr: (a: number) => number;
@@ -63,6 +77,8 @@ export interface InitOutput {
     readonly uiengine_abi_glyph_stride_floats: (a: number) => number;
     readonly uiengine_abi_program_rect: (a: number) => number;
     readonly uiengine_abi_program_text: (a: number) => number;
+    readonly uiengine_abi_program_world_atlas_quad: (a: number) => number;
+    readonly uiengine_abi_program_world_solid_quad: (a: number) => number;
     readonly uiengine_debug_snapshot_json: (a: number) => [number, number];
     readonly uiengine_debug_world_snapshot_json: (a: number) => [number, number];
     readonly uiengine_debug_draw_hash: (a: number) => [number, number];
@@ -74,6 +90,10 @@ export interface InitOutput {
     readonly uiengine_frame: (a: number) => number;
     readonly uiengine_abi_rect_stride: (a: number) => number;
     readonly uiengine_view_globals_capacity: (a: number) => number;
+    readonly uiengine_abi_world_atlas_stride: (a: number) => number;
+    readonly uiengine_abi_world_atlas_stride_floats: (a: number) => number;
+    readonly uiengine_abi_world_solid_stride: (a: number) => number;
+    readonly uiengine_abi_world_solid_stride_floats: (a: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

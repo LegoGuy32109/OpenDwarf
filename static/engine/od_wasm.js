@@ -49,6 +49,20 @@ export class UiEngine {
     /**
      * @returns {number}
      */
+    abi_program_world_atlas_quad() {
+        const ret = wasm.uiengine_abi_program_world_atlas_quad(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_program_world_solid_quad() {
+        const ret = wasm.uiengine_abi_program_world_solid_quad(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
     abi_rect_stride() {
         const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
         return ret >>> 0;
@@ -57,6 +71,34 @@ export class UiEngine {
      * @returns {number}
      */
     abi_rect_stride_floats() {
+        const ret = wasm.uiengine_abi_rect_stride_floats(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_atlas_stride() {
+        const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_atlas_stride_floats() {
+        const ret = wasm.uiengine_abi_glyph_stride_floats(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_solid_stride() {
+        const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_solid_stride_floats() {
         const ret = wasm.uiengine_abi_rect_stride_floats(this.__wbg_ptr);
         return ret >>> 0;
     }
@@ -252,6 +294,34 @@ export class UiEngine {
      */
     view_globals_ptr() {
         const ret = wasm.uiengine_view_globals_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_atlas_capacity() {
+        const ret = wasm.uiengine_world_atlas_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_atlas_ptr() {
+        const ret = wasm.uiengine_world_atlas_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_solid_capacity() {
+        const ret = wasm.uiengine_world_solid_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_solid_ptr() {
+        const ret = wasm.uiengine_world_solid_ptr(this.__wbg_ptr);
         return ret >>> 0;
     }
 }
