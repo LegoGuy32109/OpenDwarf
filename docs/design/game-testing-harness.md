@@ -199,7 +199,9 @@ recording**.
 - **Artifacts:** write to git-ignored `exports/` (works local + CI); when
   running as a cloud agent, copy only the human-facing artifacts (parity
   screenshots, failing-frame captures, demo videos) into `/opt/cursor/artifacts`
-  so they render inline in the run/PR. No repo bloat.
+  so they render inline in the run/PR. The Cursor copy is best-effort: an absent
+  or unwritable `/opt/cursor` warns but never fails the test; the local
+  `exports/` write remains required. No repo bloat.
 
 ### 5.6 `/webgl` harness retirement
 

@@ -425,20 +425,33 @@ export async function writeEngineGoldenArtifacts(
     const filename = `${String(index + 1).padStart(2, "0")}-${shot.name}.png`;
     const bytes = dataUrlToBytes(shot.dataUrl);
     await writeFile(path.join(shotDir, filename), bytes);
-    if (options?.copyCloud) {
-      const cloudDir = "/opt/cursor/artifacts/engine-golden";
-      await mkdir(cloudDir, { recursive: true });
-      await writeFile(path.join(cloudDir, filename), bytes);
-    }
   }
 
   if (options?.copyCloud) {
-    const cloudDir = "/opt/cursor/artifacts/engine-golden";
-    await mkdir(cloudDir, { recursive: true });
-    await writeFile(
-      path.join(cloudDir, "manifest.json"),
-      `${JSON.stringify(bundle.manifest, null, 2)}\n`,
-    );
+    try {
+      const cloudDir = "/opt/cursor/artifacts/engine-golden";
+      await mkdir(cloudDir, { recursive: true });
+      for (let index = 0; index < ordered.length; index++) {
+        const shot = ordered[index]!;
+        const filename = `${
+          String(index + 1).padStart(2, "0")
+        }-${shot.name}.png`;
+        await writeFile(
+          path.join(cloudDir, filename),
+          dataUrlToBytes(shot.dataUrl),
+        );
+      }
+      await writeFile(
+        path.join(cloudDir, "manifest.json"),
+        `${JSON.stringify(bundle.manifest, null, 2)}\n`,
+      );
+    } catch (error) {
+      console.warn(
+        `Skipping Cursor artifact mirror: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   return root;
