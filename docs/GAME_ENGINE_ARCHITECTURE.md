@@ -566,6 +566,10 @@ seed+delta on OPFS) for session resume + sovereign settings. _Design interviews
 (visual A/B + golden tests), remove the `webgl2/` TS engine and old route
 wholesale, and move any still-shared GL modules into the new engine's ownership.
 This is the single point where the two-implementation maintenance burden ends.
+Working cutover plan (interviews locked — ready for ABI addendum + Slice 1):
+[`design/engine-webgl-parity-cutover.md`](design/engine-webgl-parity-cutover.md).
+Round-2 locks (programs, view globals, input, MVP bar):
+[`design/engine-mvp-abi-interview.md`](design/engine-mvp-abi-interview.md).
 
 **Parallel tracks — each needs its own design interview + `docs/design/*.md`
 when its track begins (not gating the UI phases until integration):**

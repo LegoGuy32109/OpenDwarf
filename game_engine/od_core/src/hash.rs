@@ -8,7 +8,9 @@ use std::hash::Hasher;
 
 use bytemuck::bytes_of;
 
-use crate::abi::{DrawCmd, GlyphInstance, RectInstance};
+use crate::abi::{
+    DrawCmd, GlyphInstance, RectInstance, WorldAtlasQuadInstance, WorldSolidQuadInstance,
+};
 
 /// FNV-1a 64-bit offset basis (same constant historically used in `od_ui::id`).
 pub const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
@@ -66,11 +68,7 @@ pub fn format_state_hash(digest: u64) -> StateHash {
 /// Canonicalize signed zero so native and wasm agree bit-for-bit.
 #[must_use]
 pub fn canonicalize_f32(value: f32) -> f32 {
-    if value == 0.0 {
-        0.0
-    } else {
-        value
-    }
+    if value == 0.0 { 0.0 } else { value }
 }
 
 fn write_f32(hasher: &mut FnvHasher, value: f32) {
@@ -103,16 +101,38 @@ fn write_glyph(hasher: &mut FnvHasher, glyph: &GlyphInstance) {
     write_f32(hasher, glyph.alpha);
 }
 
+fn write_world_atlas_quad(hasher: &mut FnvHasher, quad: &WorldAtlasQuadInstance) {
+    write_f32(hasher, quad.pos[0]);
+    write_f32(hasher, quad.pos[1]);
+    write_f32(hasher, quad.size[0]);
+    write_f32(hasher, quad.size[1]);
+    write_f32(hasher, quad.uv_rect[0]);
+    write_f32(hasher, quad.uv_rect[1]);
+    write_f32(hasher, quad.uv_rect[2]);
+    write_f32(hasher, quad.uv_rect[3]);
+    write_f32(hasher, quad.tint[0]);
+    write_f32(hasher, quad.tint[1]);
+    write_f32(hasher, quad.tint[2]);
+    write_f32(hasher, quad.alpha);
+}
+
+fn write_world_solid_quad(hasher: &mut FnvHasher, quad: &WorldSolidQuadInstance) {
+    write_f32(hasher, quad.pos[0]);
+    write_f32(hasher, quad.pos[1]);
+    write_f32(hasher, quad.size[0]);
+    write_f32(hasher, quad.size[1]);
+    write_f32(hasher, quad.tint[0]);
+    write_f32(hasher, quad.tint[1]);
+    write_f32(hasher, quad.tint[2]);
+    write_f32(hasher, quad.alpha);
+}
+
 /// Deterministic FNV-1a hash of the frame's draw output (GPU-independent).
 ///
 /// Hashes `draw_cmds`, then `rects`, then `glyphs`, in order, including full
 /// `DrawCmd` fields (program, offsets, counts, and scissor).
 #[must_use]
-pub fn draw_hash(
-    draw_cmds: &[DrawCmd],
-    rects: &[RectInstance],
-    glyphs: &[GlyphInstance],
-) -> u64 {
+pub fn draw_hash(draw_cmds: &[DrawCmd], rects: &[RectInstance], glyphs: &[GlyphInstance]) -> u64 {
     let mut hasher = FnvHasher::new();
     for cmd in draw_cmds {
         hasher.write(bytes_of(cmd));
@@ -134,6 +154,52 @@ pub fn draw_state_hash(
     glyphs: &[GlyphInstance],
 ) -> StateHash {
     format_state_hash(draw_hash(draw_cmds, rects, glyphs))
+}
+
+/// Deterministic FNV-1a hash of the full engine draw output, including world arenas.
+#[must_use]
+pub fn draw_hash_with_world(
+    draw_cmds: &[DrawCmd],
+    rects: &[RectInstance],
+    glyphs: &[GlyphInstance],
+    world_atlas_quads: &[WorldAtlasQuadInstance],
+    world_solid_quads: &[WorldSolidQuadInstance],
+) -> u64 {
+    let mut hasher = FnvHasher::new();
+    for cmd in draw_cmds {
+        hasher.write(bytes_of(cmd));
+    }
+    for atlas in world_atlas_quads {
+        write_world_atlas_quad(&mut hasher, atlas);
+    }
+    for solid in world_solid_quads {
+        write_world_solid_quad(&mut hasher, solid);
+    }
+    for rect in rects {
+        write_rect(&mut hasher, rect);
+    }
+    for glyph in glyphs {
+        write_glyph(&mut hasher, glyph);
+    }
+    hasher.finish()
+}
+
+/// Convenience: [`draw_hash_with_world`] formatted as a [`StateHash`].
+#[must_use]
+pub fn draw_state_hash_with_world(
+    draw_cmds: &[DrawCmd],
+    rects: &[RectInstance],
+    glyphs: &[GlyphInstance],
+    world_atlas_quads: &[WorldAtlasQuadInstance],
+    world_solid_quads: &[WorldSolidQuadInstance],
+) -> StateHash {
+    format_state_hash(draw_hash_with_world(
+        draw_cmds,
+        rects,
+        glyphs,
+        world_atlas_quads,
+        world_solid_quads,
+    ))
 }
 
 #[cfg(test)]

@@ -6,14 +6,15 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+pub mod render;
 mod replay_util;
 mod sim;
 mod state;
 mod terrain;
 
 pub use replay_util::{
-    finish_and_verify_replay, replay_commands_to_snapshot, send_command_recorded,
-    step_ticks_recorded, step_until_idle_recorded, ReplayApplyError,
+    ReplayApplyError, finish_and_verify_replay, replay_commands_to_snapshot, send_command_recorded,
+    step_ticks_recorded, step_until_idle_recorded,
 };
 pub use sim::WorldSim;
 pub use state::WorldState;
@@ -130,5 +131,42 @@ mod tests {
         let after = &sim.snapshot().entities[0];
         assert!(after.movement.is_none());
         assert_ne!(after.position, start);
+    }
+
+    #[test]
+    fn diagonal_move_starts_with_both_xy_axes() {
+        let id = 1;
+        let diagonals = [
+            Vec3i::new(1, -1, 0),
+            Vec3i::new(1, 1, 0),
+            Vec3i::new(-1, 1, 0),
+            Vec3i::new(-1, -1, 0),
+        ];
+
+        for direction in diagonals {
+            let mut sim = WorldSim::new(WorldConfig::default(), true);
+            if sim
+                .send_command(WorldCommand::MoveEntity { id, direction })
+                .is_err()
+            {
+                continue;
+            }
+            let snapshot = sim.snapshot();
+            let movement = snapshot.entities[0]
+                .movement
+                .as_ref()
+                .expect("diagonal movement");
+            assert_eq!(
+                (movement.target.x - movement.origin.x).signum(),
+                direction.x
+            );
+            assert_eq!(
+                (movement.target.y - movement.origin.y).signum(),
+                direction.y
+            );
+            return;
+        }
+
+        panic!("expected at least one valid diagonal move from spawn");
     }
 }

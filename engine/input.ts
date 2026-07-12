@@ -25,6 +25,20 @@ const CODE_TO_KEYCODE: Record<string, number> = Object.freeze({
   KeyD: ABI.KEYCODE_KEYD,
   KeyF: ABI.KEYCODE_KEYF,
   KeyT: ABI.KEYCODE_KEYT,
+  KeyR: ABI.KEYCODE_KEYR,
+  KeyV: ABI.KEYCODE_KEYV,
+  KeyU: ABI.KEYCODE_KEYU,
+  KeyM: ABI.KEYCODE_KEYM,
+  Digit1: ABI.KEYCODE_DIGIT1,
+  Digit2: ABI.KEYCODE_DIGIT2,
+  Digit3: ABI.KEYCODE_DIGIT3,
+  Digit4: ABI.KEYCODE_DIGIT4,
+  Digit5: ABI.KEYCODE_DIGIT5,
+  Digit6: ABI.KEYCODE_DIGIT6,
+  Digit7: ABI.KEYCODE_DIGIT7,
+  Digit8: ABI.KEYCODE_DIGIT8,
+  Digit9: ABI.KEYCODE_DIGIT9,
+  Digit0: ABI.KEYCODE_DIGIT0,
 });
 
 function modifiersFrom(event: KeyboardEvent): number {
@@ -91,7 +105,11 @@ function appendEvent(
     true,
   );
   if (count >= ABI.INPUT_QUEUE_CAPACITY) {
-    input.setUint32(queueBase + ABI.INPUT_QUEUE_HEADER_OVERFLOW_OFFSET, 1, true);
+    input.setUint32(
+      queueBase + ABI.INPUT_QUEUE_HEADER_OVERFLOW_OFFSET,
+      1,
+      true,
+    );
     return;
   }
   const base = ABI.INPUT_ARENA_EVENTS_OFFSET +
@@ -100,7 +118,11 @@ function appendEvent(
   input.setUint8(base + ABI.INPUT_EVENT_MODIFIERS_OFFSET, modifiers);
   input.setUint16(base + ABI.INPUT_EVENT_CODE_OFFSET, code, true);
   input.setUint32(base + ABI.INPUT_EVENT_VALUE_OFFSET, value >>> 0, true);
-  input.setUint32(queueBase + ABI.INPUT_QUEUE_HEADER_COUNT_OFFSET, count + 1, true);
+  input.setUint32(
+    queueBase + ABI.INPUT_QUEUE_HEADER_COUNT_OFFSET,
+    count + 1,
+    true,
+  );
 }
 
 function appendTextEvent(input: InputBuffer, codepoint: number) {
@@ -179,7 +201,9 @@ export class InputCapture {
       return;
     }
     const data = event.data ?? "";
-    if (event.inputType === "insertText" || event.inputType === "insertFromPaste") {
+    if (
+      event.inputType === "insertText" || event.inputType === "insertFromPaste"
+    ) {
       const remaining = Math.max(0, this.maxLen - this.shadowDraftLen);
       let inserted = 0;
       for (const ch of data) {
@@ -319,8 +343,16 @@ export class InputCapture {
       return;
     }
     const queueBase = ABI.INPUT_ARENA_QUEUE_OFFSET;
-    this.input.setUint32(queueBase + ABI.INPUT_QUEUE_HEADER_COUNT_OFFSET, 0, true);
-    this.input.setUint32(queueBase + ABI.INPUT_QUEUE_HEADER_OVERFLOW_OFFSET, 0, true);
+    this.input.setUint32(
+      queueBase + ABI.INPUT_QUEUE_HEADER_COUNT_OFFSET,
+      0,
+      true,
+    );
+    this.input.setUint32(
+      queueBase + ABI.INPUT_QUEUE_HEADER_OVERFLOW_OFFSET,
+      0,
+      true,
+    );
   }
 
   isCaptureActive() {

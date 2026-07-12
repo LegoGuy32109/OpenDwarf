@@ -20,6 +20,8 @@ export type ProgramHandle = {
 };
 
 export type Programs = {
+  worldAtlasQuad: ProgramHandle;
+  worldSolidQuad: ProgramHandle;
   floor: ProgramHandle;
   edgeShadow: ProgramHandle;
   ceilShadow: ProgramHandle;

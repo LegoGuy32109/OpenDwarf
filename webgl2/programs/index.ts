@@ -39,6 +39,12 @@ import {
   vert as spriteVert,
 } from "./sprite.ts";
 import {
+  attribs as worldSolidAttribs,
+  frag as worldSolidFrag,
+  vert as worldSolidVert,
+  WORLD_SOLID_STRIDE_FLOATS,
+} from "./world-solid.ts";
+import {
   attribs as uiRectAttribs,
   frag as uiRectFrag,
   sampler as uiRectSampler,
@@ -61,6 +67,7 @@ export const MAX_INSTANCE_STRIDE_FLOATS = Math.max(
   CEIL_SHADOW_STRIDE_FLOATS,
   FOG_STRIDE_FLOATS,
   SPRITE_STRIDE_FLOATS,
+  WORLD_SOLID_STRIDE_FLOATS,
 );
 
 function bindFloorGlobals(
@@ -498,6 +505,183 @@ function createSpriteProgram(
   };
 }
 
+function createWorldAtlasQuadProgram(
+  gl: WebGL2RenderingContext,
+  vertexBuffer: WebGLBuffer,
+  instanceBuffer: WebGLBuffer,
+): ProgramHandle {
+  const handle = createProgram(
+    gl,
+    "world-atlas-quad",
+    spriteVert,
+    spriteFrag,
+  );
+  const vao = gl.createVertexArray();
+  if (!vao) {
+    throw new Error("[webgl2] world-atlas-quad: failed to create VAO");
+  }
+
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.enableVertexAttribArray(spriteAttribs.corner);
+  gl.vertexAttribPointer(spriteAttribs.corner, 2, gl.FLOAT, false, 8, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+  gl.enableVertexAttribArray(spriteAttribs.pos);
+  gl.vertexAttribPointer(
+    spriteAttribs.pos,
+    2,
+    gl.FLOAT,
+    false,
+    SPRITE_STRIDE_FLOATS * 4,
+    0,
+  );
+  gl.vertexAttribDivisor(spriteAttribs.pos, 1);
+
+  gl.enableVertexAttribArray(spriteAttribs.size);
+  gl.vertexAttribPointer(
+    spriteAttribs.size,
+    2,
+    gl.FLOAT,
+    false,
+    SPRITE_STRIDE_FLOATS * 4,
+    8,
+  );
+  gl.vertexAttribDivisor(spriteAttribs.size, 1);
+
+  gl.enableVertexAttribArray(spriteAttribs.uv);
+  gl.vertexAttribPointer(
+    spriteAttribs.uv,
+    4,
+    gl.FLOAT,
+    false,
+    SPRITE_STRIDE_FLOATS * 4,
+    16,
+  );
+  gl.vertexAttribDivisor(spriteAttribs.uv, 1);
+
+  gl.enableVertexAttribArray(spriteAttribs.tint);
+  gl.vertexAttribPointer(
+    spriteAttribs.tint,
+    3,
+    gl.FLOAT,
+    false,
+    SPRITE_STRIDE_FLOATS * 4,
+    32,
+  );
+  gl.vertexAttribDivisor(spriteAttribs.tint, 1);
+
+  gl.enableVertexAttribArray(spriteAttribs.alpha);
+  gl.vertexAttribPointer(
+    spriteAttribs.alpha,
+    1,
+    gl.FLOAT,
+    false,
+    SPRITE_STRIDE_FLOATS * 4,
+    44,
+  );
+  gl.vertexAttribDivisor(spriteAttribs.alpha, 1);
+  gl.bindVertexArray(null);
+
+  gl.useProgram(handle);
+  bindSampler(gl, handle, "u_texture", TEXTURE_UNITS.floor);
+  gl.useProgram(null);
+
+  return {
+    name: "world-atlas-quad",
+    handle,
+    vao,
+    strideFloats: SPRITE_STRIDE_FLOATS,
+    setGlobals: (camera, zoom, canvasSize, simTick) => {
+      gl.useProgram(handle);
+      bindQuadGlobals(gl, handle, camera, zoom, canvasSize, simTick);
+    },
+  };
+}
+
+function createWorldSolidQuadProgram(
+  gl: WebGL2RenderingContext,
+  vertexBuffer: WebGLBuffer,
+  instanceBuffer: WebGLBuffer,
+): ProgramHandle {
+  const handle = createProgram(
+    gl,
+    "world-solid-quad",
+    worldSolidVert,
+    worldSolidFrag,
+  );
+  const vao = gl.createVertexArray();
+  if (!vao) {
+    throw new Error("[webgl2] world-solid-quad: failed to create VAO");
+  }
+
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.enableVertexAttribArray(worldSolidAttribs.corner);
+  gl.vertexAttribPointer(worldSolidAttribs.corner, 2, gl.FLOAT, false, 8, 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
+  gl.enableVertexAttribArray(worldSolidAttribs.pos);
+  gl.vertexAttribPointer(
+    worldSolidAttribs.pos,
+    2,
+    gl.FLOAT,
+    false,
+    WORLD_SOLID_STRIDE_FLOATS * 4,
+    0,
+  );
+  gl.vertexAttribDivisor(worldSolidAttribs.pos, 1);
+
+  gl.enableVertexAttribArray(worldSolidAttribs.size);
+  gl.vertexAttribPointer(
+    worldSolidAttribs.size,
+    2,
+    gl.FLOAT,
+    false,
+    WORLD_SOLID_STRIDE_FLOATS * 4,
+    8,
+  );
+  gl.vertexAttribDivisor(worldSolidAttribs.size, 1);
+
+  gl.enableVertexAttribArray(worldSolidAttribs.tint);
+  gl.vertexAttribPointer(
+    worldSolidAttribs.tint,
+    3,
+    gl.FLOAT,
+    false,
+    WORLD_SOLID_STRIDE_FLOATS * 4,
+    16,
+  );
+  gl.vertexAttribDivisor(worldSolidAttribs.tint, 1);
+
+  gl.enableVertexAttribArray(worldSolidAttribs.alpha);
+  gl.vertexAttribPointer(
+    worldSolidAttribs.alpha,
+    1,
+    gl.FLOAT,
+    false,
+    WORLD_SOLID_STRIDE_FLOATS * 4,
+    28,
+  );
+  gl.vertexAttribDivisor(worldSolidAttribs.alpha, 1);
+  gl.bindVertexArray(null);
+
+  gl.useProgram(handle);
+  bindSampler(gl, handle, "u_texture", TEXTURE_UNITS.white);
+  gl.useProgram(null);
+
+  return {
+    name: "world-solid-quad",
+    handle,
+    vao,
+    strideFloats: WORLD_SOLID_STRIDE_FLOATS,
+    setGlobals: (camera, zoom, canvasSize, simTick) => {
+      gl.useProgram(handle);
+      bindQuadGlobals(gl, handle, camera, zoom, canvasSize, simTick);
+    },
+  };
+}
+
 function createUiTextProgram(
   gl: WebGL2RenderingContext,
   vertexBuffer: WebGLBuffer,
@@ -717,6 +901,16 @@ export function compilePrograms(gl: WebGL2RenderingContext): ProgramResources {
   const ceilShadow = createCeilShadowProgram(gl, vertexBuffer, instanceBuffer);
   const fog = createFogProgram(gl, vertexBuffer, instanceBuffer);
   const sprite = createSpriteProgram(gl, vertexBuffer, instanceBuffer);
+  const worldAtlasQuad = createWorldAtlasQuadProgram(
+    gl,
+    vertexBuffer,
+    instanceBuffer,
+  );
+  const worldSolidQuad = createWorldSolidQuadProgram(
+    gl,
+    vertexBuffer,
+    instanceBuffer,
+  );
   const uiText = createUiTextProgram(gl, vertexBuffer, instanceBuffer);
   const uiRect = createUiRectProgram(gl, vertexBuffer, instanceBuffer);
 
@@ -730,7 +924,17 @@ export function compilePrograms(gl: WebGL2RenderingContext): ProgramResources {
   assertNoGlError(gl, "program init");
 
   return {
-    programs: { floor, edgeShadow, ceilShadow, fog, sprite, uiText, uiRect },
+    programs: {
+      worldAtlasQuad,
+      worldSolidQuad,
+      floor,
+      edgeShadow,
+      ceilShadow,
+      fog,
+      sprite,
+      uiText,
+      uiRect,
+    },
     instanceBuffer,
     vertexBuffer,
     maxInstances: MAX_INSTANCES,

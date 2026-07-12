@@ -8,28 +8,31 @@ pub mod intent;
 pub mod keycode;
 pub mod replay;
 pub mod session;
+pub mod view;
 pub mod world;
 
 pub use abi::{
     DRAWCMD_INSTANCE_COUNT_OFFSET, DRAWCMD_INSTANCE_OFFSET_OFFSET, DRAWCMD_PROGRAM_OFFSET,
-    DRAWCMD_PROGRAM_RECT, DRAWCMD_PROGRAM_TEXT, DRAWCMD_RESERVED_OFFSET, DRAWCMD_SCISSOR_H_OFFSET,
+    DRAWCMD_PROGRAM_RECT, DRAWCMD_PROGRAM_TEXT, DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD,
+    DRAWCMD_PROGRAM_WORLD_SOLID_QUAD, DRAWCMD_RESERVED_OFFSET, DRAWCMD_SCISSOR_H_OFFSET,
     DRAWCMD_SCISSOR_W_OFFSET, DRAWCMD_SCISSOR_X_OFFSET, DRAWCMD_SCISSOR_Y_OFFSET,
     DRAWCMD_SIZE_BYTES, DrawCmd, GLYPH_INSTANCE_ALPHA_OFFSET, GLYPH_INSTANCE_POS_OFFSET,
     GLYPH_INSTANCE_SIZE_OFFSET, GLYPH_INSTANCE_STRIDE_BYTES, GLYPH_INSTANCE_STRIDE_FLOATS,
     GLYPH_INSTANCE_TINT_OFFSET, GLYPH_INSTANCE_UV_OFFSET, GlyphInstance, ProgramId,
     RECT_INSTANCE_ALPHA_OFFSET, RECT_INSTANCE_POS_OFFSET, RECT_INSTANCE_SIZE_OFFSET,
     RECT_INSTANCE_STRIDE_BYTES, RECT_INSTANCE_STRIDE_FLOATS, RECT_INSTANCE_TINT_OFFSET,
-    RectInstance,
+    RectInstance, TEXTURE_ID_CEIL_SHADOW, TEXTURE_ID_EDGE_SHADOW, TEXTURE_ID_FLOOR,
+    TEXTURE_ID_FONT, TEXTURE_ID_SPRITE, TEXTURE_ID_WHITE, VIEW_GLOBALS_CAMERA_OFFSET,
+    VIEW_GLOBALS_CANVAS_OFFSET, VIEW_GLOBALS_SIM_OFFSET, VIEW_GLOBALS_SIZE_BYTES, ViewGlobals,
+    WORLD_ATLAS_QUAD_ALPHA_OFFSET, WORLD_ATLAS_QUAD_POS_OFFSET, WORLD_ATLAS_QUAD_SIZE_OFFSET,
+    WORLD_ATLAS_QUAD_STRIDE_BYTES, WORLD_ATLAS_QUAD_STRIDE_FLOATS, WORLD_ATLAS_QUAD_TINT_OFFSET,
+    WORLD_ATLAS_QUAD_UV_OFFSET, WORLD_SOLID_QUAD_ALPHA_OFFSET, WORLD_SOLID_QUAD_POS_OFFSET,
+    WORLD_SOLID_QUAD_SIZE_OFFSET, WORLD_SOLID_QUAD_STRIDE_BYTES, WORLD_SOLID_QUAD_STRIDE_FLOATS,
+    WORLD_SOLID_QUAD_TINT_OFFSET, WorldAtlasQuadInstance, WorldSolidQuadInstance,
 };
 pub use hash::{
     FNV_OFFSET_BASIS, FNV_PRIME, FnvHasher, StateHash, canonicalize_f32, draw_hash,
-    draw_state_hash, format_state_hash,
-};
-pub use replay::{
-    WORLD_REPLAY_FORMAT_VERSION, WORLD_SNAPSHOT_ENCODING_VERSION, WorldReplay,
-    WorldReplayEvent, WorldReplayIoError, WorldReplayMetadata, WorldReplayRecorder,
-    WorldReplayRecorderOptions, encode_world_snapshot_canonical, load_world_replay,
-    save_world_replay, world_state_hash,
+    draw_hash_with_world, draw_state_hash, draw_state_hash_with_world, format_state_hash,
 };
 pub use input::{
     EventKind, INPUT_ARENA_EVENTS_OFFSET, INPUT_ARENA_QUEUE_OFFSET, INPUT_ARENA_SAMPLE_OFFSET,
@@ -45,8 +48,14 @@ pub use input::{
     INPUT_SAMPLE_POINTER_Y_OFFSET, INPUT_SAMPLE_WINDOW_FOCUSED_OFFSET, INPUT_SAMPLED_SIZE_BYTES,
     InputArena, InputEvent, InputQueueHeader, InputSampled,
 };
-pub use session::{ChatMsg, SessionIntent, SessionModel, TextEdit};
 pub use keycode::KeyCode;
+pub use replay::{
+    WORLD_REPLAY_FORMAT_VERSION, WORLD_SNAPSHOT_ENCODING_VERSION, WorldReplay, WorldReplayEvent,
+    WorldReplayIoError, WorldReplayMetadata, WorldReplayRecorder, WorldReplayRecorderOptions,
+    encode_world_snapshot_canonical, load_world_replay, save_world_replay, world_state_hash,
+};
+pub use session::{ChatMsg, SessionIntent, SessionModel, TextEdit};
+pub use view::{LocalWorldView, WORLD_ZOOM_LEVELS, WorldCamera, WorldLookOffset, WorldViewMode};
 pub use world::{
     BlockType, DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE, DEFAULT_WORLD_CHUNKS, Dir,
     EntityMovementSnapshot, EntitySnapshot, MoveEntityError, TerrainConfig, Vec3i, Vec3u,

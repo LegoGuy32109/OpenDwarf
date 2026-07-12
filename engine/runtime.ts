@@ -5,7 +5,11 @@ import { assertNoGlError } from "../webgl2/gl-errors.ts";
 import { bootWebGl2Renderer } from "../webgl2/gpu-init.ts";
 import { syncCanvasSize } from "../webgl2/canvas.ts";
 import { compilePrograms } from "../webgl2/programs/index.ts";
-import { TEXTURE_UNITS, uploadWhiteTo } from "../webgl2/texture-units.ts";
+import {
+  loadAtlasInto,
+  TEXTURE_UNITS,
+  uploadWhiteTo,
+} from "../webgl2/texture-units.ts";
 import { loadUiFontAtlas } from "../webgl2/ui-text.ts";
 import initEngine, { UiEngine } from "../engine/generated/od_wasm.js";
 import { InputCapture } from "./input.ts";
@@ -21,21 +25,38 @@ type EngineHandle = {
   rect_capacity(): number;
   glyph_ptr(): number;
   glyph_capacity(): number;
+  world_atlas_ptr(): number;
+  world_atlas_capacity(): number;
+  world_solid_ptr(): number;
+  world_solid_capacity(): number;
   drawlist_ptr(): number;
   drawlist_capacity(): number;
   input_ptr(): number;
   input_capacity(): number;
+  view_globals_ptr(): number;
+  view_globals_capacity(): number;
   hydrate_settings(bytes: Uint8Array): void;
+  reset_for_harness(): void;
+  reset_play_world(): void;
   frame(): number;
   abi_drawcmd_stride(): number;
   abi_rect_stride(): number;
   abi_rect_stride_floats(): number;
   abi_glyph_stride(): number;
   abi_glyph_stride_floats(): number;
+  abi_world_atlas_stride(): number;
+  abi_world_atlas_stride_floats(): number;
+  abi_world_solid_stride(): number;
+  abi_world_solid_stride_floats(): number;
   abi_program_rect(): number;
   abi_program_text(): number;
+  abi_program_world_atlas_quad(): number;
+  abi_program_world_solid_quad(): number;
   debug_snapshot_json(): string;
+  debug_world_snapshot_json(): string;
   debug_draw_hash(): string;
+  step_sim_ticks(n: number): void;
+  import_replay_json(bytes: Uint8Array): string;
 };
 
 type EngineRuntime = {
@@ -50,14 +71,19 @@ type EngineRuntime = {
   bufferRef: ArrayBuffer;
   rects: Float32Array;
   glyphs: Float32Array;
+  worldAtlasQuads: Float32Array;
+  worldSolidQuads: Float32Array;
   drawlist: DataView;
   input: DataView;
+  viewGlobals: DataView;
   inputCapture: InputCapture;
   harnessEnabled: boolean;
   syntheticNow: number;
 };
 
 const SETTINGS_STORAGE_KEY = "od.settings";
+const FLOOR_ATLAS_SRC = "/assets/sprites/StackedTextures.png";
+const SPRITE_ATLAS_SRC = "/assets/sprites/Dwarf_16x16.png";
 
 type EngineGlobals = typeof globalThis & {
   host_leave_game?: () => void;
@@ -104,6 +130,7 @@ type DrawCmdView = {
   scissorY: number;
   scissorW: number;
   scissorH: number;
+  textureId: number;
 };
 
 function setErrorOverlay(
@@ -177,6 +204,7 @@ function readDrawCmd(drawlist: DataView, index: number): DrawCmdView {
     scissorY: drawlist.getInt32(base + ABI.DRAWCMD_SCISSOR_Y_OFFSET, true),
     scissorW: drawlist.getInt32(base + ABI.DRAWCMD_SCISSOR_W_OFFSET, true),
     scissorH: drawlist.getInt32(base + ABI.DRAWCMD_SCISSOR_H_OFFSET, true),
+    textureId: drawlist.getUint32(base + ABI.DRAWCMD_RESERVED_OFFSET, true),
   };
 }
 
@@ -194,6 +222,16 @@ function rederiveViews(runtime: EngineRuntime) {
     engine.glyph_ptr(),
     engine.glyph_capacity() * ABI.GLYPH_INSTANCE_STRIDE_FLOATS,
   );
+  runtime.worldAtlasQuads = new Float32Array(
+    memory.buffer,
+    engine.world_atlas_ptr(),
+    engine.world_atlas_capacity() * ABI.WORLD_ATLAS_QUAD_STRIDE_FLOATS,
+  );
+  runtime.worldSolidQuads = new Float32Array(
+    memory.buffer,
+    engine.world_solid_ptr(),
+    engine.world_solid_capacity() * ABI.WORLD_SOLID_QUAD_STRIDE_FLOATS,
+  );
   runtime.drawlist = new DataView(
     memory.buffer,
     engine.drawlist_ptr(),
@@ -204,7 +242,18 @@ function rederiveViews(runtime: EngineRuntime) {
     engine.input_ptr(),
     engine.input_capacity(),
   );
+  runtime.viewGlobals = new DataView(
+    memory.buffer,
+    engine.view_globals_ptr(),
+    engine.view_globals_capacity(),
+  );
   runtime.inputCapture.setArena(runtime.input);
+}
+
+function refreshViewsIfNeeded(runtime: EngineRuntime) {
+  if (runtime.wasm.memory.buffer !== runtime.bufferRef) {
+    rederiveViews(runtime);
+  }
 }
 
 function createRuntime(
@@ -223,8 +272,11 @@ function createRuntime(
     bufferRef: wasm.memory.buffer,
     rects: new Float32Array(),
     glyphs: new Float32Array(),
+    worldAtlasQuads: new Float32Array(),
+    worldSolidQuads: new Float32Array(),
     drawlist: new DataView(new ArrayBuffer(0)),
     input: new DataView(new ArrayBuffer(0)),
+    viewGlobals: new DataView(new ArrayBuffer(0)),
     inputCapture: new InputCapture(canvas),
     harnessEnabled: false,
     syntheticNow: 0,
@@ -235,6 +287,7 @@ function createRuntime(
 
 function renderFrame(runtime: EngineRuntime, now: number) {
   const { gl, canvas } = runtime;
+  refreshViewsIfNeeded(runtime);
   syncCanvasSize(gl, canvas);
   runtime.inputCapture.beginFrame(now);
 
@@ -293,7 +346,7 @@ type EngineHarness = {
     focus(): Promise<void>;
   };
   stepFrame(n?: number): Promise<void>;
-  /** Reserved — requires wasm world surface. Throws until implemented. */
+  /** Advance the authoritative wasm `WorldSim` clock. */
   stepSimTick(n?: number): Promise<void>;
   snapshot(): Record<string, unknown>;
   captureCheckpoint(
@@ -303,11 +356,9 @@ type EngineHarness = {
   exportBundle(): EngineBundle;
   /** Author path — intent/semantic Scenario document. */
   runScenario(scenario: ScenarioDocument): Promise<RunScenarioResult>;
-  /**
-   * Proof path — WorldReplay. Explicitly unimplemented until wasm world
-   * surface exists (throws; never silent no-op).
-   */
-  importReplay(worldReplay: unknown): Promise<never>;
+  /** Proof path — WorldReplay JSON document. */
+  importReplay(worldReplay: unknown): Promise<Record<string, unknown>>;
+  resetWorld(kind?: "default" | "play"): Promise<void>;
 };
 
 type EngineGlobalHarness = typeof globalThis & {
@@ -379,7 +430,12 @@ function installHarness(
     }
   };
 
-  const dispatchKey = (type: "keydown" | "keyup", code: string, modifiers: number) => {
+  const dispatchKey = (
+    type: "keydown" | "keyup",
+    code: string,
+    modifiers: number,
+  ) => {
+    refreshViewsIfNeeded(runtime);
     const key = keyForCode(code);
     const event = new KeyboardEvent(type, {
       bubbles: true,
@@ -402,7 +458,9 @@ function installHarness(
   };
 
   const buildSnapshot = () => {
+    refreshViewsIfNeeded(runtime);
     const snapshot = readSnapshot(runtime);
+    refreshViewsIfNeeded(runtime);
     const snapshotInput = (snapshot.input as Record<string, unknown>) ?? {};
     const snapshotRender = (snapshot.render as Record<string, unknown>) ?? {};
     const frame = (snapshot.frame as Record<string, unknown>) ?? {};
@@ -439,7 +497,10 @@ function installHarness(
       await input.keyUp(code, modifiers);
     },
     typeText: async (text: string) => {
-      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      refreshViewsIfNeeded(runtime);
+      const inputEl = document.querySelector<HTMLInputElement>(
+        "#od-text-capture",
+      );
       if (!inputEl) {
         throw new Error("hidden text input is unavailable");
       }
@@ -454,7 +515,10 @@ function installHarness(
       }
     },
     paste: async (text: string) => {
-      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      refreshViewsIfNeeded(runtime);
+      const inputEl = document.querySelector<HTMLInputElement>(
+        "#od-text-capture",
+      );
       if (!inputEl) {
         throw new Error("hidden text input is unavailable");
       }
@@ -467,7 +531,9 @@ function installHarness(
       inputEl.dispatchEvent(ev);
     },
     blur: async () => {
-      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      const inputEl = document.querySelector<HTMLInputElement>(
+        "#od-text-capture",
+      );
       inputEl?.blur();
       if (document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
@@ -475,7 +541,9 @@ function installHarness(
     },
     focus: async () => {
       if (runtime.inputCapture.isCaptureActive()) {
-        const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+        const inputEl = document.querySelector<HTMLInputElement>(
+          "#od-text-capture",
+        );
         inputEl?.focus();
       } else {
         canvas.focus();
@@ -492,10 +560,10 @@ function installHarness(
         renderFrame(runtime, runtime.syntheticNow);
       }
     },
-    stepSimTick: async (_n = 1) => {
-      throw new Error(
-        "stepSimTick: unimplemented — requires wasm world surface (Stage B stub)",
-      );
+    stepSimTick: async (n = 1) => {
+      refreshViewsIfNeeded(runtime);
+      runtime.engine.step_sim_ticks(Math.max(0, Math.trunc(n)));
+      refreshViewsIfNeeded(runtime);
     },
     snapshot: () => buildSnapshot(),
     captureCheckpoint: async (name, options = {}) => {
@@ -503,7 +571,9 @@ function installHarness(
       renderFrame(runtime, runtime.syntheticNow);
       const snapshot = buildSnapshot();
       const frame = snapshot.frame as Record<string, unknown>;
-      const drawHash = String(frame.drawHash ?? runtime.engine.debug_draw_hash());
+      const drawHash = String(
+        frame.drawHash ?? runtime.engine.debug_draw_hash(),
+      );
       const checkpoint: EngineCheckpoint = {
         name,
         ordinal: checkpoints.length,
@@ -530,7 +600,9 @@ function installHarness(
           checkpointCount: checkpoints.length,
           screenshotCount: screenshots.length,
         },
-        checkpoints: checkpoints.map(({ screenshot: _screenshot, ...rest }) => rest),
+        checkpoints: checkpoints.map(({ screenshot: _screenshot, ...rest }) =>
+          rest
+        ),
         screenshots,
       };
     },
@@ -538,6 +610,11 @@ function installHarness(
       return await runScenarioBrowser(
         {
           input,
+          stepSimTick: async (n = 1) => {
+            refreshViewsIfNeeded(runtime);
+            runtime.engine.step_sim_ticks(Math.max(0, Math.trunc(n)));
+            refreshViewsIfNeeded(runtime);
+          },
           stepFrame: async (n = 1) => {
             for (let index = 0; index < n; index++) {
               runtime.syntheticNow += 16;
@@ -567,12 +644,71 @@ function installHarness(
         scenario,
       );
     },
-    importReplay: async (_worldReplay: unknown): Promise<never> => {
-      throw new Error(
-        "importReplay: unimplemented — requires wasm world surface (Stage B stub; not a silent no-op)",
-      );
+    importReplay: async (
+      worldReplay: unknown,
+    ): Promise<Record<string, unknown>> => {
+      const bytes = new TextEncoder().encode(JSON.stringify(worldReplay));
+      const snapshot = JSON.parse(
+        runtime.engine.import_replay_json(bytes),
+      ) as Record<
+        string,
+        unknown
+      >;
+      refreshViewsIfNeeded(runtime);
+      return snapshot;
+    },
+    resetWorld: async (kind = "default") => {
+      refreshViewsIfNeeded(runtime);
+      if (kind === "play") {
+        runtime.engine.reset_play_world();
+      } else {
+        runtime.engine.reset_for_harness();
+      }
+      refreshViewsIfNeeded(runtime);
     },
   };
+}
+
+function readViewGlobals(runtime: EngineRuntime) {
+  return {
+    camera: {
+      x: runtime.viewGlobals.getFloat32(ABI.VIEW_GLOBALS_CAMERA_OFFSET, true),
+      y: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CAMERA_OFFSET + 4,
+        true,
+      ),
+      zoom: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CAMERA_OFFSET + 8,
+        true,
+      ),
+    },
+    canvas: {
+      width: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CANVAS_OFFSET,
+        true,
+      ),
+      height: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CANVAS_OFFSET + 4,
+        true,
+      ),
+      dpr: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CANVAS_OFFSET + 8,
+        true,
+      ),
+    },
+    simTick: runtime.viewGlobals.getFloat32(ABI.VIEW_GLOBALS_SIM_OFFSET, true),
+  };
+}
+
+function setProgramTexture(
+  gl: WebGL2RenderingContext,
+  handle: WebGLProgram,
+  textureId: number,
+) {
+  const samplerLoc = gl.getUniformLocation(handle, "u_texture");
+  if (samplerLoc) {
+    gl.uniform1i(samplerLoc, textureId);
+  }
 }
 
 function uploadAndDraw(runtime: EngineRuntime, cmd: DrawCmdView, now: number) {
@@ -581,6 +717,10 @@ function uploadAndDraw(runtime: EngineRuntime, cmd: DrawCmdView, now: number) {
     ? resources.programs.uiRect
     : cmd.program === ABI.DRAWCMD_PROGRAM_TEXT
     ? resources.programs.uiText
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD
+    ? resources.programs.worldAtlasQuad
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_SOLID_QUAD
+    ? resources.programs.worldSolidQuad
     : null;
   if (!program) {
     throw new Error(`unknown draw program ${cmd.program}`);
@@ -588,21 +728,49 @@ function uploadAndDraw(runtime: EngineRuntime, cmd: DrawCmdView, now: number) {
 
   const source = cmd.program === ABI.DRAWCMD_PROGRAM_RECT
     ? runtime.rects
-    : runtime.glyphs;
+    : cmd.program === ABI.DRAWCMD_PROGRAM_TEXT
+    ? runtime.glyphs
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD
+    ? runtime.worldAtlasQuads
+    : runtime.worldSolidQuads;
   const strideFloats = cmd.program === ABI.DRAWCMD_PROGRAM_RECT
     ? ABI.RECT_INSTANCE_STRIDE_FLOATS
-    : ABI.GLYPH_INSTANCE_STRIDE_FLOATS;
+    : cmd.program === ABI.DRAWCMD_PROGRAM_TEXT
+    ? ABI.GLYPH_INSTANCE_STRIDE_FLOATS
+    : cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD
+    ? ABI.WORLD_ATLAS_QUAD_STRIDE_FLOATS
+    : ABI.WORLD_SOLID_QUAD_STRIDE_FLOATS;
   const start = cmd.instanceOffset * strideFloats;
   const end = start + cmd.instanceCount * strideFloats;
+  const isWorld = cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD ||
+    cmd.program === ABI.DRAWCMD_PROGRAM_WORLD_SOLID_QUAD;
 
   gl.bindVertexArray(program.vao);
   gl.useProgram(program.handle);
-  program.setGlobals(
-    { x: 0, y: 0, zoom: 1 },
-    1,
-    { width: runtime.canvas.width, height: runtime.canvas.height },
-    now,
-  );
+  if (isWorld) {
+    const globals = readViewGlobals(runtime);
+    program.setGlobals(
+      globals.camera,
+      globals.camera.zoom,
+      globals.canvas,
+      globals.simTick,
+    );
+    setProgramTexture(gl, program.handle, cmd.textureId);
+  } else {
+    program.setGlobals(
+      { x: 0, y: 0, zoom: 1 },
+      1,
+      { width: runtime.canvas.width, height: runtime.canvas.height },
+      now,
+    );
+  }
+
+  if (isWorld && cmd.textureId === ABI.TEXTURE_ID_FLOOR) {
+    gl.disable(gl.BLEND);
+  } else {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  }
 
   if (cmd.scissorW < 0 || cmd.scissorH < 0) {
     gl.disable(gl.SCISSOR_TEST);
@@ -629,14 +797,30 @@ export async function startEngineRenderLoop(
   const { gl } = boot;
   const resources = compilePrograms(gl);
   uploadWhiteTo(gl, TEXTURE_UNITS.white, resources.whiteTexture);
-  await loadUiFontAtlas(gl, resources.fontTexture);
+  await Promise.all([
+    loadAtlasInto(
+      gl,
+      TEXTURE_UNITS.floor,
+      FLOOR_ATLAS_SRC,
+      resources.floorTexture,
+    ),
+    loadAtlasInto(
+      gl,
+      TEXTURE_UNITS.sprite,
+      SPRITE_ATLAS_SRC,
+      resources.spriteTexture,
+    ),
+    loadUiFontAtlas(gl, resources.fontTexture),
+  ]);
   assertNoGlError(gl, "engine init");
 
   const wasm = await initEngine();
   const engine = new UiEngine();
   // Harness mode pins Settings::default(); ignore localStorage so goldens
   // cannot flake on a previous session's ui_scale.
-  if (!options.harness) {
+  if (options.harness) {
+    engine.reset_for_harness();
+  } else {
     engine.hydrate_settings(loadPersistedSettings());
   }
   const runtime = createRuntime(gl, canvas, resources, wasm, engine);

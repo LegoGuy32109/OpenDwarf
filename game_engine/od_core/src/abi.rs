@@ -22,6 +22,15 @@ use crate::keycode::KeyCode;
 
 pub const DRAWCMD_PROGRAM_RECT: u32 = 0;
 pub const DRAWCMD_PROGRAM_TEXT: u32 = 1;
+pub const DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD: u32 = 2;
+pub const DRAWCMD_PROGRAM_WORLD_SOLID_QUAD: u32 = 3;
+
+pub const TEXTURE_ID_FLOOR: u32 = 0;
+pub const TEXTURE_ID_EDGE_SHADOW: u32 = 1;
+pub const TEXTURE_ID_CEIL_SHADOW: u32 = 2;
+pub const TEXTURE_ID_SPRITE: u32 = 3;
+pub const TEXTURE_ID_FONT: u32 = 4;
+pub const TEXTURE_ID_WHITE: u32 = 5;
 
 pub const DRAWCMD_SIZE_BYTES: u32 = 32;
 pub const DRAWCMD_PROGRAM_OFFSET: usize = 0;
@@ -48,11 +57,33 @@ pub const GLYPH_INSTANCE_UV_OFFSET: usize = 16;
 pub const GLYPH_INSTANCE_TINT_OFFSET: usize = 32;
 pub const GLYPH_INSTANCE_ALPHA_OFFSET: usize = 44;
 
+pub const WORLD_ATLAS_QUAD_STRIDE_FLOATS: u32 = 12;
+pub const WORLD_ATLAS_QUAD_STRIDE_BYTES: u32 = WORLD_ATLAS_QUAD_STRIDE_FLOATS * 4;
+pub const WORLD_ATLAS_QUAD_POS_OFFSET: usize = 0;
+pub const WORLD_ATLAS_QUAD_SIZE_OFFSET: usize = 8;
+pub const WORLD_ATLAS_QUAD_UV_OFFSET: usize = 16;
+pub const WORLD_ATLAS_QUAD_TINT_OFFSET: usize = 32;
+pub const WORLD_ATLAS_QUAD_ALPHA_OFFSET: usize = 44;
+
+pub const WORLD_SOLID_QUAD_STRIDE_FLOATS: u32 = 8;
+pub const WORLD_SOLID_QUAD_STRIDE_BYTES: u32 = WORLD_SOLID_QUAD_STRIDE_FLOATS * 4;
+pub const WORLD_SOLID_QUAD_POS_OFFSET: usize = 0;
+pub const WORLD_SOLID_QUAD_SIZE_OFFSET: usize = 8;
+pub const WORLD_SOLID_QUAD_TINT_OFFSET: usize = 16;
+pub const WORLD_SOLID_QUAD_ALPHA_OFFSET: usize = 28;
+
+pub const VIEW_GLOBALS_SIZE_BYTES: u32 = 48;
+pub const VIEW_GLOBALS_CAMERA_OFFSET: usize = 0;
+pub const VIEW_GLOBALS_CANVAS_OFFSET: usize = 16;
+pub const VIEW_GLOBALS_SIM_OFFSET: usize = 32;
+
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ProgramId {
     Rect = DRAWCMD_PROGRAM_RECT,
     Text = DRAWCMD_PROGRAM_TEXT,
+    WorldAtlasQuad = DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD,
+    WorldSolidQuad = DRAWCMD_PROGRAM_WORLD_SOLID_QUAD,
 }
 
 impl ProgramId {
@@ -82,6 +113,25 @@ pub struct GlyphInstance {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Serialize, Deserialize)]
+pub struct WorldAtlasQuadInstance {
+    pub pos: [f32; 2],
+    pub size: [f32; 2],
+    pub uv_rect: [f32; 4],
+    pub tint: [f32; 3],
+    pub alpha: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Serialize, Deserialize)]
+pub struct WorldSolidQuadInstance {
+    pub pos: [f32; 2],
+    pub size: [f32; 2],
+    pub tint: [f32; 3],
+    pub alpha: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Serialize, Deserialize)]
 pub struct DrawCmd {
     pub program: u32,
     pub instance_offset: u32,
@@ -91,6 +141,18 @@ pub struct DrawCmd {
     pub scissor_w: i32,
     pub scissor_h: i32,
     pub reserved: u32,
+}
+
+/// UBO-ready view globals (`std140`-friendly vec4 slots).
+///
+/// `camera = [x, y, zoom, _]`, `canvas = [w, h, dpr, _]`,
+/// `sim = [tick, view_z, view_mode, _]`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Pod, Zeroable, Serialize, Deserialize)]
+pub struct ViewGlobals {
+    pub camera: [f32; 4],
+    pub canvas: [f32; 4],
+    pub sim: [f32; 4],
 }
 
 const _: () = assert!(mem::size_of::<DrawCmd>() == DRAWCMD_SIZE_BYTES as usize);
@@ -116,6 +178,33 @@ const _: () = assert!(mem::offset_of!(GlyphInstance, uv_rect) == GLYPH_INSTANCE_
 const _: () = assert!(mem::offset_of!(GlyphInstance, tint) == GLYPH_INSTANCE_TINT_OFFSET);
 const _: () = assert!(mem::offset_of!(GlyphInstance, alpha) == GLYPH_INSTANCE_ALPHA_OFFSET);
 
+const _: () =
+    assert!(mem::size_of::<WorldAtlasQuadInstance>() == WORLD_ATLAS_QUAD_STRIDE_BYTES as usize);
+const _: () = assert!(mem::offset_of!(WorldAtlasQuadInstance, pos) == WORLD_ATLAS_QUAD_POS_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(WorldAtlasQuadInstance, size) == WORLD_ATLAS_QUAD_SIZE_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(WorldAtlasQuadInstance, uv_rect) == WORLD_ATLAS_QUAD_UV_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(WorldAtlasQuadInstance, tint) == WORLD_ATLAS_QUAD_TINT_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(WorldAtlasQuadInstance, alpha) == WORLD_ATLAS_QUAD_ALPHA_OFFSET);
+
+const _: () =
+    assert!(mem::size_of::<WorldSolidQuadInstance>() == WORLD_SOLID_QUAD_STRIDE_BYTES as usize);
+const _: () = assert!(mem::offset_of!(WorldSolidQuadInstance, pos) == WORLD_SOLID_QUAD_POS_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(WorldSolidQuadInstance, size) == WORLD_SOLID_QUAD_SIZE_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(WorldSolidQuadInstance, tint) == WORLD_SOLID_QUAD_TINT_OFFSET);
+const _: () =
+    assert!(mem::offset_of!(WorldSolidQuadInstance, alpha) == WORLD_SOLID_QUAD_ALPHA_OFFSET);
+
+const _: () = assert!(mem::size_of::<ViewGlobals>() == VIEW_GLOBALS_SIZE_BYTES as usize);
+const _: () = assert!(mem::offset_of!(ViewGlobals, camera) == VIEW_GLOBALS_CAMERA_OFFSET);
+const _: () = assert!(mem::offset_of!(ViewGlobals, canvas) == VIEW_GLOBALS_CANVAS_OFFSET);
+const _: () = assert!(mem::offset_of!(ViewGlobals, sim) == VIEW_GLOBALS_SIM_OFFSET);
+
 pub fn ts_abi_source() -> String {
     let mut out = String::new();
     out.push_str("/* eslint-disable */\n");
@@ -130,6 +219,26 @@ pub fn ts_abi_source() -> String {
         "  DRAWCMD_PROGRAM_TEXT: {},\n",
         DRAWCMD_PROGRAM_TEXT
     ));
+    out.push_str(&format!(
+        "  DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD: {},\n",
+        DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD
+    ));
+    out.push_str(&format!(
+        "  DRAWCMD_PROGRAM_WORLD_SOLID_QUAD: {},\n",
+        DRAWCMD_PROGRAM_WORLD_SOLID_QUAD
+    ));
+    out.push_str(&format!("  TEXTURE_ID_FLOOR: {},\n", TEXTURE_ID_FLOOR));
+    out.push_str(&format!(
+        "  TEXTURE_ID_EDGE_SHADOW: {},\n",
+        TEXTURE_ID_EDGE_SHADOW
+    ));
+    out.push_str(&format!(
+        "  TEXTURE_ID_CEIL_SHADOW: {},\n",
+        TEXTURE_ID_CEIL_SHADOW
+    ));
+    out.push_str(&format!("  TEXTURE_ID_SPRITE: {},\n", TEXTURE_ID_SPRITE));
+    out.push_str(&format!("  TEXTURE_ID_FONT: {},\n", TEXTURE_ID_FONT));
+    out.push_str(&format!("  TEXTURE_ID_WHITE: {},\n", TEXTURE_ID_WHITE));
     out.push_str(&format!(
         "  DRAWCMD_PROGRAM_OFFSET: {},\n",
         DRAWCMD_PROGRAM_OFFSET
@@ -213,6 +322,74 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!(
         "  GLYPH_INSTANCE_ALPHA_OFFSET: {},\n",
         GLYPH_INSTANCE_ALPHA_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_ATLAS_QUAD_STRIDE_FLOATS: {},\n",
+        WORLD_ATLAS_QUAD_STRIDE_FLOATS
+    ));
+    out.push_str(&format!(
+        "  WORLD_ATLAS_QUAD_STRIDE_BYTES: {},\n",
+        WORLD_ATLAS_QUAD_STRIDE_BYTES
+    ));
+    out.push_str(&format!(
+        "  WORLD_ATLAS_QUAD_POS_OFFSET: {},\n",
+        WORLD_ATLAS_QUAD_POS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_ATLAS_QUAD_SIZE_OFFSET: {},\n",
+        WORLD_ATLAS_QUAD_SIZE_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_ATLAS_QUAD_UV_OFFSET: {},\n",
+        WORLD_ATLAS_QUAD_UV_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_ATLAS_QUAD_TINT_OFFSET: {},\n",
+        WORLD_ATLAS_QUAD_TINT_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_ATLAS_QUAD_ALPHA_OFFSET: {},\n",
+        WORLD_ATLAS_QUAD_ALPHA_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_SOLID_QUAD_STRIDE_FLOATS: {},\n",
+        WORLD_SOLID_QUAD_STRIDE_FLOATS
+    ));
+    out.push_str(&format!(
+        "  WORLD_SOLID_QUAD_STRIDE_BYTES: {},\n",
+        WORLD_SOLID_QUAD_STRIDE_BYTES
+    ));
+    out.push_str(&format!(
+        "  WORLD_SOLID_QUAD_POS_OFFSET: {},\n",
+        WORLD_SOLID_QUAD_POS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_SOLID_QUAD_SIZE_OFFSET: {},\n",
+        WORLD_SOLID_QUAD_SIZE_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_SOLID_QUAD_TINT_OFFSET: {},\n",
+        WORLD_SOLID_QUAD_TINT_OFFSET
+    ));
+    out.push_str(&format!(
+        "  WORLD_SOLID_QUAD_ALPHA_OFFSET: {},\n",
+        WORLD_SOLID_QUAD_ALPHA_OFFSET
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_SIZE_BYTES: {},\n",
+        VIEW_GLOBALS_SIZE_BYTES
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_CAMERA_OFFSET: {},\n",
+        VIEW_GLOBALS_CAMERA_OFFSET
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_CANVAS_OFFSET: {},\n",
+        VIEW_GLOBALS_CANVAS_OFFSET
+    ));
+    out.push_str(&format!(
+        "  VIEW_GLOBALS_SIM_OFFSET: {},\n",
+        VIEW_GLOBALS_SIM_OFFSET
     ));
     out.push_str(&format!(
         "  INPUT_SAMPLED_SIZE_BYTES: {},\n",
@@ -335,9 +512,15 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!("  KEYCODE_ENTER: {},\n", KeyCode::Enter as u16));
     out.push_str(&format!("  KEYCODE_ESCAPE: {},\n", KeyCode::Escape as u16));
     out.push_str(&format!("  KEYCODE_SPACE: {},\n", KeyCode::Space as u16));
-    out.push_str(&format!("  KEYCODE_BACKSPACE: {},\n", KeyCode::Backspace as u16));
+    out.push_str(&format!(
+        "  KEYCODE_BACKSPACE: {},\n",
+        KeyCode::Backspace as u16
+    ));
     out.push_str(&format!("  KEYCODE_DELETE: {},\n", KeyCode::Delete as u16));
-    out.push_str(&format!("  KEYCODE_ARROWLEFT: {},\n", KeyCode::ArrowLeft as u16));
+    out.push_str(&format!(
+        "  KEYCODE_ARROWLEFT: {},\n",
+        KeyCode::ArrowLeft as u16
+    ));
     out.push_str(&format!(
         "  KEYCODE_ARROWRIGHT: {},\n",
         KeyCode::ArrowRight as u16
@@ -355,15 +538,29 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!("  KEYCODE_KEYD: {},\n", KeyCode::KeyD as u16));
     out.push_str(&format!("  KEYCODE_KEYF: {},\n", KeyCode::KeyF as u16));
     out.push_str(&format!("  KEYCODE_KEYT: {},\n", KeyCode::KeyT as u16));
+    out.push_str(&format!("  KEYCODE_KEYR: {},\n", KeyCode::KeyR as u16));
+    out.push_str(&format!("  KEYCODE_KEYV: {},\n", KeyCode::KeyV as u16));
+    out.push_str(&format!("  KEYCODE_KEYU: {},\n", KeyCode::KeyU as u16));
+    out.push_str(&format!("  KEYCODE_KEYM: {},\n", KeyCode::KeyM as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT1: {},\n", KeyCode::Digit1 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT2: {},\n", KeyCode::Digit2 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT3: {},\n", KeyCode::Digit3 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT4: {},\n", KeyCode::Digit4 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT5: {},\n", KeyCode::Digit5 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT6: {},\n", KeyCode::Digit6 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT7: {},\n", KeyCode::Digit7 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT8: {},\n", KeyCode::Digit8 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT9: {},\n", KeyCode::Digit9 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT0: {},\n", KeyCode::Digit0 as u16));
     out.push_str("} as const);\n");
     out.push_str(
-    "export type DrawCmdProgram = typeof ABI.DRAWCMD_PROGRAM_RECT | typeof ABI.DRAWCMD_PROGRAM_TEXT;\n",
+    "export type DrawCmdProgram = typeof ABI.DRAWCMD_PROGRAM_RECT | typeof ABI.DRAWCMD_PROGRAM_TEXT | typeof ABI.DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD | typeof ABI.DRAWCMD_PROGRAM_WORLD_SOLID_QUAD;\n",
   );
     out.push_str(
         "export type EventKind = typeof ABI.INPUT_KIND_UNKNOWN | typeof ABI.INPUT_KIND_KEY_DOWN | typeof ABI.INPUT_KIND_KEY_UP | typeof ABI.INPUT_KIND_BLUR | typeof ABI.INPUT_KIND_RESYNC | typeof ABI.INPUT_KIND_TEXT | typeof ABI.INPUT_KIND_COMPOSITION;\n",
     );
     out.push_str(
-        "export type KeyCode = typeof ABI.KEYCODE_UNKNOWN | typeof ABI.KEYCODE_ENTER | typeof ABI.KEYCODE_ESCAPE | typeof ABI.KEYCODE_SPACE | typeof ABI.KEYCODE_BACKSPACE | typeof ABI.KEYCODE_DELETE | typeof ABI.KEYCODE_ARROWLEFT | typeof ABI.KEYCODE_ARROWRIGHT | typeof ABI.KEYCODE_HOME | typeof ABI.KEYCODE_END | typeof ABI.KEYCODE_SLASH | typeof ABI.KEYCODE_KEYI | typeof ABI.KEYCODE_KEYJ | typeof ABI.KEYCODE_KEYK | typeof ABI.KEYCODE_KEYL | typeof ABI.KEYCODE_KEYQ | typeof ABI.KEYCODE_KEYE | typeof ABI.KEYCODE_KEYS | typeof ABI.KEYCODE_KEYD | typeof ABI.KEYCODE_KEYF | typeof ABI.KEYCODE_KEYT;\n",
+        "export type KeyCode = typeof ABI.KEYCODE_UNKNOWN | typeof ABI.KEYCODE_ENTER | typeof ABI.KEYCODE_ESCAPE | typeof ABI.KEYCODE_SPACE | typeof ABI.KEYCODE_BACKSPACE | typeof ABI.KEYCODE_DELETE | typeof ABI.KEYCODE_ARROWLEFT | typeof ABI.KEYCODE_ARROWRIGHT | typeof ABI.KEYCODE_HOME | typeof ABI.KEYCODE_END | typeof ABI.KEYCODE_SLASH | typeof ABI.KEYCODE_KEYI | typeof ABI.KEYCODE_KEYJ | typeof ABI.KEYCODE_KEYK | typeof ABI.KEYCODE_KEYL | typeof ABI.KEYCODE_KEYQ | typeof ABI.KEYCODE_KEYE | typeof ABI.KEYCODE_KEYS | typeof ABI.KEYCODE_KEYD | typeof ABI.KEYCODE_KEYF | typeof ABI.KEYCODE_KEYT | typeof ABI.KEYCODE_KEYR | typeof ABI.KEYCODE_KEYV | typeof ABI.KEYCODE_KEYU | typeof ABI.KEYCODE_KEYM | typeof ABI.KEYCODE_DIGIT1 | typeof ABI.KEYCODE_DIGIT2 | typeof ABI.KEYCODE_DIGIT3 | typeof ABI.KEYCODE_DIGIT4 | typeof ABI.KEYCODE_DIGIT5 | typeof ABI.KEYCODE_DIGIT6 | typeof ABI.KEYCODE_DIGIT7 | typeof ABI.KEYCODE_DIGIT8 | typeof ABI.KEYCODE_DIGIT9 | typeof ABI.KEYCODE_DIGIT0;\n",
     );
     out
 }

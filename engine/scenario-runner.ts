@@ -1,17 +1,17 @@
 /**
- * Browser Stage B Scenario runner — lowers Session/Shell/Input to harness DOM
- * input. Engine steps fail-closed. World steps fail until wasm world exists.
+ * Browser Scenario runner — lowers Session/Shell/Input/World to harness APIs.
+ * Engine steps remain fail-closed in browser.
  */
 
 import {
+  type InputActionJson,
   type KeymapProfile,
+  resolveKeymapProfile,
   type RunScenarioResult,
   type ScenarioDocument,
   type ScenarioStep,
   type SessionIntentJson,
   type ShellActionJson,
-  type InputActionJson,
-  resolveKeymapProfile,
 } from "./scenario-types.ts";
 
 export type ScenarioHarnessApi = {
@@ -22,6 +22,7 @@ export type ScenarioHarnessApi = {
     typeText(text: string): Promise<void>;
   };
   stepFrame(n?: number): Promise<void>;
+  stepSimTick(n?: number): Promise<void>;
   snapshot(): Record<string, unknown>;
   captureCheckpoint(
     name: string,
@@ -187,26 +188,169 @@ async function lowerInput(api: ScenarioHarnessApi, action: InputActionJson) {
   await api.stepFrame(1);
 }
 
-function rejectWorldOrEngine(step: ScenarioStep, stepIndex: number): void {
+function worldFromSnapshot(snapshot: Record<string, unknown>) {
+  return (snapshot.world as Record<string, unknown> | undefined) ?? {};
+}
+
+function primaryEntityFromSnapshot(snapshot: Record<string, unknown>) {
+  return (worldFromSnapshot(snapshot).primaryEntity as
+    | Record<string, unknown>
+    | null
+    | undefined) ?? null;
+}
+
+function primaryEntityMoving(snapshot: Record<string, unknown>) {
+  const entity = primaryEntityFromSnapshot(snapshot);
+  return Boolean(entity?.movement);
+}
+
+function positionKey(position: unknown) {
+  const pos = (position as Record<string, unknown> | undefined) ?? {};
+  return `${Number(pos.x)},${Number(pos.y)},${Number(pos.z)}`;
+}
+
+function directionCodes(profile: KeymapProfile, direction: unknown) {
+  switch (String(direction).toLowerCase()) {
+    case "n":
+      return [profile.north];
+    case "ne":
+      return [profile.north, profile.east];
+    case "e":
+      return [profile.east];
+    case "se":
+      return [profile.south, profile.east];
+    case "s":
+      return [profile.south];
+    case "sw":
+      return [profile.south, profile.west];
+    case "w":
+      return [profile.west];
+    case "nw":
+      return [profile.north, profile.west];
+    default:
+      throw new ScenarioBrowserError(
+        "unknown_world_direction",
+        `unknown world direction ${JSON.stringify(direction)}`,
+      );
+  }
+}
+
+async function keyTapSimTick(
+  api: ScenarioHarnessApi,
+  codes: string[],
+) {
+  for (const code of codes) {
+    await api.input.keyDown(code);
+  }
+  await api.stepSimTick(1);
+  for (const code of [...codes].reverse()) {
+    await api.input.keyUp(code);
+  }
+}
+
+async function lowerWorldIntent(
+  api: ScenarioHarnessApi,
+  profile: KeymapProfile,
+  intent: unknown,
+  stepIndex: number,
+) {
+  const typed = intent as Record<string, unknown>;
+  if (typed.type === "move_player") {
+    const codes = directionCodes(profile, typed.direction);
+    await keyTapSimTick(api, codes);
+    return;
+  }
+  if (typed.type === "wait_ticks") {
+    await api.stepSimTick(Math.max(0, Math.trunc(Number(typed.ticks ?? 0))));
+    return;
+  }
+  throw new ScenarioBrowserError(
+    "unknown_world_intent",
+    `unknown WorldIntent at index ${stepIndex}: ${JSON.stringify(intent)}`,
+    stepIndex,
+  );
+}
+
+async function waitUntilIdle(
+  api: ScenarioHarnessApi,
+  maxTicks: number,
+  stepIndex: number,
+) {
+  const limit = Math.max(0, Math.trunc(maxTicks));
+  for (let tick = 0; tick < limit; tick++) {
+    if (!primaryEntityMoving(api.snapshot())) {
+      return;
+    }
+    await api.stepSimTick(1);
+  }
+  if (primaryEntityMoving(api.snapshot())) {
+    throw new ScenarioBrowserError(
+      "wait_until_idle_timeout",
+      `primary entity still moving after ${limit} ticks at index ${stepIndex}`,
+      stepIndex,
+    );
+  }
+}
+
+async function lowerMovePlayerExact(
+  api: ScenarioHarnessApi,
+  profile: KeymapProfile,
+  direction: unknown,
+  maxTicks: number,
+  stepIndex: number,
+) {
+  const codes = directionCodes(profile, direction);
+  await keyTapSimTick(api, codes);
+  await waitUntilIdle(api, maxTicks, stepIndex);
+}
+
+function applyAssert(
+  api: ScenarioHarnessApi,
+  assertion: unknown,
+  stepIndex: number,
+) {
+  const typed = assertion as Record<string, unknown>;
+  const snapshot = api.snapshot();
+  if (typed.type === "world_state_hash_eq") {
+    const actual = String(worldFromSnapshot(snapshot).world_state_hash ?? "");
+    const expected = String(typed.expected ?? "");
+    if (actual !== expected) {
+      throw new ScenarioBrowserError(
+        "assert_world_state_hash",
+        `world_state_hash mismatch at index ${stepIndex}: expected ${expected}, got ${actual}`,
+        stepIndex,
+      );
+    }
+    return;
+  }
+  if (typed.type === "entity_position") {
+    const id = Number(typed.id);
+    const entity = primaryEntityFromSnapshot(snapshot);
+    const actualId = Number(entity?.id);
+    const actual = positionKey(entity?.position);
+    const expected = positionKey(typed.position);
+    if (actualId !== id || actual !== expected) {
+      throw new ScenarioBrowserError(
+        "assert_entity_position",
+        `entity ${id} position mismatch at index ${stepIndex}: expected ${expected}, got ${actual}`,
+        stepIndex,
+      );
+    }
+    return;
+  }
+  throw new ScenarioBrowserError(
+    "unknown_assert",
+    `unknown Assert at index ${stepIndex}: ${JSON.stringify(assertion)}`,
+    stepIndex,
+  );
+}
+
+function rejectEngine(step: ScenarioStep, stepIndex: number): void {
   switch (step.kind) {
     case "engine":
       throw new ScenarioBrowserError(
         "engine_not_allowed",
         `browser runScenario fail-closed on Engine step at index ${stepIndex}`,
-        stepIndex,
-      );
-    case "world":
-    case "move_player_exact":
-    case "wait_until_idle":
-      throw new ScenarioBrowserError(
-        "world_unavailable",
-        `browser runScenario cannot execute World step (${step.kind}) at index ${stepIndex}: wasm world surface not wired`,
-        stepIndex,
-      );
-    case "assert":
-      throw new ScenarioBrowserError(
-        "world_unavailable",
-        `browser runScenario cannot execute Assert at index ${stepIndex}: world/UI assert allowlist not lowered yet; use RecordCheckpoint`,
         stepIndex,
       );
     default:
@@ -240,7 +384,7 @@ export async function runScenarioBrowser(
   // Fail-closed up front on Engine — no partial success.
   for (let i = 0; i < scenario.steps.length; i++) {
     if (scenario.steps[i]!.kind === "engine") {
-      rejectWorldOrEngine(scenario.steps[i]!, i);
+      rejectEngine(scenario.steps[i]!, i);
     }
   }
 
@@ -258,6 +402,24 @@ export async function runScenarioBrowser(
       case "input":
         await lowerInput(api, step.action);
         break;
+      case "world":
+        await lowerWorldIntent(api, profile, step.intent, stepIndex);
+        break;
+      case "move_player_exact":
+        await lowerMovePlayerExact(
+          api,
+          profile,
+          step.direction,
+          step.max_ticks,
+          stepIndex,
+        );
+        break;
+      case "wait_until_idle":
+        await waitUntilIdle(api, step.max_ticks, stepIndex);
+        break;
+      case "assert":
+        applyAssert(api, step.assertion, stepIndex);
+        break;
       case "record_checkpoint": {
         const cp = await api.captureCheckpoint(step.name);
         checkpoints.push({
@@ -268,11 +430,7 @@ export async function runScenarioBrowser(
         break;
       }
       case "engine":
-      case "world":
-      case "move_player_exact":
-      case "wait_until_idle":
-      case "assert":
-        rejectWorldOrEngine(step, stepIndex);
+        rejectEngine(step, stepIndex);
         break;
       default: {
         const _exhaustive: never = step;

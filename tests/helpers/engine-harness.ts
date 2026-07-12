@@ -22,6 +22,7 @@ export type EngineSnapshot = {
     chatDraft: string;
     chatCaret: number;
     chatMessages: string[];
+    hud?: string[];
   };
   input: {
     canvasFocused: boolean;
@@ -31,6 +32,50 @@ export type EngineSnapshot = {
   render: {
     framebufferWidth: number;
     framebufferHeight: number;
+  };
+  world: {
+    tick: number;
+    chunkEdge: number;
+    worldChunks: { x: number; y: number; z: number };
+    world_state_hash: string;
+    worldStateHash: string;
+    primary_entity_id: number | null;
+    primaryEntityId: number | null;
+    primary_entity_position: { x: number; y: number; z: number } | null;
+    primaryEntity: {
+      id: number;
+      position: { x: number; y: number; z: number };
+      movement: unknown | null;
+    } | null;
+    entityCount: number;
+    loadedChunkCount: number;
+    loadedChunks: { x: number; y: number; z: number }[];
+  };
+  localWorldView: {
+    camera: { x: number; y: number; zoom: number };
+    viewZ: number;
+    viewMode: "entity" | "master";
+    lookOffset: { x: number; y: number };
+    fps: number;
+    tps: number;
+    visibleChunks: { x: number; y: number; z: number }[];
+    streamingChunks: { x: number; y: number; z: number }[];
+  };
+  viewGlobals: {
+    camera: [number, number, number, number];
+    canvas: [number, number, number, number];
+    sim: [number, number, number, number];
+  };
+  worldRender: {
+    atlasQuadCount: number;
+    solidQuadCount: number;
+    floorQuadCount: number;
+    playerQuadCount: number;
+    droppedAtlasQuads: number;
+    droppedSolidQuads: number;
+    droppedDrawCmds: number;
+    visibleTileCount: number;
+    rememberedTileCount: number;
   };
 };
 
@@ -82,7 +127,8 @@ type BrowserGlobal = {
       }[];
       finalSnapshot: EngineSnapshot;
     }>;
-    importReplay(worldReplay: unknown): Promise<never>;
+    importReplay(worldReplay: unknown): Promise<Record<string, unknown>>;
+    resetWorld(kind?: "default" | "play"): Promise<void>;
   };
 };
 
@@ -119,7 +165,8 @@ function harness(page: Page) {
 
 export function engineSnapshot(page: Page) {
   return page.evaluate(() =>
-    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.snapshot()
+    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+      .snapshot()
   );
 }
 
@@ -223,11 +270,11 @@ export function engineRunScenario(page: Page, scenario: unknown) {
 export function engineImportReplay(page: Page, worldReplay: unknown) {
   return page.evaluate(
     async (worldReplay) => {
-      const harness =
-        (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!;
+      const harness = (globalThis as unknown as BrowserGlobal)
+        .__openDwarfEngineHarness!;
       try {
-        await harness.importReplay(worldReplay);
-        return { ok: true as const };
+        const snapshot = await harness.importReplay(worldReplay);
+        return { ok: true as const, snapshot };
       } catch (err) {
         return {
           ok: false as const,
@@ -242,8 +289,8 @@ export function engineImportReplay(page: Page, worldReplay: unknown) {
 export function engineStepSimTick(page: Page, n = 1) {
   return page.evaluate(
     async (n) => {
-      const harness =
-        (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!;
+      const harness = (globalThis as unknown as BrowserGlobal)
+        .__openDwarfEngineHarness!;
       try {
         await harness.stepSimTick(n);
         return { ok: true as const };
@@ -255,6 +302,18 @@ export function engineStepSimTick(page: Page, n = 1) {
       }
     },
     n,
+  );
+}
+
+export function engineResetWorld(
+  page: Page,
+  kind: "default" | "play" = "default",
+) {
+  return page.evaluate(
+    (kind) =>
+      (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+        .resetWorld(kind),
+    kind,
   );
 }
 
