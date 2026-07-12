@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{collections::HashSet, hash::Hash};
 
 use crate::{
     Axis, Id, Layout,
