@@ -1,218 +1,237 @@
 # Engine MVP — ABI / Input / View Interview (Round 2)
 
-**Status:** Open interview — 2026-07-11
+**Status:** Partially locked — 2026-07-12 (awaiting Q5 / Q6 after expanded brief)
 **Parent:** [`engine-webgl-parity-cutover.md`](./engine-webgl-parity-cutover.md)
-(round-1 locks: Rust-authoritative ABI, playable-MVP delete gate, `od_world`
-terrain, Bevy same milestone)
 **Also touches:** [`render-command-abi.md`](./render-command-abi.md),
 [`input-arena.md`](./input-arena.md),
-[`domains-and-shell-router.md`](./domains-and-shell-router.md),
-[`od-world.md`](./od-world.md)
-
-Answer these before coding Slices 1–3. Each item below was checked against the
-repo; only unresolved product/architecture choices remain.
+[`domains-and-shell-router.md`](./domains-and-shell-router.md)
 
 ---
 
-## Already answered (do not re-litigate)
+## Locked this round
 
-| Topic | Source |
+| # | Lock |
 | --- | --- |
-| TS stays dumb; Rust emits instances | Round 1 Q1 + architecture §3.1 |
-| MVP = floor + player + move + camera/z/zoom + chat/shell/HUD | Round 1 Q2 |
-| Shadows/fog/bubbles post-MVP | Round 1 Q2 |
-| `od_world` terrain OK if controls/feel right | Round 1 Q3 |
-| Bevy deleted with `/webgl` after your MVP verify | Round 1 Q4 |
-| UI atlases may load async in TS; Rust owns layout/UVs | architecture §3.5 / ABI |
-| `HeldSet` / `is_held` exists for gameplay sampling | input-arena §5 |
-| IJKL dual-use noted (“nav … also camera in gameplay”) | input-arena §3 |
-| Shell modal when open → session frozen | domains-and-shell-router |
-| `WorldSnapshot` has entities + terrain + loaded chunks; no FOV | od_core snapshot / od-world |
-| Existing strides (reference only): floor 7, edge 5, ceil 4, fog 3, sprite 12, UI rect 8, glyph 12 | `webgl2/programs/*` |
-| ABI reserves `program=2` Sprite; `reserved` → future `texture_id` | render-command-abi §2 |
-| Harness must not silently no-op `stepSimTick` / `importReplay` | scenario.md Stage B |
+| **Q7** | **`LocalWorldView`** in `od_core` (beside `SessionModel`). Expand to other view kinds later. |
+| **Q8** | One **`frame()`**: world emit then UI. World instance builders live in **`od_world::render`** for now. |
+| **Q9** | **Confirmed intent** (see §Q9): TS dumps physical keys only; **Rust** maps key→meaning from context (shell / inventory / menu / world / chat). Matches architecture; Rust keymap needs extension, not a TS policy layer. |
+| **Q10** | **A** — minimal `/master` + `/entity` on `SubmitChat`; match existing UX. |
+| **Q11** | **Depth tint + remembered tint are required before delete-verify**, not day-one of first floor pixels. They are floor **tint policy**, not separate GL programs. FOV/memory must exist by then for “remembered.” Fog overlay / shadows remain post-first-pixels as before. |
+| **Q12** | **A** — you spot-check **`/webgl` vs `/engine` live**; agent does **not** delete until you explicitly approve. |
+
+Still open after the briefs below: **Q5**, **Q6**.
 
 ---
 
-## Q5 — World program IDs & arena layout (MVP)
+## Context: what `/webgl` “layers” actually are
 
-UI today: two homogeneous arenas (rect×8, glyph×12) + draw-list. World shaders
-use **different** strides. MVP needs **floor** and **player sprite** only.
+They are **not** one multipass FBO effect. They are a **paint-ordered compositor**: each pass binds a different GL program (+ texture unit + blend mode), writes instances, draws, then the next pass draws on top.
 
-**A.** One `ProgramId` per GL program, each with its own fixed-stride arena
-(e.g. `Floor=2` stride 7, `Sprite=3` stride 12). Draw-list `program` selects
-arena. Later shadows/fog add `4…n` the same way.
+Current order (`webgl2/passes/index.ts`):
 
-**B.** Pad/unify everything into one “sprite-like” stride (waste + shader churn).
+1. **Floor** — atlas, blend **off**, stride **7** (`pos, frame, tint, alpha`); depth tint + remembered tint are **per-instance tint colors** chosen while emitting
+2. **Edge shadow** — geometric bands, blend **on**, stride **5** (`pos, size, alpha`); often no atlas sample beyond white/solid shading
+3. **Ceil shadow** — shadow atlas frames, blend on, stride **4**
+4. **Fog** — darken quads, white texture, stride **3** (`pos, alpha`), entity mode only
+5. **Player** — sprite atlas, UV/flip, stride **12** (same shape family as UI glyphs)
+6. **Chat / HUD** — UI rect/text (screen-space)
 
-**C.** Something else (describe).
+Fixed texture units today (`texture-units.ts`): floor=0, edge=1, ceil=2, sprite=3, font=4, white=5.
 
-Recommendation if unspecified: **A** (matches current ABI homogeneity rule;
-matches how `webgl2` already separates programs).
+The look you want = **that stack in order**, with floor tints (depth/remembered) + shadow/fog overlays. Architecture already locked the same idea for the new engine: **draw-list paint order** = compositing (`render-command-abi` §6.2; domains doc: world → session → shell).
 
-*Need from you:* A / B / C, and whether MVP floor stride should **copy** the
-current 7-float webgl2 floor layout bit-for-bit or may be redesigned in Rust as
-long as it looks right.
+So “program per effect layer” is one way to preserve that stack. It is not the only way — see Q5.
 
----
-
-## Q6 — Camera / view uniforms into GL
-
-World shaders need `camera`, `zoom`, `canvasSize`, `simTick` every draw. UI
-programs are screen-space (zoom=1). With Rust-authoritative instances:
-
-**A.** Per-frame **view globals block** in wasm memory (camera xy, zoom, viewZ,
-viewMode, simTick, …); TS reads once and calls `setGlobals` before world
-batches. UI batches keep screen-space globals.
-
-**B.** Stuff globals into every `DrawCmd.reserved` / expand `DrawCmd` (heavier
-wire format).
-
-**C.** TS reads camera only from `debug_snapshot_json()` / harness snapshot
-(fine for debug, bad for the hot path).
-
-Recommendation: **A**.
-
-*Need from you:* A / B / C.
+Shared camera math is already identical across world programs (`u_camera`, `u_zoom`, `u_canvas_size`, `u_sim_tick` in `_chunks.ts`). UI programs force camera=0, zoom=1. Comment there: if globals grow or program count ≳10, migrate to a **UBO**.
 
 ---
 
-## Q7 — Where does “local view” state live?
+## Q5 — Arena / program layout (expanded)
 
-MVP needs camera, look offset, viewZ, zoom, view mode, maybe HUD counters.
-Full Phase-5 `ClientView` (replication/FOV filter) is post-MVP.
+### What must stay true long-term
 
-**A.** Extend `SessionModel` in `od_core` with local view fields now (same struct
-grows into / projects into `ClientView` later).
+- Rust emits GL-ready instances; TS only binds + draws (round-1 Q1).
+- Homogeneous strides per arena (ABI rule) — no mixed-stride float soup.
+- Paint order via `DrawCmd` list (compositor).
+- Layer toggles / future overlays (designations, blood, cursors, stockpile washes) must stay cheap to add.
+- Different **blend modes** and **textures** across the stack.
 
-**B.** New `od_core::LocalView` (or `ClientView` v0 without FOV) beside
-`SessionModel`; UI + world emit read it by ref.
+### Options
 
-**C.** Keep view state only inside `od_wasm` / engine runtime (not in `od_core`)
-until Phase 5 — fastest, weakest shared testing story.
+#### Option A — ProgramId per current pass (mirror `/webgl`)
 
-Recommendation: **B** (keeps chat model small; gives harness a stable snapshot
-shape; avoids pretending full `ClientView` exists).
+`Floor`, `EdgeShadow`, `CeilShadow`, `Fog`, `Sprite`, plus existing `Rect`/`Text`.
 
-*Need from you:* A / B / C.
+| | |
+| --- | --- |
+| **Pros** | 1:1 with shaders you already like; no shader rewrite; toggles map 1:1; MVP can add Floor+Sprite first |
+| **Cons** | Arena count grows with every effect; many similar “textured quad” programs; DF will grow lots of overlays → ProgramId sprawl |
+| **Fit** | Fastest parity port |
 
----
+#### Option B — Pad everything to one max stride / one arena
 
-## Q8 — Who calls world emit vs UI emit?
+| | |
+| --- | --- |
+| **Pros** | One pointer |
+| **Cons** | Wasted memory; VAOs still differ per shader so TS still switches programs; fights ABI homogeneity discipline |
+| **Fit** | Poor — reject for long-term |
 
-Today `DomainEngine::frame` → session UI + shell → UI arenas only.
+#### Option C — One uber-shader (branches on a `kind` attribute)
 
-**A.** Same `frame()`: after sim tick + view update, a world emitter writes
-floor/sprite instances + world `DrawCmd`s **first**, then UI appends (compositor
-order locked in architecture).
+| | |
+| --- | --- |
+| **Pros** | Single program |
+| **Cons** | Branchy GPU code; awkward blend (floor wants blend off, shadows on); hard to reason about; rewrite everything |
+| **Fit** | Poor for DF overlays |
 
-**B.** Separate `world_frame()` export; TS calls world then UI and concatenates /
-uses two draw-lists.
+#### Option D — **Small generic world program set** (recommended long-term)
 
-**C.** World emission lives in `od_world` (sim crate grows render deps) vs
-`od_ui` / new `od_render` crate.
+Collapse the *shader family*, not the *visual stack*:
 
-Recommendation: **A** for the call shape; world mesh/build helpers in a small
-module that is **not** `od_ui` widgets (either `od_world::render` feature-gated
-or new `od_render`) so `od_ui` stays pure UI. Exact crate split is the
-sub-choice under C.
+| ProgramId | Role | Covers today’s |
+| --- | --- | --- |
+| `WorldAtlasQuad` | `pos, size, uv_rect, tint, alpha` + `texture_id` in `DrawCmd.reserved` | Floor (Rust emits UVs instead of frame index), ceil shadow, player, most overlays |
+| `WorldSolidQuad` | `pos, size, tint, alpha` (white/`texture_id`) | Edge shadow bands, fog, washes, designation fills |
+| `Rect` / `Text` | unchanged | UI |
 
-*Need from you:* Prefer A or B for the wasm export shape; and whether world
-instance builders may live in `od_world` or must be a new crate.
+Visual layers remain **separate `DrawCmd` batches in paint order** (floor cmds, then edge cmds, …). You still get the combined look. You do **not** need a GL program per aesthetic layer forever — only per *vertex format / shading family*.
 
----
+| | |
+| --- | --- |
+| **Pros** | Scales to DF overlays without ProgramId explosion; uses existing ABI `reserved`→`texture_id` seam; one atlas-quad VAO; matches “dumb TS”; draw-list still owns compositing |
+| **Cons** | Floor shader changes from `frame` index → Rust-computed `uv_rect` (one-time port); must assign texture ids; slightly more Rust emit logic |
+| **Fit** | Best long-term for a browser DF |
 
-## Q9 — Gameplay keymap vs shell nav (IJKL / ESDF)
+#### Option E — Hybrid timeline (A now → D)
 
-Facts: when shell is open, IJKL must remain focus nav. When shell is closed,
-`/webgl` uses IJKL for camera and ESDF for move. `HeldSet` is already the right
-primitive for continuous move/look. Today `gameplay_binding_for` still emits
-`FocusPrev`/`FocusNext` on I/K even with no session buttons.
+Ship MVP with `Floor`+`Sprite` ProgramIds copying current shaders; migrate to D when shadows/fog/overlays land.
 
-**A.** Shell open → IJKL = UI nav only. Shell closed + not chatting → IJKL
-sampled as camera (no UI focus intents); ESDF sampled as move. Chat capture
-suppresses both (already true for most keys via `InputMode::TextField`).
+| | |
+| --- | --- |
+| **Pros** | Fastest first pixels |
+| **Cons** | Two migrations; throwaway Floor-specific ABI |
 
-**B.** Always emit UI focus intents from IJKL; **also** sample held IJKL for
-camera when shell closed (redundant Focus intents when nothing focusable).
+### Recommendation
 
-**C.** Remap camera to different keys so IJKL stays UI-only forever.
+**Long-term: Option D** (`WorldAtlasQuad` + `WorldSolidQuad` + UI Rect/Text).
 
-Recommendation: **A** (matches `/webgl` feel; matches input-arena dual-use
-note; avoids useless focus churn).
+**MVP coding:** implement D’s two world programs immediately (floor+player both as `WorldAtlasQuad` with different `texture_id`s), rather than E — avoids a dead Floor ProgramId. First slice can still draw **only** floor+player batches; shadows/fog add more `DrawCmd`s later, same programs.
 
-*Need from you:* A / B / C.
-
----
-
-## Q10 — View-mode switching without full slash-command framework
-
-MVP needs entity vs master camera. Phase 4 deferred slash parsing.
-
-**A.** Minimal slash dispatch now: only `/master` and `/entity` on `SubmitChat`
-(ignore unknown `/…`); non-slash still pushes `ChatMsg`.
-
-**B.** Dedicated keys (e.g. toggle) instead of slash for MVP; slash later.
-
-**C.** Full command table now (over-scope).
-
-Recommendation: **A** (matches `/webgl` UX you already know).
-
-*Need from you:* A / B / C.
+*Need from you:* **D**, **A**, or **E** (A-now→D-later). If D: confirm texture_id via `DrawCmd.reserved` is OK for MVP.
 
 ---
 
-## Q11 — MVP floor visual bar
+## Q6 — Camera / view uniforms (expanded)
 
-Without fog/shadows, floor can still be “wrong” if topmost/depth/remembered
-logic is skipped.
+World shaders need the same 4 uniforms every world draw. UI ignores camera (identity). DF will keep one main world camera for a long time (plus maybe a minimap later).
 
-**A.** Port topmost-floor selection from loaded solids only (no remembered tint,
-no depth tint) — simplest honest floor under the player.
+### Options
 
-**B.** Also port depth tint + remembered tint from webgl2 floor pass (more code,
-closer look, still no fog).
+#### Option A — Per-frame **view globals block** in wasm memory
 
-**C.** Solid flat-color quads first (no atlas) just to prove ABI — replace with
-atlas in the same slice before you verify.
+Rust writes `LocalWorldView` (and derived GPU floats) into a fixed ABI region each `frame()`. TS reads once, then `setGlobals(...)` when drawing world `DrawCmd`s; UI cmds keep screen-space globals.
 
-Recommendation: **A** (+ real floor atlas, not C) so your verify sees the game.
+| | |
+| --- | --- |
+| **Pros** | Symmetric with input arena; Rust-authoritative; tiny TS; easy harness inspection; works today with `uniform` uploads |
+| **Cons** | Still N `uniform` calls as program binds change (mitigate: only update when program family changes) |
+| **Fit** | Strong near-term |
 
-*Need from you:* A / B / C.
+#### Option A2 — Same block, bound as a **UBO** (WebGL2)
+
+Layout the globals block `std140`-friendly now; later TS `bindBufferBase` instead of `uniform*` calls. `_chunks.ts` already anticipates this.
+
+| | |
+| --- | --- |
+| **Pros** | Best when many programs / overlays share one camera; fewer GL calls; still Rust-authored bytes |
+| **Cons** | Slightly more GL setup; alignment rules; overkill while only 2 world programs |
+| **Fit** | Best **long-term evolution of A** |
+
+#### Option B — Put camera in every `DrawCmd` / expand cmd
+
+| | |
+| --- | --- |
+| **Pros** | Self-contained batches |
+| **Cons** | Huge redundancy (thousands of floor batches × same camera); bloated draw-list; worse cache |
+| **Fit** | Bad for DF tile volume |
+
+#### Option C — TS mirrors camera from JSON snapshot
+
+| | |
+| --- | --- |
+| **Pros** | Quick hack |
+| **Cons** | Second source of truth; hot-path JSON; drifts from Rust-authoritative ABI |
+| **Fit** | Debug only |
+
+#### Option F — Camera baked into instance positions (pre-transform in Rust)
+
+Rust emits **screen-space** quads already multiplied by camera/zoom.
+
+| | |
+| --- | --- |
+| **Pros** | World programs become screen-space like UI; TS always `setGlobals` identity |
+| **Cons** | Any camera pan invalidates all instances (you already rebuild per frame today, so OK); minimap / multi-camera harder; loses world-space shader simplicity |
+| **Fit** | Possible, but fights current shaders and multi-view later |
+
+### Recommendation
+
+**A now, designed as A2:** lock a `ViewGlobals` / `LocalWorldView` GPU prefix in the ABI (camera xy, zoom, canvas size, sim tick, maybe viewZ/mode for HUD—not all need to be uniforms). TS uniform-uploads for MVP; flip to UBO when overlay count hurts. **Reject B and C** for production.
+
+*Need from you:* **A→A2**, or **F**, or something else.
 
 ---
 
-## Q12 — Delete confirmation ritual
+## Q9 — Input: your model vs current code
 
-When MVP is ready for your eyes:
+### What you want
 
-**A.** Agent stages a “ready to delete” PR (or commit) but **does not** remove
-`webgl2/` / Bevy until you explicitly reply to verify / approve delete.
+> TS passes `KeyK`. Rust decides if that is menu nav, camera, etc., from player context (shell, inventory, menu, world).
 
-**B.** Agent deletes in the same PR once automated gates are green (you only
-spot-check after).
+### What we already have
 
-Recommendation: **A** (matches “delete when I verify”).
+This is **exactly** the locked architecture:
 
-*Need from you:* A / B.
+- [`input-arena.md`](./input-arena.md): *“TS is a dumb capture layer… Rust owns the keymap.”*
+- `engine/input.ts` already maps `event.code` → `KeyCode` and appends arena events; it does **not** choose camera vs focus.
+- Router already: Escape → shell before keymap; chat capture → `TextField` mode.
+
+So we are **not** proposing “narrow UI focus intents on the TS side.” Round-2 Q9 option A was meant as **Rust** behavior when shell open vs closed.
+
+### Gaps / small refactors (Rust + KeyCode surface, not a new TS brain)
+
+1. **Gameplay keymap incomplete** — `gameplay_binding_for` maps I/K → `FocusPrev`/`FocusNext` even in world; no ESDF→move, no held IJKL→camera, no R/V/U/M yet. Fix: Rust context table + `HeldSet` sampling for continuous move/look.
+2. **Missing KeyCodes in the dump map** — Digits, `KeyR`/`KeyV`/`KeyU`/`KeyM`, etc. are absent from `CODE_TO_KEYCODE`, so TS **drops** them before Rust sees them. Extending the enum + map is still dump-only.
+3. **Minor TS smell** — `lastOpenCommand` for T/`/` helps focus the hidden `<input>`; that’s host text-capture plumbing, not gameplay policy. Keep it host-local.
+
+**No redesign of the TS capture model is required** for your intent. Implementation work is: richer Rust contexts + more KeyCodes forwarded.
+
+If you want this locked formally: **Q9 = Rust context keymap (architecture as-is); extend KeyCode dump list; no TS semantic filtering for gameplay.**
 
 ---
 
-## Out of scope for this round
+## Q11 — Rephrased (locked)
 
-- Full `ClientView` replication / FOV filter (post-MVP)
-- Shadow/fog program ABI details (add with those slices)
-- Worker protocol, OPFS, netcode
-- Pixel-diff golden gating
-- Rebinding UI
+**Question was muddy.** Clearer statement:
+
+- **Depth tint** and **remembered tint** are colors applied when emitting **floor** (and player) instances — see `DEPTH_TINTS` / `REMEMBERED_TINT` in `webgl2/passes/floor.ts`. They are **not** extra GL programs.
+- **Remembered** requires FOV + tile memory (or equivalent) so unseen/remembered/visible is known.
+- **Depth** requires topmost / z-below selection (already part of floor emit).
+
+**Your lock:** both tints are part of the **parity bar before you approve delete**, but the impl plan may show floor+player without them first, then add tint policy (+ FOV/memory) before verify. Shadows/fog overlays can still trail that if you want — say if tints-without-fog is enough for your spot-check.
+
+Confirm only if wrong: *delete-verify requires depth+remembered floor tints; fog/shadows optional at that gate.*
 
 ---
 
-## After you answer
+## Q12 — Locked
 
-Lock answers into:
+Keep **`/webgl` and `/engine` both live** while you A/B. Deletion PR only after your explicit OK.
 
-1. An ABI addendum (or amended [`render-command-abi.md`](./render-command-abi.md))
-   for Floor/Sprite + view globals
-2. A short keymap/view note in this folder (or amend input-arena / session docs)
-3. Then implement Slice 1 → 2 → 3 per the cutover plan
+---
+
+## Still need from you
+
+1. **Q5:** D (generic world quads, recommended) / A (program per pass) / E (A then D)?  
+2. **Q6:** A→A2 (globals block → UBO, recommended) / F (pre-transform to screen space) / other?  
+3. **Q11 confirm:** depth+remembered required at delete-verify; fog/shadows optional then — yes/no?  
+4. **Q9 confirm:** lock as “architecture as-is, extend Rust contexts + KeyCode dump” — yes/no?

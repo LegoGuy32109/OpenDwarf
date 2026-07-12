@@ -1,13 +1,13 @@
 # `/webgl` → `/engine` Parity Cutover Plan
 
-**Status:** Decisions locked — 2026-07-11 (interview round 1)
+**Status:** Round 1 locked; round 2 partial — 2026-07-12 (Q5/Q6 still open)
 **Parent:** [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md) →
 Cutover; Phase 5+; parallel `od_world` track
 **Companions:** [`text-input-and-chat.md`](./text-input-and-chat.md) (Phase 4),
 [`od-world.md`](./od-world.md), [`sim-replay.md`](./sim-replay.md),
 [`scenario.md`](./scenario.md), [`game-testing-harness.md`](./game-testing-harness.md),
 [`render-command-abi.md`](./render-command-abi.md)
-**Next interview:** [`engine-mvp-abi-interview.md`](./engine-mvp-abi-interview.md)
+**Round-2 interview:** [`engine-mvp-abi-interview.md`](./engine-mvp-abi-interview.md)
 
 This is the plan to bring **UI, textures, and basic game logic** onto `/engine`
 so the deprecated `/webgl` (`webgl2/` + `lib/webgl-world-sim.ts`) **and** the
