@@ -13,7 +13,7 @@ use od_ui::HostEffect;
 use od_ui::input::{HeldSet, decode};
 use od_ui::{DomainEngine, MonospaceVga};
 use od_world::WorldSim;
-use od_world::render::{RenderInput, RenderStats, VisibilityState};
+use od_world::render::{RenderInput, RenderStats, VisibilityState, entity_render_position_xy};
 use serde_json::{Value, json};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -57,6 +57,8 @@ pub struct UiEngine {
     smooth_player_world_pos: Option<[f32; 2]>,
     counters: FrameCounters,
     sim_accumulator_ms: f32,
+    streaming_fingerprint: String,
+    last_sampled_dpr: f32,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -78,6 +80,8 @@ impl UiEngine {
             smooth_player_world_pos: None,
             counters: FrameCounters::default(),
             sim_accumulator_ms: 0.0,
+            streaming_fingerprint: String::new(),
+            last_sampled_dpr: 1.0,
         }
     }
 
@@ -228,14 +232,17 @@ impl UiEngine {
 
     pub fn step_sim_ticks(&mut self, n: u32) {
         let sampled = self.ingest_world_input_from_arena();
-        if let Some(sampled) = sampled {
-            self.apply_view_key_presses();
-            self.update_view_motion(SIM_TICK_MS, sampled.framebuffer_w, sampled.framebuffer_h);
+        if let Some((sampled, world_context)) = sampled {
+            self.last_sampled_dpr = sanitize_dpr(sampled.dpr);
+            if world_context {
+                self.apply_view_key_presses();
+                self.update_view_motion(SIM_TICK_MS, sampled.framebuffer_w, sampled.framebuffer_h);
+            }
         }
         for _ in 0..n {
             self.advance_one_sim_tick();
         }
-        self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size());
+        self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size(), true);
         self.render_world();
     }
 
@@ -291,7 +298,10 @@ impl UiEngine {
         self.draw_cmds.clear();
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
-        self.sync_local_view(0.0, self.last_framebuffer_size());
+        self.streaming_fingerprint.clear();
+        self.engine.reset_session_shell();
+        self.sync_local_view(0.0, self.last_framebuffer_size(), false);
+        self.render_world();
         Ok(self.combined_debug_snapshot_json())
     }
 
@@ -305,6 +315,7 @@ impl UiEngine {
         let decoded_sample = if let Some(decoded) = decode(input_bytes) {
             let world_context = !self.engine.shell.open && !self.engine.session_capture_active();
             self.world_input.ingest(&decoded, world_context);
+            self.last_sampled_dpr = sanitize_dpr(decoded.sampled.dpr);
             if world_context {
                 self.apply_view_key_presses();
                 self.update_view_motion(
@@ -312,8 +323,8 @@ impl UiEngine {
                     decoded.sampled.framebuffer_w,
                     decoded.sampled.framebuffer_h,
                 );
-                self.advance_frame_sim_ticks(decoded.sampled.dt_ms);
             }
+            self.advance_frame_sim_ticks(decoded.sampled.dt_ms);
             Some(decoded.sampled)
         } else {
             None
@@ -324,6 +335,7 @@ impl UiEngine {
                 || self.last_framebuffer_size(),
                 |sample| (sample.framebuffer_w, sample.framebuffer_h),
             ),
+            true,
         );
         self.render_world();
         self.engine.set_session_hud_lines(self.session_hud_lines());
@@ -382,7 +394,7 @@ impl UiEngine {
         )
     }
 
-    fn ingest_world_input_from_arena(&mut self) -> Option<od_core::InputSampled> {
+    fn ingest_world_input_from_arena(&mut self) -> Option<(od_core::InputSampled, bool)> {
         let input_bytes = unsafe {
             std::slice::from_raw_parts(
                 (&self.input as *const InputArena).cast::<u8>(),
@@ -394,7 +406,7 @@ impl UiEngine {
             self.world_input.ingest(&decoded, world_context);
             let sampled = decoded.sampled;
             self.input.clear_queue();
-            return Some(sampled);
+            return Some((sampled, world_context));
         }
         self.input.clear_queue();
         None
@@ -411,8 +423,12 @@ impl UiEngine {
     }
 
     fn advance_one_sim_tick(&mut self) {
+        let before = self.primary_entity_position();
         self.process_player_movement();
         self.world.step_ticks(1);
+        if self.primary_entity_position() != before {
+            self.world_visibility.mark_fov_dirty();
+        }
         self.counters.record_sim_tick();
     }
 
@@ -488,6 +504,16 @@ impl UiEngine {
         }
     }
 
+    fn primary_entity_position(&self) -> Option<Vec3i> {
+        let snapshot = self.world.snapshot();
+        let primary_entity_id = self.world.primary_entity_id()?;
+        snapshot
+            .entities
+            .iter()
+            .find(|entity| entity.id == primary_entity_id)
+            .map(|entity| entity.position)
+    }
+
     fn reset_world(&mut self, config: WorldConfig) {
         self.world = WorldSim::new(config, true);
         self.world_input.clear();
@@ -500,7 +526,10 @@ impl UiEngine {
         self.draw_cmds.clear();
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
-        self.sync_local_view(0.0, self.last_framebuffer_size());
+        self.streaming_fingerprint.clear();
+        self.last_sampled_dpr = 1.0;
+        self.engine.reset_session_shell();
+        self.sync_local_view(0.0, self.last_framebuffer_size(), true);
     }
 
     fn apply_view_key_presses(&mut self) {
@@ -571,7 +600,7 @@ impl UiEngine {
         self.write_view_globals(framebuffer_w, framebuffer_h);
     }
 
-    fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32)) {
+    fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32), apply_streaming: bool) {
         self.counters.record_frame(dt_ms);
         let snapshot = self.world.snapshot();
         let Some(primary_entity_id) = self.world.primary_entity_id() else {
@@ -615,7 +644,17 @@ impl UiEngine {
             streaming_chunks_for_view(&self.view, &snapshot, entity.position, framebuffer);
         self.view.visible_chunks = visible.iter().copied().collect();
         self.view.streaming_chunks = streaming.iter().copied().collect();
-        self.apply_streaming_chunks(&snapshot, &streaming);
+        if apply_streaming {
+            let fingerprint = streaming_fingerprint(&streaming);
+            if fingerprint != self.streaming_fingerprint {
+                if self.apply_streaming_chunks(&snapshot, &streaming)
+                    && self.view.view_mode == WorldViewMode::Entity
+                {
+                    self.world_visibility.mark_fov_dirty();
+                }
+                self.streaming_fingerprint = fingerprint;
+            }
+        }
         self.view.fps = self.counters.fps();
         self.view.tps = self.counters.tps();
         self.write_view_globals(framebuffer.0, framebuffer.1);
@@ -625,23 +664,37 @@ impl UiEngine {
         &mut self,
         snapshot: &od_core::WorldSnapshot,
         desired: &std::collections::BTreeSet<Vec3i>,
-    ) {
+    ) -> bool {
+        let mut changed = false;
         for chunk in &snapshot.loaded_chunks {
             if !desired.contains(chunk) {
-                let _ = self.world.send_command(WorldCommand::SetChunkLoaded {
-                    chunk: *chunk,
-                    loaded: false,
-                });
+                if self
+                    .world
+                    .send_command(WorldCommand::SetChunkLoaded {
+                        chunk: *chunk,
+                        loaded: false,
+                    })
+                    .is_ok()
+                {
+                    changed = true;
+                }
             }
         }
         for chunk in desired {
             if !snapshot.loaded_chunks.contains(chunk) {
-                let _ = self.world.send_command(WorldCommand::SetChunkLoaded {
-                    chunk: *chunk,
-                    loaded: true,
-                });
+                if self
+                    .world
+                    .send_command(WorldCommand::SetChunkLoaded {
+                        chunk: *chunk,
+                        loaded: true,
+                    })
+                    .is_ok()
+                {
+                    changed = true;
+                }
             }
         }
+        changed
     }
 
     fn write_view_globals(&mut self, framebuffer_w: u32, framebuffer_h: u32) {
@@ -653,7 +706,12 @@ impl UiEngine {
                 self.view.camera.zoom,
                 0.0,
             ],
-            canvas: [framebuffer_w as f32, framebuffer_h as f32, 1.0, 0.0],
+            canvas: [
+                framebuffer_w as f32,
+                framebuffer_h as f32,
+                self.last_sampled_dpr,
+                0.0,
+            ],
             sim: [
                 snapshot.tick as f32,
                 self.view.view_z as f32,
@@ -667,7 +725,12 @@ impl UiEngine {
         for text in submitted {
             match text.trim().to_ascii_lowercase().as_str() {
                 "/master" => self.view.view_mode = WorldViewMode::Master,
-                "/entity" => self.view.view_mode = WorldViewMode::Entity,
+                "/entity" => {
+                    if self.view.view_mode != WorldViewMode::Entity {
+                        self.world_visibility.mark_fov_dirty();
+                    }
+                    self.view.view_mode = WorldViewMode::Entity;
+                }
                 other if other.starts_with('/') => {}
                 _ => {}
             }
@@ -738,6 +801,8 @@ impl UiEngine {
                     "droppedDrawCmds": self.world_render_stats.dropped_draw_cmds,
                     "visibleTileCount": self.world_render_stats.visible_tiles,
                     "rememberedTileCount": self.world_render_stats.remembered_tiles,
+                    "fovDirty": self.world_visibility.fov_dirty(),
+                    "fovRecomputeCount": self.world_visibility.fov_recompute_count(),
                 }),
             );
         }
@@ -926,15 +991,14 @@ fn direction_from_keys(keys: &HeldSet) -> Option<Dir> {
     };
 
     match (x, y) {
+        (-1, -1) => Some(Dir::NW),
+        (1, -1) => Some(Dir::NE),
+        (1, 1) => Some(Dir::SE),
+        (-1, 1) => Some(Dir::SW),
         (-1, 0) => Some(Dir::W),
         (1, 0) => Some(Dir::E),
         (0, -1) => Some(Dir::N),
         (0, 1) => Some(Dir::S),
-        // Prefer horizontal movement for diagonal ESDF chords, matching the
-        // single-intent `WorldIntent::MovePlayer` surface.
-        (-1, _) => Some(Dir::W),
-        (1, _) => Some(Dir::E),
-        (0, _) => None,
         _ => None,
     }
 }
@@ -943,20 +1007,6 @@ fn play_world_config() -> WorldConfig {
     WorldConfig {
         world_chunks: Vec3u::new(9, 9, 1),
         ..WorldConfig::default()
-    }
-}
-
-fn entity_render_position_xy(entity: &od_core::EntitySnapshot) -> [f32; 2] {
-    if let Some(movement) = entity.movement.as_ref() {
-        let fraction = f32::from(movement.progress_percent) / 100.0;
-        [
-            movement.start_position[0]
-                + (movement.target.x as f32 - movement.start_position[0]) * fraction,
-            movement.start_position[1]
-                + (movement.target.y as f32 - movement.start_position[1]) * fraction,
-        ]
-    } else {
-        [entity.position.x as f32, entity.position.y as f32]
     }
 }
 
@@ -993,6 +1043,13 @@ fn chunk_window_from_camera(
     framebuffer: (u32, u32),
     padding_chunks: i32,
 ) -> BTreeSet<Vec3i> {
+    let Some((world_min, world_max)) = world_tile_bounds(snapshot) else {
+        return BTreeSet::new();
+    };
+    if view.view_z < world_min.z || view.view_z > world_max.z {
+        return BTreeSet::new();
+    }
+
     let zoom = view.camera.zoom.max(0.01);
     let framebuffer_w = framebuffer.0.max(1) as f32;
     let framebuffer_h = framebuffer.1.max(1) as f32;
@@ -1005,44 +1062,73 @@ fn chunk_window_from_camera(
     let min_y = (center_y - half_h_tiles).floor() as i32;
     let max_y = (center_y + half_h_tiles).floor() as i32;
 
-    let z_chunk = world_position_to_chunk_coord(
-        Vec3i::new(0, 0, view.view_z),
-        snapshot.chunk_edge,
-        snapshot.world_chunks,
-    )
-    .map_or(0, |chunk| chunk.z);
+    let min_x = min_x.max(world_min.x);
+    let max_x = max_x.min(world_max.x);
+    let min_y = min_y.max(world_min.y);
+    let max_y = max_y.min(world_max.y);
+    if min_x > max_x || min_y > max_y {
+        return BTreeSet::new();
+    }
 
-    let min_chunk = world_position_to_chunk_coord(
+    let Some(min_chunk) = world_position_to_chunk_coord(
         Vec3i::new(min_x, min_y, view.view_z),
         snapshot.chunk_edge,
         snapshot.world_chunks,
-    )
-    .unwrap_or(Vec3i::new(
-        -((snapshot.world_chunks.x as i32) / 2),
-        -((snapshot.world_chunks.y as i32) / 2),
-        z_chunk,
-    ));
-    let max_chunk = world_position_to_chunk_coord(
+    ) else {
+        return BTreeSet::new();
+    };
+    let Some(max_chunk) = world_position_to_chunk_coord(
         Vec3i::new(max_x, max_y, view.view_z),
         snapshot.chunk_edge,
         snapshot.world_chunks,
-    )
-    .unwrap_or(Vec3i::new(
-        snapshot.world_chunks.x as i32 / 2,
-        snapshot.world_chunks.y as i32 / 2,
-        z_chunk,
-    ));
+    ) else {
+        return BTreeSet::new();
+    };
 
     let mut chunks = BTreeSet::new();
     for y in (min_chunk.y - padding_chunks)..=(max_chunk.y + padding_chunks) {
         for x in (min_chunk.x - padding_chunks)..=(max_chunk.x + padding_chunks) {
-            let chunk = Vec3i::new(x, y, z_chunk);
+            let chunk = Vec3i::new(x, y, min_chunk.z);
             if chunk_in_bounds(chunk, snapshot.world_chunks) {
                 chunks.insert(chunk);
             }
         }
     }
     chunks
+}
+
+fn streaming_fingerprint(chunks: &BTreeSet<Vec3i>) -> String {
+    let mut fingerprint = String::new();
+    for chunk in chunks {
+        use std::fmt::Write as _;
+        let _ = write!(&mut fingerprint, "{},{},{};", chunk.x, chunk.y, chunk.z);
+    }
+    fingerprint
+}
+
+fn sanitize_dpr(dpr: f32) -> f32 {
+    if dpr.is_finite() && dpr > 0.0 {
+        dpr
+    } else {
+        1.0
+    }
+}
+
+fn world_tile_bounds(snapshot: &od_core::WorldSnapshot) -> Option<(Vec3i, Vec3i)> {
+    let world_size_x = snapshot.world_chunks.x.checked_mul(snapshot.chunk_edge)?;
+    let world_size_y = snapshot.world_chunks.y.checked_mul(snapshot.chunk_edge)?;
+    let world_size_z = snapshot.world_chunks.z.checked_mul(snapshot.chunk_edge)?;
+    let min = Vec3i::new(
+        -(i32::try_from(world_size_x).ok()? / 2),
+        -(i32::try_from(world_size_y).ok()? / 2),
+        -(i32::try_from(world_size_z).ok()? / 2),
+    );
+    let max = Vec3i::new(
+        min.x + i32::try_from(world_size_x).ok()? - 1,
+        min.y + i32::try_from(world_size_y).ok()? - 1,
+        min.z + i32::try_from(world_size_z).ok()? - 1,
+    );
+    Some((min, max))
 }
 
 fn world_position_to_chunk_coord(
@@ -1111,6 +1197,110 @@ fn vec3u_json(value: Vec3u) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn direction_from_esdf_chord_keeps_diagonal() {
+        let mut held = HeldSet::default();
+        held.insert(KeyCode::KeyE);
+        held.insert(KeyCode::KeyF);
+
+        assert_eq!(direction_from_keys(&held), Some(Dir::NE));
+        assert_eq!(Dir::NE.to_vec3i(), Vec3i::new(1, -1, 0));
+    }
+
+    #[test]
+    fn sampled_dpr_is_written_to_view_globals() {
+        let mut engine = UiEngine::new();
+        engine.input.sampled.framebuffer_w = 640;
+        engine.input.sampled.framebuffer_h = 480;
+        engine.input.sampled.dpr = 2.5;
+        engine.input.sampled.dt_ms = 0.0;
+        engine.input.sampled.window_focused = 1;
+
+        let _ = engine.frame();
+
+        assert_eq!(engine.view_globals.canvas[2], 2.5);
+    }
+
+    #[test]
+    fn import_replay_returns_hash_before_streaming_mutates_loaded_chunks() {
+        let config = play_world_config();
+        let sim = WorldSim::new(config.clone(), true);
+        let final_snapshot = sim.snapshot();
+        let final_state_hash = world_state_hash(&final_snapshot);
+        let mut json_snapshot = final_snapshot.clone();
+        json_snapshot.terrain_blocks.clear();
+        let replay = WorldReplay {
+            metadata: od_core::replay::WorldReplayMetadata {
+                format_version: od_core::WORLD_REPLAY_FORMAT_VERSION,
+                name: "import_play_initial".to_owned(),
+                world_config: config,
+                spawn_default_player: true,
+            },
+            events: Vec::new(),
+            final_snapshot: json_snapshot,
+            final_state_hash: final_state_hash.clone(),
+        };
+        let bytes = serde_json::to_vec(&replay).expect("replay json");
+        let mut engine = UiEngine::new();
+
+        let snapshot: Value =
+            serde_json::from_str(&engine.import_replay_json(&bytes).expect("import"))
+                .expect("snapshot json");
+        let world = snapshot.get("world").expect("world");
+
+        assert_eq!(
+            world.get("world_state_hash").and_then(Value::as_str),
+            Some(final_state_hash.as_str())
+        );
+        assert_eq!(
+            world.get("loadedChunkCount").and_then(Value::as_u64),
+            Some(81)
+        );
+    }
+
+    #[test]
+    fn chat_capture_does_not_freeze_sim_ticks() {
+        let mut engine = UiEngine::new();
+        engine.input.sampled.framebuffer_w = 640;
+        engine.input.sampled.framebuffer_h = 480;
+        engine.input.sampled.dpr = 1.0;
+        engine.input.sampled.window_focused = 1;
+        engine.input.queue.count = 1;
+        engine.input.events[0].kind = EventKind::KeyDown.as_u8();
+        engine.input.events[0].code = KeyCode::KeyT.as_u16();
+        let _ = engine.frame();
+        assert!(engine.engine.session_capture_active());
+        let before = engine.world.snapshot().tick;
+
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+
+        assert!(engine.engine.session_capture_active());
+        assert!(engine.world.snapshot().tick > before);
+    }
+
+    #[test]
+    fn master_view_off_map_streaming_window_is_empty() {
+        let sim = WorldSim::new(play_world_config(), true);
+        let snapshot = sim.snapshot();
+        let player = snapshot.entities[0].position;
+        let view = LocalWorldView {
+            view_mode: WorldViewMode::Master,
+            view_z: player.z,
+            camera: od_core::WorldCamera {
+                x: 1_000_000.0,
+                y: 1_000_000.0,
+                zoom: 1.0,
+            },
+            ..LocalWorldView::default()
+        };
+
+        let (visible, streaming) = streaming_chunks_for_view(&view, &snapshot, player, (640, 480));
+
+        assert!(visible.is_empty());
+        assert!(streaming.is_empty());
+    }
 
     #[test]
     fn streaming_policy_adds_entity_safety_chunks() {

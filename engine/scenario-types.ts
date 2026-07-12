@@ -23,7 +23,23 @@ export type ScenarioStep =
   | { kind: "input"; action: InputActionJson }
   | { kind: "record_checkpoint"; name: string };
 
-export type DirectionJson = "n" | "s" | "e" | "w" | "N" | "S" | "E" | "W";
+export type DirectionJson =
+  | "n"
+  | "ne"
+  | "e"
+  | "se"
+  | "s"
+  | "sw"
+  | "w"
+  | "nw"
+  | "N"
+  | "NE"
+  | "E"
+  | "SE"
+  | "S"
+  | "SW"
+  | "W"
+  | "NW";
 
 export type Vec3iJson = { x: number; y: number; z: number };
 

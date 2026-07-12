@@ -215,6 +215,29 @@ impl<M: FontMetrics + Clone> Engine<M> {
         }
     }
 
+    pub fn reset_session_shell(&mut self) {
+        let shell_font = self.shell.ui.font().clone();
+        let session_font = self.session.ui.font().clone();
+        self.shell = ShellDomain {
+            ui: UiEngine::with_font(shell_font),
+            open: false,
+            nav: ShellNav::default(),
+        };
+        self.session = SessionDomain {
+            ui: UiEngine::with_font(session_font),
+            model: SessionModel::default(),
+            capture_active: false,
+            last_capture_active: false,
+            last_capture_rect: Rect::zero(),
+            last_capture_max_len: 256,
+        };
+        self.input_state = InputState::default();
+        self.prev_shell_open = false;
+        self.prev_capture_active = false;
+        self.last_session_intent_count = 0;
+        self.session_hud_lines.clear();
+    }
+
     pub fn frame(&mut self, input_bytes: &[u8]) -> FrameOut {
         self.frame_number = self.frame_number.saturating_add(1);
         self.rects.fill(RectInstance::default());

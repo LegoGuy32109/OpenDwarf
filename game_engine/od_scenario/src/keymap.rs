@@ -21,12 +21,16 @@ pub struct KeymapProfile {
 
 impl KeymapProfile {
     #[must_use]
-    pub fn code_for_dir(&self, dir: Dir) -> &'static str {
+    pub fn codes_for_dir(&self, dir: Dir) -> Vec<&'static str> {
         match dir {
-            Dir::N => self.north,
-            Dir::S => self.south,
-            Dir::E => self.east,
-            Dir::W => self.west,
+            Dir::N => vec![self.north],
+            Dir::NE => vec![self.north, self.east],
+            Dir::E => vec![self.east],
+            Dir::SE => vec![self.south, self.east],
+            Dir::S => vec![self.south],
+            Dir::SW => vec![self.south, self.west],
+            Dir::W => vec![self.west],
+            Dir::NW => vec![self.north, self.west],
         }
     }
 }

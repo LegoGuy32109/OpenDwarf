@@ -209,16 +209,24 @@ function positionKey(position: unknown) {
   return `${Number(pos.x)},${Number(pos.y)},${Number(pos.z)}`;
 }
 
-function directionCode(profile: KeymapProfile, direction: unknown) {
+function directionCodes(profile: KeymapProfile, direction: unknown) {
   switch (String(direction).toLowerCase()) {
     case "n":
-      return profile.north;
-    case "s":
-      return profile.south;
+      return [profile.north];
+    case "ne":
+      return [profile.north, profile.east];
     case "e":
-      return profile.east;
+      return [profile.east];
+    case "se":
+      return [profile.south, profile.east];
+    case "s":
+      return [profile.south];
+    case "sw":
+      return [profile.south, profile.west];
     case "w":
-      return profile.west;
+      return [profile.west];
+    case "nw":
+      return [profile.north, profile.west];
     default:
       throw new ScenarioBrowserError(
         "unknown_world_direction",
@@ -229,11 +237,15 @@ function directionCode(profile: KeymapProfile, direction: unknown) {
 
 async function keyTapSimTick(
   api: ScenarioHarnessApi,
-  code: string,
+  codes: string[],
 ) {
-  await api.input.keyDown(code);
+  for (const code of codes) {
+    await api.input.keyDown(code);
+  }
   await api.stepSimTick(1);
-  await api.input.keyUp(code);
+  for (const code of [...codes].reverse()) {
+    await api.input.keyUp(code);
+  }
 }
 
 async function lowerWorldIntent(
@@ -244,8 +256,8 @@ async function lowerWorldIntent(
 ) {
   const typed = intent as Record<string, unknown>;
   if (typed.type === "move_player") {
-    const code = directionCode(profile, typed.direction);
-    await keyTapSimTick(api, code);
+    const codes = directionCodes(profile, typed.direction);
+    await keyTapSimTick(api, codes);
     return;
   }
   if (typed.type === "wait_ticks") {
@@ -287,8 +299,8 @@ async function lowerMovePlayerExact(
   maxTicks: number,
   stepIndex: number,
 ) {
-  const code = directionCode(profile, direction);
-  await keyTapSimTick(api, code);
+  const codes = directionCodes(profile, direction);
+  await keyTapSimTick(api, codes);
   await waitUntilIdle(api, maxTicks, stepIndex);
 }
 

@@ -9,6 +9,7 @@ use od_core::{
 const TILE_SIZE_PX: f32 = 64.0;
 const Z_LEVELS_BELOW: i32 = 5;
 const FOV_RADIUS: i32 = 20;
+pub const MAX_WORLD_ATLAS_INSTANCES_PER_DRAW: usize = 8192;
 const FLOOR_ATLAS_FRAMES: f32 = 31.0;
 const FLOOR_FRAME: f32 = 5.0;
 const DEPTH_TINTS: [[f32; 3]; 6] = [
@@ -34,16 +35,45 @@ struct TileMemory {
     block: BlockType,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct VisibilityState {
     visible: HashSet<Vec3i>,
     memory: HashMap<Vec3i, TileMemory>,
+    fov_dirty: bool,
+    fov_recompute_count: u64,
+}
+
+impl Default for VisibilityState {
+    fn default() -> Self {
+        Self {
+            visible: HashSet::new(),
+            memory: HashMap::new(),
+            fov_dirty: true,
+            fov_recompute_count: 0,
+        }
+    }
 }
 
 impl VisibilityState {
     pub fn reset(&mut self) {
         self.visible.clear();
         self.memory.clear();
+        self.fov_dirty = true;
+        self.fov_recompute_count = 0;
+    }
+
+    pub fn mark_fov_dirty(&mut self) {
+        self.fov_dirty = true;
+    }
+
+    #[must_use]
+    pub fn fov_dirty(&self) -> bool {
+        self.fov_dirty
+    }
+
+    #[must_use]
+    pub fn fov_recompute_count(&self) -> u64 {
+        self.fov_recompute_count
     }
 
     #[must_use]
@@ -100,10 +130,13 @@ pub fn render(
     draw_cmds: &mut Vec<DrawCmd>,
 ) -> RenderOutput {
     if input.view.view_mode == WorldViewMode::Entity {
-        recompute_fov(input.snapshot, input.primary_entity_id, visibility);
+        if visibility.fov_dirty {
+            recompute_fov(input.snapshot, input.primary_entity_id, visibility);
+            visibility.fov_dirty = false;
+            visibility.fov_recompute_count = visibility.fov_recompute_count.saturating_add(1);
+        }
     } else {
         visibility.visible.clear();
-        visibility.memory.clear();
     }
 
     let mut stats = RenderStats {
@@ -112,19 +145,12 @@ pub fn render(
         ..RenderStats::default()
     };
 
-    let floor_start = atlas_quads.len();
     emit_floor_quads(
         input.snapshot,
         input.view,
         visibility,
         atlas_quads,
-        &mut stats,
-    );
-    push_cmd(
         draw_cmds,
-        floor_start,
-        atlas_quads.len() - floor_start,
-        TEXTURE_ID_FLOOR,
         &mut stats,
     );
 
@@ -172,8 +198,11 @@ fn emit_floor_quads(
     view: &LocalWorldView,
     visibility: &VisibilityState,
     atlas_quads: &mut Vec<WorldAtlasQuadInstance>,
+    draw_cmds: &mut Vec<DrawCmd>,
     stats: &mut RenderStats,
 ) {
+    let mut floor_batch_start = atlas_quads.len();
+    let mut floor_batch_count = 0_usize;
     for chunk in &view.visible_chunks {
         let [base_x, base_y] = chunk_world_base(snapshot, *chunk);
         for ty in 0..snapshot.chunk_edge {
@@ -205,9 +234,28 @@ fn emit_floor_quads(
                     alpha,
                 });
                 stats.floor_quads = stats.floor_quads.saturating_add(1);
+                floor_batch_count += 1;
+                if floor_batch_count >= MAX_WORLD_ATLAS_INSTANCES_PER_DRAW {
+                    push_cmd(
+                        draw_cmds,
+                        floor_batch_start,
+                        floor_batch_count,
+                        TEXTURE_ID_FLOOR,
+                        stats,
+                    );
+                    floor_batch_start = atlas_quads.len();
+                    floor_batch_count = 0;
+                }
             }
         }
     }
+    push_cmd(
+        draw_cmds,
+        floor_batch_start,
+        floor_batch_count,
+        TEXTURE_ID_FLOOR,
+        stats,
+    );
 }
 
 fn chunk_world_base(snapshot: &WorldSnapshot, chunk: Vec3i) -> [i32; 2] {
@@ -478,14 +526,11 @@ fn primary_entity(
 }
 
 fn entity_visibility_position(entity: &EntitySnapshot) -> Vec3i {
-    entity
-        .movement
-        .as_ref()
-        .filter(|movement| movement.occupies_target)
-        .map_or(entity.position, |movement| movement.target)
+    entity.position
 }
 
-fn entity_render_position_xy(entity: &EntitySnapshot) -> [f32; 2] {
+#[must_use]
+pub fn entity_render_position_xy(entity: &EntitySnapshot) -> [f32; 2] {
     if let Some(movement) = entity.movement.as_ref() {
         let fraction = f32::from(movement.progress_percent) / 100.0;
         [
@@ -518,7 +563,7 @@ const fn player_uv_rect(facing_left: bool) -> [f32; 4] {
 
 #[cfg(test)]
 mod tests {
-    use od_core::{WorldConfig, WorldViewMode};
+    use od_core::{Vec3u, WorldConfig, WorldViewMode};
 
     use crate::WorldSim;
 
@@ -556,6 +601,103 @@ mod tests {
     }
 
     #[test]
+    fn render_splits_floor_draw_cmds_at_webgl_instance_limit() {
+        let sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(9, 9, 1),
+                ..WorldConfig::default()
+            },
+            true,
+        );
+        let snapshot = sim.snapshot();
+        let mut view = LocalWorldView::default();
+        view.view_z = snapshot.entities[0].position.z;
+        view.view_mode = WorldViewMode::Master;
+        view.visible_chunks = snapshot.loaded_chunks.iter().copied().collect();
+        let mut visibility = VisibilityState::default();
+        let mut atlas = Vec::with_capacity(24_000);
+        let mut cmds = Vec::with_capacity(8);
+
+        let out = render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &view,
+                primary_entity_id: sim.primary_entity_id(),
+                smooth_player_xy: None,
+            },
+            &mut visibility,
+            &mut atlas,
+            &mut cmds,
+        );
+
+        assert!(out.stats.floor_quads > MAX_WORLD_ATLAS_INSTANCES_PER_DRAW as u32);
+        assert_eq!(cmds[0].reserved, TEXTURE_ID_FLOOR);
+        assert_eq!(
+            cmds[0].instance_count,
+            MAX_WORLD_ATLAS_INSTANCES_PER_DRAW as u32
+        );
+        assert_eq!(cmds.last().expect("player cmd").reserved, TEXTURE_ID_SPRITE);
+    }
+
+    #[test]
+    fn entity_mode_fov_recomputes_only_when_dirty() {
+        let sim = WorldSim::new(WorldConfig::default(), true);
+        let snapshot = sim.snapshot();
+        let mut view = LocalWorldView::default();
+        view.view_z = snapshot.entities[0].position.z;
+        view.visible_chunks = snapshot.loaded_chunks.iter().copied().collect();
+        let mut visibility = VisibilityState::default();
+        let mut atlas = Vec::with_capacity(4096);
+        let mut cmds = Vec::with_capacity(8);
+
+        let _ = render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &view,
+                primary_entity_id: sim.primary_entity_id(),
+                smooth_player_xy: None,
+            },
+            &mut visibility,
+            &mut atlas,
+            &mut cmds,
+        );
+        let first_count = visibility.fov_recompute_count();
+        assert_eq!(first_count, 1);
+        assert!(!visibility.fov_dirty());
+
+        atlas.clear();
+        cmds.clear();
+        let _ = render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &view,
+                primary_entity_id: sim.primary_entity_id(),
+                smooth_player_xy: None,
+            },
+            &mut visibility,
+            &mut atlas,
+            &mut cmds,
+        );
+
+        assert_eq!(visibility.fov_recompute_count(), first_count);
+        visibility.mark_fov_dirty();
+        atlas.clear();
+        cmds.clear();
+        let _ = render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &view,
+                primary_entity_id: sim.primary_entity_id(),
+                smooth_player_xy: None,
+            },
+            &mut visibility,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(visibility.fov_recompute_count(), first_count + 1);
+    }
+
+    #[test]
     fn entity_mode_fov_creates_memory_after_motion() {
         let mut sim = WorldSim::new(WorldConfig::default(), true);
         let mut visibility = VisibilityState::default();
@@ -586,6 +728,7 @@ mod tests {
         .expect("starter room west move");
         sim.step_ticks(10);
         let snapshot = sim.snapshot();
+        visibility.mark_fov_dirty();
         atlas.clear();
         cmds.clear();
         let _ = render(
@@ -602,5 +745,69 @@ mod tests {
 
         assert!(visible_before > 0);
         assert!(visibility.remembered_count() > 0);
+    }
+
+    #[test]
+    fn master_mode_preserves_entity_fov_memory() {
+        let mut sim = WorldSim::new(WorldConfig::default(), true);
+        let mut visibility = VisibilityState::default();
+        let mut atlas = Vec::with_capacity(4096);
+        let mut cmds = Vec::with_capacity(8);
+        let snapshot = sim.snapshot();
+        let mut view = LocalWorldView::default();
+        view.view_z = snapshot.entities[0].position.z;
+        view.visible_chunks = snapshot.loaded_chunks.iter().copied().collect();
+
+        let _ = render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &view,
+                primary_entity_id: sim.primary_entity_id(),
+                smooth_player_xy: None,
+            },
+            &mut visibility,
+            &mut atlas,
+            &mut cmds,
+        );
+        sim.send_command(od_core::WorldCommand::MoveEntity {
+            id: 1,
+            direction: Vec3i::new(-1, 0, 0),
+        })
+        .expect("starter room west move");
+        sim.step_ticks(10);
+        visibility.mark_fov_dirty();
+        let snapshot = sim.snapshot();
+        atlas.clear();
+        cmds.clear();
+        let _ = render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &view,
+                primary_entity_id: sim.primary_entity_id(),
+                smooth_player_xy: None,
+            },
+            &mut visibility,
+            &mut atlas,
+            &mut cmds,
+        );
+        let remembered_before_master = visibility.remembered_count();
+        assert!(remembered_before_master > 0);
+
+        view.view_mode = WorldViewMode::Master;
+        atlas.clear();
+        cmds.clear();
+        let _ = render(
+            RenderInput {
+                snapshot: &snapshot,
+                view: &view,
+                primary_entity_id: sim.primary_entity_id(),
+                smooth_player_xy: None,
+            },
+            &mut visibility,
+            &mut atlas,
+            &mut cmds,
+        );
+
+        assert_eq!(visibility.remembered_count(), remembered_before_master);
     }
 }

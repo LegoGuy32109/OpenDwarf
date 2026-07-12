@@ -13,9 +13,17 @@ use super::Vec3i;
 #[serde(rename_all = "snake_case")]
 pub enum Dir {
     N,
-    S,
+    #[serde(rename = "ne")]
+    NE,
     E,
+    #[serde(rename = "se")]
+    SE,
+    S,
+    #[serde(rename = "sw")]
+    SW,
     W,
+    #[serde(rename = "nw")]
+    NW,
 }
 
 impl Dir {
@@ -25,9 +33,13 @@ impl Dir {
     pub const fn to_vec3i(self) -> Vec3i {
         match self {
             Self::N => Vec3i::new(0, -1, 0),
-            Self::S => Vec3i::new(0, 1, 0),
+            Self::NE => Vec3i::new(1, -1, 0),
             Self::E => Vec3i::new(1, 0, 0),
+            Self::SE => Vec3i::new(1, 1, 0),
+            Self::S => Vec3i::new(0, 1, 0),
+            Self::SW => Vec3i::new(-1, 1, 0),
             Self::W => Vec3i::new(-1, 0, 0),
+            Self::NW => Vec3i::new(-1, -1, 0),
         }
     }
 }

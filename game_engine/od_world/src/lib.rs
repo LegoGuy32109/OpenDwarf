@@ -132,4 +132,41 @@ mod tests {
         assert!(after.movement.is_none());
         assert_ne!(after.position, start);
     }
+
+    #[test]
+    fn diagonal_move_starts_with_both_xy_axes() {
+        let id = 1;
+        let diagonals = [
+            Vec3i::new(1, -1, 0),
+            Vec3i::new(1, 1, 0),
+            Vec3i::new(-1, 1, 0),
+            Vec3i::new(-1, -1, 0),
+        ];
+
+        for direction in diagonals {
+            let mut sim = WorldSim::new(WorldConfig::default(), true);
+            if sim
+                .send_command(WorldCommand::MoveEntity { id, direction })
+                .is_err()
+            {
+                continue;
+            }
+            let snapshot = sim.snapshot();
+            let movement = snapshot.entities[0]
+                .movement
+                .as_ref()
+                .expect("diagonal movement");
+            assert_eq!(
+                (movement.target.x - movement.origin.x).signum(),
+                direction.x
+            );
+            assert_eq!(
+                (movement.target.y - movement.origin.y).signum(),
+                direction.y
+            );
+            return;
+        }
+
+        panic!("expected at least one valid diagonal move from spawn");
+    }
 }

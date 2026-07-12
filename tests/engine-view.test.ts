@@ -93,6 +93,17 @@ test("engine LocalWorldView handles viewZ, zoom, slash modes, and camera behavio
     entityBefore.localWorldView.camera.x,
   );
   expect(snapshot.worldRender.rememberedTileCount).toBeGreaterThan(0);
+  const rememberedAfterMove = snapshot.worldRender.rememberedTileCount;
+
+  await submitSlash(page, "/master");
+  snapshot = await engineSnapshot(page);
+  expect(snapshot.localWorldView.viewMode).toBe("master");
+  expect(snapshot.worldRender.rememberedTileCount).toBe(rememberedAfterMove);
+
+  await submitSlash(page, "/entity");
+  snapshot = await engineSnapshot(page);
+  expect(snapshot.localWorldView.viewMode).toBe("entity");
+  expect(snapshot.worldRender.rememberedTileCount).toBeGreaterThan(0);
 });
 
 test("engine play world streams a viewport window plus entity safety chunks", async ({ page }) => {
@@ -112,4 +123,60 @@ test("engine play world streams a viewport window plus entity safety chunks", as
   expect(snapshot.localWorldView.streamingChunks.length).toBe(
     snapshot.world.loadedChunkCount,
   );
+});
+
+test("engine live ESDF chords start diagonal movement", async ({ page }) => {
+  await page.goto("/engine?harness=1");
+  await waitForEngineHarness(page);
+  await page.focus("#engine-canvas");
+
+  const attempts = [
+    ["KeyE", "KeyF", 1, -1],
+    ["KeyD", "KeyF", 1, 1],
+    ["KeyD", "KeyS", -1, 1],
+    ["KeyE", "KeyS", -1, -1],
+  ] as const;
+  let diagonalStarted = false;
+  for (const [a, b, dx, dy] of attempts) {
+    await engineResetWorld(page);
+    await stepEngineFrame(page, 1);
+    await engineKeyDown(page, a);
+    await engineKeyDown(page, b);
+    await engineStepSimTick(page, 1);
+    const snapshot = await engineSnapshot(page);
+    await engineKeyUp(page, b);
+    await engineKeyUp(page, a);
+    const movement = snapshot.world.primaryEntity?.movement as {
+      origin?: { x: number; y: number };
+      target?: { x: number; y: number };
+    } | null;
+    if (
+      movement?.origin && movement.target &&
+      Math.sign(movement.target.x - movement.origin.x) === dx &&
+      Math.sign(movement.target.y - movement.origin.y) === dy
+    ) {
+      diagonalStarted = true;
+      break;
+    }
+  }
+
+  expect(diagonalStarted).toBe(true);
+});
+
+test("engine chat capture does not freeze sim ticks", async ({ page }) => {
+  await page.goto("/engine?harness=1");
+  await waitForEngineHarness(page);
+  await page.focus("#engine-canvas");
+  await stepEngineFrame(page, 1);
+
+  await enginePress(page, "KeyT");
+  await stepEngineFrame(page, 1);
+  const before = await engineSnapshot(page);
+  expect(before.session.uiMode).toBe("chat");
+
+  await stepEngineFrame(page, 4);
+  const after = await engineSnapshot(page);
+
+  expect(after.session.uiMode).toBe("chat");
+  expect(after.world.tick).toBeGreaterThan(before.world.tick);
 });

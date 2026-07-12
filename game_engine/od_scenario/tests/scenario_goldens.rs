@@ -11,10 +11,10 @@ use od_core::replay::world_state_hash;
 use od_core::session::SessionIntent;
 use od_core::world::{Dir, Vec3i, Vec3u, WorldConfig};
 use od_scenario::{
-    run_scenario_native, scenario_from_json, scenario_to_json, ScenarioBuilder, ScenarioRunError,
-    ShellAction,
+    ScenarioBuilder, ScenarioRunError, ShellAction, run_scenario_native, scenario_from_json,
+    scenario_to_json,
 };
-use od_world::{replay_commands_to_snapshot, WorldSim};
+use od_world::{WorldSim, replay_commands_to_snapshot};
 
 fn goldens_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("goldens/world_state_hash.json")
@@ -60,10 +60,11 @@ fn builder_json_round_trip() {
     let scenario = ScenarioBuilder::new("json_round_trip")
         .move_player(Dir::E)
         .wait_ticks(2)
-        .move_player_exact(Dir::N, 64)
+        .move_player_exact(Dir::NE, 64)
         .record_checkpoint("mid")
         .build();
     let json = scenario_to_json(&scenario).expect("to json");
+    assert!(json.contains(r#""direction": "ne""#));
     let parsed = scenario_from_json(&json).expect("from json");
     assert_eq!(parsed, scenario);
 }

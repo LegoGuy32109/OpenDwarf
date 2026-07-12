@@ -691,6 +691,10 @@ function readViewGlobals(runtime: EngineRuntime) {
         ABI.VIEW_GLOBALS_CANVAS_OFFSET + 4,
         true,
       ),
+      dpr: runtime.viewGlobals.getFloat32(
+        ABI.VIEW_GLOBALS_CANVAS_OFFSET + 8,
+        true,
+      ),
     },
     simTick: runtime.viewGlobals.getFloat32(ABI.VIEW_GLOBALS_SIM_OFFSET, true),
   };
