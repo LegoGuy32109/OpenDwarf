@@ -14,14 +14,26 @@ export type ScenarioDocument = {
 
 export type ScenarioStep =
   | { kind: "session"; intent: SessionIntentJson }
-  | { kind: "world"; intent: unknown }
-  | { kind: "move_player_exact"; direction: string; max_ticks: number }
+  | { kind: "world"; intent: WorldIntentJson }
+  | { kind: "move_player_exact"; direction: DirectionJson; max_ticks: number }
   | { kind: "wait_until_idle"; max_ticks: number }
   | { kind: "engine"; action: unknown }
-  | { kind: "assert"; assertion: unknown }
+  | { kind: "assert"; assertion: AssertStepJson }
   | { kind: "shell"; action: ShellActionJson }
   | { kind: "input"; action: InputActionJson }
   | { kind: "record_checkpoint"; name: string };
+
+export type DirectionJson = "n" | "s" | "e" | "w" | "N" | "S" | "E" | "W";
+
+export type Vec3iJson = { x: number; y: number; z: number };
+
+export type WorldIntentJson =
+  | { type: "move_player"; direction: DirectionJson }
+  | { type: "wait_ticks"; ticks: number };
+
+export type AssertStepJson =
+  | { type: "world_state_hash_eq"; expected: string }
+  | { type: "entity_position"; id: number; position: Vec3iJson };
 
 export type SessionIntentJson =
   | { OpenChat: { prefill: string } }

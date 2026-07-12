@@ -1,0 +1,31 @@
+{
+  "format_version": 1,
+  "name": "browser_world_move",
+  "world_config": {
+    "chunk_edge": 16,
+    "world_chunks": { "x": 1, "y": 1, "z": 1 },
+    "movement_ticks_per_tile": 10,
+    "terrain": {
+      "seed": "opendwarf",
+      "cave_frequency_xy": 0.15,
+      "cave_frequency_z": 0.01,
+      "cave_threshold": 0.11,
+      "cave_octaves": 4,
+      "cave_persistence": 0.58,
+      "cave_lacunarity": 2.0
+    }
+  },
+  "spawn_default_player": true,
+  "keymap_profile": "esdf",
+  "steps": [
+    { "kind": "move_player_exact", "direction": "W", "max_ticks": 256 },
+    {
+      "kind": "assert",
+      "assertion": {
+        "type": "world_state_hash_eq",
+        "expected": "fnv1a64:8dad77ad6066915e"
+      }
+    },
+    { "kind": "record_checkpoint", "name": "after_move" }
+  ]
+}

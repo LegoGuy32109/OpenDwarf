@@ -35,7 +35,10 @@ type EngineHandle = {
   abi_program_rect(): number;
   abi_program_text(): number;
   debug_snapshot_json(): string;
+  debug_world_snapshot_json(): string;
   debug_draw_hash(): string;
+  step_sim_ticks(n: number): void;
+  import_replay_json(bytes: Uint8Array): string;
 };
 
 type EngineRuntime = {
@@ -207,6 +210,12 @@ function rederiveViews(runtime: EngineRuntime) {
   runtime.inputCapture.setArena(runtime.input);
 }
 
+function refreshViewsIfNeeded(runtime: EngineRuntime) {
+  if (runtime.wasm.memory.buffer !== runtime.bufferRef) {
+    rederiveViews(runtime);
+  }
+}
+
 function createRuntime(
   gl: WebGL2RenderingContext,
   canvas: HTMLCanvasElement,
@@ -235,6 +244,7 @@ function createRuntime(
 
 function renderFrame(runtime: EngineRuntime, now: number) {
   const { gl, canvas } = runtime;
+  refreshViewsIfNeeded(runtime);
   syncCanvasSize(gl, canvas);
   runtime.inputCapture.beginFrame(now);
 
@@ -293,7 +303,7 @@ type EngineHarness = {
     focus(): Promise<void>;
   };
   stepFrame(n?: number): Promise<void>;
-  /** Reserved — requires wasm world surface. Throws until implemented. */
+  /** Advance the authoritative wasm `WorldSim` clock. */
   stepSimTick(n?: number): Promise<void>;
   snapshot(): Record<string, unknown>;
   captureCheckpoint(
@@ -303,11 +313,8 @@ type EngineHarness = {
   exportBundle(): EngineBundle;
   /** Author path — intent/semantic Scenario document. */
   runScenario(scenario: ScenarioDocument): Promise<RunScenarioResult>;
-  /**
-   * Proof path — WorldReplay. Explicitly unimplemented until wasm world
-   * surface exists (throws; never silent no-op).
-   */
-  importReplay(worldReplay: unknown): Promise<never>;
+  /** Proof path — WorldReplay JSON document. */
+  importReplay(worldReplay: unknown): Promise<Record<string, unknown>>;
 };
 
 type EngineGlobalHarness = typeof globalThis & {
@@ -379,7 +386,12 @@ function installHarness(
     }
   };
 
-  const dispatchKey = (type: "keydown" | "keyup", code: string, modifiers: number) => {
+  const dispatchKey = (
+    type: "keydown" | "keyup",
+    code: string,
+    modifiers: number,
+  ) => {
+    refreshViewsIfNeeded(runtime);
     const key = keyForCode(code);
     const event = new KeyboardEvent(type, {
       bubbles: true,
@@ -402,7 +414,9 @@ function installHarness(
   };
 
   const buildSnapshot = () => {
+    refreshViewsIfNeeded(runtime);
     const snapshot = readSnapshot(runtime);
+    refreshViewsIfNeeded(runtime);
     const snapshotInput = (snapshot.input as Record<string, unknown>) ?? {};
     const snapshotRender = (snapshot.render as Record<string, unknown>) ?? {};
     const frame = (snapshot.frame as Record<string, unknown>) ?? {};
@@ -439,7 +453,10 @@ function installHarness(
       await input.keyUp(code, modifiers);
     },
     typeText: async (text: string) => {
-      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      refreshViewsIfNeeded(runtime);
+      const inputEl = document.querySelector<HTMLInputElement>(
+        "#od-text-capture",
+      );
       if (!inputEl) {
         throw new Error("hidden text input is unavailable");
       }
@@ -454,7 +471,10 @@ function installHarness(
       }
     },
     paste: async (text: string) => {
-      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      refreshViewsIfNeeded(runtime);
+      const inputEl = document.querySelector<HTMLInputElement>(
+        "#od-text-capture",
+      );
       if (!inputEl) {
         throw new Error("hidden text input is unavailable");
       }
@@ -467,7 +487,9 @@ function installHarness(
       inputEl.dispatchEvent(ev);
     },
     blur: async () => {
-      const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+      const inputEl = document.querySelector<HTMLInputElement>(
+        "#od-text-capture",
+      );
       inputEl?.blur();
       if (document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
@@ -475,7 +497,9 @@ function installHarness(
     },
     focus: async () => {
       if (runtime.inputCapture.isCaptureActive()) {
-        const inputEl = document.querySelector<HTMLInputElement>("#od-text-capture");
+        const inputEl = document.querySelector<HTMLInputElement>(
+          "#od-text-capture",
+        );
         inputEl?.focus();
       } else {
         canvas.focus();
@@ -492,10 +516,10 @@ function installHarness(
         renderFrame(runtime, runtime.syntheticNow);
       }
     },
-    stepSimTick: async (_n = 1) => {
-      throw new Error(
-        "stepSimTick: unimplemented — requires wasm world surface (Stage B stub)",
-      );
+    stepSimTick: async (n = 1) => {
+      refreshViewsIfNeeded(runtime);
+      runtime.engine.step_sim_ticks(Math.max(0, Math.trunc(n)));
+      refreshViewsIfNeeded(runtime);
     },
     snapshot: () => buildSnapshot(),
     captureCheckpoint: async (name, options = {}) => {
@@ -503,7 +527,9 @@ function installHarness(
       renderFrame(runtime, runtime.syntheticNow);
       const snapshot = buildSnapshot();
       const frame = snapshot.frame as Record<string, unknown>;
-      const drawHash = String(frame.drawHash ?? runtime.engine.debug_draw_hash());
+      const drawHash = String(
+        frame.drawHash ?? runtime.engine.debug_draw_hash(),
+      );
       const checkpoint: EngineCheckpoint = {
         name,
         ordinal: checkpoints.length,
@@ -530,7 +556,9 @@ function installHarness(
           checkpointCount: checkpoints.length,
           screenshotCount: screenshots.length,
         },
-        checkpoints: checkpoints.map(({ screenshot: _screenshot, ...rest }) => rest),
+        checkpoints: checkpoints.map(({ screenshot: _screenshot, ...rest }) =>
+          rest
+        ),
         screenshots,
       };
     },
@@ -538,6 +566,11 @@ function installHarness(
       return await runScenarioBrowser(
         {
           input,
+          stepSimTick: async (n = 1) => {
+            refreshViewsIfNeeded(runtime);
+            runtime.engine.step_sim_ticks(Math.max(0, Math.trunc(n)));
+            refreshViewsIfNeeded(runtime);
+          },
           stepFrame: async (n = 1) => {
             for (let index = 0; index < n; index++) {
               runtime.syntheticNow += 16;
@@ -567,10 +600,18 @@ function installHarness(
         scenario,
       );
     },
-    importReplay: async (_worldReplay: unknown): Promise<never> => {
-      throw new Error(
-        "importReplay: unimplemented — requires wasm world surface (Stage B stub; not a silent no-op)",
-      );
+    importReplay: async (
+      worldReplay: unknown,
+    ): Promise<Record<string, unknown>> => {
+      const bytes = new TextEncoder().encode(JSON.stringify(worldReplay));
+      const snapshot = JSON.parse(
+        runtime.engine.import_replay_json(bytes),
+      ) as Record<
+        string,
+        unknown
+      >;
+      refreshViewsIfNeeded(runtime);
+      return snapshot;
     },
   };
 }

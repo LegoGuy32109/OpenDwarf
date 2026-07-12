@@ -335,9 +335,15 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!("  KEYCODE_ENTER: {},\n", KeyCode::Enter as u16));
     out.push_str(&format!("  KEYCODE_ESCAPE: {},\n", KeyCode::Escape as u16));
     out.push_str(&format!("  KEYCODE_SPACE: {},\n", KeyCode::Space as u16));
-    out.push_str(&format!("  KEYCODE_BACKSPACE: {},\n", KeyCode::Backspace as u16));
+    out.push_str(&format!(
+        "  KEYCODE_BACKSPACE: {},\n",
+        KeyCode::Backspace as u16
+    ));
     out.push_str(&format!("  KEYCODE_DELETE: {},\n", KeyCode::Delete as u16));
-    out.push_str(&format!("  KEYCODE_ARROWLEFT: {},\n", KeyCode::ArrowLeft as u16));
+    out.push_str(&format!(
+        "  KEYCODE_ARROWLEFT: {},\n",
+        KeyCode::ArrowLeft as u16
+    ));
     out.push_str(&format!(
         "  KEYCODE_ARROWRIGHT: {},\n",
         KeyCode::ArrowRight as u16
@@ -355,6 +361,20 @@ pub fn ts_abi_source() -> String {
     out.push_str(&format!("  KEYCODE_KEYD: {},\n", KeyCode::KeyD as u16));
     out.push_str(&format!("  KEYCODE_KEYF: {},\n", KeyCode::KeyF as u16));
     out.push_str(&format!("  KEYCODE_KEYT: {},\n", KeyCode::KeyT as u16));
+    out.push_str(&format!("  KEYCODE_KEYR: {},\n", KeyCode::KeyR as u16));
+    out.push_str(&format!("  KEYCODE_KEYV: {},\n", KeyCode::KeyV as u16));
+    out.push_str(&format!("  KEYCODE_KEYU: {},\n", KeyCode::KeyU as u16));
+    out.push_str(&format!("  KEYCODE_KEYM: {},\n", KeyCode::KeyM as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT1: {},\n", KeyCode::Digit1 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT2: {},\n", KeyCode::Digit2 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT3: {},\n", KeyCode::Digit3 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT4: {},\n", KeyCode::Digit4 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT5: {},\n", KeyCode::Digit5 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT6: {},\n", KeyCode::Digit6 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT7: {},\n", KeyCode::Digit7 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT8: {},\n", KeyCode::Digit8 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT9: {},\n", KeyCode::Digit9 as u16));
+    out.push_str(&format!("  KEYCODE_DIGIT0: {},\n", KeyCode::Digit0 as u16));
     out.push_str("} as const);\n");
     out.push_str(
     "export type DrawCmdProgram = typeof ABI.DRAWCMD_PROGRAM_RECT | typeof ABI.DRAWCMD_PROGRAM_TEXT;\n",
@@ -363,7 +383,7 @@ pub fn ts_abi_source() -> String {
         "export type EventKind = typeof ABI.INPUT_KIND_UNKNOWN | typeof ABI.INPUT_KIND_KEY_DOWN | typeof ABI.INPUT_KIND_KEY_UP | typeof ABI.INPUT_KIND_BLUR | typeof ABI.INPUT_KIND_RESYNC | typeof ABI.INPUT_KIND_TEXT | typeof ABI.INPUT_KIND_COMPOSITION;\n",
     );
     out.push_str(
-        "export type KeyCode = typeof ABI.KEYCODE_UNKNOWN | typeof ABI.KEYCODE_ENTER | typeof ABI.KEYCODE_ESCAPE | typeof ABI.KEYCODE_SPACE | typeof ABI.KEYCODE_BACKSPACE | typeof ABI.KEYCODE_DELETE | typeof ABI.KEYCODE_ARROWLEFT | typeof ABI.KEYCODE_ARROWRIGHT | typeof ABI.KEYCODE_HOME | typeof ABI.KEYCODE_END | typeof ABI.KEYCODE_SLASH | typeof ABI.KEYCODE_KEYI | typeof ABI.KEYCODE_KEYJ | typeof ABI.KEYCODE_KEYK | typeof ABI.KEYCODE_KEYL | typeof ABI.KEYCODE_KEYQ | typeof ABI.KEYCODE_KEYE | typeof ABI.KEYCODE_KEYS | typeof ABI.KEYCODE_KEYD | typeof ABI.KEYCODE_KEYF | typeof ABI.KEYCODE_KEYT;\n",
+        "export type KeyCode = typeof ABI.KEYCODE_UNKNOWN | typeof ABI.KEYCODE_ENTER | typeof ABI.KEYCODE_ESCAPE | typeof ABI.KEYCODE_SPACE | typeof ABI.KEYCODE_BACKSPACE | typeof ABI.KEYCODE_DELETE | typeof ABI.KEYCODE_ARROWLEFT | typeof ABI.KEYCODE_ARROWRIGHT | typeof ABI.KEYCODE_HOME | typeof ABI.KEYCODE_END | typeof ABI.KEYCODE_SLASH | typeof ABI.KEYCODE_KEYI | typeof ABI.KEYCODE_KEYJ | typeof ABI.KEYCODE_KEYK | typeof ABI.KEYCODE_KEYL | typeof ABI.KEYCODE_KEYQ | typeof ABI.KEYCODE_KEYE | typeof ABI.KEYCODE_KEYS | typeof ABI.KEYCODE_KEYD | typeof ABI.KEYCODE_KEYF | typeof ABI.KEYCODE_KEYT | typeof ABI.KEYCODE_KEYR | typeof ABI.KEYCODE_KEYV | typeof ABI.KEYCODE_KEYU | typeof ABI.KEYCODE_KEYM | typeof ABI.KEYCODE_DIGIT1 | typeof ABI.KEYCODE_DIGIT2 | typeof ABI.KEYCODE_DIGIT3 | typeof ABI.KEYCODE_DIGIT4 | typeof ABI.KEYCODE_DIGIT5 | typeof ABI.KEYCODE_DIGIT6 | typeof ABI.KEYCODE_DIGIT7 | typeof ABI.KEYCODE_DIGIT8 | typeof ABI.KEYCODE_DIGIT9 | typeof ABI.KEYCODE_DIGIT0;\n",
     );
     out
 }

@@ -1,6 +1,4 @@
-use od_core::{
-    DrawCmd, GlyphInstance, RectInstance, SessionIntent, SessionModel, draw_state_hash,
-};
+use od_core::{DrawCmd, GlyphInstance, RectInstance, SessionIntent, SessionModel, draw_state_hash};
 use serde_json::json;
 
 use crate::{
@@ -106,7 +104,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
     }
 
     pub fn rect_capacity(&self) -> u32 {
-        self.rects.len() as u32
+        self.rects.capacity() as u32
     }
 
     pub fn glyph_ptr(&self) -> u32 {
@@ -114,7 +112,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
     }
 
     pub fn glyph_capacity(&self) -> u32 {
-        self.glyphs.len() as u32
+        self.glyphs.capacity() as u32
     }
 
     pub fn drawlist_ptr(&self) -> u32 {
@@ -122,7 +120,7 @@ impl<M: FontMetrics + Clone> Engine<M> {
     }
 
     pub fn drawlist_capacity(&self) -> u32 {
-        self.draw_cmds.len() as u32
+        self.draw_cmds.capacity() as u32
     }
 
     pub fn dropped_rects(&self) -> u32 {
@@ -135,6 +133,10 @@ impl<M: FontMetrics + Clone> Engine<M> {
 
     pub fn dropped_draw_cmds(&self) -> u32 {
         self.dropped_draw_cmds
+    }
+
+    pub fn session_capture_active(&self) -> bool {
+        self.session.capture_active
     }
 
     pub fn debug_draw_hash(&self) -> String {
@@ -216,7 +218,9 @@ impl<M: FontMetrics + Clone> Engine<M> {
         );
         let routed = route(&decoded, self.shell.open, self.session.capture_active);
         let shell_open = self.shell.open;
-        if self.prev_shell_open != shell_open || self.prev_capture_active != self.session.capture_active {
+        if self.prev_shell_open != shell_open
+            || self.prev_capture_active != self.session.capture_active
+        {
             self.input_state.clear_repeats();
         }
         let filtered = DecodedInput {
@@ -226,6 +230,8 @@ impl<M: FontMetrics + Clone> Engine<M> {
         };
         let mode = if self.session.capture_active {
             crate::input::InputMode::TextField
+        } else if shell_open {
+            crate::input::InputMode::Shell
         } else {
             crate::input::InputMode::Gameplay
         };
@@ -264,7 +270,8 @@ impl<M: FontMetrics + Clone> Engine<M> {
         if self.session.capture_active {
             if let Some(chat_field_id) = chat_field_id {
                 if let Some(field_rect) = self.session.ui.rect_of(chat_field_id) {
-                    let field_inner_width = (field_rect.w - self.session.ui.theme().pad.horizontal()).max(0.0);
+                    let field_inner_width =
+                        (field_rect.w - self.session.ui.theme().pad.horizontal()).max(0.0);
                     self.session.model.chat_scroll_px = chat::recommend_scroll_px(
                         &self.session.model,
                         self.session.ui.font(),
@@ -341,7 +348,8 @@ impl<M: FontMetrics + Clone> Engine<M> {
                 if !self.session.capture_active {
                     return;
                 }
-                let _ = chat::apply_chat_edit(&mut self.session.model, edit, self.session.ui.font());
+                let _ =
+                    chat::apply_chat_edit(&mut self.session.model, edit, self.session.ui.font());
             }
             SessionIntent::SubmitChat => {
                 if !self.session.capture_active {

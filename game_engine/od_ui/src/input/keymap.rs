@@ -1,9 +1,6 @@
 use od_core::{EventKind, KeyCode, SessionIntent, TextEdit};
 
-use crate::{
-    FontMetrics,
-    focus::UiIntent,
-};
+use crate::{FontMetrics, focus::UiIntent};
 
 use super::decode::{DecodedInput, decode};
 use super::held::{HeldSet, RepeatState};
@@ -11,6 +8,7 @@ use super::held::{HeldSet, RepeatState};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InputMode {
     Gameplay,
+    Shell,
     TextField,
 }
 
@@ -71,6 +69,17 @@ impl InputState {
                                     }
                                 }
                             }
+                            InputMode::Shell => {
+                                if let Some(binding) = shell_binding_for(code) {
+                                    match binding {
+                                        Binding::Once(intent) => out.ui_intents.push(intent),
+                                        Binding::Repeat(intent) => {
+                                            out.ui_intents.push(intent);
+                                            self.repeats.arm(code);
+                                        }
+                                    }
+                                }
+                            }
                             InputMode::TextField => {
                                 if let Some(intent) = text_binding_for(code, event.modifiers) {
                                     out.session_intents.push(intent);
@@ -102,9 +111,14 @@ impl InputState {
             }
         }
 
-        if matches!(mode, InputMode::Gameplay) {
+        if matches!(mode, InputMode::Gameplay | InputMode::Shell) {
             for code in self.repeats.advance(decoded.sampled.dt_ms, &self.held) {
-                if let Some(Binding::Repeat(intent)) = gameplay_binding_for(code) {
+                let binding = match mode {
+                    InputMode::Gameplay => gameplay_binding_for(code),
+                    InputMode::Shell => shell_binding_for(code),
+                    InputMode::TextField => None,
+                };
+                if let Some(Binding::Repeat(intent)) = binding {
                     out.ui_intents.push(intent);
                 }
             }
@@ -121,6 +135,16 @@ enum Binding {
 }
 
 fn gameplay_binding_for(code: KeyCode) -> Option<Binding> {
+    match code {
+        KeyCode::Enter | KeyCode::Space => Some(Binding::Once(UiIntent::Activate)),
+        KeyCode::KeyQ => Some(Binding::Once(UiIntent::Cancel)),
+        KeyCode::KeyT => None,
+        KeyCode::Slash => None,
+        _ => None,
+    }
+}
+
+fn shell_binding_for(code: KeyCode) -> Option<Binding> {
     match code {
         KeyCode::KeyI => Some(Binding::Repeat(UiIntent::FocusPrev)),
         KeyCode::KeyK => Some(Binding::Repeat(UiIntent::FocusNext)),
@@ -197,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn gameplay_keydown_emits_repeatable_and_once_intents() {
+    fn shell_keydown_emits_repeatable_and_once_intents() {
         let events = [
             InputEvent {
                 kind: INPUT_KIND_KEY_DOWN,
@@ -216,8 +240,27 @@ mod tests {
         let mut state = InputState::default();
 
         let decoded = decode_arena(&arena);
+        let out = state.frame(&decoded, InputMode::Shell, &crate::font::MonospaceVga);
+        assert_eq!(
+            out.ui_intents,
+            vec![UiIntent::FocusPrev, UiIntent::Activate]
+        );
+    }
+
+    #[test]
+    fn gameplay_does_not_emit_shell_focus_intents() {
+        let events = [InputEvent {
+            kind: INPUT_KIND_KEY_DOWN,
+            modifiers: 0,
+            code: KeyCode::KeyI as u16,
+            value: 0,
+        }];
+        let arena = arena_with_events(&events, 16.0);
+        let mut state = InputState::default();
+
+        let decoded = decode_arena(&arena);
         let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
-        assert_eq!(out.ui_intents, vec![UiIntent::FocusPrev, UiIntent::Activate]);
+        assert!(out.ui_intents.is_empty());
     }
 
     #[test]
@@ -262,13 +305,13 @@ mod tests {
             16.0,
         );
         let decoded = decode_arena(&arena);
-        let _ = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        let _ = state.frame(&decoded, InputMode::Shell, &crate::font::MonospaceVga);
 
         let mut next = InputArena::default();
         next.sampled.window_focused = 1;
         next.sampled.dt_ms = 400.0;
         let decoded = decode_arena(&next);
-        let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        let out = state.frame(&decoded, InputMode::Shell, &crate::font::MonospaceVga);
         assert_eq!(out.ui_intents, vec![UiIntent::FocusNext]);
     }
 
@@ -291,14 +334,14 @@ mod tests {
         ];
         let arena = arena_with_events(&events, 16.0);
         let decoded = decode_arena(&arena);
-        let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        let out = state.frame(&decoded, InputMode::Shell, &crate::font::MonospaceVga);
         assert_eq!(out.ui_intents, vec![UiIntent::FocusPrev]);
 
         let mut next = InputArena::default();
         next.sampled.window_focused = 1;
         next.sampled.dt_ms = 16.0;
         let decoded = decode_arena(&next);
-        let out = state.frame(&decoded, InputMode::Gameplay, &crate::font::MonospaceVga);
+        let out = state.frame(&decoded, InputMode::Shell, &crate::font::MonospaceVga);
         assert!(out.ui_intents.is_empty());
     }
 }

@@ -32,6 +32,21 @@ export type EngineSnapshot = {
     framebufferWidth: number;
     framebufferHeight: number;
   };
+  world: {
+    tick: number;
+    world_state_hash: string;
+    worldStateHash: string;
+    primary_entity_id: number | null;
+    primaryEntityId: number | null;
+    primary_entity_position: { x: number; y: number; z: number } | null;
+    primaryEntity: {
+      id: number;
+      position: { x: number; y: number; z: number };
+      movement: unknown | null;
+    } | null;
+    entityCount: number;
+    loadedChunkCount: number;
+  };
 };
 
 export type EngineCheckpoint = {
@@ -82,7 +97,7 @@ type BrowserGlobal = {
       }[];
       finalSnapshot: EngineSnapshot;
     }>;
-    importReplay(worldReplay: unknown): Promise<never>;
+    importReplay(worldReplay: unknown): Promise<Record<string, unknown>>;
   };
 };
 
@@ -119,7 +134,8 @@ function harness(page: Page) {
 
 export function engineSnapshot(page: Page) {
   return page.evaluate(() =>
-    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!.snapshot()
+    (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!
+      .snapshot()
   );
 }
 
@@ -223,11 +239,11 @@ export function engineRunScenario(page: Page, scenario: unknown) {
 export function engineImportReplay(page: Page, worldReplay: unknown) {
   return page.evaluate(
     async (worldReplay) => {
-      const harness =
-        (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!;
+      const harness = (globalThis as unknown as BrowserGlobal)
+        .__openDwarfEngineHarness!;
       try {
-        await harness.importReplay(worldReplay);
-        return { ok: true as const };
+        const snapshot = await harness.importReplay(worldReplay);
+        return { ok: true as const, snapshot };
       } catch (err) {
         return {
           ok: false as const,
@@ -242,8 +258,8 @@ export function engineImportReplay(page: Page, worldReplay: unknown) {
 export function engineStepSimTick(page: Page, n = 1) {
   return page.evaluate(
     async (n) => {
-      const harness =
-        (globalThis as unknown as BrowserGlobal).__openDwarfEngineHarness!;
+      const harness = (globalThis as unknown as BrowserGlobal)
+        .__openDwarfEngineHarness!;
       try {
         await harness.stepSimTick(n);
         return { ok: true as const };

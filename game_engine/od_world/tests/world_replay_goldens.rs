@@ -5,14 +5,14 @@
 use std::env::temp_dir;
 
 use od_core::replay::{
-    load_world_replay, save_world_replay, world_state_hash, WorldReplayRecorder,
-    WorldReplayRecorderOptions,
+    WorldReplayRecorder, WorldReplayRecorderOptions, load_world_replay, save_world_replay,
+    world_state_hash,
 };
 use od_core::world::{Vec3i, Vec3u, WorldCommand, WorldConfig};
 
 use od_world::{
-    finish_and_verify_replay, replay_commands_to_snapshot, send_command_recorded,
-    step_until_idle_recorded, WorldSim,
+    WorldSim, finish_and_verify_replay, replay_commands_to_snapshot, send_command_recorded,
+    step_until_idle_recorded,
 };
 
 #[test]
@@ -68,6 +68,23 @@ fn record_replay_round_trip_matches_final_hash() {
     assert_eq!(loaded.final_state_hash, replay.final_state_hash);
     let again = replay_commands_to_snapshot(&loaded).expect("replay again");
     assert_eq!(world_state_hash(&again), replay.final_state_hash);
+}
+
+#[test]
+fn default_west_move_hash_matches_browser_scenario() {
+    let mut sim = WorldSim::new(WorldConfig::default(), true);
+    sim.send_command(WorldCommand::MoveEntity {
+        id: 1,
+        direction: Vec3i::new(-1, 0, 0),
+    })
+    .expect("west move should start");
+    sim.send_command(WorldCommand::AdvanceTicks { count: 10 })
+        .expect("advance should complete");
+
+    assert_eq!(
+        world_state_hash(&sim.snapshot()),
+        "fnv1a64:8dad77ad6066915e"
+    );
 }
 
 #[test]
@@ -134,7 +151,10 @@ fn chunk_load_gate_rejects_then_allows_move() {
     let hash_blocked = world_state_hash(&sim.snapshot());
 
     // Reload spawn + neighbors and succeed.
-    for chunk in [spawn_chunk, Vec3i::new(spawn_chunk.x + 1, spawn_chunk.y, spawn_chunk.z)] {
+    for chunk in [
+        spawn_chunk,
+        Vec3i::new(spawn_chunk.x + 1, spawn_chunk.y, spawn_chunk.z),
+    ] {
         send_command_recorded(
             &mut sim,
             &mut recorder,
