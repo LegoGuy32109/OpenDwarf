@@ -62,7 +62,7 @@
     }
   },
   "shell_root": {
-    "drawHash": "fnv1a64:1a79ee561620e5df",
+    "drawHash": "fnv1a64:f7812b0480d78337",
     "input": {
       "textCaptureActive": false
     },
@@ -77,7 +77,7 @@
     }
   },
   "shell_settings": {
-    "drawHash": "fnv1a64:55f9711a86cb66c8",
+    "drawHash": "fnv1a64:2d056894d6e2c717",
     "input": {
       "textCaptureActive": false
     },
@@ -92,7 +92,7 @@
     }
   },
   "shell_settings_scale": {
-    "drawHash": "fnv1a64:f15bbf72fda12dc9",
+    "drawHash": "fnv1a64:31cf54d7b3b22347",
     "input": {
       "textCaptureActive": false
     },

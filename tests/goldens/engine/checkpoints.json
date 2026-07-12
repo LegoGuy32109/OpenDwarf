@@ -62,7 +62,7 @@
     }
   },
   "shell_root": {
-    "drawHash": "fnv1a64:12b96d3b401f9b64",
+    "drawHash": "fnv1a64:d65964ccf65c67c1",
     "shell": {
       "open": true,
       "page": "root"
@@ -79,7 +79,7 @@
     }
   },
   "shell_settings": {
-    "drawHash": "fnv1a64:62fb58fc2b720808",
+    "drawHash": "fnv1a64:8f4bda588aaace75",
     "shell": {
       "open": true,
       "page": "settings"
@@ -96,7 +96,7 @@
     }
   },
   "shell_settings_scale": {
-    "drawHash": "fnv1a64:30af86eb859e56e6",
+    "drawHash": "fnv1a64:828be9d64decaf01",
     "shell": {
       "open": true,
       "page": "settings"
