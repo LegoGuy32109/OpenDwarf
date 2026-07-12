@@ -1,6 +1,6 @@
 # `/webgl` → `/engine` Parity Cutover Plan
 
-**Status:** Interviews locked — 2026-07-12 (ready for ABI addendum + Slice 1)
+**Status:** Slices 1–3 implemented — 2026-07-12 (awaiting human MVP verify before delete)
 **Parent:** [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md) →
 Cutover; Phase 5+; parallel `od_world` track
 **Companions:** [`text-input-and-chat.md`](./text-input-and-chat.md) (Phase 4),
