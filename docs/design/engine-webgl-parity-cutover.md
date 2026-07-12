@@ -8,6 +8,7 @@ Cutover; Phase 5+; parallel `od_world` track
 [`scenario.md`](./scenario.md), [`game-testing-harness.md`](./game-testing-harness.md),
 [`render-command-abi.md`](./render-command-abi.md)
 **Round-2 interview (locked):** [`engine-mvp-abi-interview.md`](./engine-mvp-abi-interview.md)
+**Post-review fix plan:** [`engine-mvp-post-review-fix-plan.md`](./engine-mvp-post-review-fix-plan.md)
 
 This is the plan to bring **UI, textures, and basic game logic** onto `/engine`
 so the deprecated `/webgl` (`webgl2/` + `lib/webgl-world-sim.ts`) **and** the
