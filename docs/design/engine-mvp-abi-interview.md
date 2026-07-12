@@ -1,6 +1,6 @@
 # Engine MVP — ABI / Input / View Interview (Round 2)
 
-**Status:** Partially locked — 2026-07-12 (awaiting Q5 / Q6 after expanded brief)
+**Status:** Round 2 locked — 2026-07-12
 **Parent:** [`engine-webgl-parity-cutover.md`](./engine-webgl-parity-cutover.md)
 **Also touches:** [`render-command-abi.md`](./render-command-abi.md),
 [`input-arena.md`](./input-arena.md),
@@ -8,18 +8,45 @@
 
 ---
 
-## Locked this round
+## Locked this round (complete)
 
 | # | Lock |
 | --- | --- |
+| **Q5** | **D** — `WorldAtlasQuad` + `WorldSolidQuad` (+ UI `Rect`/`Text`). Visual layers stay paint-ordered `DrawCmd` batches; `texture_id` via `DrawCmd.reserved`. Floor emits Rust-computed UVs (not a forever Frame-index ProgramId). |
+| **Q6** | **A2** — `LocalWorldView` → ABI **view globals** block, laid out for **UBO** bind (`std140`-friendly). MVP may `uniform*` upload the same bytes; flip to `bindBufferBase` without relayout. |
 | **Q7** | **`LocalWorldView`** in `od_core` (beside `SessionModel`). Expand to other view kinds later. |
-| **Q8** | One **`frame()`**: world emit then UI. World instance builders live in **`od_world::render`** for now. |
-| **Q9** | **Confirmed intent** (see §Q9): TS dumps physical keys only; **Rust** maps key→meaning from context (shell / inventory / menu / world / chat). Matches architecture; Rust keymap needs extension, not a TS policy layer. |
-| **Q10** | **A** — minimal `/master` + `/entity` on `SubmitChat`; match existing UX. |
-| **Q11** | **Depth tint + remembered tint are required before delete-verify**, not day-one of first floor pixels. They are floor **tint policy**, not separate GL programs. FOV/memory must exist by then for “remembered.” Fog overlay / shadows remain post-first-pixels as before. |
-| **Q12** | **A** — you spot-check **`/webgl` vs `/engine` live**; agent does **not** delete until you explicitly approve. |
+| **Q8** | One **`frame()`**: world emit then UI. World instance builders in **`od_world::render`**. |
+| **Q9** | TS dumps physical keys only; **Rust** context keymap (shell / inventory / menu / world / chat). Extend KeyCode dump list; no TS gameplay policy. |
+| **Q10** | Minimal **`/master` + `/entity`** on `SubmitChat`. |
+| **Q11** | **MVP delete-verify requires depth + remembered floor tints** (FOV/memory by then). May trail first floor pixels in the impl sequence. Fog/shadow overlays still optional at that gate. |
+| **Q12** | Keep **`/webgl` + `/engine` live** for A/B; delete only after your explicit OK. |
 
-Still open after the briefs below: **Q5**, **Q6**.
+---
+
+## Implementation contract (from locks)
+
+### Programs / arenas
+
+| ProgramId | Stride (f32) | Texture | Used for (MVP → later) |
+| --- | --- | --- | --- |
+| `Rect` (0) | 8 | white | UI |
+| `Text` (1) | 12 | font | UI |
+| `WorldAtlasQuad` (2) | 12 (`pos, size, uv_rect, tint, alpha`) | `texture_id` | Floor + player (MVP); ceil shadow / atlas overlays later |
+| `WorldSolidQuad` (3) | 8 (`pos, size, tint, alpha`) | white / `texture_id` | Edge bands + fog later; unused in first floor+player slice OK |
+
+Paint order for MVP verify: floor atlas batches → player atlas batch → UI. Depth/remembered = tint on floor instances.
+
+### View globals (A2)
+
+Fixed wasm block written each `frame()` from `LocalWorldView` (at least: camera xy, zoom, canvas size, sim tick). Same bytes consumed as uniforms first, UBO later. UI draws keep identity camera/zoom.
+
+### Input
+
+Forward all gameplay KeyCodes (incl. R/V/U/M, digits as needed). Rust: shell open → nav; world → ESDF move + held IJKL camera; chat → text field; `/master` `/entity` on submit.
+
+### Crate flow
+
+`od_wasm::frame` → tick `WorldSim` + update `LocalWorldView` → `od_world::render` emit world cmds → `od_ui` session/shell append UI cmds → TS walks draw-list + applies view globals to world programs.
 
 ---
 
@@ -113,11 +140,10 @@ Ship MVP with `Floor`+`Sprite` ProgramIds copying current shaders; migrate to D 
 
 ### Recommendation
 
-**Long-term: Option D** (`WorldAtlasQuad` + `WorldSolidQuad` + UI Rect/Text).
+**Long-term: Option D** — **LOCKED 2026-07-12.**
 
-**MVP coding:** implement D’s two world programs immediately (floor+player both as `WorldAtlasQuad` with different `texture_id`s), rather than E — avoids a dead Floor ProgramId. First slice can still draw **only** floor+player batches; shadows/fog add more `DrawCmd`s later, same programs.
-
-*Need from you:* **D**, **A**, or **E** (A-now→D-later). If D: confirm texture_id via `DrawCmd.reserved` is OK for MVP.
+MVP implements D’s two world programs immediately (floor+player as
+`WorldAtlasQuad` with different `texture_id`s).
 
 ---
 
@@ -175,9 +201,9 @@ Rust emits **screen-space** quads already multiplied by camera/zoom.
 
 ### Recommendation
 
-**A now, designed as A2:** lock a `ViewGlobals` / `LocalWorldView` GPU prefix in the ABI (camera xy, zoom, canvas size, sim tick, maybe viewZ/mode for HUD—not all need to be uniforms). TS uniform-uploads for MVP; flip to UBO when overlay count hurts. **Reject B and C** for production.
-
-*Need from you:* **A→A2**, or **F**, or something else.
+**A now, designed as A2** — **LOCKED as A2 (2026-07-12):** ABI view-globals
+block from `LocalWorldView`, `std140`-friendly for UBO; uniform upload acceptable
+until overlay count hurts.
 
 ---
 
@@ -203,9 +229,8 @@ So we are **not** proposing “narrow UI focus intents on the TS side.” Round-
 2. **Missing KeyCodes in the dump map** — Digits, `KeyR`/`KeyV`/`KeyU`/`KeyM`, etc. are absent from `CODE_TO_KEYCODE`, so TS **drops** them before Rust sees them. Extending the enum + map is still dump-only.
 3. **Minor TS smell** — `lastOpenCommand` for T/`/` helps focus the hidden `<input>`; that’s host text-capture plumbing, not gameplay policy. Keep it host-local.
 
-**No redesign of the TS capture model is required** for your intent. Implementation work is: richer Rust contexts + more KeyCodes forwarded.
-
-If you want this locked formally: **Q9 = Rust context keymap (architecture as-is); extend KeyCode dump list; no TS semantic filtering for gameplay.**
+**Locked 2026-07-12:** Q9 = Rust context keymap (architecture as-is); extend
+KeyCode dump list; no TS semantic filtering for gameplay.
 
 ---
 
@@ -217,9 +242,9 @@ If you want this locked formally: **Q9 = Rust context keymap (architecture as-is
 - **Remembered** requires FOV + tile memory (or equivalent) so unseen/remembered/visible is known.
 - **Depth** requires topmost / z-below selection (already part of floor emit).
 
-**Your lock:** both tints are part of the **parity bar before you approve delete**, but the impl plan may show floor+player without them first, then add tint policy (+ FOV/memory) before verify. Shadows/fog overlays can still trail that if you want — say if tints-without-fog is enough for your spot-check.
-
-Confirm only if wrong: *delete-verify requires depth+remembered floor tints; fog/shadows optional at that gate.*
+**Locked 2026-07-12:** delete-verify requires depth+remembered floor tints;
+fog/shadows optional at that gate. Impl may show untinted floor first, then add
+tint policy + FOV/memory before you verify.
 
 ---
 
@@ -229,9 +254,9 @@ Keep **`/webgl` and `/engine` both live** while you A/B. Deletion PR only after 
 
 ---
 
-## Still need from you
+## Round 2 complete
 
-1. **Q5:** D (generic world quads, recommended) / A (program per pass) / E (A then D)?  
-2. **Q6:** A→A2 (globals block → UBO, recommended) / F (pre-transform to screen space) / other?  
-3. **Q11 confirm:** depth+remembered required at delete-verify; fog/shadows optional then — yes/no?  
-4. **Q9 confirm:** lock as “architecture as-is, extend Rust contexts + KeyCode dump” — yes/no?
+All Q5–Q12 locked. Next: ABI addendum (programs + view globals) and Slice 1
+implementation per [`engine-webgl-parity-cutover.md`](./engine-webgl-parity-cutover.md).
+
+Tradeoff writeups for Q5/Q6 are retained above under those headings.
