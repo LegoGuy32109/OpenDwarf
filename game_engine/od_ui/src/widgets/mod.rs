@@ -1,4 +1,6 @@
-use std::{collections::HashSet, hash::Hash};
+use std::hash::Hash;
+#[cfg(debug_assertions)]
+use std::collections::HashSet;
 
 use crate::{
     Axis, Id, Layout,

@@ -1,6 +1,6 @@
 {
   "boot_idle": {
-    "drawHash": "fnv1a64:19e6d5c40320d0e4",
+    "drawHash": "fnv1a64:75f5d10e2e22314d",
     "input": {
       "textCaptureActive": false
     },
@@ -15,7 +15,7 @@
     }
   },
   "chat_open_empty": {
-    "drawHash": "fnv1a64:9854ed5349d5fd6c",
+    "drawHash": "fnv1a64:b0eea9ea5ca4703d",
     "input": {
       "textCaptureActive": true
     },
@@ -30,7 +30,7 @@
     }
   },
   "chat_submitted": {
-    "drawHash": "fnv1a64:f1ff8c783059edc3",
+    "drawHash": "fnv1a64:f1f0736468040a72",
     "input": {
       "textCaptureActive": false
     },
@@ -47,7 +47,7 @@
     }
   },
   "chat_typed": {
-    "drawHash": "fnv1a64:8068b87e0a667b35",
+    "drawHash": "fnv1a64:c7a95ec0e2775ecc",
     "input": {
       "textCaptureActive": true
     },
@@ -62,7 +62,7 @@
     }
   },
   "shell_root": {
-    "drawHash": "fnv1a64:75a55110790a9129",
+    "drawHash": "fnv1a64:1a79ee561620e5df",
     "input": {
       "textCaptureActive": false
     },
@@ -77,7 +77,7 @@
     }
   },
   "shell_settings": {
-    "drawHash": "fnv1a64:15ee746a2e2774fa",
+    "drawHash": "fnv1a64:55f9711a86cb66c8",
     "input": {
       "textCaptureActive": false
     },
@@ -92,7 +92,7 @@
     }
   },
   "shell_settings_scale": {
-    "drawHash": "fnv1a64:fecdda0017ce2798",
+    "drawHash": "fnv1a64:f15bbf72fda12dc9",
     "input": {
       "textCaptureActive": false
     },

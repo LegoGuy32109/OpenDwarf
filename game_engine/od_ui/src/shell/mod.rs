@@ -127,20 +127,26 @@ fn build_settings<M: FontMetrics>(
     let label = TextStyle::default().wrap(false);
     ui.column(shell_menu_column(), |ui| {
         ui.text("Settings", title);
-        ui.row(Layout::new().gap(8.0), |ui| {
-            ui.text("UI Scale", label);
-            if ui.button("scale_dec", "-").activated {
-                shell_intents.push(ShellIntent::ChangeSetting(SettingChange::UiScale(
-                    ui_scale.saturating_sub(1),
-                )));
-            }
-            ui.text(&ui_scale.to_string(), label);
-            if ui.button("scale_inc", "+").activated {
-                shell_intents.push(ShellIntent::ChangeSetting(SettingChange::UiScale(
-                    ui_scale.saturating_add(1),
-                )));
-            }
-        });
+        // Fit-width row; column cross-align centers it under the title.
+        ui.row(
+            Layout::new()
+                .gap(8.0)
+                .align(crate::Alignment::Start, crate::Alignment::Center),
+            |ui| {
+                ui.text("UI Scale", label);
+                if ui.button("scale_dec", "-").activated {
+                    shell_intents.push(ShellIntent::ChangeSetting(SettingChange::UiScale(
+                        ui_scale.saturating_sub(1),
+                    )));
+                }
+                ui.text(&ui_scale.to_string(), label);
+                if ui.button("scale_inc", "+").activated {
+                    shell_intents.push(ShellIntent::ChangeSetting(SettingChange::UiScale(
+                        ui_scale.saturating_add(1),
+                    )));
+                }
+            },
+        );
     });
 }
 
@@ -227,6 +233,55 @@ mod tests {
             intent,
             ShellIntent::ChangeSetting(SettingChange::UiScale(1))
         )));
+    }
+
+    #[test]
+    fn settings_controls_stay_inside_panel() {
+        let mut shell = ShellDomain {
+            ui: UiEngine::new(),
+            open: true,
+            nav: {
+                let mut nav = ShellNav::default();
+                nav.push(ShellPage::Settings);
+                nav
+            },
+        };
+        let settings = Settings::default();
+        let (output, _) = frame(&mut shell, Vec2::new(800.0, 600.0), 1.0, &settings, &[]);
+
+        // Skip the full-screen scrim; the settings panel is the next-widest opaque rect.
+        let mut panels: Vec<_> = output
+            .rects
+            .iter()
+            .filter(|rect| rect.size[0] > 32.0 && rect.size[0] < 700.0 && rect.size[1] > 32.0)
+            .collect();
+        panels.sort_by(|a, b| {
+            b.size[0]
+                .partial_cmp(&a.size[0])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let panel = panels.first().expect("settings panel rect");
+        let left = panel.pos[0];
+        let right = panel.pos[0] + panel.size[0];
+        let top = panel.pos[1];
+        let bottom = panel.pos[1] + panel.size[1];
+
+        assert!(
+            panel.size[0] + 0.5 >= SHELL_MENU_MIN_WIDTH,
+            "panel width {} should honor menu min width {}",
+            panel.size[0],
+            SHELL_MENU_MIN_WIDTH
+        );
+
+        for glyph in &output.glyphs {
+            let gx = glyph.pos[0];
+            let gy = glyph.pos[1];
+            assert!(
+                gx >= left - 1.0 && gx <= right + 1.0 && gy >= top - 1.0 && gy <= bottom + 1.0,
+                "glyph at ({gx},{gy}) outside panel [{left},{top}]-[{right},{bottom}] (w={})",
+                panel.size[0]
+            );
+        }
     }
 
     #[test]

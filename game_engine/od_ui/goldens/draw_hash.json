@@ -1,9 +1,9 @@
 {
-  "boot_idle": "fnv1a64:19e6d5c40320d0e4",
-  "chat_open_empty": "fnv1a64:9854ed5349d5fd6c",
-  "chat_submitted": "fnv1a64:f1ff8c783059edc3",
-  "chat_typed": "fnv1a64:8068b87e0a667b35",
-  "shell_root": "fnv1a64:75a55110790a9129",
-  "shell_settings": "fnv1a64:15ee746a2e2774fa",
-  "shell_settings_scale": "fnv1a64:fecdda0017ce2798"
+  "boot_idle": "fnv1a64:75f5d10e2e22314d",
+  "chat_open_empty": "fnv1a64:b0eea9ea5ca4703d",
+  "chat_submitted": "fnv1a64:f1f0736468040a72",
+  "chat_typed": "fnv1a64:c7a95ec0e2775ecc",
+  "shell_root": "fnv1a64:1a79ee561620e5df",
+  "shell_settings": "fnv1a64:55f9711a86cb66c8",
+  "shell_settings_scale": "fnv1a64:f15bbf72fda12dc9"
 }
