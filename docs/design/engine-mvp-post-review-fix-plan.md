@@ -1,9 +1,10 @@
 # Engine MVP — Post-Review Fix Plan
 
-**Status:** Locked — 2026-07-12  
+**Status:** Implemented + adversarial review PASS — 2026-07-12  
 **Parent:** [`engine-webgl-parity-cutover.md`](./engine-webgl-parity-cutover.md),
 [`engine-mvp-abi-interview.md`](./engine-mvp-abi-interview.md)  
-**Trigger:** Multi-model review of Slices 1–3 (`webgl-version...HEAD`)
+**Trigger:** Multi-model review of Slices 1–3 (`webgl-version...HEAD`)  
+**Implementation:** `2de457d` (plan `0d1e884`)
 
 Implement against `/webgl` parity spirit. Do not delete `/webgl`.
 
@@ -81,3 +82,36 @@ Shadows/fog overlays, deleting `/webgl`/Bevy, pixel-diff CI, changing remembered
 ## Done when
 
 All WPs landed, wasm rebuilt/committed, `deno task engine:check` + `tests/engine*.test.ts` green, adversarial parent review written.
+
+---
+
+## Adversarial review (parent, post-`2de457d`)
+
+**Verdict:** WP1–WP6 **PASS**. No incomplete lock blocks human MVP A/B verify.
+
+| WP | Verdict | Notes |
+| --- | --- | --- |
+| WP1 batching + helper | PASS | Floor flush at 8192; matches `webgl2` `MAX_INSTANCES`; `entity_render_position_xy` in `od_world` |
+| WP2 FOV/master/mid-move | PASS | `fov_dirty`; master clears `visible` only; cull/FOV center = `entity.position` |
+| WP3 octant Dir | PASS | Eight dirs + live ESDF chords; scenario keymap/goldens updated |
+| WP4 streaming | PASS | Clamp to world; empty ∩ → empty set; fingerprint diffs |
+| WP5 import/DPR/chat | PASS | `sync_local_view(..., false)` + `render_world`; `canvas[2]=dpr`; sim always ticks |
+| WP6 tests | PASS | Soft gaps: no mid-move cull harness assert; no browser unload-all assert |
+
+### Residual risks (do not block MVP verify)
+
+| Sev | Risk |
+| --- | --- |
+| Med | Master pan fully off-map → empty desired chunks → fingerprint **unloads all** (correct vs full-world fallback; harsh UX) |
+| Med | Diagonal corner blocking still not byte-identical to `/webgl` (`sideX\|\|sideY` null vs both-corners-solid) |
+| Low | FOV center stays on grid origin until snap; webgl may use target earlier — lock chose `entity.position` |
+| Low | `WORLD_ATLAS_CAPACITY=16384` / DrawCmd cap can drop quads when zoomed far out |
+| Low | Shadows/fog still unused (`WorldSolidQuad` reserved) — out of scope |
+
+### False positives dismissed
+
+- Pool 16384 vs GL 8192: pool holds ≤2 batches; each DrawCmd ≤8192.
+- Master clears `visible` every frame: intentional; `memory` retained.
+- Chat still runs `process_player_movement`: held/just_pressed cleared when `!world_context`.
+
+**Next:** human A/B `/engine` vs `/webgl`. Do **not** delete `/webgl`/Bevy until explicit OK (Q12).
