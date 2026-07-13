@@ -40,6 +40,9 @@ export class UiEngine {
     rect_ptr(): number;
     reset_for_harness(): void;
     reset_play_world(): void;
+    /**
+     * Ingest pending input once, run exactly `n` fixed ticks, render once.
+     */
     step_sim_ticks(n: number): void;
     view_globals_capacity(): number;
     view_globals_ptr(): number;

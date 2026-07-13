@@ -3,16 +3,20 @@
 use std::collections::BTreeSet;
 
 use od_core::{
-    Dir, DrawCmd, EventKind, InputArena, KeyCode, LocalWorldView, ProgramId, Vec3i, Vec3u,
-    ViewGlobals, WorldAtlasQuadInstance, WorldCommand, WorldConfig, WorldIntent, WorldReplay,
-    WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode, chunk_coord_to_index,
-    draw_state_hash_with_world, world_position_to_chunk_voxel, world_state_hash,
+    ClientView, Dir, DrawCmd, EntityPerspective, EventKind, InputArena, KeyCode, LocalWorldView,
+    ProgramId, Vec3i, Vec3u, ViewGlobals, WorldAtlasQuadInstance, WorldCommand, WorldConfig,
+    WorldIntent, WorldReplay, WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode,
+    chunk_coord_to_index, draw_hash_with_world, draw_state_hash_with_world, format_state_hash,
+    world_position_to_chunk_voxel, world_state_hash,
 };
 #[cfg(target_arch = "wasm32")]
 use od_ui::HostEffect;
 use od_ui::input::{HeldSet, decode};
 use od_ui::{DomainEngine, MonospaceVga};
 use od_world::WorldSim;
+use od_world::project::{
+    ProjectionSyncStats, compute_projection_window, project_entities, sync_view_chunks,
+};
 use od_world::render::{RenderInput, RenderStats, VisibilityState, entity_render_position_xy};
 use serde_json::{Value, json};
 #[cfg(target_arch = "wasm32")]
@@ -20,6 +24,9 @@ use wasm_bindgen::prelude::*;
 
 const SIM_TICK_MS: f32 = 1000.0 / 20.0;
 const MAX_SIM_TICKS_PER_FRAME: u32 = 3;
+/// Accumulated sim lag is capped at the per-frame tick budget; anything past
+/// it is discarded and counted in `droppedSimTimeMs` (no catch-up spiral).
+const MAX_ACCUMULATED_SIM_MS: f32 = SIM_TICK_MS * MAX_SIM_TICKS_PER_FRAME as f32;
 const TILE_SIZE_PX: f32 = 64.0;
 const CAMERA_PAN_PX_PER_SEC: f32 = 480.0;
 const ENTITY_CAMERA_SMOOTH_RATE: f32 = 10.0;
@@ -59,6 +66,21 @@ pub struct UiEngine {
     sim_accumulator_ms: f32,
     streaming_fingerprint: String,
     last_sampled_dpr: f32,
+    /// Shadow projection (Stage 3): rebuilt after fixed ticks/lifecycle only;
+    /// draw output still consumes the legacy snapshot path.
+    client_view: ClientView,
+    /// Introduced in Stage 3; bitmap FOV recomputation lands in Stage 5.
+    entity_perspective: EntityPerspective,
+    last_projection_stats: ProjectionSyncStats,
+    perspective_entity_position: Option<Vec3i>,
+    perspective_view_mode: Option<WorldViewMode>,
+    /// Simulated time discarded by the accumulated-lag cap.
+    dropped_sim_time_ms: f64,
+    /// Interpolation alpha handed to the most recent render (unused by the
+    /// legacy renderer until Stage 6).
+    last_render_alpha: f32,
+    /// Number of leading `draw_cmds` produced by the world renderer.
+    world_draw_cmd_count: usize,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -82,6 +104,14 @@ impl UiEngine {
             sim_accumulator_ms: 0.0,
             streaming_fingerprint: String::new(),
             last_sampled_dpr: 1.0,
+            client_view: ClientView::default(),
+            entity_perspective: EntityPerspective::default(),
+            last_projection_stats: ProjectionSyncStats::default(),
+            perspective_entity_position: None,
+            perspective_view_mode: None,
+            dropped_sim_time_ms: 0.0,
+            last_render_alpha: 0.0,
+            world_draw_cmd_count: 0,
         }
     }
 
@@ -230,6 +260,7 @@ impl UiEngine {
         self.reset_world(play_world_config());
     }
 
+    /// Ingest pending input once, run exactly `n` fixed ticks, render once.
     pub fn step_sim_ticks(&mut self, n: u32) {
         let sampled = self.ingest_world_input_from_arena();
         if let Some((sampled, world_context)) = sampled {
@@ -240,10 +271,10 @@ impl UiEngine {
             }
         }
         for _ in 0..n {
-            self.advance_one_sim_tick();
+            self.run_fixed_tick(self.last_framebuffer_size());
         }
         self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size(), true);
-        self.render_world();
+        self.render_legacy(0.0);
     }
 
     pub fn import_replay_json(&mut self, bytes: &[u8]) -> Result<String, String> {
@@ -300,9 +331,13 @@ impl UiEngine {
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
         self.streaming_fingerprint.clear();
+        self.reset_projection_state();
         self.engine.reset_session_shell();
         self.sync_local_view(0.0, self.last_framebuffer_size(), false);
-        self.render_world();
+        // Lifecycle rebuild: fresh projection state means every entity starts
+        // with prev_xy == curr_xy and every chunk is copied anew.
+        self.project_shadow_client_view(self.last_framebuffer_size());
+        self.render_legacy(0.0);
         Ok(self.combined_debug_snapshot_json())
     }
 
@@ -326,11 +361,18 @@ impl UiEngine {
                     decoded.sampled.framebuffer_h,
                 );
             }
-            self.advance_frame_sim_ticks(decoded.sampled.dt_ms);
+            self.advance_frame_sim_ticks(
+                decoded.sampled.dt_ms,
+                (
+                    decoded.sampled.framebuffer_w,
+                    decoded.sampled.framebuffer_h,
+                ),
+            );
             Some(decoded.sampled)
         } else {
             None
         };
+        let alpha = (self.sim_accumulator_ms / SIM_TICK_MS).clamp(0.0, 1.0);
         self.sync_local_view(
             decoded_sample.map_or(0.0, |sample| sample.dt_ms),
             decoded_sample.map_or_else(
@@ -339,7 +381,7 @@ impl UiEngine {
             ),
             true,
         );
-        self.render_world();
+        self.render_legacy(alpha);
         self.engine.set_session_hud_lines(self.session_hud_lines());
         let out = self.engine.frame(input_bytes);
         self.append_ui_draw_cmds();
@@ -356,7 +398,11 @@ impl UiEngine {
         self.draw_cmds.len() as u32
     }
 
-    fn render_world(&mut self) {
+    /// Legacy world render path: still consumes its single canonical
+    /// snapshot. `alpha` is recorded but unused until the Stage 6
+    /// interpolation change; draw output is unchanged by the scheduler split.
+    fn render_legacy(&mut self, alpha: f32) -> u32 {
+        self.last_render_alpha = alpha;
         self.world_atlas_quads.clear();
         self.world_solid_quads.clear();
         self.draw_cmds.clear();
@@ -375,6 +421,8 @@ impl UiEngine {
         );
         self.world_render_stats = output.stats;
         self.world_render_stats.snapshot_calls_last_frame = snapshot_calls_last_frame;
+        self.world_draw_cmd_count = self.draw_cmds.len();
+        self.draw_cmds.len() as u32
     }
 
     fn append_ui_draw_cmds(&mut self) {
@@ -398,6 +446,20 @@ impl UiEngine {
         )
     }
 
+    /// Compute-on-call hash (`"fnv1a64:<hex>"`) over only the world `DrawCmd`
+    /// prefix plus the world arenas. Stage 4 uses it for renderer-cutover
+    /// parity checks; it is never paid on the RAF path.
+    fn world_draw_hash(&self) -> String {
+        let world_cmds = &self.draw_cmds[..self.world_draw_cmd_count.min(self.draw_cmds.len())];
+        format_state_hash(draw_hash_with_world(
+            world_cmds,
+            &[],
+            &[],
+            &self.world_atlas_quads,
+            &self.world_solid_quads,
+        ))
+    }
+
     fn ingest_world_input_from_arena(&mut self) -> Option<(od_core::InputSampled, bool)> {
         let input_bytes = unsafe {
             std::slice::from_raw_parts(
@@ -416,17 +478,31 @@ impl UiEngine {
         None
     }
 
-    fn advance_frame_sim_ticks(&mut self, dt_ms: f32) {
-        self.sim_accumulator_ms += dt_ms.max(0.0);
+    fn advance_frame_sim_ticks(&mut self, dt_ms: f32, framebuffer: (u32, u32)) {
+        let pending = self.sim_accumulator_ms + dt_ms.max(0.0);
+        // Bounded lag: a tab restore or one long frame must not create an
+        // unbounded catch-up spiral. Discarded lag is observable.
+        self.sim_accumulator_ms = pending.min(MAX_ACCUMULATED_SIM_MS);
+        let dropped = pending - self.sim_accumulator_ms;
+        if dropped > 0.0 {
+            self.dropped_sim_time_ms += f64::from(dropped);
+        }
         let mut ticks = 0_u32;
         while self.sim_accumulator_ms >= SIM_TICK_MS && ticks < MAX_SIM_TICKS_PER_FRAME {
-            self.advance_one_sim_tick();
+            self.run_fixed_tick(framebuffer);
             self.sim_accumulator_ms -= SIM_TICK_MS;
             ticks = ticks.saturating_add(1);
         }
     }
 
-    fn advance_one_sim_tick(&mut self) {
+    /// One fixed 50 ms simulation tick.
+    ///
+    /// 1. Apply queued gameplay intents (view input emits no `WorldCommand`;
+    ///    the camera-derived streaming calls in `sync_local_view` are
+    ///    temporary legacy-render support that Stage 4 deletes).
+    /// 2. Advance `WorldSim` exactly one tick.
+    /// 3-5. Project the shadow `ClientView` from the final tick state.
+    fn run_fixed_tick(&mut self, framebuffer: (u32, u32)) {
         let before = self.primary_entity_position();
         self.process_player_movement();
         self.world.step_ticks(1);
@@ -434,6 +510,53 @@ impl UiEngine {
             self.world_visibility.mark_fov_dirty();
         }
         self.counters.record_sim_tick();
+        self.project_shadow_client_view(framebuffer);
+    }
+
+    /// Shadow-mode projection (Stage 3): observes the final state of the tick
+    /// (or lifecycle rebuild); never consulted for draw output yet.
+    fn project_shadow_client_view(&mut self, framebuffer: (u32, u32)) {
+        let primary_position = self.primary_entity_position();
+        self.client_view.tick = self.world.tick_count();
+        self.client_view.world_chunks = self.world.world_chunks();
+        let window = compute_projection_window(
+            &self.view,
+            self.world.world_chunks(),
+            primary_position,
+            framebuffer,
+        );
+        let stats = sync_view_chunks(&mut self.client_view, self.world.state(), &window.resident);
+        project_entities(
+            &mut self.client_view,
+            self.world.state(),
+            self.world.primary_entity_id(),
+        );
+        // Minimal Stage 3 perspective scheduling: mark dirty when the entity,
+        // view mode, or resident terrain changed. Recomputation is Stage 5.
+        let mode = self.view.view_mode;
+        if primary_position != self.perspective_entity_position
+            || self.perspective_view_mode != Some(mode)
+            || stats.inserted > 0
+            || stats.recopied > 0
+            || stats.removed > 0
+        {
+            self.entity_perspective.fov_dirty = true;
+        }
+        self.perspective_entity_position = primary_position;
+        self.perspective_view_mode = Some(mode);
+        self.last_projection_stats = stats;
+    }
+
+    /// Reset all shadow projection/scheduler observability state.
+    fn reset_projection_state(&mut self) {
+        self.client_view = ClientView::default();
+        self.entity_perspective.reset();
+        self.last_projection_stats = ProjectionSyncStats::default();
+        self.perspective_entity_position = None;
+        self.perspective_view_mode = None;
+        self.dropped_sim_time_ms = 0.0;
+        self.last_render_alpha = 0.0;
+        self.world_draw_cmd_count = 0;
     }
 
     fn process_player_movement(&mut self) {
@@ -525,9 +648,12 @@ impl UiEngine {
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
         self.streaming_fingerprint.clear();
+        self.reset_projection_state();
         self.last_sampled_dpr = 1.0;
         self.engine.reset_session_shell();
         self.sync_local_view(0.0, self.last_framebuffer_size(), true);
+        // Lifecycle rebuild of the shadow projection (prev_xy == curr_xy).
+        self.project_shadow_client_view(self.last_framebuffer_size());
     }
 
     fn apply_view_key_presses(&mut self) {
@@ -798,6 +924,8 @@ impl UiEngine {
                     "fovDirty": self.world_visibility.fov_dirty(),
                     "fovRecomputeCount": self.world_visibility.fov_recompute_count(),
                     "snapshotCallsLastFrame": self.world_render_stats.snapshot_calls_last_frame,
+                    "droppedSimTimeMs": self.dropped_sim_time_ms,
+                    "worldDrawHash": self.world_draw_hash(),
                 }),
             );
         }
@@ -1351,6 +1479,259 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn focused_engine(framebuffer: (u32, u32)) -> UiEngine {
+        let mut engine = UiEngine::new();
+        engine.input.sampled.framebuffer_w = framebuffer.0;
+        engine.input.sampled.framebuffer_h = framebuffer.1;
+        engine.input.sampled.dpr = 1.0;
+        engine.input.sampled.window_focused = 1;
+        engine
+    }
+
+    #[test]
+    fn ten_second_delta_runs_at_most_three_ticks_bounds_alpha_and_drops_lag() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = 10_000.0;
+
+        let _ = engine.frame();
+
+        assert_eq!(engine.world.tick_count(), 3, "at most three catch-up ticks");
+        assert!(
+            (0.0..=1.0).contains(&engine.last_render_alpha),
+            "alpha {} out of range",
+            engine.last_render_alpha
+        );
+        assert_eq!(engine.sim_accumulator_ms, 0.0, "lag budget fully consumed");
+        let expected_dropped =
+            f64::from(10_000.0_f32 - MAX_ACCUMULATED_SIM_MS);
+        assert!(
+            (engine.dropped_sim_time_ms - expected_dropped).abs() < 1e-6,
+            "droppedSimTimeMs {} != {expected_dropped}",
+            engine.dropped_sim_time_ms
+        );
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["worldRender"]["droppedSimTimeMs"].as_f64(),
+            Some(expected_dropped),
+            "droppedSimTimeMs must be exposed via worldRender"
+        );
+
+        // A second long frame keeps incrementing the counter.
+        engine.input.sampled.dt_ms = 10_000.0;
+        let _ = engine.frame();
+        assert_eq!(engine.world.tick_count(), 6);
+        assert!(engine.dropped_sim_time_ms > expected_dropped);
+    }
+
+    #[test]
+    fn synthetic_16ms_frames_advance_at_deterministic_20_tps() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = 16.0;
+
+        for frame_index in 1..=50_u64 {
+            let _ = engine.frame();
+            assert_eq!(
+                engine.world.tick_count(),
+                frame_index * 16 / 50,
+                "tick after frame {frame_index}"
+            );
+            assert!((0.0..=1.0).contains(&engine.last_render_alpha));
+        }
+        assert_eq!(engine.world.tick_count(), 16, "50 frames * 16 ms = 16 ticks");
+        assert_eq!(engine.dropped_sim_time_ms, 0.0, "16 ms frames drop nothing");
+    }
+
+    #[test]
+    fn step_sim_ticks_advances_exactly_n_ticks_then_renders_once() {
+        let mut engine = UiEngine::new();
+
+        engine.step_sim_ticks(5);
+
+        assert_eq!(engine.world.tick_count(), 5);
+        assert_eq!(engine.client_view.tick, 5, "projection observed every tick");
+        // Exactly one render (and its single legacy snapshot) afterward.
+        assert_eq!(engine.world_render_stats.snapshot_calls_last_frame, 1);
+        assert!(engine.world_draw_cmd_count > 0, "one render happened");
+        assert_eq!(engine.last_render_alpha, 0.0);
+
+        engine.step_sim_ticks(0);
+        assert_eq!(engine.world.tick_count(), 5, "zero ticks advance nothing");
+    }
+
+    #[test]
+    fn shadow_client_view_matches_authoritative_chunks_after_tick_frame() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+
+        assert_eq!(engine.client_view.tick, engine.world.tick_count());
+        assert!(!engine.client_view.chunks.is_empty());
+        let mut expected = Box::new([od_core::BlockType::Air; od_core::CHUNK_VOLUME]);
+        for (chunk, view) in &engine.client_view.chunks {
+            assert!(
+                engine.world.copy_chunk_blocks(*chunk, &mut expected),
+                "{chunk:?}"
+            );
+            assert_eq!(view.blocks[..], expected[..], "byte parity for {chunk:?}");
+            assert_eq!(
+                Some(view.terrain_revision),
+                engine.world.chunk_terrain_revision(*chunk),
+                "revision parity for {chunk:?}"
+            );
+        }
+        // Entities were projected with primary id and prev == curr while idle.
+        assert_eq!(
+            engine.client_view.primary_entity_id,
+            engine.world.primary_entity_id()
+        );
+        assert!(!engine.client_view.entities.is_empty());
+    }
+
+    #[test]
+    fn projected_chunk_entering_window_is_absent_until_next_fixed_tick() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        let target = Vec3i::new(4, 4, 0);
+        assert!(
+            !engine.client_view.chunks.contains_key(&target),
+            "far corner chunk must not be projected around spawn"
+        );
+
+        // Master-mode camera pan onto the far corner chunk. View input emits
+        // no projection change until the next fixed tick samples it.
+        engine.view.view_mode = WorldViewMode::Master;
+        engine.view.camera.x = 4096.0; // tile 64 => chunk 4
+        engine.view.camera.y = 4096.0;
+        engine.input.sampled.dt_ms = 1.0; // no fixed tick this frame
+        let _ = engine.frame();
+        assert!(
+            !engine.client_view.chunks.contains_key(&target),
+            "entering chunk stays absent until a fixed tick projects it"
+        );
+
+        engine.input.sampled.dt_ms = SIM_TICK_MS; // exactly one fixed tick
+        let _ = engine.frame();
+        assert!(
+            engine.client_view.chunks.contains_key(&target),
+            "entering chunk is projected by the next fixed tick"
+        );
+        assert!(engine.last_projection_stats.inserted > 0);
+    }
+
+    #[test]
+    fn reset_rebuilds_projection_with_prev_equal_curr() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        for _ in 0..3 {
+            let _ = engine.frame();
+        }
+        assert!(engine.client_view.tick > 0);
+        engine.dropped_sim_time_ms = 42.0;
+
+        engine.reset_play_world();
+
+        assert_eq!(engine.client_view.tick, 0);
+        assert_eq!(engine.sim_accumulator_ms, 0.0);
+        assert_eq!(engine.dropped_sim_time_ms, 0.0);
+        assert!(engine.entity_perspective.fov_dirty);
+        assert!(engine.entity_perspective.visible.is_empty());
+        assert!(
+            !engine.client_view.chunks.is_empty(),
+            "lifecycle rebuild projects the fresh window"
+        );
+        assert!(!engine.client_view.entities.is_empty());
+        assert!(
+            engine
+                .client_view
+                .entities
+                .iter()
+                .all(|entity| entity.prev_xy == entity.curr_xy),
+            "reset reinitializes interpolation history"
+        );
+    }
+
+    #[test]
+    fn import_replay_rebuilds_projection_state() {
+        let config = play_world_config();
+        let sim = WorldSim::new(config.clone(), true);
+        let final_snapshot = sim.snapshot();
+        let final_state_hash = world_state_hash(&final_snapshot);
+        let mut json_snapshot = final_snapshot.clone();
+        json_snapshot.terrain_blocks.clear();
+        let replay = WorldReplay {
+            metadata: od_core::replay::WorldReplayMetadata {
+                format_version: od_core::WORLD_REPLAY_FORMAT_VERSION,
+                name: "projection_rebuild".to_owned(),
+                world_config: config,
+                spawn_default_player: true,
+            },
+            events: Vec::new(),
+            final_snapshot: json_snapshot,
+            final_state_hash,
+        };
+        let bytes = serde_json::to_vec(&replay).expect("replay json");
+
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        engine.dropped_sim_time_ms = 7.0;
+        assert!(engine.client_view.tick > 0);
+
+        engine.import_replay_json(&bytes).expect("import");
+
+        assert_eq!(engine.client_view.tick, 0);
+        assert_eq!(engine.sim_accumulator_ms, 0.0);
+        assert_eq!(engine.dropped_sim_time_ms, 0.0);
+        assert!(engine.entity_perspective.fov_dirty);
+        assert!(
+            engine
+                .client_view
+                .entities
+                .iter()
+                .all(|entity| entity.prev_xy == entity.curr_xy),
+            "import reinitializes interpolation history"
+        );
+    }
+
+    #[test]
+    fn world_draw_hash_covers_only_world_prefix_and_is_deterministic() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+
+        assert!(
+            engine.world_draw_cmd_count < engine.draw_cmds.len(),
+            "frame appends UI DrawCmds after the world prefix"
+        );
+        let world_hash = engine.world_draw_hash();
+        assert!(world_hash.starts_with("fnv1a64:"));
+        assert_eq!(world_hash, engine.world_draw_hash(), "on-demand stable");
+        assert_ne!(
+            world_hash,
+            engine.combined_draw_hash(),
+            "world prefix hash excludes UI draw output"
+        );
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["worldRender"]["worldDrawHash"].as_str(),
+            Some(world_hash.as_str())
+        );
+
+        // A different world view (master-mode pan) changes the world layer
+        // and therefore the world draw hash.
+        engine.view.view_mode = WorldViewMode::Master;
+        engine.view.camera.x = 4096.0;
+        engine.view.camera.y = 4096.0;
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        assert_ne!(
+            engine.world_draw_hash(),
+            world_hash,
+            "world-layer changes must change worldDrawHash"
+        );
     }
 }
 

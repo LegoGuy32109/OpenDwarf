@@ -494,6 +494,18 @@ impl WorldState {
         })
     }
 
+    /// Snapshot every entity in ascending id order (small per-entity copies;
+    /// never scans terrain or loaded chunks). Crate-visible for projection.
+    pub(crate) fn entity_snapshots(&self) -> impl Iterator<Item = EntitySnapshot> + '_ {
+        self.entities.iter().map(|(id, entity)| EntitySnapshot {
+            id: *id,
+            position: entity.position,
+            facing_left: entity.facing_left,
+            is_prone: entity.is_prone,
+            movement: entity.movement.map(EntityMovementState::snapshot),
+        })
+    }
+
     #[must_use]
     pub fn loaded_chunk_coords(&self) -> Vec<Vec3i> {
         let mut chunks: Vec<_> = self

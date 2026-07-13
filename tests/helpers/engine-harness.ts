@@ -79,6 +79,8 @@ export type EngineSnapshot = {
     fovDirty?: boolean;
     fovRecomputeCount?: number;
     snapshotCallsLastFrame?: number;
+    droppedSimTimeMs?: number;
+    worldDrawHash?: string;
   };
 };
 

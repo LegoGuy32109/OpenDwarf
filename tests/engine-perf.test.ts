@@ -64,6 +64,9 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
   console.log(
     `engine perf semantics: tick=${snapshot.world.tick} worldStateHash=${snapshot.world.worldStateHash} drawCount=${snapshot.frame.drawCount} observedDrawHash=${snapshot.frame.drawHash} floor=${snapshot.worldRender.floorQuadCount} player=${snapshot.worldRender.playerQuadCount} atlas=${snapshot.worldRender.atlasQuadCount}`,
   );
+  console.log(
+    `engine perf world draw prefix: worldDrawHash=${snapshot.worldRender.worldDrawHash} droppedSimTimeMs=${snapshot.worldRender.droppedSimTimeMs}`,
+  );
 
   expect(median).toBeLessThan(6_000);
   expect(snapshot.worldRender.floorQuadCount).toBe(130);
@@ -110,6 +113,8 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
         droppedSolidQuads: snapshot.worldRender.droppedSolidQuads,
         droppedWorldDrawCmds: snapshot.worldRender.droppedDrawCmds,
         snapshotCallsLastFrame: snapshot.worldRender.snapshotCallsLastFrame,
+        worldDrawHash: snapshot.worldRender.worldDrawHash,
+        droppedSimTimeMs: snapshot.worldRender.droppedSimTimeMs,
       },
     };
     await mkdir(dirname(reportPath), { recursive: true });

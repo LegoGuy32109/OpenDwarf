@@ -277,6 +277,7 @@ export class UiEngine {
         wasm.uiengine_reset_play_world(this.__wbg_ptr);
     }
     /**
+     * Ingest pending input once, run exactly `n` fixed ticks, render once.
      * @param {number} n
      */
     step_sim_ticks(n) {

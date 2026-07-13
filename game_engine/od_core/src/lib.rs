@@ -2,6 +2,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod abi;
+pub mod client_view;
 pub mod hash;
 pub mod input;
 pub mod intent;
@@ -30,6 +31,7 @@ pub use abi::{
     WORLD_SOLID_QUAD_SIZE_OFFSET, WORLD_SOLID_QUAD_STRIDE_BYTES, WORLD_SOLID_QUAD_STRIDE_FLOATS,
     WORLD_SOLID_QUAD_TINT_OFFSET, WorldAtlasQuadInstance, WorldSolidQuadInstance,
 };
+pub use client_view::{ChunkView, ClientView, EntityPerspective, EntityView};
 pub use hash::{
     FNV_OFFSET_BASIS, FNV_PRIME, FnvHasher, StateHash, canonicalize_f32, draw_hash,
     draw_hash_with_world, draw_state_hash, draw_state_hash_with_world, format_state_hash,

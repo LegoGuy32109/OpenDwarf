@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "stage": 3,
+  "artifact": {
+    "profile": "debug",
+    "metadataSha256": "f7dc59604be5bff4eed740a78188c4a703259ea3d281cf7e1fd9b53c1c1aaea2",
+    "servedSha256": "f7dc59604be5bff4eed740a78188c4a703259ea3d281cf7e1fd9b53c1c1aaea2"
+  },
+  "snapshotCalls": {
+    "idle": 1,
+    "tick": 1,
+    "movement": 1,
+    "camera": 1,
+    "chat": 1
+  },
+  "pathState": {
+    "idleTick": 0,
+    "tickDelta": 1,
+    "movementTickDelta": 1,
+    "movementActive": true,
+    "cameraTickDelta": 0,
+    "cameraMoved": true,
+    "chatTickDelta": 0,
+    "chatMode": "chat"
+  }
+}

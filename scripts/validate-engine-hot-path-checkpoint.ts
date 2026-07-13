@@ -82,6 +82,8 @@ type Checkpoint = {
       droppedSolidQuads: number;
       droppedWorldDrawCmds: number;
       snapshotCallsLastFrame?: number;
+      worldDrawHash?: string;
+      droppedSimTimeMs?: number;
     };
   };
   sameRunProfile: {
@@ -107,6 +109,8 @@ type GeneratedStageSpec = {
     | { label: string; evidencePath: string };
   remnantCommand?: string;
   rustTests?: { command: string; minimumPassed: number };
+  // Exact stage-owned values required in the recorded perf harness semantics.
+  requiredSemantics?: Record<string, string | number>;
   stageOwnedKeys?: string[];
 };
 
@@ -375,6 +379,32 @@ const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
       "perfMedianVsStage1",
     ],
   }],
+  [3, {
+    acceptTask: "deno task engine:accept-stage3",
+    requiredCommands: acceptanceLaneCommands,
+    baseline: {
+      label: "Stage 2",
+      evidencePath:
+        "docs/design/checkpoints/evidence/engine-render-hot-path-stage-2-perf.json",
+    },
+    // Stage 3 records 112 passing workspace tests (scheduler split,
+    // projection window/sync, shadow ClientView); a decrease is a red gate.
+    rustTests: { command: "deno task engine:test", minimumPassed: 112 },
+    requiredSemantics: {
+      // Scripted perf-scenario world-layer hash; the Stage 4 ClientView
+      // renderer must reproduce this exact value.
+      worldDrawHash: "fnv1a64:c55ac880b00ac4d0",
+      // Bounded lag handling must not discard simulated time at the
+      // deterministic 16 ms harness pacing.
+      droppedSimTimeMs: 0,
+    },
+    stageOwnedKeys: [
+      "rustWorkspaceTests",
+      "perfMedianVsStage2",
+      "worldDrawHash",
+      "droppedSimTimeMs",
+    ],
+  }],
 ]);
 const spec = generatedStageSpecs.get(stage);
 assert(stage === 0 || spec, `stage ${stage} has no validation profile`);
@@ -500,6 +530,15 @@ if (spec) {
     perf.semantics.snapshotCallsLastFrame === 1,
     `${label} final snapshot count != 1`,
   );
+  for (const [name, expected] of Object.entries(spec.requiredSemantics ?? {})) {
+    const actual = (perf.semantics as Record<string, unknown>)[name];
+    assert(
+      actual === expected,
+      `${label} semantics ${name}: recorded ${
+        JSON.stringify(actual)
+      }, required ${JSON.stringify(expected)}`,
+    );
+  }
   for (const [name, value] of Object.entries(perf.semantics)) {
     if (name.startsWith("dropped")) {
       assert(value === 0, `${label} ${name} != 0`);
