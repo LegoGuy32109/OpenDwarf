@@ -1,0 +1,114 @@
+{
+  "recordedAt": "2026-07-13T04:27:23.265Z",
+  "chromium": "Chromium 148.0.7778.215 Arch Linux",
+  "viewport": {
+    "width": 1920,
+    "height": 1080,
+    "deviceScaleFactor": 1
+  },
+  "results": {
+    "/webgl": {
+      "samples": [
+        2.300000011920929,
+        5.200000002980232,
+        3.2000000029802322,
+        3.2999999970197678,
+        6.100000008940697,
+        2.3999999910593033,
+        4.299999997019768,
+        3.9000000059604645,
+        2.4000000059604645,
+        5.4000000059604645,
+        2.2000000029802322,
+        3.5,
+        4.5999999940395355,
+        2.300000011920929,
+        4.299999997019768,
+        3.0999999940395355,
+        3,
+        4.299999997019768,
+        1.7999999970197678,
+        3.8999999910593033
+      ],
+      "medianMs": 3.5,
+      "p95Ms": 6.100000008940697,
+      "gl": {
+        "canvasId": "webgl2-canvas",
+        "contextLost": false,
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Vulkan 1.4.348 (Intel(R) Iris(R) Xe Graphics (RPL-U) (0x0000A7A1)), Intel open-source Mesa driver)",
+        "rendererSource": "WEBGL_debug_renderer_info",
+        "errors": []
+      }
+    },
+    "/engine": {
+      "samples": [
+        0.30000001192092896,
+        0.30000001192092896,
+        0.29999999701976776,
+        0.20000000298023224,
+        0.20000000298023224,
+        0.4000000059604645,
+        0.4000000059604645,
+        0.4000000059604645,
+        0.29999999701976776,
+        0.20000000298023224,
+        0.29999999701976776,
+        0.10000000894069672,
+        0.20000000298023224,
+        0.20000000298023224,
+        0.29999999701976776,
+        0.20000000298023224,
+        0.29999999701976776,
+        0.29999999701976776,
+        0.30000001192092896,
+        0.29999999701976776
+      ],
+      "medianMs": 0.29999999701976776,
+      "p95Ms": 0.4000000059604645,
+      "gl": {
+        "canvasId": "engine-canvas",
+        "contextLost": false,
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Vulkan 1.4.348 (Intel(R) Iris(R) Xe Graphics (RPL-U) (0x0000A7A1)), Intel open-source Mesa driver)",
+        "rendererSource": "WEBGL_debug_renderer_info",
+        "errors": []
+      },
+      "provenance": {
+        "metadata": {
+          "schemaVersion": 1,
+          "profile": "release",
+          "wasm": {
+            "file": "od_wasm_bg.wasm",
+            "sha256": "0ec930339190e15a52572ea8069b61f5cd642b18ea9c849dbc01a10ffa634519"
+          },
+          "transforms": {
+            "wasmBindgen": {
+              "applied": true
+            },
+            "wasmOpt": {
+              "available": true,
+              "applied": true
+            },
+            "brotli": {
+              "available": true,
+              "applied": true,
+              "file": "od_wasm_bg.wasm.br"
+            }
+          },
+          "tools": {
+            "cargo": "cargo 1.91.1 (ea2d97820 2025-10-10)",
+            "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+            "wasmBindgen": "wasm-bindgen 0.2.108",
+            "wasmOpt": "wasm-opt version 129",
+            "brotli": "brotli 1.2.0"
+          }
+        },
+        "served": {
+          "url": "http://127.0.0.1:8000/engine/generated/od_wasm_bg.wasm",
+          "sha256": "0ec930339190e15a52572ea8069b61f5cd642b18ea9c849dbc01a10ffa634519"
+        }
+      }
+    }
+  }
+}

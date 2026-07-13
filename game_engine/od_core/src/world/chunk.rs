@@ -102,6 +102,60 @@ pub fn chunk_min_world_position(chunk: Vec3i, dims: Vec3u) -> Option<Vec3i> {
     ))
 }
 
+/// Convert a world voxel position into `(chunk coordinate, voxel index)` on
+/// the **unbounded** chunk grid aligned to the centered world (Stage 5).
+///
+/// Inside the world this agrees exactly with
+/// [`world_position_to_chunk_voxel`]. Outside the world it extends the same
+/// grid, so perspective bitmaps can key positions beyond the world bounds
+/// (the legacy FOV set legitimately contains out-of-world air).
+///
+/// Returns [`None`] only on arithmetic overflow of a degenerate grid.
+#[must_use]
+pub fn position_to_chunk_voxel_unbounded(position: Vec3i, dims: Vec3u) -> Option<(Vec3i, usize)> {
+    let (chunk_x, voxel_x) = unbounded_axis(position.x, dims.x)?;
+    let (chunk_y, voxel_y) = unbounded_axis(position.y, dims.y)?;
+    let (chunk_z, voxel_z) = unbounded_axis(position.z, dims.z)?;
+    let edge = SUPPORTED_CHUNK_EDGE as usize;
+    let voxel_index = voxel_z * edge * edge + voxel_y * edge + voxel_x;
+    Some((Vec3i::new(chunk_x, chunk_y, chunk_z), voxel_index))
+}
+
+/// World position of a chunk's minimum-corner voxel on the **unbounded**
+/// grid aligned to the centered world. Agrees with
+/// [`chunk_min_world_position`] for in-grid chunks.
+#[must_use]
+pub fn chunk_min_world_position_unbounded(chunk: Vec3i, dims: Vec3u) -> Option<Vec3i> {
+    Some(Vec3i::new(
+        unbounded_chunk_min_axis(chunk.x, dims.x)?,
+        unbounded_chunk_min_axis(chunk.y, dims.y)?,
+        unbounded_chunk_min_axis(chunk.z, dims.z)?,
+    ))
+}
+
+/// World coordinate of chunk `0`'s minimum voxel on one axis (the grid
+/// alignment offset shared by the bounded and unbounded mappings).
+fn grid_offset_axis(dim: u32) -> Option<i32> {
+    let min = world_min_axis(dim)?;
+    let center = i32::try_from(dim).ok()? / 2;
+    min.checked_add(center.checked_mul(16)?)
+}
+
+/// Map a world coordinate on one axis to `(unbounded chunk coord, voxel)`.
+fn unbounded_axis(position: i32, dim: u32) -> Option<(i32, usize)> {
+    let offset = grid_offset_axis(dim)?;
+    let rel = i64::from(position) - i64::from(offset);
+    let chunk = i32::try_from(rel.div_euclid(16)).ok()?;
+    let voxel = usize::try_from(rel.rem_euclid(16)).ok()?;
+    Some((chunk, voxel))
+}
+
+/// Minimum world coordinate of an unbounded-grid chunk on one axis.
+fn unbounded_chunk_min_axis(chunk: i32, dim: u32) -> Option<i32> {
+    let offset = grid_offset_axis(dim)?;
+    i32::try_from(i64::from(chunk) * 16 + i64::from(offset)).ok()
+}
+
 /// Centered world minimum for one axis (in voxels).
 fn world_min_axis(dim: u32) -> Option<i32> {
     let size = dim.checked_mul(SUPPORTED_CHUNK_EDGE)?;
@@ -234,14 +288,8 @@ mod tests {
                 assert_eq!(chunk_coord_to_index(below, dims), None, "{dims:?}");
                 assert_eq!(chunk_coord_to_index(above, dims), None, "{dims:?}");
             }
-            assert_eq!(
-                chunk_coord_to_index(Vec3i::new(i32::MIN, 0, 0), dims),
-                None
-            );
-            assert_eq!(
-                chunk_coord_to_index(Vec3i::new(i32::MAX, 0, 0), dims),
-                None
-            );
+            assert_eq!(chunk_coord_to_index(Vec3i::new(i32::MIN, 0, 0), dims), None);
+            assert_eq!(chunk_coord_to_index(Vec3i::new(i32::MAX, 0, 0), dims), None);
         }
     }
 
@@ -343,6 +391,76 @@ mod tests {
             world_position_to_chunk_voxel(Vec3i::new(7, 7, 7), dims),
             Some((Vec3i::ZERO, CHUNK_VOLUME - 1))
         );
+    }
+
+    #[test]
+    fn unbounded_mapping_agrees_with_bounded_inside_the_world() {
+        for dims in TEST_DIMS {
+            let size = |dim: u32| i32::try_from(dim * 16).expect("size");
+            let min = Vec3i::new(
+                -(size(dims.x) / 2),
+                -(size(dims.y) / 2),
+                -(size(dims.z) / 2),
+            );
+            let max = Vec3i::new(
+                min.x + size(dims.x) - 1,
+                min.y + size(dims.y) - 1,
+                min.z + size(dims.z) - 1,
+            );
+            for position in [
+                min,
+                max,
+                Vec3i::new(0, 0, 0),
+                Vec3i::new(-1, -1, -1),
+                Vec3i::new(min.x + 15, max.y - 15, min.z),
+            ] {
+                assert_eq!(
+                    position_to_chunk_voxel_unbounded(position, dims),
+                    world_position_to_chunk_voxel(position, dims),
+                    "in-world agreement at {position:?} for {dims:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unbounded_mapping_extends_the_grid_outside_the_world() {
+        let dims = Vec3u::new(1, 1, 1); // world spans [-8, 7] per axis
+        // One voxel past the maximum edge starts the next chunk.
+        assert_eq!(
+            position_to_chunk_voxel_unbounded(Vec3i::new(8, 0, 0), dims),
+            Some((Vec3i::new(1, 0, 0), 8 * 256 + 8 * 16)), // voxel (0, 8, 8)
+        );
+        // One voxel below the minimum edge is the last voxel of chunk -1.
+        assert_eq!(
+            position_to_chunk_voxel_unbounded(Vec3i::new(-9, -8, -8), dims),
+            Some((Vec3i::new(-1, 0, 0), 15)),
+        );
+        // Round trip through the unbounded chunk base.
+        for position in [
+            Vec3i::new(27, -30, 41),
+            Vec3i::new(-100, 3, -17),
+            Vec3i::new(7, 8, -9),
+        ] {
+            let (chunk, voxel) = position_to_chunk_voxel_unbounded(position, dims).expect("mapped");
+            let base = chunk_min_world_position_unbounded(chunk, dims).expect("base");
+            let vx = i32::try_from(voxel % 16).expect("vx");
+            let vy = i32::try_from((voxel / 16) % 16).expect("vy");
+            let vz = i32::try_from(voxel / 256).expect("vz");
+            assert_eq!(Vec3i::new(base.x + vx, base.y + vy, base.z + vz), position);
+        }
+        // In-grid chunk bases agree with the bounded helper.
+        let dims = Vec3u::new(9, 9, 1);
+        for chunk in [
+            Vec3i::new(-4, -4, 0),
+            Vec3i::new(0, 0, 0),
+            Vec3i::new(4, 4, 0),
+        ] {
+            assert_eq!(
+                chunk_min_world_position_unbounded(chunk, dims),
+                chunk_min_world_position(chunk, dims),
+            );
+        }
     }
 
     #[test]

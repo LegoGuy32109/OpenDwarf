@@ -68,8 +68,8 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
     `engine perf world draw prefix: worldDrawHash=${snapshot.worldRender.worldDrawHash} droppedSimTimeMs=${snapshot.worldRender.droppedSimTimeMs}`,
   );
 
-  // Stage 4 ceiling: 400 ms (tightened from the 6,000 ms Stage 0 baseline).
-  expect(median).toBeLessThan(400);
+  // Stage 5 ceiling: 250 ms (tightened from the Stage 4 400 ms ceiling).
+  expect(median).toBeLessThan(250);
   expect(snapshot.worldRender.floorQuadCount).toBe(130);
   expect(snapshot.worldRender.playerQuadCount).toBe(1);
   expect(snapshot.worldRender.atlasQuadCount).toBe(131);
@@ -104,7 +104,7 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
       samplesMs: samples,
       medianMs: median,
       p95Ms: p95,
-      ceilingMs: 400,
+      ceilingMs: 250,
       semantics: {
         floorQuadCount: snapshot.worldRender.floorQuadCount,
         playerQuadCount: snapshot.worldRender.playerQuadCount,

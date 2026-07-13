@@ -15,12 +15,10 @@ use od_ui::input::{HeldSet, decode};
 use od_ui::{DomainEngine, MonospaceVga};
 use od_world::WorldSim;
 use od_world::project::{
-    ProjectionSyncStats, compute_projection_window, project_entities, sync_view_chunks,
-    visible_chunk_layer,
+    ProjectionSyncStats, compute_projection_window, project_entities, recompute_entity_perspective,
+    sync_view_chunks, visible_chunk_layer,
 };
-use od_world::render::{
-    RenderCaches, RenderInput, RenderStats, VisibilityState, entity_render_position_xy,
-};
+use od_world::render::{RenderCaches, RenderInput, RenderStats, entity_render_position_xy};
 use serde_json::{Value, json};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -58,7 +56,6 @@ pub struct UiEngine {
     world: WorldSim,
     view: LocalWorldView,
     view_globals: ViewGlobals,
-    world_visibility: VisibilityState,
     /// Render-owned caches (topmost columns this stage); derived data only.
     render_caches: RenderCaches,
     world_render_stats: RenderStats,
@@ -73,7 +70,9 @@ pub struct UiEngine {
     /// Local read model consumed by `render()` (Stage 4): rebuilt after
     /// fixed ticks and lifecycle operations only, never on the RAF path.
     client_view: ClientView,
-    /// Introduced in Stage 3; bitmap FOV recomputation lands in Stage 5.
+    /// Per-chunk visibility bitmaps + persistent memory (Stage 5).
+    /// Recomputed at tick exit / lifecycle / explicit view-mode changes;
+    /// render consumes it immutably.
     entity_perspective: EntityPerspective,
     last_projection_stats: ProjectionSyncStats,
     perspective_entity_position: Option<Vec3i>,
@@ -97,7 +96,6 @@ impl UiEngine {
             world: WorldSim::new(play_world_config(), true),
             view: LocalWorldView::default(),
             view_globals: ViewGlobals::default(),
-            world_visibility: VisibilityState::default(),
             render_caches: RenderCaches::default(),
             world_render_stats: RenderStats::default(),
             world_atlas_quads: Vec::with_capacity(WORLD_ATLAS_CAPACITY),
@@ -331,7 +329,6 @@ impl UiEngine {
         self.world = world;
         self.world_input.clear();
         self.view = LocalWorldView::default();
-        self.world_visibility.reset();
         self.render_caches.reset();
         self.world_render_stats = RenderStats::default();
         self.world_atlas_quads.clear();
@@ -371,10 +368,7 @@ impl UiEngine {
             }
             self.advance_frame_sim_ticks(
                 decoded.sampled.dt_ms,
-                (
-                    decoded.sampled.framebuffer_w,
-                    decoded.sampled.framebuffer_h,
-                ),
+                (decoded.sampled.framebuffer_w, decoded.sampled.framebuffer_h),
             );
             Some(decoded.sampled)
         } else {
@@ -405,11 +399,12 @@ impl UiEngine {
         self.draw_cmds.len() as u32
     }
 
-    /// World render (Stage 4): consumes only the projected [`ClientView`],
-    /// the local view, visibility state, and render caches. Performs zero
-    /// `WorldSim::snapshot()` calls and never reads `WorldState`; it mutates
-    /// render caches/arenas only. `alpha` is recorded but unused until the
-    /// Stage 6 interpolation change.
+    /// World render (Stage 5): consumes only the projected [`ClientView`],
+    /// the local view, the **immutable** entity perspective, and render
+    /// caches. Performs zero `WorldSim::snapshot()` calls, never reads
+    /// `WorldState`, and never recomputes FOV; it mutates render
+    /// caches/arenas only. `alpha` is recorded but unused until the Stage 6
+    /// interpolation change.
     fn render(&mut self, alpha: f32) -> u32 {
         self.last_render_alpha = alpha;
         self.world_atlas_quads.clear();
@@ -421,7 +416,7 @@ impl UiEngine {
                 view: &self.view,
                 smooth_player_xy: self.smooth_player_world_pos,
             },
-            &mut self.world_visibility,
+            &self.entity_perspective,
             &mut self.render_caches,
             &mut self.world_atlas_quads,
             &mut self.draw_cmds,
@@ -505,14 +500,11 @@ impl UiEngine {
     ///
     /// 1. Apply queued gameplay intents (view input emits no `WorldCommand`).
     /// 2. Advance `WorldSim` exactly one tick.
-    /// 3-5. Project the `ClientView` from the final tick state.
+    /// 3-4. Project the `ClientView` from the final tick state.
+    /// 5. Recompute the entity perspective at tick exit when dirty.
     fn run_fixed_tick(&mut self, framebuffer: (u32, u32)) {
-        let before = self.primary_entity_position();
         self.process_player_movement();
         self.world.step_ticks(1);
-        if self.primary_entity_position() != before {
-            self.world_visibility.mark_fov_dirty();
-        }
         self.counters.record_sim_tick();
         self.project_client_view(framebuffer);
     }
@@ -546,8 +538,13 @@ impl UiEngine {
         self.project_client_view_window(&desired);
     }
 
-    /// Sync projected chunks/entities for `desired` and update the local
-    /// view's projected-chunk debug list plus perspective scheduling state.
+    /// Sync projected chunks/entities for `desired`, update the local view's
+    /// projected-chunk debug list, then perform the tick-exit perspective
+    /// maintenance (Stage 5): recompute the FOV bitmaps when the entity's
+    /// discrete origin, view mode, or projected terrain changed; master mode
+    /// clears visible state while preserving memory.
+    ///
+    /// Idle frames never reach this path, so they never recompute FOV.
     fn project_client_view_window(&mut self, desired: &BTreeSet<Vec3i>) {
         let primary_position = self.primary_entity_position();
         self.client_view.tick = self.world.tick_count();
@@ -561,8 +558,9 @@ impl UiEngine {
         let mut projected: Vec<Vec3i> = self.client_view.chunks.keys().copied().collect();
         projected.sort_unstable();
         self.view.projected_chunks = projected;
-        // Minimal perspective scheduling: mark dirty when the entity, view
-        // mode, or projected terrain changed. Recomputation is Stage 5.
+        // Perspective scheduling: dirty when the entity's discrete FOV
+        // origin, view mode, or projected terrain changed. Interpolation-only
+        // movement progress changes none of these.
         let mode = self.view.view_mode;
         let terrain_changed = stats.inserted > 0 || stats.recopied > 0 || stats.removed > 0;
         if primary_position != self.perspective_entity_position
@@ -571,15 +569,26 @@ impl UiEngine {
         {
             self.entity_perspective.fov_dirty = true;
         }
-        // The legacy FOV reads projected terrain, so a window change must
-        // also schedule a recompute (matches the legacy streaming-change
-        // behavior; a same-input recompute is visibility-neutral).
-        if terrain_changed && mode == WorldViewMode::Entity {
-            self.world_visibility.mark_fov_dirty();
-        }
         self.perspective_entity_position = primary_position;
         self.perspective_view_mode = Some(mode);
         self.last_projection_stats = stats;
+        self.update_entity_perspective();
+    }
+
+    /// Tick-exit / lifecycle perspective maintenance. Entity mode recomputes
+    /// the FOV bitmaps when dirty (counted); master mode clears visible
+    /// state while preserving memory (not counted as a recompute).
+    fn update_entity_perspective(&mut self) {
+        match self.view.view_mode {
+            WorldViewMode::Entity => {
+                if self.entity_perspective.fov_dirty {
+                    recompute_entity_perspective(&mut self.entity_perspective, &self.client_view);
+                }
+            }
+            WorldViewMode::Master => {
+                self.entity_perspective.clear_visible_preserve_memory();
+            }
+        }
     }
 
     /// Reset all shadow projection/scheduler observability state.
@@ -675,7 +684,6 @@ impl UiEngine {
         self.world_input.clear();
         self.view = LocalWorldView::default();
         self.view_globals = ViewGlobals::default();
-        self.world_visibility.reset();
         self.render_caches.reset();
         self.world_render_stats = RenderStats::default();
         self.world_atlas_quads.clear();
@@ -833,15 +841,28 @@ impl UiEngine {
         };
     }
 
+    /// Chat view-mode effects apply for the following frame/tick. A mode
+    /// change performs the same perspective maintenance as a tick exit so
+    /// the next render observes the new mode's visibility immediately
+    /// (legacy parity: the set-based renderer recomputed/cleared lazily on
+    /// its next frame).
     fn apply_submitted_chat(&mut self, submitted: Vec<String>) {
         for text in submitted {
             match text.trim().to_ascii_lowercase().as_str() {
-                "/master" => self.view.view_mode = WorldViewMode::Master,
+                "/master" => {
+                    if self.view.view_mode != WorldViewMode::Master {
+                        self.view.view_mode = WorldViewMode::Master;
+                        self.perspective_view_mode = Some(WorldViewMode::Master);
+                        self.update_entity_perspective();
+                    }
+                }
                 "/entity" => {
                     if self.view.view_mode != WorldViewMode::Entity {
-                        self.world_visibility.mark_fov_dirty();
+                        self.view.view_mode = WorldViewMode::Entity;
+                        self.perspective_view_mode = Some(WorldViewMode::Entity);
+                        self.entity_perspective.fov_dirty = true;
+                        self.update_entity_perspective();
                     }
-                    self.view.view_mode = WorldViewMode::Entity;
                 }
                 other if other.starts_with('/') => {}
                 _ => {}
@@ -913,8 +934,8 @@ impl UiEngine {
                     "droppedDrawCmds": self.world_render_stats.dropped_draw_cmds,
                     "visibleTileCount": self.world_render_stats.visible_tiles,
                     "rememberedTileCount": self.world_render_stats.remembered_tiles,
-                    "fovDirty": self.world_visibility.fov_dirty(),
-                    "fovRecomputeCount": self.world_visibility.fov_recompute_count(),
+                    "fovDirty": self.entity_perspective.fov_dirty,
+                    "fovRecomputeCount": self.entity_perspective.fov_recompute_count,
                     "snapshotCallsLastFrame": self.world_render_stats.snapshot_calls_last_frame,
                     "droppedSimTimeMs": self.dropped_sim_time_ms,
                     "worldDrawHash": self.world_draw_hash(),
@@ -1465,8 +1486,7 @@ mod tests {
             engine.last_render_alpha
         );
         assert_eq!(engine.sim_accumulator_ms, 0.0, "lag budget fully consumed");
-        let expected_dropped =
-            f64::from(10_000.0_f32 - MAX_ACCUMULATED_SIM_MS);
+        let expected_dropped = f64::from(10_000.0_f32 - MAX_ACCUMULATED_SIM_MS);
         assert!(
             (engine.dropped_sim_time_ms - expected_dropped).abs() < 1e-6,
             "droppedSimTimeMs {} != {expected_dropped}",
@@ -1500,7 +1520,11 @@ mod tests {
             );
             assert!((0.0..=1.0).contains(&engine.last_render_alpha));
         }
-        assert_eq!(engine.world.tick_count(), 16, "50 frames * 16 ms = 16 ticks");
+        assert_eq!(
+            engine.world.tick_count(),
+            16,
+            "50 frames * 16 ms = 16 ticks"
+        );
         assert_eq!(engine.dropped_sim_time_ms, 0.0, "16 ms frames drop nothing");
     }
 
@@ -1597,8 +1621,11 @@ mod tests {
         assert_eq!(engine.client_view.tick, 0);
         assert_eq!(engine.sim_accumulator_ms, 0.0);
         assert_eq!(engine.dropped_sim_time_ms, 0.0);
-        assert!(engine.entity_perspective.fov_dirty);
-        assert!(engine.entity_perspective.visible.is_empty());
+        // Lifecycle rebuild recomputes the perspective exactly once.
+        assert!(!engine.entity_perspective.fov_dirty);
+        assert_eq!(engine.entity_perspective.fov_recompute_count, 1);
+        assert!(!engine.entity_perspective.visible.is_empty());
+        assert!(engine.entity_perspective.memory.is_empty());
         assert!(
             !engine.client_view.chunks.is_empty(),
             "lifecycle rebuild projects the fresh window"
@@ -1646,7 +1673,11 @@ mod tests {
         assert_eq!(engine.client_view.tick, 0);
         assert_eq!(engine.sim_accumulator_ms, 0.0);
         assert_eq!(engine.dropped_sim_time_ms, 0.0);
-        assert!(engine.entity_perspective.fov_dirty);
+        // Import rebuilds the perspective from scratch: one recompute, no
+        // stale memory from the previous world.
+        assert!(!engine.entity_perspective.fov_dirty);
+        assert_eq!(engine.entity_perspective.fov_recompute_count, 1);
+        assert!(engine.entity_perspective.memory.is_empty());
         assert!(
             engine
                 .client_view
@@ -1654,6 +1685,141 @@ mod tests {
                 .iter()
                 .all(|entity| entity.prev_xy == entity.curr_xy),
             "import reinitializes interpolation history"
+        );
+    }
+
+    /// Stage 5: idle frames (no fixed tick) never recompute FOV.
+    #[test]
+    fn idle_frames_never_recompute_fov() {
+        let mut engine = focused_engine((640, 480));
+        // Boot lifecycle performed exactly one recompute.
+        assert_eq!(engine.entity_perspective.fov_recompute_count, 1);
+        assert!(!engine.entity_perspective.fov_dirty);
+
+        for _ in 0..10 {
+            engine.input.sampled.dt_ms = 1.0; // never reaches a fixed tick
+            let _ = engine.frame();
+        }
+
+        assert_eq!(engine.world.tick_count(), 0, "no fixed tick ran");
+        assert_eq!(
+            engine.entity_perspective.fov_recompute_count, 1,
+            "idle frames must not recompute FOV"
+        );
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(debug["worldRender"]["fovRecomputeCount"].as_u64(), Some(1));
+        assert_eq!(debug["worldRender"]["fovDirty"].as_bool(), Some(false));
+    }
+
+    /// Stage 5: exactly one recompute per fixed tick that changes the
+    /// entity's discrete FOV origin; interpolation-only progress causes none.
+    #[test]
+    fn origin_changing_tick_recomputes_exactly_once() {
+        let mut engine = focused_engine((640, 480));
+        // Default 1x1x1 world: the projection window is always the single
+        // chunk, so only discrete origin changes can schedule recomputes
+        // (the play world would also recompute while the follow camera's
+        // projection window settles, exactly like the legacy scheduler).
+        engine.reset_for_harness();
+        let base = engine.entity_perspective.fov_recompute_count;
+        assert_eq!(base, 1, "lifecycle rebuild recomputed once");
+
+        // Ticks without origin/terrain/mode changes never recompute.
+        for _ in 0..3 {
+            engine.input.sampled.dt_ms = SIM_TICK_MS;
+            let _ = engine.frame();
+        }
+        assert_eq!(engine.world.tick_count(), 3);
+        assert_eq!(engine.entity_perspective.fov_recompute_count, base);
+
+        // Start a one-tile move (movement_ticks_per_tile == 10) and step one
+        // fixed tick per frame: interpolation ticks recompute nothing; the
+        // single tick that changes the discrete origin recomputes once.
+        let start = engine.primary_entity_position().expect("player");
+        engine
+            .world
+            .send_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(-1, 0, 0),
+            })
+            .expect("starter room west move");
+        let mut origin_change_ticks = 0_u32;
+        let mut count = engine.entity_perspective.fov_recompute_count;
+        let mut position = start;
+        for _ in 0..12 {
+            engine.input.sampled.dt_ms = SIM_TICK_MS;
+            let _ = engine.frame();
+            let next_position = engine.primary_entity_position().expect("player");
+            let next_count = engine.entity_perspective.fov_recompute_count;
+            if next_position == position {
+                assert_eq!(
+                    next_count, count,
+                    "interpolation-only tick must not recompute"
+                );
+            } else {
+                origin_change_ticks += 1;
+                assert_eq!(
+                    next_count,
+                    count + 1,
+                    "an origin-changing tick recomputes exactly once"
+                );
+            }
+            position = next_position;
+            count = next_count;
+        }
+        assert_eq!(origin_change_ticks, 1, "the move landed exactly once");
+        assert_ne!(position, start);
+        assert_eq!(count, base + 1);
+    }
+
+    /// Stage 5: master-mode ticks clear visible state but preserve memory;
+    /// returning to entity mode recomputes and restores visibility.
+    #[test]
+    fn master_tick_clears_visible_preserves_memory_and_entity_restores() {
+        let mut engine = focused_engine((640, 480));
+        // Build memory: complete a one-tile move.
+        engine
+            .world
+            .send_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(-1, 0, 0),
+            })
+            .expect("starter room west move");
+        for _ in 0..12 {
+            engine.input.sampled.dt_ms = SIM_TICK_MS;
+            let _ = engine.frame();
+        }
+        let visible = engine.entity_perspective.visible_tile_count();
+        let remembered = engine.entity_perspective.remembered_tile_count();
+        assert!(visible > 0);
+        assert!(remembered > 0, "the move created perspective memory");
+        let count = engine.entity_perspective.fov_recompute_count;
+
+        // Master-mode fixed tick: visible cleared, memory preserved, and
+        // the clear is not counted as a recompute.
+        engine.view.view_mode = WorldViewMode::Master;
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        assert_eq!(engine.entity_perspective.visible_tile_count(), 0);
+        assert_eq!(
+            engine.entity_perspective.remembered_tile_count(),
+            remembered
+        );
+        assert_eq!(engine.entity_perspective.fov_recompute_count, count);
+        assert!(!engine.entity_perspective.fov_dirty);
+        assert_eq!(engine.world_render_stats.visible_tiles, 0);
+
+        // Back to entity mode: the next fixed tick recomputes exactly once
+        // and restores the same visibility; memory is unchanged (it is
+        // disjoint from the restored visible set).
+        engine.view.view_mode = WorldViewMode::Entity;
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        assert_eq!(engine.entity_perspective.fov_recompute_count, count + 1);
+        assert_eq!(engine.entity_perspective.visible_tile_count(), visible);
+        assert_eq!(
+            engine.entity_perspective.remembered_tile_count(),
+            remembered
         );
     }
 
@@ -1686,7 +1852,8 @@ mod tests {
         let s2 = world_hash(&engine);
 
         // State 3: default-world entity movement (FOV motion + memory).
-        engine.world
+        engine
+            .world
             .send_command(WorldCommand::MoveEntity {
                 id: 1,
                 direction: Vec3i::new(-1, 0, 0),

@@ -515,6 +515,69 @@ const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
       "perfFixtureRebless",
     ],
   }],
+  [5, {
+    acceptTask: "deno task engine:accept-stage5",
+    requiredCommands: acceptanceLaneCommands,
+    baseline: {
+      label: "Stage 4",
+      evidencePath:
+        "docs/design/checkpoints/evidence/engine-render-hot-path-stage-4-perf.json",
+    },
+    // Stage 5 records 133 passing workspace tests (FOV bitmap parity,
+    // perspective memory persistence, tick-exit scheduling, master-mode
+    // clear/preserve, per-column revisions); a decrease is a red gate.
+    rustTests: { command: "deno task engine:test", minimumPassed: 133 },
+    // The bitmap-perspective renderer keeps zero WorldSim::snapshot() calls
+    // on every Stage 4 frame path.
+    snapshotMatrix: {
+      idle: 0,
+      tick: 0,
+      movement: 0,
+      camera: 0,
+      zoom: 0,
+      viewZ: 0,
+      resize: 0,
+      master: 0,
+      entity: 0,
+      chat: 0,
+      shell: 0,
+    },
+    snapshotCallsLastFrame: 0,
+    // Stage 5 changes no authoritative state: the Stage 4 all-resident
+    // play-world hash must hold exactly.
+    worldStateHash: "fnv1a64:718bb0099657e9aa",
+    // Stage 5 tightens the 20-frame median ceiling to 250 ms.
+    ceilingMs: 250,
+    pathState: {
+      zoomChanged: true,
+      viewZDelta: 1,
+      framebufferChanged: true,
+      masterMode: "master",
+      entityMode: "entity",
+      shellOpen: true,
+    },
+    requiredSemantics: {
+      // "Draw hash unchanged from Stage 4": the Stage 3 world-layer parity
+      // reference must hold exactly through the bitmap/tick-exit-FOV cutover.
+      worldDrawHash: "fnv1a64:c55ac880b00ac4d0",
+      // Bounded lag handling must not discard simulated time at the
+      // deterministic 16 ms harness pacing.
+      droppedSimTimeMs: 0,
+    },
+    // Stage 5 authorizes no golden changes ("unchanged from Stage 4").
+    stageOwnedKeys: [
+      "snapshotMatrix",
+      "rustWorkspaceTests",
+      "perfMedianVsStage4",
+      "worldDrawHash",
+      "worldStateHash",
+      "droppedSimTimeMs",
+      "fovRecomputeDistribution",
+      "mvpFovRecomputeCount",
+      "stage5ContractTests",
+      "perfFixtureCeiling",
+    ],
+  }],
 ]);
 const spec = generatedStageSpecs.get(stage);
 assert(stage === 0 || spec, `stage ${stage} has no validation profile`);

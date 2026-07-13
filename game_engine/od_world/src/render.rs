@@ -1,8 +1,10 @@
-//! World renderer (Stage 4): consumes the projected [`ClientView`].
+//! World renderer (Stage 5): consumes the projected [`ClientView`] plus an
+//! **immutable** [`EntityPerspective`].
 //!
-//! Render never reaches `WorldState` or a `WorldSnapshot`: floor emission,
-//! the player quad, occlusion, topmost scans, and the legacy FOV all read
-//! the locally projected `ClientView` (plus [`VisibilityState`] memory).
+//! Render never reaches `WorldState` or a `WorldSnapshot`, and it no longer
+//! recomputes FOV: perspective bitmaps/memory are maintained at tick exit
+//! (or lifecycle / explicit view-mode changes) by `crate::project`. Render
+//! mutates only its own caches and the output arenas.
 //!
 //! Fail-closed lookup rules:
 //! - Positions outside the world are known void ([`BlockType::Air`]),
@@ -12,17 +14,16 @@
 
 use std::collections::{HashMap, HashSet};
 
-use od_core::client_view::{ClientView, EntityView};
+use od_core::client_view::{ClientView, EntityPerspective, EntityView};
 use od_core::world::chunk::{CHUNK_AREA, SUPPORTED_CHUNK_EDGE, chunk_min_world_position};
 use od_core::{
     BlockType, DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD, DrawCmd, EntitySnapshot, LocalWorldView,
-    TEXTURE_ID_FLOOR, TEXTURE_ID_SPRITE, Vec3i, WorldAtlasQuadInstance, WorldViewMode,
+    TEXTURE_ID_FLOOR, TEXTURE_ID_SPRITE, Vec3i, Vec3u, WorldAtlasQuadInstance, WorldViewMode,
     world_position_to_chunk_voxel,
 };
 
 const TILE_SIZE_PX: f32 = 64.0;
 const Z_LEVELS_BELOW: i32 = 5;
-const FOV_RADIUS: i32 = 20;
 pub const MAX_WORLD_ATLAS_INSTANCES_PER_DRAW: usize = 8192;
 const FLOOR_ATLAS_FRAMES: f32 = 31.0;
 const FLOOR_FRAME: f32 = 5.0;
@@ -44,75 +45,14 @@ pub enum TileVisibility {
     Unseen,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct TileMemory {
-    block: BlockType,
-}
-
-#[derive(Debug, Clone)]
-pub struct VisibilityState {
-    visible: HashSet<Vec3i>,
-    memory: HashMap<Vec3i, TileMemory>,
-    fov_dirty: bool,
-    fov_recompute_count: u64,
-}
-
-impl Default for VisibilityState {
-    fn default() -> Self {
-        Self {
-            visible: HashSet::new(),
-            memory: HashMap::new(),
-            fov_dirty: true,
-            fov_recompute_count: 0,
-        }
-    }
-}
-
-impl VisibilityState {
-    pub fn reset(&mut self) {
-        self.visible.clear();
-        self.memory.clear();
-        self.fov_dirty = true;
-        self.fov_recompute_count = 0;
-    }
-
-    pub fn mark_fov_dirty(&mut self) {
-        self.fov_dirty = true;
-    }
-
-    #[must_use]
-    pub fn fov_dirty(&self) -> bool {
-        self.fov_dirty
-    }
-
-    #[must_use]
-    pub fn fov_recompute_count(&self) -> u64 {
-        self.fov_recompute_count
-    }
-
-    #[must_use]
-    pub fn visible_count(&self) -> usize {
-        self.visible.len()
-    }
-
-    #[must_use]
-    pub fn remembered_count(&self) -> usize {
-        self.memory.len()
-    }
-
-    #[must_use]
-    pub fn visibility_at(&self, pos: Vec3i) -> TileVisibility {
-        if self.visible.contains(&pos) {
-            TileVisibility::Visible
-        } else if self.memory.contains_key(&pos) {
-            TileVisibility::Remembered
-        } else {
-            TileVisibility::Unseen
-        }
-    }
-
-    fn remembered_block_at(&self, pos: Vec3i) -> Option<BlockType> {
-        self.memory.get(&pos).map(|memory| memory.block)
+/// Perspective classification for one tile (bitmap + memory lookup).
+fn tile_visibility(perspective: &EntityPerspective, dims: Vec3u, pos: Vec3i) -> TileVisibility {
+    if perspective.is_visible(pos, dims) {
+        TileVisibility::Visible
+    } else if perspective.remembered_block(pos, dims).is_some() {
+        TileVisibility::Remembered
+    } else {
+        TileVisibility::Unseen
     }
 }
 
@@ -322,31 +262,29 @@ pub struct RenderOutput {
 
 pub fn render(
     input: RenderInput<'_>,
-    visibility: &mut VisibilityState,
+    perspective: &EntityPerspective,
     caches: &mut RenderCaches,
     atlas_quads: &mut Vec<WorldAtlasQuadInstance>,
     draw_cmds: &mut Vec<DrawCmd>,
 ) -> RenderOutput {
-    if input.view.view_mode == WorldViewMode::Entity {
-        if visibility.fov_dirty {
-            recompute_fov(input.client, primary_entity(input.client), visibility);
-            visibility.fov_dirty = false;
-            visibility.fov_recompute_count = visibility.fov_recompute_count.saturating_add(1);
-        }
+    // Visible tiles are an entity-mode concept; master mode paints terrain
+    // directly (legacy parity: the set-based renderer cleared the visible
+    // set on every master frame and therefore reported zero).
+    let visible_tiles = if input.view.view_mode == WorldViewMode::Entity {
+        perspective.visible_tile_count()
     } else {
-        visibility.visible.clear();
-    }
-
+        0
+    };
     let mut stats = RenderStats {
-        visible_tiles: u32::try_from(visibility.visible_count()).unwrap_or(u32::MAX),
-        remembered_tiles: u32::try_from(visibility.remembered_count()).unwrap_or(u32::MAX),
+        visible_tiles: u32::try_from(visible_tiles).unwrap_or(u32::MAX),
+        remembered_tiles: u32::try_from(perspective.remembered_tile_count()).unwrap_or(u32::MAX),
         ..RenderStats::default()
     };
 
     emit_floor_quads(
         input.client,
         input.view,
-        visibility,
+        perspective,
         &mut caches.topmost,
         atlas_quads,
         draw_cmds,
@@ -354,7 +292,7 @@ pub fn render(
     );
 
     let player_start = atlas_quads.len();
-    emit_player_quad(&input, visibility, atlas_quads, &mut stats);
+    emit_player_quad(&input, perspective, atlas_quads, &mut stats);
     push_cmd(
         draw_cmds,
         player_start,
@@ -395,7 +333,7 @@ fn push_cmd(
 fn emit_floor_quads(
     client: &ClientView,
     view: &LocalWorldView,
-    visibility: &VisibilityState,
+    perspective: &EntityPerspective,
     topmost: &mut TopmostCache,
     atlas_quads: &mut Vec<WorldAtlasQuadInstance>,
     draw_cmds: &mut Vec<DrawCmd>,
@@ -418,7 +356,7 @@ fn emit_floor_quads(
                 let tile_y = base.y + ty;
                 let bits = mask[usize::try_from(ty * edge + tx).expect("tile index fits in usize")];
                 let Some((floor_z, visibility_state)) =
-                    topmost_floor(bits, visibility, view, tile_x, tile_y)
+                    topmost_floor(bits, perspective, client.world_chunks, view, tile_x, tile_y)
                 else {
                     continue;
                 };
@@ -473,7 +411,8 @@ fn emit_floor_quads(
 /// skipped (legacy semantics preserved exactly).
 fn topmost_floor(
     solid_bits: u8,
-    visibility: &VisibilityState,
+    perspective: &EntityPerspective,
+    dims: Vec3u,
     view: &LocalWorldView,
     tile_x: i32,
     tile_y: i32,
@@ -483,14 +422,14 @@ fn topmost_floor(
         let terrain_solid = solid_bits & (1 << offset) != 0;
         if view.view_mode == WorldViewMode::Entity {
             let pos = Vec3i::new(tile_x, tile_y, z);
-            match visibility.visibility_at(pos) {
+            match tile_visibility(perspective, dims, pos) {
                 TileVisibility::Visible => {
                     if terrain_solid {
                         return Some((z, TileVisibility::Visible));
                     }
                 }
                 TileVisibility::Remembered => {
-                    if visibility.remembered_block_at(pos) == Some(BlockType::SolidStone) {
+                    if perspective.remembered_block(pos, dims) == Some(BlockType::SolidStone) {
                         return Some((z, TileVisibility::Remembered));
                     }
                 }
@@ -505,7 +444,7 @@ fn topmost_floor(
 
 fn emit_player_quad(
     input: &RenderInput<'_>,
-    visibility: &VisibilityState,
+    perspective: &EntityPerspective,
     atlas_quads: &mut Vec<WorldAtlasQuadInstance>,
     stats: &mut RenderStats,
 ) {
@@ -517,7 +456,7 @@ fn emit_player_quad(
         return;
     }
     if input.view.view_mode == WorldViewMode::Entity
-        && visibility.visibility_at(player.position) != TileVisibility::Visible
+        && !perspective.is_visible(player.position, input.client.world_chunks)
     {
         return;
     }
@@ -545,137 +484,6 @@ fn emit_player_quad(
     stats.player_quads = 1;
 }
 
-fn recompute_fov(
-    client: &ClientView,
-    primary: Option<&EntityView>,
-    visibility: &mut VisibilityState,
-) {
-    let Some(player) = primary else {
-        visibility.visible.clear();
-        return;
-    };
-    let position = player.position;
-    let previous_visible = std::mem::take(&mut visibility.visible);
-    let mut next_visible = HashSet::new();
-    let radius_sq = FOV_RADIUS * FOV_RADIUS;
-
-    for dz in -FOV_RADIUS..=FOV_RADIUS {
-        for dy in -FOV_RADIUS..=FOV_RADIUS {
-            for dx in -FOV_RADIUS..=FOV_RADIUS {
-                if dx * dx + dy * dy + dz * dz > radius_sq {
-                    continue;
-                }
-                let candidate = Vec3i::new(position.x + dx, position.y + dy, position.z + dz);
-                if has_los(client, position, candidate) {
-                    next_visible.insert(candidate);
-                }
-            }
-        }
-    }
-
-    let mut wall_reveal = Vec::new();
-    for &pos in &next_visible {
-        if known_solid(client, pos) {
-            continue;
-        }
-        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
-            let wall = Vec3i::new(pos.x + dx, pos.y + dy, pos.z);
-            if !next_visible.contains(&wall) && known_solid(client, wall) {
-                wall_reveal.push(wall);
-            }
-        }
-    }
-    next_visible.extend(wall_reveal);
-
-    let lower_half: Vec<Vec3i> = next_visible
-        .iter()
-        .copied()
-        .filter(|pos| {
-            pos.z <= position.z && projected_block_at(client, *pos) == Some(BlockType::Air)
-        })
-        .collect();
-    for pos in lower_half {
-        next_visible.insert(Vec3i::new(pos.x, pos.y, pos.z - 1));
-    }
-
-    for pos in previous_visible {
-        if !next_visible.contains(&pos) {
-            // Fail closed: memorize only blocks whose value is known.
-            if let Some(block) = projected_block_at(client, pos) {
-                visibility.memory.insert(pos, TileMemory { block });
-            }
-        }
-    }
-    for pos in &next_visible {
-        visibility.memory.remove(pos);
-    }
-    visibility.visible = next_visible;
-}
-
-fn has_los(client: &ClientView, from: Vec3i, to: Vec3i) -> bool {
-    if from == to {
-        return true;
-    }
-    let dir_x = to.x as f32 + 0.5 - (from.x as f32 + 0.5);
-    let dir_y = to.y as f32 + 0.5 - (from.y as f32 + 0.5);
-    let dir_z = to.z as f32 + 0.5 - (from.z as f32 + 0.5);
-    let step_x = if dir_x >= 0.0 { 1 } else { -1 };
-    let step_y = if dir_y >= 0.0 { 1 } else { -1 };
-    let step_z = if dir_z >= 0.0 { 1 } else { -1 };
-    let t_delta_x = if dir_x == 0.0 {
-        f32::INFINITY
-    } else {
-        1.0 / dir_x.abs()
-    };
-    let t_delta_y = if dir_y == 0.0 {
-        f32::INFINITY
-    } else {
-        1.0 / dir_y.abs()
-    };
-    let t_delta_z = if dir_z == 0.0 {
-        f32::INFINITY
-    } else {
-        1.0 / dir_z.abs()
-    };
-    let mut t_max_x = if dir_x == 0.0 {
-        f32::INFINITY
-    } else {
-        0.5 / dir_x.abs()
-    };
-    let mut t_max_y = if dir_y == 0.0 {
-        f32::INFINITY
-    } else {
-        0.5 / dir_y.abs()
-    };
-    let mut t_max_z = if dir_z == 0.0 {
-        f32::INFINITY
-    } else {
-        0.5 / dir_z.abs()
-    };
-    let mut cursor = from;
-    let max_steps = (from.x - to.x).abs() + (from.y - to.y).abs() + (from.z - to.z).abs() + 1;
-
-    for _ in 0..max_steps {
-        if t_max_x <= t_max_y && t_max_x <= t_max_z {
-            cursor.x += step_x;
-            t_max_x += t_delta_x;
-        } else if t_max_y <= t_max_z {
-            cursor.y += step_y;
-            t_max_y += t_delta_y;
-        } else {
-            cursor.z += step_z;
-            t_max_z += t_delta_z;
-        }
-        if cursor == to {
-            return true;
-        }
-        if opaque_for_los(client, cursor) {
-            return false;
-        }
-    }
-    true
-}
-
 fn player_occluded(client: &ClientView, player: &EntityView, view_z: i32) -> bool {
     let player_pos = player.position;
     if player_pos.z == view_z {
@@ -698,7 +506,7 @@ fn player_occluded(client: &ClientView, player: &EntityView, view_z: i32) -> boo
 ///
 /// - Outside the world: `Some(Air)` (known void, legacy parity).
 /// - Inside the world but chunk not projected: `None` (missing).
-fn projected_block_at(client: &ClientView, pos: Vec3i) -> Option<BlockType> {
+pub(crate) fn projected_block_at(client: &ClientView, pos: Vec3i) -> Option<BlockType> {
     match world_position_to_chunk_voxel(pos, client.world_chunks) {
         None => Some(BlockType::Air),
         Some((chunk, voxel)) => client.chunks.get(&chunk).map(|view| view.blocks[voxel]),
@@ -711,13 +519,7 @@ fn known_solid(client: &ClientView, pos: Vec3i) -> bool {
     projected_block_at(client, pos) == Some(BlockType::SolidStone)
 }
 
-/// LOS blocker: known solid or an unexpectedly missing required chunk
-/// (fail closed). Out-of-world void stays transparent (legacy parity).
-fn opaque_for_los(client: &ClientView, pos: Vec3i) -> bool {
-    !matches!(projected_block_at(client, pos), Some(BlockType::Air))
-}
-
-fn primary_entity(client: &ClientView) -> Option<&EntityView> {
+pub(crate) fn primary_entity(client: &ClientView) -> Option<&EntityView> {
     client
         .primary_entity_id
         .and_then(|id| client.entity(id))
@@ -763,7 +565,7 @@ mod tests {
     use od_core::world::chunk::chunk_index_to_coord;
     use od_core::{Vec3u, WorldConfig, WorldViewMode};
 
-    use crate::project::{project_entities, sync_view_chunks};
+    use crate::project::{project_entities, recompute_entity_perspective, sync_view_chunks};
     use crate::{WorldSim, test_util};
 
     use super::*;
@@ -802,7 +604,7 @@ mod tests {
     fn render_once(
         client: &ClientView,
         view: &LocalWorldView,
-        visibility: &mut VisibilityState,
+        perspective: &EntityPerspective,
         caches: &mut RenderCaches,
         atlas: &mut Vec<WorldAtlasQuadInstance>,
         cmds: &mut Vec<DrawCmd>,
@@ -815,11 +617,18 @@ mod tests {
                 view,
                 smooth_player_xy: None,
             },
-            visibility,
+            perspective,
             caches,
             atlas,
             cmds,
         )
+    }
+
+    /// Tick-time perspective for a projected client view (entity mode).
+    fn recomputed_perspective(client: &ClientView) -> EntityPerspective {
+        let mut perspective = EntityPerspective::default();
+        recompute_entity_perspective(&mut perspective, client);
+        perspective
     }
 
     #[test]
@@ -830,7 +639,7 @@ mod tests {
         view.view_z = sim.entity_position(1).expect("player").z;
         view.view_mode = WorldViewMode::Master;
         view.visible_chunks = all_chunks(&sim);
-        let mut visibility = VisibilityState::default();
+        let perspective = EntityPerspective::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(4096);
         let mut cmds = Vec::with_capacity(8);
@@ -838,7 +647,7 @@ mod tests {
         let out = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -865,7 +674,7 @@ mod tests {
         view.view_z = sim.entity_position(1).expect("player").z;
         view.view_mode = WorldViewMode::Master;
         view.visible_chunks = all_chunks(&sim);
-        let mut visibility = VisibilityState::default();
+        let perspective = EntityPerspective::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(24_000);
         let mut cmds = Vec::with_capacity(8);
@@ -873,7 +682,7 @@ mod tests {
         let out = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -888,56 +697,62 @@ mod tests {
         assert_eq!(cmds.last().expect("player cmd").reserved, TEXTURE_ID_SPRITE);
     }
 
+    /// Stage 5: render consumes the perspective immutably — an unchanged
+    /// perspective renders value-identical entity-mode output, and stats
+    /// mirror the bitmap/memory counts without render-side recomputation.
     #[test]
-    fn entity_mode_fov_recomputes_only_when_dirty() {
+    fn entity_mode_renders_from_immutable_perspective_bitmaps() {
         let sim = WorldSim::new(WorldConfig::default(), true);
         let client = full_client_view(&sim);
         let mut view = LocalWorldView::default();
         view.view_z = sim.entity_position(1).expect("player").z;
         view.visible_chunks = all_chunks(&sim);
-        let mut visibility = VisibilityState::default();
+        let perspective = recomputed_perspective(&client);
+        assert_eq!(perspective.fov_recompute_count, 1);
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(4096);
         let mut cmds = Vec::with_capacity(8);
 
-        let _ = render_once(
+        let first = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
         );
-        let first_count = visibility.fov_recompute_count();
-        assert_eq!(first_count, 1);
-        assert!(!visibility.fov_dirty());
+        assert!(first.stats.floor_quads > 0);
+        assert_eq!(first.stats.player_quads, 1);
+        assert_eq!(
+            first.stats.visible_tiles as usize,
+            perspective.visible_tile_count()
+        );
+        let first_quads = atlas.clone();
 
-        let _ = render_once(
+        // Rendering again from the same immutable perspective is
+        // value-identical and performed zero recomputes.
+        let second = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
         );
-
-        assert_eq!(visibility.fov_recompute_count(), first_count);
-        visibility.mark_fov_dirty();
-        let _ = render_once(
-            &client,
-            &view,
-            &mut visibility,
-            &mut caches,
-            &mut atlas,
-            &mut cmds,
+        assert_eq!(perspective.fov_recompute_count, 1);
+        assert_eq!(second.stats.floor_quads, first.stats.floor_quads);
+        assert_eq!(atlas.len(), first_quads.len());
+        assert!(
+            atlas.iter().zip(first_quads.iter()).all(|(a, b)| {
+                a.pos == b.pos && a.uv_rect == b.uv_rect && a.tint == b.tint && a.alpha == b.alpha
+            }),
+            "identical perspective => identical emission"
         );
-        assert_eq!(visibility.fov_recompute_count(), first_count + 1);
     }
 
     #[test]
     fn entity_mode_fov_creates_memory_after_motion() {
         let mut sim = WorldSim::new(WorldConfig::default(), true);
-        let mut visibility = VisibilityState::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(4096);
         let mut cmds = Vec::with_capacity(8);
@@ -945,16 +760,18 @@ mod tests {
         let mut view = LocalWorldView::default();
         view.view_z = sim.entity_position(1).expect("player").z;
         view.visible_chunks = all_chunks(&sim);
+        let mut perspective = EntityPerspective::default();
+        recompute_entity_perspective(&mut perspective, &client);
 
-        let _ = render_once(
+        let out = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
         );
-        let visible_before = visibility.visible_count();
+        let visible_before = out.stats.visible_tiles;
 
         sim.send_command(od_core::WorldCommand::MoveEntity {
             id: 1,
@@ -963,24 +780,25 @@ mod tests {
         .expect("starter room west move");
         sim.step_ticks(10);
         sync_full_client_view(&sim, &mut client);
-        visibility.mark_fov_dirty();
-        let _ = render_once(
+        // Tick-exit recompute after the origin change.
+        recompute_entity_perspective(&mut perspective, &client);
+        let out = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
         );
 
         assert!(visible_before > 0);
-        assert!(visibility.remembered_count() > 0);
+        assert!(out.stats.remembered_tiles > 0);
+        assert_eq!(perspective.fov_recompute_count, 2);
     }
 
     #[test]
     fn master_mode_preserves_entity_fov_memory() {
         let mut sim = WorldSim::new(WorldConfig::default(), true);
-        let mut visibility = VisibilityState::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(4096);
         let mut cmds = Vec::with_capacity(8);
@@ -988,15 +806,9 @@ mod tests {
         let mut view = LocalWorldView::default();
         view.view_z = sim.entity_position(1).expect("player").z;
         view.visible_chunks = all_chunks(&sim);
+        let mut perspective = EntityPerspective::default();
+        recompute_entity_perspective(&mut perspective, &client);
 
-        let _ = render_once(
-            &client,
-            &view,
-            &mut visibility,
-            &mut caches,
-            &mut atlas,
-            &mut cmds,
-        );
         sim.send_command(od_core::WorldCommand::MoveEntity {
             id: 1,
             direction: Vec3i::new(-1, 0, 0),
@@ -1004,29 +816,32 @@ mod tests {
         .expect("starter room west move");
         sim.step_ticks(10);
         sync_full_client_view(&sim, &mut client);
-        visibility.mark_fov_dirty();
-        let _ = render_once(
-            &client,
-            &view,
-            &mut visibility,
-            &mut caches,
-            &mut atlas,
-            &mut cmds,
-        );
-        let remembered_before_master = visibility.remembered_count();
+        recompute_entity_perspective(&mut perspective, &client);
+        let remembered_before_master = perspective.remembered_tile_count();
         assert!(remembered_before_master > 0);
 
+        // Master-mode maintenance clears visible state but preserves memory.
         view.view_mode = WorldViewMode::Master;
-        let _ = render_once(
+        perspective.clear_visible_preserve_memory();
+        let out = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
         );
 
-        assert_eq!(visibility.remembered_count(), remembered_before_master);
+        assert_eq!(perspective.visible_tile_count(), 0);
+        assert_eq!(out.stats.visible_tiles, 0);
+        assert_eq!(
+            perspective.remembered_tile_count(),
+            remembered_before_master
+        );
+        assert_eq!(
+            out.stats.remembered_tiles as usize,
+            remembered_before_master
+        );
     }
 
     #[test]
@@ -1045,7 +860,7 @@ mod tests {
         view.view_z = sim.entity_position(1).expect("player").z;
         view.view_mode = WorldViewMode::Master;
         view.visible_chunks = all_chunks(&sim);
-        let mut visibility = VisibilityState::default();
+        let perspective = EntityPerspective::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(24_000);
         let mut cmds = Vec::with_capacity(8);
@@ -1053,7 +868,7 @@ mod tests {
         let out = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1091,7 +906,7 @@ mod tests {
         view.view_z = sim.entity_position(1).expect("player").z;
         view.view_mode = WorldViewMode::Master;
         view.visible_chunks = all_chunks(&sim);
-        let mut visibility = VisibilityState::default();
+        let perspective = EntityPerspective::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(4096);
         let mut cmds = Vec::with_capacity(8);
@@ -1099,7 +914,7 @@ mod tests {
         let first = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1111,7 +926,7 @@ mod tests {
         let second = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1137,7 +952,7 @@ mod tests {
         let _ = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1165,7 +980,7 @@ mod tests {
         view.view_z = 2;
         view.view_mode = WorldViewMode::Master;
         view.visible_chunks = vec![Vec3i::new(0, 0, 0)];
-        let mut visibility = VisibilityState::default();
+        let perspective = EntityPerspective::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(4096);
         let mut cmds = Vec::with_capacity(8);
@@ -1173,7 +988,7 @@ mod tests {
         let _ = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1199,7 +1014,7 @@ mod tests {
         let _ = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1225,7 +1040,7 @@ mod tests {
         let _ = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1244,7 +1059,7 @@ mod tests {
         let _ = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1267,7 +1082,7 @@ mod tests {
         view.view_z = 0;
         view.view_mode = WorldViewMode::Master;
         view.visible_chunks = vec![Vec3i::new(0, 0, 0), Vec3i::new(1, 0, 0)];
-        let mut visibility = VisibilityState::default();
+        let perspective = EntityPerspective::default();
         let mut caches = RenderCaches::default();
         let mut atlas = Vec::with_capacity(8192);
         let mut cmds = Vec::with_capacity(8);
@@ -1275,7 +1090,7 @@ mod tests {
         let _ = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,
@@ -1286,7 +1101,7 @@ mod tests {
         let _ = render_once(
             &client,
             &view,
-            &mut visibility,
+            &perspective,
             &mut caches,
             &mut atlas,
             &mut cmds,

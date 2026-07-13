@@ -3,7 +3,7 @@
   "profile": "release",
   "wasm": {
     "file": "od_wasm_bg.wasm",
-    "sha256": "b28520a382a07efa13ea29c59f4756f901eb894050327bdf286d5d859dc29ab0"
+    "sha256": "0ec930339190e15a52572ea8069b61f5cd642b18ea9c849dbc01a10ffa634519"
   },
   "transforms": {
     "wasmBindgen": {

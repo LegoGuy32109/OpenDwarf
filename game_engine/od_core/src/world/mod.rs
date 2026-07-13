@@ -14,7 +14,8 @@ mod vec;
 pub use block::BlockType;
 pub use chunk::{
     CHUNK_AREA, CHUNK_VOLUME, SUPPORTED_CHUNK_EDGE, VISIBILITY_WORDS, chunk_coord_to_index,
-    chunk_index_to_coord, chunk_min_world_position, world_position_to_chunk_voxel,
+    chunk_index_to_coord, chunk_min_world_position, chunk_min_world_position_unbounded,
+    position_to_chunk_voxel_unbounded, world_position_to_chunk_voxel,
 };
 pub use command::{MoveEntityError, WorldCommand, WorldCommandError};
 pub use config::{

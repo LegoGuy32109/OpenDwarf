@@ -1,10 +1,10 @@
-//! Shadow ClientView projection (Stage 3).
+//! ClientView projection and tick-time entity perspective (Stages 3 + 5).
 //!
 //! Computes the local projection window from `LocalWorldView`, synchronizes
-//! projected chunk copies against authoritative `WorldState`, and projects
-//! entities with client-owned interpolation history. In Stage 3 the
-//! projection is updated after fixed ticks / lifecycle rebuilds and verified
-//! by tests only; draw output still consumes the legacy snapshot path.
+//! projected chunk copies against authoritative `WorldState`, projects
+//! entities with client-owned interpolation history, and (Stage 5) owns the
+//! tick-exit FOV recomputation that fills the [`EntityPerspective`] bitmaps
+//! and persistent memory consumed immutably by `crate::render`.
 //!
 //! Cameras never mutate authoritative residency here: a desired chunk that is
 //! not simulation-resident is counted as `authority_missing` and removed from
@@ -12,15 +12,18 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use od_core::client_view::{ChunkView, ClientView, EntityView};
+use od_core::client_view::{
+    ChunkView, ClientView, EntityPerspective, EntityView, encode_memory_block,
+};
 use od_core::world::chunk::{
-    CHUNK_VOLUME, SUPPORTED_CHUNK_EDGE, chunk_coord_to_index, chunk_min_world_position,
-    world_position_to_chunk_voxel,
+    CHUNK_VOLUME, SUPPORTED_CHUNK_EDGE, VISIBILITY_WORDS, chunk_coord_to_index,
+    chunk_min_world_position, chunk_min_world_position_unbounded,
+    position_to_chunk_voxel_unbounded, world_position_to_chunk_voxel,
 };
 use od_core::{BlockType, LocalWorldView, Vec3i, Vec3u, WorldViewMode};
 
 use crate::WorldState;
-use crate::render::entity_render_position_xy;
+use crate::render::{entity_render_position_xy, primary_entity, projected_block_at};
 
 /// Must match the renderer's world-space tile size (`od_world::render`).
 const TILE_SIZE_PX: f32 = 64.0;
@@ -372,12 +375,574 @@ fn add_fov_support_chunks(resident: &mut BTreeSet<Vec3i>, dims: Vec3u, position:
     }
 }
 
+// ---------------------------------------------------------------------------
+// Stage 5: tick-time FOV recomputation over per-chunk bitmaps.
+// ---------------------------------------------------------------------------
+
+/// One pre-resolved FOV chunk slot.
+enum FovSlot<'a> {
+    /// Entirely outside the world: known void (transparent air).
+    OutOfWorld,
+    /// In the world but missing from the projection: fail closed (opaque
+    /// for LOS, unknown for memory).
+    Missing,
+    /// Projected chunk blocks resolved once before ray traversal.
+    Loaded(&'a [BlockType; CHUNK_VOLUME]),
+}
+
+/// Pre-resolved chunk slots covering the FOV working box
+/// `[origin - (FOV_RADIUS + 1), origin + (FOV_RADIUS + 1)]` (the `+ 1` also
+/// covers wall-reveal neighbors and the lower-half `z - 1` extension).
+///
+/// With radius 20 and the fixed 16 edge the box spans at most 4 chunks per
+/// axis, so at most 64 slots are resolved once; DDA rays then index into
+/// slots with shifts/masks instead of one `HashMap` lookup per step.
+struct FovSlots<'a> {
+    /// World position of the slot grid's minimum voxel (chunk aligned).
+    grid_min_world: Vec3i,
+    /// Chunk coordinate (unbounded grid) of slot `(0, 0, 0)`.
+    base_chunk: Vec3i,
+    /// Slots per axis.
+    slot_dims: [i32; 3],
+    slots: Vec<FovSlot<'a>>,
+}
+
+impl<'a> FovSlots<'a> {
+    fn resolve(client: &'a ClientView, origin: Vec3i) -> Option<Self> {
+        let dims = client.world_chunks;
+        let reach = FOV_RADIUS + 1;
+        let lo = Vec3i::new(origin.x - reach, origin.y - reach, origin.z - reach);
+        let hi = Vec3i::new(origin.x + reach, origin.y + reach, origin.z + reach);
+        let (lo_chunk, _) = position_to_chunk_voxel_unbounded(lo, dims)?;
+        let (hi_chunk, _) = position_to_chunk_voxel_unbounded(hi, dims)?;
+        let grid_min_world = chunk_min_world_position_unbounded(lo_chunk, dims)?;
+        let slot_dims = [
+            hi_chunk.x - lo_chunk.x + 1,
+            hi_chunk.y - lo_chunk.y + 1,
+            hi_chunk.z - lo_chunk.z + 1,
+        ];
+        let capacity = usize::try_from(slot_dims[0] * slot_dims[1] * slot_dims[2]).ok()?;
+        let mut slots = Vec::with_capacity(capacity);
+        for cz in lo_chunk.z..=hi_chunk.z {
+            for cy in lo_chunk.y..=hi_chunk.y {
+                for cx in lo_chunk.x..=hi_chunk.x {
+                    let chunk = Vec3i::new(cx, cy, cz);
+                    let slot = if chunk_coord_to_index(chunk, dims).is_none() {
+                        FovSlot::OutOfWorld
+                    } else {
+                        match client.chunks.get(&chunk) {
+                            Some(view) => FovSlot::Loaded(&view.blocks),
+                            None => FovSlot::Missing,
+                        }
+                    };
+                    slots.push(slot);
+                }
+            }
+        }
+        Some(Self {
+            grid_min_world,
+            base_chunk: lo_chunk,
+            slot_dims,
+            slots,
+        })
+    }
+
+    /// `(slot index, voxel index)` for an in-box position.
+    fn slot_voxel(&self, pos: Vec3i) -> Option<(usize, usize)> {
+        let rel_x = pos.x.checked_sub(self.grid_min_world.x)?;
+        let rel_y = pos.y.checked_sub(self.grid_min_world.y)?;
+        let rel_z = pos.z.checked_sub(self.grid_min_world.z)?;
+        if rel_x < 0
+            || rel_y < 0
+            || rel_z < 0
+            || rel_x >= self.slot_dims[0] * 16
+            || rel_y >= self.slot_dims[1] * 16
+            || rel_z >= self.slot_dims[2] * 16
+        {
+            return None;
+        }
+        let slot =
+            ((rel_z >> 4) * self.slot_dims[1] + (rel_y >> 4)) * self.slot_dims[0] + (rel_x >> 4);
+        let voxel = ((rel_z & 15) << 8) | ((rel_y & 15) << 4) | (rel_x & 15);
+        Some((usize::try_from(slot).ok()?, usize::try_from(voxel).ok()?))
+    }
+
+    /// Chunk coordinate (unbounded grid) of a slot index.
+    fn chunk_coord(&self, slot: usize) -> Vec3i {
+        let slot = i32::try_from(slot).expect("slot index fits in i32");
+        let per_layer = self.slot_dims[0] * self.slot_dims[1];
+        Vec3i::new(
+            self.base_chunk.x + (slot % per_layer) % self.slot_dims[0],
+            self.base_chunk.y + (slot % per_layer) / self.slot_dims[0],
+            self.base_chunk.z + slot / per_layer,
+        )
+    }
+
+    /// Fail-closed block lookup, semantically identical to
+    /// [`projected_block_at`] (which handles the rare out-of-box positions
+    /// reached by the previous-visible memory diff).
+    fn block_at(&self, client: &ClientView, pos: Vec3i) -> Option<BlockType> {
+        match self.slot_voxel(pos) {
+            Some((slot, voxel)) => match &self.slots[slot] {
+                FovSlot::OutOfWorld => Some(BlockType::Air),
+                FovSlot::Missing => None,
+                FovSlot::Loaded(blocks) => Some(blocks[voxel]),
+            },
+            None => projected_block_at(client, pos),
+        }
+    }
+
+    fn known_solid(&self, client: &ClientView, pos: Vec3i) -> bool {
+        self.block_at(client, pos) == Some(BlockType::SolidStone)
+    }
+
+    /// LOS blocker: known solid or an unexpectedly missing required chunk
+    /// (fail closed). Out-of-world void stays transparent (legacy parity).
+    fn opaque_for_los(&self, client: &ClientView, pos: Vec3i) -> bool {
+        !matches!(self.block_at(client, pos), Some(BlockType::Air))
+    }
+}
+
+/// Voxel-grid DDA line of sight over pre-resolved slots. The float math is
+/// byte-identical to the legacy set-based implementation.
+fn has_los(slots: &FovSlots<'_>, client: &ClientView, from: Vec3i, to: Vec3i) -> bool {
+    if from == to {
+        return true;
+    }
+    let dir_x = to.x as f32 + 0.5 - (from.x as f32 + 0.5);
+    let dir_y = to.y as f32 + 0.5 - (from.y as f32 + 0.5);
+    let dir_z = to.z as f32 + 0.5 - (from.z as f32 + 0.5);
+    let step_x = if dir_x >= 0.0 { 1 } else { -1 };
+    let step_y = if dir_y >= 0.0 { 1 } else { -1 };
+    let step_z = if dir_z >= 0.0 { 1 } else { -1 };
+    let t_delta_x = if dir_x == 0.0 {
+        f32::INFINITY
+    } else {
+        1.0 / dir_x.abs()
+    };
+    let t_delta_y = if dir_y == 0.0 {
+        f32::INFINITY
+    } else {
+        1.0 / dir_y.abs()
+    };
+    let t_delta_z = if dir_z == 0.0 {
+        f32::INFINITY
+    } else {
+        1.0 / dir_z.abs()
+    };
+    let mut t_max_x = if dir_x == 0.0 {
+        f32::INFINITY
+    } else {
+        0.5 / dir_x.abs()
+    };
+    let mut t_max_y = if dir_y == 0.0 {
+        f32::INFINITY
+    } else {
+        0.5 / dir_y.abs()
+    };
+    let mut t_max_z = if dir_z == 0.0 {
+        f32::INFINITY
+    } else {
+        0.5 / dir_z.abs()
+    };
+    let mut cursor = from;
+    let max_steps = (from.x - to.x).abs() + (from.y - to.y).abs() + (from.z - to.z).abs() + 1;
+
+    for _ in 0..max_steps {
+        if t_max_x <= t_max_y && t_max_x <= t_max_z {
+            cursor.x += step_x;
+            t_max_x += t_delta_x;
+        } else if t_max_y <= t_max_z {
+            cursor.y += step_y;
+            t_max_y += t_delta_y;
+        } else {
+            cursor.z += step_z;
+            t_max_z += t_delta_z;
+        }
+        if cursor == to {
+            return true;
+        }
+        if slots.opaque_for_los(client, cursor) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Invoke `f` with the voxel index of every set bit.
+fn for_each_set_bit(bits: &[u64; VISIBILITY_WORDS], mut f: impl FnMut(usize)) {
+    for (word_index, word) in bits.iter().enumerate() {
+        let mut word = *word;
+        while word != 0 {
+            let bit = word.trailing_zeros() as usize;
+            f(word_index * 64 + bit);
+            word &= word - 1;
+        }
+    }
+}
+
+const fn voxel_offsets(voxel: usize) -> (i32, i32, i32) {
+    (
+        (voxel & 15) as i32,
+        ((voxel >> 4) & 15) as i32,
+        (voxel >> 8) as i32,
+    )
+}
+
+fn bitmap_get(bits: &[[u64; VISIBILITY_WORDS]], slot: usize, voxel: usize) -> bool {
+    bits[slot][voxel / 64] & (1 << (voxel % 64)) != 0
+}
+
+fn bitmap_set(bits: &mut [[u64; VISIBILITY_WORDS]], slot: usize, voxel: usize) {
+    bits[slot][voxel / 64] |= 1 << (voxel % 64);
+}
+
+/// Tick-time FOV recomputation (Stage 5).
+///
+/// Rebuilds the per-chunk visible bitmaps from the primary entity's radius-20
+/// sphere (LOS + wall reveal + lower-half extension — value-identical to the
+/// legacy set-based algorithm), moves tiles that left visibility into
+/// persistent memory (known blocks only, fail closed), forgets memory for
+/// tiles that became visible again, and bumps `visibility_revision_by_column`
+/// only for XY chunk columns whose visible bits or memory bytes changed.
+///
+/// Counted in `fov_recompute_count`; consumes `fov_dirty`.
+pub fn recompute_entity_perspective(perspective: &mut EntityPerspective, client: &ClientView) {
+    let dims = client.world_chunks;
+    let previous_visible = std::mem::take(&mut perspective.visible);
+    let mut next_visible: HashMap<Vec3i, [u64; VISIBILITY_WORDS]> = HashMap::new();
+
+    let origin = primary_entity(client).map(|entity| entity.position);
+    if let Some(position) = origin
+        && let Some(slots) = FovSlots::resolve(client, position)
+    {
+        let mut bits = vec![[0_u64; VISIBILITY_WORDS]; slots.slots.len()];
+
+        // 1. Radius sphere with DDA line of sight.
+        let radius_sq = FOV_RADIUS * FOV_RADIUS;
+        for dz in -FOV_RADIUS..=FOV_RADIUS {
+            for dy in -FOV_RADIUS..=FOV_RADIUS {
+                for dx in -FOV_RADIUS..=FOV_RADIUS {
+                    if dx * dx + dy * dy + dz * dz > radius_sq {
+                        continue;
+                    }
+                    let candidate = Vec3i::new(position.x + dx, position.y + dy, position.z + dz);
+                    if has_los(&slots, client, position, candidate) {
+                        let (slot, voxel) = slots
+                            .slot_voxel(candidate)
+                            .expect("sphere candidates are inside the working box");
+                        bitmap_set(&mut bits, slot, voxel);
+                    }
+                }
+            }
+        }
+
+        // 2. Wall reveal: visible non-solid tiles reveal adjacent known
+        // solid walls (collected against the pre-reveal set).
+        let mut reveal: Vec<Vec3i> = Vec::new();
+        for slot in 0..bits.len() {
+            let base_chunk = slots.chunk_coord(slot);
+            let Some(base) = chunk_min_world_position_unbounded(base_chunk, dims) else {
+                continue;
+            };
+            let bitmap = bits[slot];
+            for_each_set_bit(&bitmap, |voxel| {
+                let (vx, vy, vz) = voxel_offsets(voxel);
+                let pos = Vec3i::new(base.x + vx, base.y + vy, base.z + vz);
+                if slots.known_solid(client, pos) {
+                    return;
+                }
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    let wall = Vec3i::new(pos.x + dx, pos.y + dy, pos.z);
+                    let Some((wall_slot, wall_voxel)) = slots.slot_voxel(wall) else {
+                        continue;
+                    };
+                    if !bitmap_get(&bits, wall_slot, wall_voxel) && slots.known_solid(client, wall)
+                    {
+                        reveal.push(wall);
+                    }
+                }
+            });
+        }
+        for wall in reveal {
+            let (slot, voxel) = slots
+                .slot_voxel(wall)
+                .expect("wall-reveal neighbors are inside the working box");
+            bitmap_set(&mut bits, slot, voxel);
+        }
+
+        // 3. Lower-half extension: visible air at or below the origin also
+        // reveals the tile one z below (collected before insertion).
+        let mut lower: Vec<Vec3i> = Vec::new();
+        for slot in 0..bits.len() {
+            let base_chunk = slots.chunk_coord(slot);
+            let Some(base) = chunk_min_world_position_unbounded(base_chunk, dims) else {
+                continue;
+            };
+            let bitmap = bits[slot];
+            for_each_set_bit(&bitmap, |voxel| {
+                let (vx, vy, vz) = voxel_offsets(voxel);
+                let pos = Vec3i::new(base.x + vx, base.y + vy, base.z + vz);
+                if pos.z <= position.z && slots.block_at(client, pos) == Some(BlockType::Air) {
+                    lower.push(Vec3i::new(pos.x, pos.y, pos.z - 1));
+                }
+            });
+        }
+        for pos in lower {
+            let (slot, voxel) = slots
+                .slot_voxel(pos)
+                .expect("lower-half extension stays inside the working box");
+            bitmap_set(&mut bits, slot, voxel);
+        }
+
+        // 4. Keep only chunks with at least one visible bit.
+        for (slot, bitmap) in bits.iter().enumerate() {
+            if bitmap.iter().any(|word| *word != 0) {
+                next_visible.insert(slots.chunk_coord(slot), *bitmap);
+            }
+        }
+    }
+
+    // 5. Per-column paint diff + persistent memory update.
+    let mut changed_columns: BTreeSet<(i32, i32)> = BTreeSet::new();
+    for (chunk, bitmap) in &next_visible {
+        if previous_visible.get(chunk) != Some(bitmap) {
+            changed_columns.insert((chunk.x, chunk.y));
+        }
+    }
+    for (chunk, bitmap) in &previous_visible {
+        if !next_visible.contains_key(chunk) && bitmap.iter().any(|word| *word != 0) {
+            changed_columns.insert((chunk.x, chunk.y));
+        }
+    }
+
+    if origin.is_some() {
+        // Tiles that left visibility are memorized when their block value is
+        // known (fail closed); tiles that became visible again are forgotten.
+        // Legacy parity: losing the primary entity clears visibility without
+        // memorizing anything, hence the `origin` guard.
+        for (chunk, old_bits) in &previous_visible {
+            let Some(base) = chunk_min_world_position_unbounded(*chunk, dims) else {
+                continue;
+            };
+            let now_visible = next_visible.get(chunk);
+            for_each_set_bit(old_bits, |voxel| {
+                if now_visible.is_some_and(|bits| bits[voxel / 64] & (1 << (voxel % 64)) != 0) {
+                    return;
+                }
+                let (vx, vy, vz) = voxel_offsets(voxel);
+                let pos = Vec3i::new(base.x + vx, base.y + vy, base.z + vz);
+                if let Some(block) = projected_block_at(client, pos) {
+                    let blob = perspective
+                        .memory
+                        .entry(*chunk)
+                        .or_insert_with(|| Box::new([0; CHUNK_VOLUME]));
+                    let byte = encode_memory_block(block);
+                    if blob[voxel] != byte {
+                        blob[voxel] = byte;
+                        changed_columns.insert((chunk.x, chunk.y));
+                    }
+                }
+            });
+        }
+        for (chunk, bitmap) in &next_visible {
+            if let Some(blob) = perspective.memory.get_mut(chunk) {
+                let mut column_changed = false;
+                for_each_set_bit(bitmap, |voxel| {
+                    if blob[voxel] != 0 {
+                        blob[voxel] = 0;
+                        column_changed = true;
+                    }
+                });
+                if column_changed {
+                    changed_columns.insert((chunk.x, chunk.y));
+                }
+            }
+        }
+    }
+
+    for column in changed_columns {
+        let revision = perspective
+            .visibility_revision_by_column
+            .entry(column)
+            .or_insert(0);
+        *revision = revision.saturating_add(1);
+    }
+    perspective.visible = next_visible;
+    perspective.fov_revision = perspective.fov_revision.saturating_add(1);
+    perspective.fov_recompute_count = perspective.fov_recompute_count.saturating_add(1);
+    perspective.fov_dirty = false;
+}
+
+/// Test-only verbatim copy of the Stage 4 **set-based** FOV/memory
+/// algorithm, kept solely as the parity oracle for the Stage 5 bitmap
+/// implementation. Never used by production code.
+#[cfg(test)]
+mod legacy_fov_oracle {
+    use std::collections::{HashMap, HashSet};
+
+    use od_core::client_view::ClientView;
+    use od_core::{BlockType, Vec3i};
+
+    use crate::render::projected_block_at;
+
+    const FOV_RADIUS: i32 = super::FOV_RADIUS;
+
+    #[derive(Debug, Default, Clone)]
+    pub struct LegacyVisibility {
+        pub visible: HashSet<Vec3i>,
+        pub memory: HashMap<Vec3i, BlockType>,
+    }
+
+    pub fn recompute_fov(
+        client: &ClientView,
+        origin: Option<Vec3i>,
+        visibility: &mut LegacyVisibility,
+    ) {
+        let Some(position) = origin else {
+            visibility.visible.clear();
+            return;
+        };
+        let previous_visible = std::mem::take(&mut visibility.visible);
+        let mut next_visible = HashSet::new();
+        let radius_sq = FOV_RADIUS * FOV_RADIUS;
+
+        for dz in -FOV_RADIUS..=FOV_RADIUS {
+            for dy in -FOV_RADIUS..=FOV_RADIUS {
+                for dx in -FOV_RADIUS..=FOV_RADIUS {
+                    if dx * dx + dy * dy + dz * dz > radius_sq {
+                        continue;
+                    }
+                    let candidate = Vec3i::new(position.x + dx, position.y + dy, position.z + dz);
+                    if has_los(client, position, candidate) {
+                        next_visible.insert(candidate);
+                    }
+                }
+            }
+        }
+
+        let mut wall_reveal = Vec::new();
+        for &pos in &next_visible {
+            if known_solid(client, pos) {
+                continue;
+            }
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let wall = Vec3i::new(pos.x + dx, pos.y + dy, pos.z);
+                if !next_visible.contains(&wall) && known_solid(client, wall) {
+                    wall_reveal.push(wall);
+                }
+            }
+        }
+        next_visible.extend(wall_reveal);
+
+        let lower_half: Vec<Vec3i> = next_visible
+            .iter()
+            .copied()
+            .filter(|pos| {
+                pos.z <= position.z && projected_block_at(client, *pos) == Some(BlockType::Air)
+            })
+            .collect();
+        for pos in lower_half {
+            next_visible.insert(Vec3i::new(pos.x, pos.y, pos.z - 1));
+        }
+
+        for pos in previous_visible {
+            if !next_visible.contains(&pos) {
+                // Fail closed: memorize only blocks whose value is known.
+                if let Some(block) = projected_block_at(client, pos) {
+                    visibility.memory.insert(pos, block);
+                }
+            }
+        }
+        for pos in &next_visible {
+            visibility.memory.remove(pos);
+        }
+        visibility.visible = next_visible;
+    }
+
+    fn known_solid(client: &ClientView, pos: Vec3i) -> bool {
+        projected_block_at(client, pos) == Some(BlockType::SolidStone)
+    }
+
+    fn opaque_for_los(client: &ClientView, pos: Vec3i) -> bool {
+        !matches!(projected_block_at(client, pos), Some(BlockType::Air))
+    }
+
+    fn has_los(client: &ClientView, from: Vec3i, to: Vec3i) -> bool {
+        if from == to {
+            return true;
+        }
+        let dir_x = to.x as f32 + 0.5 - (from.x as f32 + 0.5);
+        let dir_y = to.y as f32 + 0.5 - (from.y as f32 + 0.5);
+        let dir_z = to.z as f32 + 0.5 - (from.z as f32 + 0.5);
+        let step_x = if dir_x >= 0.0 { 1 } else { -1 };
+        let step_y = if dir_y >= 0.0 { 1 } else { -1 };
+        let step_z = if dir_z >= 0.0 { 1 } else { -1 };
+        let t_delta_x = if dir_x == 0.0 {
+            f32::INFINITY
+        } else {
+            1.0 / dir_x.abs()
+        };
+        let t_delta_y = if dir_y == 0.0 {
+            f32::INFINITY
+        } else {
+            1.0 / dir_y.abs()
+        };
+        let t_delta_z = if dir_z == 0.0 {
+            f32::INFINITY
+        } else {
+            1.0 / dir_z.abs()
+        };
+        let mut t_max_x = if dir_x == 0.0 {
+            f32::INFINITY
+        } else {
+            0.5 / dir_x.abs()
+        };
+        let mut t_max_y = if dir_y == 0.0 {
+            f32::INFINITY
+        } else {
+            0.5 / dir_y.abs()
+        };
+        let mut t_max_z = if dir_z == 0.0 {
+            f32::INFINITY
+        } else {
+            0.5 / dir_z.abs()
+        };
+        let mut cursor = from;
+        let max_steps = (from.x - to.x).abs() + (from.y - to.y).abs() + (from.z - to.z).abs() + 1;
+
+        for _ in 0..max_steps {
+            if t_max_x <= t_max_y && t_max_x <= t_max_z {
+                cursor.x += step_x;
+                t_max_x += t_delta_x;
+            } else if t_max_y <= t_max_z {
+                cursor.y += step_y;
+                t_max_y += t_delta_y;
+            } else {
+                cursor.z += step_z;
+                t_max_z += t_delta_z;
+            }
+            if cursor == to {
+                return true;
+            }
+            if opaque_for_los(client, cursor) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use od_core::world::chunk::chunk_index_to_coord;
     use od_core::{TerrainConfig, WorldCamera, WorldCommand, WorldConfig};
 
     use crate::{WorldSim, test_util};
 
+    use super::legacy_fov_oracle::LegacyVisibility;
     use super::*;
 
     fn sim(world_chunks: Vec3u, spawn_player: bool) -> WorldSim {
@@ -460,7 +1025,11 @@ mod tests {
 
         // Terrain revision recopy (test-only block mutation helper).
         let mutated = Vec3i::new(0, 0, 0); // starter room => Air, in chunk b
-        assert!(test_util::set_block(&mut sim, mutated, BlockType::SolidStone));
+        assert!(test_util::set_block(
+            &mut sim,
+            mutated,
+            BlockType::SolidStone
+        ));
         let stats = sync_view_chunks(&mut client, sim.state(), &desired(&[a, b]));
         assert_eq!(
             stats,
@@ -583,7 +1152,8 @@ mod tests {
         // chunk (2, _, 0), two chunks away from the camera window.
         let position = Some(Vec3i::new(7, 0, 0));
 
-        let entity = compute_projection_window(&entity_view(camera, 0), dims, position, framebuffer);
+        let entity =
+            compute_projection_window(&entity_view(camera, 0), dims, position, framebuffer);
         assert_eq!(
             entity.visible.iter().copied().collect::<Vec<_>>(),
             vec![Vec3i::new(0, 0, 0)]
@@ -605,7 +1175,8 @@ mod tests {
         assert!(!entity.resident.contains(&Vec3i::new(2, 2, 0)));
 
         // Master mode retains no player-FOV ring.
-        let master = compute_projection_window(&master_view(camera, 0), dims, position, framebuffer);
+        let master =
+            compute_projection_window(&master_view(camera, 0), dims, position, framebuffer);
         assert!(!master.resident.contains(&Vec3i::new(2, 0, 0)));
         assert!(!master.resident.contains(&Vec3i::new(2, 1, 0)));
         // Entity mode without a primary entity also retains no FOV ring.
@@ -730,5 +1301,370 @@ mod tests {
         project_entities(&mut client, sim.state(), Some(1));
         let ids: Vec<u64> = client.entities.iter().map(|entity| entity.id).collect();
         assert_eq!(ids, vec![1, 3, 7]);
+    }
+
+    // -----------------------------------------------------------------
+    // Stage 5: bitmap FOV parity, memory persistence, column revisions.
+    // -----------------------------------------------------------------
+
+    /// Project every simulation-resident chunk plus entities.
+    fn full_client(sim: &WorldSim) -> ClientView {
+        let dims = sim.world_chunks();
+        let count = (dims.x * dims.y * dims.z) as usize;
+        let desired: BTreeSet<Vec3i> = (0..count)
+            .filter_map(|index| chunk_index_to_coord(index, dims))
+            .collect();
+        let mut client = ClientView {
+            world_chunks: dims,
+            ..ClientView::default()
+        };
+        sync_view_chunks(&mut client, sim.state(), &desired);
+        project_entities(&mut client, sim.state(), sim.primary_entity_id());
+        client
+    }
+
+    /// Force the FOV origin: overwrite the projected primary entity position.
+    fn set_fov_origin(client: &mut ClientView, position: Vec3i) {
+        let entity = client
+            .entities
+            .first_mut()
+            .expect("fixture needs a primary entity");
+        entity.position = position;
+    }
+
+    fn bitmap_visible_set(perspective: &EntityPerspective, dims: Vec3u) -> BTreeSet<Vec3i> {
+        let mut set = BTreeSet::new();
+        for (chunk, bits) in &perspective.visible {
+            let base = chunk_min_world_position_unbounded(*chunk, dims).expect("chunk base");
+            for (word_index, word) in bits.iter().enumerate() {
+                let mut word = *word;
+                while word != 0 {
+                    let voxel = word_index * 64 + word.trailing_zeros() as usize;
+                    let (vx, vy, vz) = (
+                        (voxel & 15) as i32,
+                        ((voxel >> 4) & 15) as i32,
+                        (voxel >> 8) as i32,
+                    );
+                    set.insert(Vec3i::new(base.x + vx, base.y + vy, base.z + vz));
+                    word &= word - 1;
+                }
+            }
+        }
+        set
+    }
+
+    fn bitmap_memory_map(
+        perspective: &EntityPerspective,
+        dims: Vec3u,
+    ) -> BTreeMap<Vec3i, BlockType> {
+        let mut map = BTreeMap::new();
+        for (chunk, blob) in &perspective.memory {
+            let base = chunk_min_world_position_unbounded(*chunk, dims).expect("chunk base");
+            for (voxel, byte) in blob.iter().enumerate() {
+                let Some(block) = od_core::client_view::decode_memory_block(*byte) else {
+                    continue;
+                };
+                let (vx, vy, vz) = (
+                    (voxel & 15) as i32,
+                    ((voxel >> 4) & 15) as i32,
+                    (voxel >> 8) as i32,
+                );
+                map.insert(Vec3i::new(base.x + vx, base.y + vy, base.z + vz), block);
+            }
+        }
+        map
+    }
+
+    /// Run the bitmap implementation and the legacy set-based oracle over
+    /// the same client/origin sequence and require identical visible and
+    /// remembered value sets after every step.
+    fn assert_fov_parity_over_origins(client: &mut ClientView, origins: &[Vec3i], label: &str) {
+        let dims = client.world_chunks;
+        let mut perspective = EntityPerspective::default();
+        let mut legacy = LegacyVisibility::default();
+        for (step, origin) in origins.iter().enumerate() {
+            set_fov_origin(client, *origin);
+            recompute_entity_perspective(&mut perspective, client);
+            legacy_fov_oracle::recompute_fov(client, Some(*origin), &mut legacy);
+
+            let bitmap_visible = bitmap_visible_set(&perspective, dims);
+            let legacy_visible: BTreeSet<Vec3i> = legacy.visible.iter().copied().collect();
+            assert_eq!(
+                bitmap_visible, legacy_visible,
+                "{label}: visible parity at step {step} origin {origin:?}"
+            );
+            assert_eq!(
+                perspective.visible_tile_count(),
+                legacy.visible.len(),
+                "{label}: visible count parity at step {step}"
+            );
+
+            let bitmap_memory = bitmap_memory_map(&perspective, dims);
+            let legacy_memory: BTreeMap<Vec3i, BlockType> = legacy
+                .memory
+                .iter()
+                .map(|(pos, block)| (*pos, *block))
+                .collect();
+            assert_eq!(
+                bitmap_memory, legacy_memory,
+                "{label}: memory parity at step {step} origin {origin:?}"
+            );
+            assert_eq!(
+                perspective.remembered_tile_count(),
+                legacy.memory.len(),
+                "{label}: remembered count parity at step {step}"
+            );
+        }
+    }
+
+    #[test]
+    fn fov_bitmap_matches_legacy_sets_in_default_world() {
+        let sim = sim(Vec3u::new(1, 1, 1), true);
+        let spawn = sim.entity_position(1).expect("player");
+        let mut client = full_client(&sim);
+        // Spawn, one-tile moves, and a vertical shift: the radius-20 sphere
+        // always crosses the world bounds in a 16^3 world (out-of-world
+        // parity included).
+        let origins = [
+            spawn,
+            Vec3i::new(spawn.x - 1, spawn.y, spawn.z),
+            Vec3i::new(spawn.x - 1, spawn.y + 1, spawn.z),
+            Vec3i::new(spawn.x, spawn.y, spawn.z - 1),
+            spawn,
+        ];
+        assert_fov_parity_over_origins(&mut client, &origins, "default 1x1x1");
+    }
+
+    #[test]
+    fn fov_bitmap_matches_legacy_sets_across_chunk_boundaries() {
+        let sim = sim(Vec3u::new(9, 9, 1), true);
+        let mut client = full_client(&sim);
+        // Origins straddling chunk boundaries in x/y (chunk edges at
+        // multiples of 16 offset by -8) plus a diagonal walk across one.
+        let origins = [
+            Vec3i::new(7, 7, -1),   // last voxel of chunk (0, 0, 0) in x/y
+            Vec3i::new(8, 7, -1),   // first voxel of chunk (1, 0, 0)
+            Vec3i::new(8, 8, -1),   // chunk (1, 1, 0)
+            Vec3i::new(-9, -8, -1), // chunk (-1, 0, 0) at its east edge
+            Vec3i::new(23, 8, -2),  // one z down, chunk (1, 1, 0) east edge
+            Vec3i::new(24, 8, -2),  // chunk (2, 1, 0)
+        ];
+        assert_fov_parity_over_origins(&mut client, &origins, "play 9x9x1 boundaries");
+    }
+
+    #[test]
+    fn fov_bitmap_matches_legacy_sets_with_negative_chunks_and_missing_chunks() {
+        let sim = sim(Vec3u::new(2, 2, 2), true);
+        let mut client = full_client(&sim);
+        let spawn = sim.entity_position(1).expect("player");
+        let origins = [
+            spawn,
+            Vec3i::new(-1, -1, -1), // centered origin: all four negative chunks
+            Vec3i::new(0, 0, 0),
+            Vec3i::new(-16, -16, -16), // world minimum corner
+        ];
+        assert_fov_parity_over_origins(&mut client, &origins, "2x2x2 negative");
+
+        // Fail-closed parity: drop a chunk from the projection; a missing
+        // required chunk must be opaque for both implementations.
+        let mut partial = full_client(&sim);
+        partial.chunks.remove(&Vec3i::new(0, 0, 0));
+        partial.chunks.remove(&Vec3i::new(-1, 0, -1));
+        let origins = [Vec3i::new(-1, -1, -1), Vec3i::new(-8, 4, -2)];
+        assert_fov_parity_over_origins(&mut partial, &origins, "2x2x2 missing chunks");
+    }
+
+    #[test]
+    fn perspective_memory_survives_projection_stream_out_and_in() {
+        let sim = sim(Vec3u::new(9, 9, 1), true);
+        let dims = sim.world_chunks();
+        let mut client = full_client(&sim);
+        let mut perspective = EntityPerspective::default();
+
+        // See the area around the origin, then move far away so the old
+        // area leaves visibility and becomes memory.
+        set_fov_origin(&mut client, Vec3i::new(0, 0, -1));
+        recompute_entity_perspective(&mut perspective, &client);
+        set_fov_origin(&mut client, Vec3i::new(60, 60, -1));
+        recompute_entity_perspective(&mut perspective, &client);
+        let remembered = bitmap_memory_map(&perspective, dims);
+        assert!(!remembered.is_empty(), "old area must be remembered");
+        let memory_chunks: Vec<Vec3i> = perspective.memory.keys().copied().collect();
+
+        // Stream the remembered chunks out of the projection window (the
+        // camera moved away): memory must survive untouched.
+        let far_window: BTreeSet<Vec3i> = [Vec3i::new(3, 3, 0), Vec3i::new(4, 4, 0)]
+            .into_iter()
+            .collect();
+        let stats = sync_view_chunks(&mut client, sim.state(), &far_window);
+        assert!(stats.removed > 0, "chunks actually left the projection");
+        for chunk in &memory_chunks {
+            assert!(
+                !client.chunks.contains_key(chunk) || far_window.contains(chunk),
+                "fixture: remembered chunk {chunk:?} left the projection"
+            );
+        }
+        assert_eq!(
+            bitmap_memory_map(&perspective, dims),
+            remembered,
+            "stream-out must not erase memory"
+        );
+
+        // A recompute while the remembered chunks are absent (fail closed)
+        // must also preserve them: they are not visible, so they stay
+        // remembered.
+        project_entities(&mut client, sim.state(), sim.primary_entity_id());
+        set_fov_origin(&mut client, Vec3i::new(60, 60, -1));
+        recompute_entity_perspective(&mut perspective, &client);
+        assert_eq!(bitmap_memory_map(&perspective, dims), remembered);
+
+        // Stream the chunks back in: memory unchanged and still readable.
+        let count = (dims.x * dims.y * dims.z) as usize;
+        let all: BTreeSet<Vec3i> = (0..count)
+            .filter_map(|index| chunk_index_to_coord(index, dims))
+            .collect();
+        sync_view_chunks(&mut client, sim.state(), &all);
+        assert_eq!(bitmap_memory_map(&perspective, dims), remembered);
+        let (&sample_pos, &sample_block) = remembered.iter().next().expect("entry");
+        assert_eq!(
+            perspective.remembered_block(sample_pos, dims),
+            Some(sample_block)
+        );
+    }
+
+    #[test]
+    fn column_revisions_bump_only_for_changed_columns() {
+        let sim = sim(Vec3u::new(9, 9, 1), true);
+        let mut client = full_client(&sim);
+        let mut perspective = EntityPerspective::default();
+        set_fov_origin(&mut client, Vec3i::new(0, 0, -1));
+        recompute_entity_perspective(&mut perspective, &client);
+        let after_first = perspective.visibility_revision_by_column.clone();
+        assert!(!after_first.is_empty(), "first recompute paints columns");
+        // Radius 20 from x/y = 0 cannot touch chunk column (3, 3) and
+        // beyond (closest voxel is 40 tiles away).
+        assert!(!after_first.contains_key(&(3, 3)));
+        assert!(!after_first.contains_key(&(4, 4)));
+
+        // Same input recompute: identical paint, zero bumps.
+        perspective.fov_dirty = true;
+        recompute_entity_perspective(&mut perspective, &client);
+        assert_eq!(
+            perspective.visibility_revision_by_column, after_first,
+            "identical inputs must bump no column revision"
+        );
+        assert_eq!(perspective.fov_recompute_count, 2);
+
+        // One-tile origin move: the bumped columns must equal exactly the
+        // set of XY chunk columns whose visible bits or memory bytes
+        // actually changed (value-level diff, not a broad invalidation).
+        let dims = sim.world_chunks();
+        let visible_before = bitmap_visible_set(&perspective, dims);
+        let memory_before = bitmap_memory_map(&perspective, dims);
+        set_fov_origin(&mut client, Vec3i::new(1, 0, -1));
+        recompute_entity_perspective(&mut perspective, &client);
+        let visible_after = bitmap_visible_set(&perspective, dims);
+        let memory_after = bitmap_memory_map(&perspective, dims);
+
+        let mut expected_changed: BTreeSet<(i32, i32)> = BTreeSet::new();
+        for pos in visible_before.symmetric_difference(&visible_after) {
+            let (chunk, _) = position_to_chunk_voxel_unbounded(*pos, dims).expect("mapped");
+            expected_changed.insert((chunk.x, chunk.y));
+        }
+        for pos in memory_before
+            .keys()
+            .chain(memory_after.keys())
+            .filter(|pos| memory_before.get(*pos) != memory_after.get(*pos))
+        {
+            let (chunk, _) = position_to_chunk_voxel_unbounded(*pos, dims).expect("mapped");
+            expected_changed.insert((chunk.x, chunk.y));
+        }
+        assert!(!expected_changed.is_empty(), "movement changes some paint");
+
+        let after_move = perspective.visibility_revision_by_column.clone();
+        let bumped: BTreeSet<(i32, i32)> = after_move
+            .iter()
+            .filter(|(column, revision)| after_first.get(*column) != Some(*revision))
+            .map(|(column, _)| *column)
+            .collect();
+        assert_eq!(
+            bumped, expected_changed,
+            "revision bumps must equal the exact per-column paint diff"
+        );
+        assert!(
+            !after_move.contains_key(&(4, 4)),
+            "distant column untouched"
+        );
+    }
+
+    #[test]
+    fn column_revisions_bump_for_block_mutation_in_view() {
+        let mut sim = sim(Vec3u::new(9, 9, 1), true);
+        let mut client = full_client(&sim);
+        let mut perspective = EntityPerspective::default();
+        let origin = Vec3i::new(0, 0, -1);
+        set_fov_origin(&mut client, origin);
+        recompute_entity_perspective(&mut perspective, &client);
+        let before = perspective.visibility_revision_by_column.clone();
+
+        // Mutate one visible air tile to solid, re-project, recompute.
+        let visible = bitmap_visible_set(&perspective, sim.world_chunks());
+        let target = *visible
+            .iter()
+            .find(|pos| {
+                pos.z == origin.z
+                    && **pos != origin
+                    && client.block_at(**pos) == Some(BlockType::Air)
+            })
+            .expect("a visible air tile near the origin");
+        assert!(test_util::set_block(
+            &mut sim,
+            target,
+            BlockType::SolidStone
+        ));
+        let dims = sim.world_chunks();
+        let count = (dims.x * dims.y * dims.z) as usize;
+        let all: BTreeSet<Vec3i> = (0..count)
+            .filter_map(|index| chunk_index_to_coord(index, dims))
+            .collect();
+        sync_view_chunks(&mut client, sim.state(), &all);
+        set_fov_origin(&mut client, origin);
+        recompute_entity_perspective(&mut perspective, &client);
+
+        let after = perspective.visibility_revision_by_column.clone();
+        assert_ne!(after, before, "the mutation changed visible paint");
+        assert!(
+            !after.contains_key(&(4, 4)),
+            "a column outside the FOV never bumps"
+        );
+    }
+
+    /// Records the FOV-recompute wall-time distribution (report evidence;
+    /// deliberately not a CI timing gate).
+    #[test]
+    fn fov_recompute_timing_distribution_is_recorded() {
+        let sim = sim(Vec3u::new(9, 9, 1), true);
+        let mut client = full_client(&sim);
+        let mut perspective = EntityPerspective::default();
+        let mut samples_us: Vec<u128> = Vec::new();
+        // Warm + measure across a walk of origins (movement-like workload).
+        for step in 0..40 {
+            let origin = Vec3i::new(step % 8, (step / 2) % 8, -1);
+            set_fov_origin(&mut client, origin);
+            perspective.fov_dirty = true;
+            let start = std::time::Instant::now();
+            recompute_entity_perspective(&mut perspective, &client);
+            samples_us.push(start.elapsed().as_micros());
+        }
+        samples_us.sort_unstable();
+        let median = samples_us[samples_us.len() / 2];
+        let p95 = samples_us[(samples_us.len() * 95) / 100 - 1];
+        println!(
+            "fov recompute samples (us): median={median} p95={p95} min={} max={} n={}",
+            samples_us.first().expect("samples"),
+            samples_us.last().expect("samples"),
+            samples_us.len(),
+        );
+        assert_eq!(perspective.fov_recompute_count, 40);
     }
 }
