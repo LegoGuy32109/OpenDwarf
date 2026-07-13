@@ -105,9 +105,17 @@ type Checkpoint = {
 type GeneratedStageSpec = {
   acceptTask: string;
   requiredCommands: string[];
+  // A baseline with `toleranceFromRecordedSpread` allows the recorded median
+  // to exceed the baseline evidence median by at most that evidence's own
+  // recorded sample spread (max - min): "no worse beyond normal recorded
+  // variance". Strict (zero tolerance) otherwise.
   baseline:
     | { label: string; medianMs: number }
-    | { label: string; evidencePath: string };
+    | {
+      label: string;
+      evidencePath: string;
+      toleranceFromRecordedSpread?: boolean;
+    };
   remnantCommand?: string;
   rustTests?: { command: string; minimumPassed: number };
   // Exact per-path snapshot matrix (default: the Stage 1-3 all-1 five-path
@@ -379,6 +387,7 @@ const stageTwoRemnantCommand =
   'rg "self\\.terrain_blocks|terrain_blocks: HashMap|build_terrain_blocks_cache|blocks: Vec<BlockType>" game_engine/od_world';
 const stageFourRemnantCommand =
   'rg "apply_streaming_chunks|streaming_fingerprint" game_engine/od_wasm/src';
+const stageSixRemnantCommand = 'rg "smooth_player_world_pos" game_engine';
 const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
   [1, {
     acceptTask: "deno task engine:accept-stage1",
@@ -578,6 +587,83 @@ const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
       "perfFixtureCeiling",
     ],
   }],
+  [6, {
+    acceptTask: "deno task engine:accept-stage6",
+    requiredCommands: [...acceptanceLaneCommands, stageSixRemnantCommand],
+    baseline: {
+      label: "Stage 5",
+      evidencePath:
+        "docs/design/checkpoints/evidence/engine-render-hot-path-stage-5-perf.json",
+      // "No worse than Stage 5 beyond normal recorded variance": at the
+      // ~5.5 ms Stage 5 median, run-to-run noise exceeds a strict
+      // comparison, so the allowance is the Stage 5 evidence's own
+      // recorded sample spread.
+      toleranceFromRecordedSpread: true,
+    },
+    // Stage 6 renames/removes the shared smooth_player_world_pos: camera
+    // follow keeps its own camera_follow_xy and the player quad is always
+    // lerp(prev_xy, curr_xy, alpha).
+    remnantCommand: stageSixRemnantCommand,
+    // Stage 6 records 138 passing workspace tests (lerp endpoint/midpoint
+    // exactness, exact player-quad lerp, camera-smoothing separation,
+    // monotonic sub-tick interpolation, deterministic synthetic sequences,
+    // reset/import prev == curr); a decrease is a red gate.
+    rustTests: { command: "deno task engine:test", minimumPassed: 138 },
+    // Fixed-tick interpolation is render-only: zero WorldSim::snapshot()
+    // calls on every Stage 4 frame path.
+    snapshotMatrix: {
+      idle: 0,
+      tick: 0,
+      movement: 0,
+      camera: 0,
+      zoom: 0,
+      viewZ: 0,
+      resize: 0,
+      master: 0,
+      entity: 0,
+      chat: 0,
+      shell: 0,
+    },
+    snapshotCallsLastFrame: 0,
+    // Interpolation changes no authoritative state: the Stage 4 all-resident
+    // play-world hash must hold exactly.
+    worldStateHash: "fnv1a64:718bb0099657e9aa",
+    // Stage 6 keeps the Stage 5 250 ms ceiling; Stage 7 tightens to 100 ms.
+    ceilingMs: 250,
+    pathState: {
+      zoomChanged: true,
+      viewZDelta: 1,
+      framebufferChanged: true,
+      masterMode: "master",
+      entityMode: "entity",
+      shellOpen: true,
+    },
+    requiredSemantics: {
+      // The scripted perf-scenario player is idle (prev == curr, identity
+      // lerp): the Stage 3 world-layer parity reference must hold exactly.
+      worldDrawHash: "fnv1a64:c55ac880b00ac4d0",
+      // Bounded lag handling must not discard simulated time at the
+      // deterministic 16 ms harness pacing.
+      droppedSimTimeMs: 0,
+    },
+    // Stage 6 authorizes no golden-file changes: the single authorized
+    // re-bless is the Rust parity anchor s3 inside od_wasm test source
+    // (fnv1a64:ee3f36f2bdc3a71a -> fnv1a64:5b0d49755d30f709), recorded in
+    // the stage-owned parityAnchorRebless value, not the golden manifest.
+    stageOwnedKeys: [
+      "snapshotMatrix",
+      "remnantCheck",
+      "rustWorkspaceTests",
+      "perfMedianVsStage5",
+      "worldDrawHash",
+      "worldStateHash",
+      "droppedSimTimeMs",
+      "parityAnchorRebless",
+      "stage6ContractTests",
+      "lifecycleCoverage",
+      "observabilityKeys",
+    ],
+  }],
 ]);
 const spec = generatedStageSpecs.get(stage);
 assert(stage === 0 || spec, `stage ${stage} has no validation profile`);
@@ -682,14 +768,22 @@ if (spec) {
       `${label} ceiling must be ${spec.ceilingMs} ms`,
     );
   }
-  const baselineMedianMs = "medianMs" in spec.baseline
-    ? spec.baseline.medianMs
-    : (JSON.parse(
+  let allowedBaselineMedianMs: number;
+  if ("medianMs" in spec.baseline) {
+    allowedBaselineMedianMs = spec.baseline.medianMs;
+  } else {
+    const baselineEvidence = JSON.parse(
       await Deno.readTextFile(spec.baseline.evidencePath),
-    ) as { medianMs: number }).medianMs;
+    ) as { medianMs: number; samplesMs: number[] };
+    const spreadMs = spec.baseline.toleranceFromRecordedSpread
+      ? Math.max(...baselineEvidence.samplesMs) -
+        Math.min(...baselineEvidence.samplesMs)
+      : 0;
+    allowedBaselineMedianMs = baselineEvidence.medianMs + spreadMs;
+  }
   assert(
-    perf.medianMs <= baselineMedianMs,
-    `${label} median regressed from ${spec.baseline.label}`,
+    perf.medianMs <= allowedBaselineMedianMs,
+    `${label} median regressed beyond ${spec.baseline.label} (allowed ${allowedBaselineMedianMs} ms)`,
   );
   assert(
     perf.semantics.floorQuadCount === 130,

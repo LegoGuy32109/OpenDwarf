@@ -3,9 +3,9 @@
 use std::collections::BTreeSet;
 
 use od_core::{
-    ClientView, Dir, DrawCmd, EntityPerspective, EventKind, InputArena, KeyCode, LocalWorldView,
-    ProgramId, Vec3i, Vec3u, ViewGlobals, WorldAtlasQuadInstance, WorldCommand, WorldConfig,
-    WorldIntent, WorldReplay, WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode,
+    ClientView, Dir, DrawCmd, EntityPerspective, EntityView, EventKind, InputArena, KeyCode,
+    LocalWorldView, ProgramId, Vec3i, Vec3u, ViewGlobals, WorldAtlasQuadInstance, WorldCommand,
+    WorldConfig, WorldIntent, WorldReplay, WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode,
     chunk_index_to_coord, draw_hash_with_world, draw_state_hash_with_world, format_state_hash,
     world_state_hash,
 };
@@ -18,7 +18,7 @@ use od_world::project::{
     ProjectionSyncStats, compute_projection_window, project_entities, recompute_entity_perspective,
     sync_view_chunks, visible_chunk_layer,
 };
-use od_world::render::{RenderCaches, RenderInput, RenderStats, entity_render_position_xy};
+use od_world::render::{RenderCaches, RenderInput, RenderStats, lerp_xy};
 use serde_json::{Value, json};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -63,7 +63,11 @@ pub struct UiEngine {
     world_solid_quads: Vec<WorldSolidQuadInstance>,
     draw_cmds: Vec<DrawCmd>,
     world_input: WorldInputState,
-    smooth_player_world_pos: Option<[f32; 2]>,
+    /// Camera-follow smoothing state (Stage 6). This is view-local camera
+    /// state only: it smooths the camera toward the fixed-tick interpolated
+    /// player position and can never affect the player quad, which is always
+    /// `lerp(prev_xy, curr_xy, alpha)` from the projected [`EntityView`].
+    camera_follow_xy: Option<[f32; 2]>,
     counters: FrameCounters,
     sim_accumulator_ms: f32,
     last_sampled_dpr: f32,
@@ -79,8 +83,8 @@ pub struct UiEngine {
     perspective_view_mode: Option<WorldViewMode>,
     /// Simulated time discarded by the accumulated-lag cap.
     dropped_sim_time_ms: f64,
-    /// Interpolation alpha handed to the most recent render (unused until
-    /// the Stage 6 interpolation change).
+    /// Interpolation alpha handed to the most recent render (Stage 6: the
+    /// player quad and camera-follow target consume it).
     last_render_alpha: f32,
     /// Number of leading `draw_cmds` produced by the world renderer.
     world_draw_cmd_count: usize,
@@ -102,7 +106,7 @@ impl UiEngine {
             world_solid_quads: Vec::with_capacity(WORLD_SOLID_CAPACITY),
             draw_cmds: Vec::with_capacity(COMBINED_DRAWCMD_CAPACITY),
             world_input: WorldInputState::default(),
-            smooth_player_world_pos: None,
+            camera_follow_xy: None,
             counters: FrameCounters::default(),
             sim_accumulator_ms: 0.0,
             last_sampled_dpr: 1.0,
@@ -279,7 +283,7 @@ impl UiEngine {
         for _ in 0..n {
             self.run_fixed_tick(self.last_framebuffer_size());
         }
-        self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size());
+        self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size(), 0.0);
         self.render(0.0);
     }
 
@@ -334,14 +338,15 @@ impl UiEngine {
         self.world_atlas_quads.clear();
         self.world_solid_quads.clear();
         self.draw_cmds.clear();
-        self.smooth_player_world_pos = None;
+        self.camera_follow_xy = None;
         self.sim_accumulator_ms = 0.0;
         self.reset_projection_state();
         self.engine.reset_session_shell();
-        self.sync_local_view(0.0, self.last_framebuffer_size());
         // Lifecycle rebuild: fresh projection state means every entity starts
-        // with prev_xy == curr_xy and every chunk is copied anew.
+        // with prev_xy == curr_xy and every chunk is copied anew. Projection
+        // precedes view sync so camera follow reads the fresh projection.
         self.project_lifecycle_client_view();
+        self.sync_local_view(0.0, self.last_framebuffer_size(), 0.0);
         self.render(0.0);
         Ok(self.combined_debug_snapshot_json())
     }
@@ -381,6 +386,7 @@ impl UiEngine {
                 || self.last_framebuffer_size(),
                 |sample| (sample.framebuffer_w, sample.framebuffer_h),
             ),
+            alpha,
         );
         self.render(alpha);
         self.engine.set_session_hud_lines(self.session_hud_lines());
@@ -403,8 +409,8 @@ impl UiEngine {
     /// the local view, the **immutable** entity perspective, and render
     /// caches. Performs zero `WorldSim::snapshot()` calls, never reads
     /// `WorldState`, and never recomputes FOV; it mutates render
-    /// caches/arenas only. `alpha` is recorded but unused until the Stage 6
-    /// interpolation change.
+    /// caches/arenas only. `alpha` (Stage 6) selects the fixed-tick
+    /// interpolated player position: `lerp(prev_xy, curr_xy, alpha)`.
     fn render(&mut self, alpha: f32) -> u32 {
         self.last_render_alpha = alpha;
         self.world_atlas_quads.clear();
@@ -414,7 +420,7 @@ impl UiEngine {
             RenderInput {
                 client: &self.client_view,
                 view: &self.view,
-                smooth_player_xy: self.smooth_player_world_pos,
+                alpha,
             },
             &self.entity_perspective,
             &mut self.render_caches,
@@ -689,14 +695,15 @@ impl UiEngine {
         self.world_atlas_quads.clear();
         self.world_solid_quads.clear();
         self.draw_cmds.clear();
-        self.smooth_player_world_pos = None;
+        self.camera_follow_xy = None;
         self.sim_accumulator_ms = 0.0;
         self.reset_projection_state();
         self.last_sampled_dpr = 1.0;
         self.engine.reset_session_shell();
-        self.sync_local_view(0.0, self.last_framebuffer_size());
-        // Lifecycle rebuild of the projection (prev_xy == curr_xy).
+        // Lifecycle rebuild of the projection (prev_xy == curr_xy) before
+        // view sync so camera follow reads the fresh projection.
         self.project_lifecycle_client_view();
+        self.sync_local_view(0.0, self.last_framebuffer_size(), 0.0);
     }
 
     fn apply_view_key_presses(&mut self) {
@@ -767,41 +774,52 @@ impl UiEngine {
         self.write_view_globals(framebuffer_w, framebuffer_h);
     }
 
+    /// The projected primary entity, matching the renderer's selection rule
+    /// exactly so camera follow tracks the same entity the player quad uses.
+    fn projected_primary_entity(&self) -> Option<&EntityView> {
+        self.client_view
+            .primary_entity_id
+            .and_then(|id| self.client_view.entity(id))
+            .or_else(|| self.client_view.entities.first())
+    }
+
     /// Per-frame local view maintenance: camera smoothing/follow, HUD
     /// counters, the visible-chunk window, and view globals. Never sends a
-    /// `WorldCommand`; reads only narrow entity accessors.
-    fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32)) {
+    /// `WorldCommand`; reads only the projected `ClientView`.
+    ///
+    /// Stage 6: camera follow consumes the same fixed-tick interpolated
+    /// position as the player quad (`lerp(prev_xy, curr_xy, alpha)`). The
+    /// exponential follow state (`camera_follow_xy`) smooths only the
+    /// camera; the player quad never reads it.
+    fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32), alpha: f32) {
         self.counters.record_frame(dt_ms);
-        let Some(primary_entity_id) = self.world.primary_entity_id() else {
+        let Some(player) = self.projected_primary_entity().copied() else {
             self.write_view_globals(framebuffer.0, framebuffer.1);
             return;
         };
-        let Some(entity) = self.world.entity_snapshot(primary_entity_id) else {
-            self.write_view_globals(framebuffer.0, framebuffer.1);
-            return;
-        };
+        let player_xy = lerp_xy(player.prev_xy, player.curr_xy, alpha);
+        let player_z = player.position.z;
 
-        let entity_pos = entity_render_position_xy(&entity);
-        if self.smooth_player_world_pos.is_none() {
-            self.smooth_player_world_pos = Some(entity_pos);
+        if self.camera_follow_xy.is_none() {
+            self.camera_follow_xy = Some(player_xy);
             if self.view.camera.x == 0.0 && self.view.camera.y == 0.0 {
-                self.view.camera.x = (entity_pos[0] + 0.5) * TILE_SIZE_PX;
-                self.view.camera.y = (entity_pos[1] + 0.5) * TILE_SIZE_PX;
-                self.view.view_z = entity.position.z;
+                self.view.camera.x = (player_xy[0] + 0.5) * TILE_SIZE_PX;
+                self.view.camera.y = (player_xy[1] + 0.5) * TILE_SIZE_PX;
+                self.view.view_z = player_z;
             }
         }
-        if let Some(smooth) = self.smooth_player_world_pos.as_mut() {
+        if let Some(follow) = self.camera_follow_xy.as_mut() {
             let dt_s = (dt_ms.max(0.0) / 1000.0).min(0.1);
             let rate = if dt_s <= 0.0 {
                 1.0
             } else {
                 1.0 - (-ENTITY_CAMERA_SMOOTH_RATE * dt_s).exp()
             };
-            smooth[0] += (entity_pos[0] - smooth[0]) * rate;
-            smooth[1] += (entity_pos[1] - smooth[1]) * rate;
+            follow[0] += (player_xy[0] - follow[0]) * rate;
+            follow[1] += (player_xy[1] - follow[1]) * rate;
             if self.view.view_mode == WorldViewMode::Entity {
-                self.view.camera.x = (smooth[0] + 0.5) * TILE_SIZE_PX + self.view.look_offset.x;
-                self.view.camera.y = (smooth[1] + 0.5) * TILE_SIZE_PX + self.view.look_offset.y;
+                self.view.camera.x = (follow[0] + 0.5) * TILE_SIZE_PX + self.view.look_offset.x;
+                self.view.camera.y = (follow[1] + 0.5) * TILE_SIZE_PX + self.view.look_offset.y;
             }
         }
 
@@ -922,9 +940,20 @@ impl UiEngine {
                     "sim": self.view_globals.sim,
                 }),
             );
+            // Stage 6 observability: the interpolated player quad position
+            // in world pixels (the player quad is the last world atlas quad).
+            let player_quad_pos = if self.world_render_stats.player_quads == 1 {
+                self.world_atlas_quads
+                    .last()
+                    .map(|quad| json!([quad.pos[0], quad.pos[1]]))
+            } else {
+                None
+            };
             object.insert(
                 "worldRender".to_owned(),
                 json!({
+                    "playerQuadPos": player_quad_pos,
+                    "renderAlpha": self.last_render_alpha,
                     "atlasQuadCount": self.world_atlas_quads.len(),
                     "solidQuadCount": self.world_solid_quads.len(),
                     "floorQuadCount": self.world_render_stats.floor_quads,
@@ -1852,6 +1881,7 @@ mod tests {
         let s2 = world_hash(&engine);
 
         // State 3: default-world entity movement (FOV motion + memory).
+        let start = engine.primary_entity_position().expect("player");
         engine
             .world
             .send_command(WorldCommand::MoveEntity {
@@ -1864,6 +1894,19 @@ mod tests {
             let _ = engine.frame();
         }
         let s3 = world_hash(&engine);
+        // Stage 6 value-level anchor for the s3 re-bless: the 10-tick move
+        // completed at tick 10 of 12, so prev_xy == curr_xy == target and
+        // the player quad sits at the exact target tile (alpha 0 lerp), not
+        // at the legacy frame-rate smoothed position that produced
+        // fnv1a64:ee3f36f2bdc3a71a.
+        assert_eq!(
+            engine.world_atlas_quads.last().expect("player quad").pos,
+            [
+                (start.x - 1) as f32 * TILE_SIZE_PX,
+                start.y as f32 * TILE_SIZE_PX
+            ],
+            "s3 player quad must be exactly at the completed-move target"
+        );
 
         // State 4: play-world master pan followed by one fixed tick.
         let mut engine = focused_engine((1280, 720));
@@ -1892,11 +1935,161 @@ mod tests {
         // Captured on the Stage 3 legacy renderer (commit f869ed1 worktree).
         assert_eq!(s1, "fnv1a64:c55ac880b00ac4d0");
         assert_eq!(s2, "fnv1a64:c55ac880b00ac4d0");
-        assert_eq!(s3, "fnv1a64:ee3f36f2bdc3a71a");
+        // s3 re-blessed in Stage 6 (fixed-tick interpolation): the player
+        // quad moved from the exponentially smoothed frame-rate position
+        // (rate 1 - exp(-0.5) per 50 ms frame, still converging after 12
+        // frames) to the exact completed-move target (prev == curr, alpha 0).
+        // Stage 3-5 value: fnv1a64:ee3f36f2bdc3a71a. The exact target
+        // position is asserted above.
+        assert_eq!(s3, "fnv1a64:5b0d49755d30f709");
         assert_eq!(s4, "fnv1a64:c6e10e16605cd905");
         // The scripted perf scenario must equal the Stage 3 checkpoint
         // reference recorded in the plan.
         assert_eq!(s5, "fnv1a64:c55ac880b00ac4d0");
+    }
+
+    /// Stage 6: camera smoothing state is separate from and cannot affect
+    /// the player quad. Perturbing `camera_follow_xy` moves the camera but
+    /// leaves the player quad bit-identical for the same tick/alpha, and the
+    /// quad equals `lerp(prev_xy, curr_xy, alpha)` exactly.
+    #[test]
+    fn camera_smoothing_state_is_separate_and_cannot_affect_player_quad() {
+        let mut engine = focused_engine((640, 480));
+        engine
+            .world
+            .send_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(-1, 0, 0),
+            })
+            .expect("starter room west move");
+        // 7 x 20 ms = 140 ms: two fixed ticks + 40 ms => alpha 0.8 with the
+        // move still in progress (prev != curr).
+        for _ in 0..7 {
+            engine.input.sampled.dt_ms = 20.0;
+            let _ = engine.frame();
+        }
+        let player = engine
+            .projected_primary_entity()
+            .copied()
+            .expect("projected player");
+        assert_ne!(player.prev_xy, player.curr_xy, "mid-movement fixture");
+        let alpha = engine.last_render_alpha;
+        assert!(
+            alpha > 0.0 && alpha < 1.0,
+            "fractional alpha fixture, got {alpha}"
+        );
+        let quad_before = engine.world_atlas_quads.last().expect("player quad").pos;
+        let expected = lerp_xy(player.prev_xy, player.curr_xy, alpha);
+        assert_eq!(
+            quad_before,
+            [expected[0] * TILE_SIZE_PX, expected[1] * TILE_SIZE_PX],
+            "player quad equals the fixed-tick lerp exactly"
+        );
+        let camera_before = (engine.view.camera.x, engine.view.camera.y);
+
+        // Perturb only the camera smoothing state, resync the local view at
+        // the same tick/alpha, and render again with the same alpha.
+        engine.camera_follow_xy = Some([999.0, -999.0]);
+        engine.sync_local_view(16.0, engine.last_framebuffer_size(), alpha);
+        let _ = engine.render(alpha);
+
+        assert_ne!(
+            (engine.view.camera.x, engine.view.camera.y),
+            camera_before,
+            "the camera smoothing state moved the camera"
+        );
+        assert_eq!(
+            engine.world_atlas_quads.last().expect("player quad").pos,
+            quad_before,
+            "player quad is bit-identical for the same alpha/tick"
+        );
+    }
+
+    /// Stage 6: across sub-tick frames the player quad advances
+    /// monotonically toward the movement target with no snap-back or
+    /// overshoot, and every frame equals the exact fixed-tick lerp.
+    #[test]
+    fn player_quad_interpolates_monotonically_across_sub_tick_frames() {
+        let mut engine = focused_engine((640, 480));
+        let start = engine.primary_entity_position().expect("player");
+        engine
+            .world
+            .send_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(-1, 0, 0),
+            })
+            .expect("starter room west move");
+        let start_x = start.x as f32 * TILE_SIZE_PX;
+        let target_x = (start.x - 1) as f32 * TILE_SIZE_PX;
+        let mut last_x = start_x;
+        let mut positions = Vec::new();
+        // 40 x 20 ms frames = 16 ticks; the 10-tick move completes inside.
+        for _ in 0..40 {
+            engine.input.sampled.dt_ms = 20.0;
+            let _ = engine.frame();
+            let player = engine
+                .projected_primary_entity()
+                .copied()
+                .expect("projected player");
+            let expected = lerp_xy(player.prev_xy, player.curr_xy, engine.last_render_alpha);
+            let quad = engine.world_atlas_quads.last().expect("player quad");
+            assert_eq!(
+                quad.pos[0].to_bits(),
+                (expected[0] * TILE_SIZE_PX).to_bits(),
+                "player x equals the lerp bit-exactly"
+            );
+            assert_eq!(
+                quad.pos[1].to_bits(),
+                (expected[1] * TILE_SIZE_PX).to_bits(),
+                "player y equals the lerp bit-exactly"
+            );
+            assert!(
+                quad.pos[0] <= last_x,
+                "no snap-back: {} > previous {last_x}",
+                quad.pos[0]
+            );
+            assert!(
+                quad.pos[0] >= target_x,
+                "no overshoot: {} < target {target_x}",
+                quad.pos[0]
+            );
+            last_x = quad.pos[0];
+            positions.push(quad.pos[0]);
+        }
+        assert_eq!(last_x, target_x, "the move landed exactly on the target");
+        assert!(
+            positions.windows(2).filter(|w| w[1] < w[0]).count() >= 10,
+            "the sequence actually interpolated across many frames"
+        );
+    }
+
+    /// Stage 6: the same synthetic frame sequence (movement + fractional
+    /// alphas) produces identical per-frame combined draw hashes on two
+    /// fresh engines.
+    #[test]
+    fn identical_synthetic_frame_sequences_produce_identical_draw_hashes() {
+        fn run() -> Vec<String> {
+            let mut engine = focused_engine((640, 480));
+            // Press-and-hold the west movement key via the input arena.
+            engine.input.queue.count = 1;
+            engine.input.events[0].kind = EventKind::KeyDown.as_u8();
+            engine.input.events[0].code = KeyCode::KeyS.as_u16();
+            let mut hashes = Vec::new();
+            for _ in 0..30 {
+                engine.input.sampled.dt_ms = 20.0;
+                let _ = engine.frame();
+                hashes.push(engine.combined_draw_hash());
+            }
+            hashes
+        }
+
+        let first = run();
+        let second = run();
+        assert_eq!(first, second, "synthetic alpha/draw output deterministic");
+        assert!(
+            first.windows(2).any(|pair| pair[0] != pair[1]),
+            "the sequence includes frames whose draw output changed"
+        );
     }
 
     #[test]

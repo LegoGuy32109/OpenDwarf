@@ -56,7 +56,13 @@ export type GoldenRebless = {
 export type StageOwnedContext = {
   rustCounts: { passed: number; failed: number };
   perf: PerfEvidence;
-  baselinePerf: { label: string; evidencePath: string; medianMs: number };
+  baselinePerf: {
+    label: string;
+    evidencePath: string;
+    medianMs: number;
+    recordedSpreadMs?: number;
+    allowedMedianMs: number;
+  };
   remnant?: RemnantResult;
   snapshotCalls: Record<string, number>;
   goldens: GoldenRebless[];
@@ -67,7 +73,16 @@ export type StageAcceptanceConfig = {
   // `cargo test --workspace` passing floor; a decrease below it is a red gate.
   rustPassedFloor: { label: string; passed: number };
   // Previous-stage perf evidence whose recorded median must not regress.
-  baselinePerf: { label: string; evidencePath: string };
+  // `toleranceFromRecordedSpread` allows the median to exceed the baseline
+  // median by at most the baseline evidence's own recorded sample spread
+  // (max - min): "no worse beyond normal recorded variance". The tolerance
+  // is derived from recorded evidence, never an arbitrary constant, and is
+  // strict (zero tolerance) when omitted.
+  baselinePerf: {
+    label: string;
+    evidencePath: string;
+    toleranceFromRecordedSpread?: boolean;
+  };
   // Optional `rg` remnant check that must exit 1 (no matches).
   remnant?: { pattern: string; searchPath: string; evidence: string };
   // Exact snapshot calls required on every recorded frame path (default 1).
@@ -421,9 +436,14 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
     );
   }
   const baselinePerfEvidence = await readJson(config.baselinePerf.evidencePath);
-  if (perf.medianMs > baselinePerfEvidence.medianMs) {
+  const baselineSpreadMs = config.baselinePerf.toleranceFromRecordedSpread
+    ? Math.max(...baselinePerfEvidence.samplesMs) -
+      Math.min(...baselinePerfEvidence.samplesMs)
+    : 0;
+  const allowedMedianMs = baselinePerfEvidence.medianMs + baselineSpreadMs;
+  if (perf.medianMs > allowedMedianMs) {
     throw new Error(
-      `Stage ${STAGE} median ${perf.medianMs} ms regressed from ${config.baselinePerf.label} median ${baselinePerfEvidence.medianMs} ms`,
+      `Stage ${STAGE} median ${perf.medianMs} ms regressed beyond ${config.baselinePerf.label} median ${baselinePerfEvidence.medianMs} ms + recorded spread ${baselineSpreadMs} ms`,
     );
   }
   console.log(
@@ -431,7 +451,11 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
       perf.medianMs.toFixed(1)
     } ms <= ${config.baselinePerf.label} median ${
       baselinePerfEvidence.medianMs.toFixed(1)
-    } ms`,
+    } ms${
+      config.baselinePerf.toleranceFromRecordedSpread
+        ? ` + recorded spread ${baselineSpreadMs.toFixed(1)} ms`
+        : ""
+    }`,
   );
   for (
     const [name, expected] of Object.entries(config.requiredSemantics ?? {})
@@ -581,6 +605,10 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
         label: config.baselinePerf.label,
         evidencePath: config.baselinePerf.evidencePath,
         medianMs: baselinePerfEvidence.medianMs,
+        ...(config.baselinePerf.toleranceFromRecordedSpread
+          ? { recordedSpreadMs: baselineSpreadMs }
+          : {}),
+        allowedMedianMs,
       },
       remnant,
       snapshotCalls: snapshot.snapshotCalls,

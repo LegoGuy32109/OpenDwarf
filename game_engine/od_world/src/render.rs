@@ -253,7 +253,10 @@ pub struct RenderStats {
 pub struct RenderInput<'a> {
     pub client: &'a ClientView,
     pub view: &'a LocalWorldView,
-    pub smooth_player_xy: Option<[f32; 2]>,
+    /// Fixed-tick interpolation factor in `[0, 1]`: `0` renders the start of
+    /// the current tick interval (`prev_xy`), `1` renders the tick-exit
+    /// position (`curr_xy`).
+    pub alpha: f32,
 }
 
 pub struct RenderOutput {
@@ -467,7 +470,7 @@ fn emit_player_quad(
         stats.dropped_atlas_quads = stats.dropped_atlas_quads.saturating_add(1);
         return;
     }
-    let [x, y] = input.smooth_player_xy.unwrap_or(player.curr_xy);
+    let [x, y] = lerp_xy(player.prev_xy, player.curr_xy, input.alpha);
     let tint = if z_offset < 0 {
         let idx = usize::try_from(-z_offset).unwrap_or(usize::MAX);
         DEPTH_TINTS[idx.min(DEPTH_TINTS.len() - 1)]
@@ -524,6 +527,26 @@ pub(crate) fn primary_entity(client: &ClientView) -> Option<&EntityView> {
         .primary_entity_id
         .and_then(|id| client.entity(id))
         .or_else(|| client.entities.first())
+}
+
+/// Fixed-tick interpolation between two tick-boundary render positions.
+///
+/// Endpoints are exact by construction: `alpha <= 0` returns `prev`
+/// bit-identically and `alpha >= 1` returns `curr` bit-identically (never
+/// `prev + (curr - prev) * 1.0`, which can differ in f32). Interior alphas
+/// use the standard `prev + (curr - prev) * alpha` form.
+#[must_use]
+pub fn lerp_xy(prev: [f32; 2], curr: [f32; 2], alpha: f32) -> [f32; 2] {
+    if alpha <= 0.0 {
+        return prev;
+    }
+    if alpha >= 1.0 {
+        return curr;
+    }
+    [
+        prev[0] + (curr[0] - prev[0]) * alpha,
+        prev[1] + (curr[1] - prev[1]) * alpha,
+    ]
 }
 
 #[must_use]
@@ -609,13 +632,26 @@ mod tests {
         atlas: &mut Vec<WorldAtlasQuadInstance>,
         cmds: &mut Vec<DrawCmd>,
     ) -> RenderOutput {
+        render_once_with_alpha(client, view, perspective, caches, atlas, cmds, 0.0)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_once_with_alpha(
+        client: &ClientView,
+        view: &LocalWorldView,
+        perspective: &EntityPerspective,
+        caches: &mut RenderCaches,
+        atlas: &mut Vec<WorldAtlasQuadInstance>,
+        cmds: &mut Vec<DrawCmd>,
+        alpha: f32,
+    ) -> RenderOutput {
         atlas.clear();
         cmds.clear();
         render(
             RenderInput {
                 client,
                 view,
-                smooth_player_xy: None,
+                alpha,
             },
             perspective,
             caches,
@@ -1110,5 +1146,121 @@ mod tests {
         assert!(!caches.topmost.entries.contains_key(&(0, 0)), "evicted");
         assert!(caches.topmost.entries.contains_key(&(2, 0)), "entered");
         assert_eq!(caches.topmost.hits(), 1, "the retained column was a hit");
+    }
+
+    /// Stage 6: `lerp_xy` endpoint and interior semantics are exact.
+    ///
+    /// `alpha == 0` is the start of the tick interval (`prev`, bit-exact),
+    /// `alpha == 1` is the tick-exit position (`curr`, bit-exact), interior
+    /// alphas use `prev + (curr - prev) * alpha` in f32, and out-of-range
+    /// alphas clamp to the endpoints.
+    #[test]
+    fn lerp_xy_endpoints_bit_exact_midpoint_exact_and_clamped() {
+        // Chosen so that `prev + (curr - prev) * 1.0` is NOT bit-equal to
+        // `curr` in f32 (rounding in the subtraction), proving the endpoint
+        // branches are required for bit-exactness.
+        let prev = [16_777_216.0_f32, -3.5];
+        let curr = [0.1_f32, 7.25];
+        assert_ne!(
+            (prev[0] + (curr[0] - prev[0]) * 1.0).to_bits(),
+            curr[0].to_bits(),
+            "fixture must exercise the f32 endpoint hazard"
+        );
+
+        let at0 = lerp_xy(prev, curr, 0.0);
+        assert_eq!(at0[0].to_bits(), prev[0].to_bits(), "alpha 0 == prev.x");
+        assert_eq!(at0[1].to_bits(), prev[1].to_bits(), "alpha 0 == prev.y");
+        let at1 = lerp_xy(prev, curr, 1.0);
+        assert_eq!(at1[0].to_bits(), curr[0].to_bits(), "alpha 1 == curr.x");
+        assert_eq!(at1[1].to_bits(), curr[1].to_bits(), "alpha 1 == curr.y");
+
+        // Interior alpha: exact f32 formula.
+        let mid = lerp_xy([1.25, 2.5], [4.75, -3.5], 0.5);
+        assert_eq!(mid[0].to_bits(), (1.25_f32 + (4.75 - 1.25) * 0.5).to_bits());
+        assert_eq!(mid[1].to_bits(), (2.5_f32 + (-3.5 - 2.5) * 0.5).to_bits());
+
+        // Alpha never exceeds [0, 1]: out-of-range clamps to the endpoints.
+        assert_eq!(lerp_xy(prev, curr, -0.25), prev);
+        assert_eq!(lerp_xy(prev, curr, 1.75), curr);
+    }
+
+    /// Stage 6: the player quad position equals the fixed-tick lerp result
+    /// exactly (bit-exact f32 math) at alpha 0, an interior alpha, and 1.
+    /// There is no other smoothing input to the player quad.
+    #[test]
+    fn player_quad_position_is_exact_fixed_tick_lerp() {
+        let sim = WorldSim::new(WorldConfig::default(), true);
+        let mut client = full_client_view(&sim);
+        let player_id = client.primary_entity_id.expect("primary entity");
+        let index = client
+            .entities
+            .iter()
+            .position(|entity| entity.id == player_id)
+            .expect("projected player");
+        let prev = [-6.0_f32, 1.0];
+        let curr = [-5.0_f32, 1.0];
+        client.entities[index].prev_xy = prev;
+        client.entities[index].curr_xy = curr;
+        let mut view = LocalWorldView::default();
+        view.view_z = sim.entity_position(player_id).expect("player").z;
+        view.view_mode = WorldViewMode::Master;
+        view.visible_chunks = all_chunks(&sim);
+        let perspective = EntityPerspective::default();
+        let mut caches = RenderCaches::default();
+        let mut atlas = Vec::with_capacity(4096);
+        let mut cmds = Vec::with_capacity(8);
+
+        for alpha in [0.0_f32, 0.5, 0.3, 1.0] {
+            let out = render_once_with_alpha(
+                &client,
+                &view,
+                &perspective,
+                &mut caches,
+                &mut atlas,
+                &mut cmds,
+                alpha,
+            );
+            assert_eq!(out.stats.player_quads, 1);
+            let player_quad = atlas.last().expect("player quad is emitted last");
+            let expected = lerp_xy(prev, curr, alpha);
+            assert_eq!(
+                player_quad.pos[0].to_bits(),
+                (expected[0] * TILE_SIZE_PX).to_bits(),
+                "player x at alpha {alpha}"
+            );
+            assert_eq!(
+                player_quad.pos[1].to_bits(),
+                (expected[1] * TILE_SIZE_PX).to_bits(),
+                "player y at alpha {alpha}"
+            );
+        }
+
+        // Value-level endpoint checks: alpha 0 renders prev, alpha 1 curr.
+        let _ = render_once_with_alpha(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+            0.0,
+        );
+        assert_eq!(
+            atlas.last().expect("player").pos,
+            [prev[0] * TILE_SIZE_PX, prev[1] * TILE_SIZE_PX]
+        );
+        let _ = render_once_with_alpha(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+            1.0,
+        );
+        assert_eq!(
+            atlas.last().expect("player").pos,
+            [curr[0] * TILE_SIZE_PX, curr[1] * TILE_SIZE_PX]
+        );
     }
 }
