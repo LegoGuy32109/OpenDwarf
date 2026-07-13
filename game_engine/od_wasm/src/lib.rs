@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use od_core::{
     Dir, DrawCmd, EventKind, InputArena, KeyCode, LocalWorldView, ProgramId, Vec3i, Vec3u,
     ViewGlobals, WorldAtlasQuadInstance, WorldCommand, WorldConfig, WorldIntent, WorldReplay,
-    WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode, draw_state_hash_with_world,
-    world_state_hash,
+    WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode, chunk_coord_to_index,
+    draw_state_hash_with_world, world_position_to_chunk_voxel, world_state_hash,
 };
 #[cfg(target_arch = "wasm32")]
 use od_ui::HostEffect;
@@ -256,10 +256,11 @@ impl UiEngine {
                 od_core::WORLD_REPLAY_FORMAT_VERSION
             ));
         }
-        let mut world = WorldSim::new(
+        let mut world = WorldSim::try_new(
             replay.metadata.world_config.clone(),
             replay.metadata.spawn_default_player,
-        );
+        )
+        .map_err(|err| format!("unsupported WorldReplay world config: {err}"))?;
         for (index, event) in replay.events.iter().enumerate() {
             let WorldReplayEvent::Command {
                 tick_before,
@@ -634,7 +635,6 @@ impl UiEngine {
 
         let (visible, streaming) = streaming_chunks_for_view(
             &self.view,
-            self.world.chunk_edge(),
             self.world.world_chunks(),
             self.world.world_bounds(),
             entity.position,
@@ -1018,19 +1018,15 @@ fn play_world_config() -> WorldConfig {
 
 fn streaming_chunks_for_view(
     view: &LocalWorldView,
-    chunk_edge: u32,
     world_chunks: Vec3u,
     world_bounds: (Vec3i, Vec3i),
     player_position: Vec3i,
     framebuffer: (u32, u32),
 ) -> (BTreeSet<Vec3i>, BTreeSet<Vec3i>) {
-    let visible =
-        chunk_window_from_camera(view, chunk_edge, world_chunks, world_bounds, framebuffer, 0);
-    let mut streaming =
-        chunk_window_from_camera(view, chunk_edge, world_chunks, world_bounds, framebuffer, 1);
+    let visible = chunk_window_from_camera(view, world_chunks, world_bounds, framebuffer, 0);
+    let mut streaming = chunk_window_from_camera(view, world_chunks, world_bounds, framebuffer, 1);
     if view.view_mode == WorldViewMode::Entity
-        && let Some(player_chunk) =
-            world_position_to_chunk_coord(player_position, chunk_edge, world_chunks)
+        && let Some(player_chunk) = world_position_to_chunk_coord(player_position, world_chunks)
     {
         for dy in -1..=1 {
             for dx in -1..=1 {
@@ -1046,7 +1042,6 @@ fn streaming_chunks_for_view(
 
 fn chunk_window_from_camera(
     view: &LocalWorldView,
-    chunk_edge: u32,
     world_chunks: Vec3u,
     world_bounds: (Vec3i, Vec3i),
     framebuffer: (u32, u32),
@@ -1077,18 +1072,14 @@ fn chunk_window_from_camera(
         return BTreeSet::new();
     }
 
-    let Some(min_chunk) = world_position_to_chunk_coord(
-        Vec3i::new(min_x, min_y, view.view_z),
-        chunk_edge,
-        world_chunks,
-    ) else {
+    let Some(min_chunk) =
+        world_position_to_chunk_coord(Vec3i::new(min_x, min_y, view.view_z), world_chunks)
+    else {
         return BTreeSet::new();
     };
-    let Some(max_chunk) = world_position_to_chunk_coord(
-        Vec3i::new(max_x, max_y, view.view_z),
-        chunk_edge,
-        world_chunks,
-    ) else {
+    let Some(max_chunk) =
+        world_position_to_chunk_coord(Vec3i::new(max_x, max_y, view.view_z), world_chunks)
+    else {
         return BTreeSet::new();
     };
 
@@ -1121,51 +1112,13 @@ fn sanitize_dpr(dpr: f32) -> f32 {
     }
 }
 
-fn world_position_to_chunk_coord(
-    position: Vec3i,
-    chunk_edge: u32,
-    world_chunks: Vec3u,
-) -> Option<Vec3i> {
-    let world_size_x = world_chunks.x.checked_mul(chunk_edge)?;
-    let world_size_y = world_chunks.y.checked_mul(chunk_edge)?;
-    let world_size_z = world_chunks.z.checked_mul(chunk_edge)?;
-    let min = Vec3i::new(
-        -(i32::try_from(world_size_x).ok()? / 2),
-        -(i32::try_from(world_size_y).ok()? / 2),
-        -(i32::try_from(world_size_z).ok()? / 2),
-    );
-    let local_x = position.x - min.x;
-    let local_y = position.y - min.y;
-    let local_z = position.z - min.z;
-    if local_x < 0 || local_y < 0 || local_z < 0 {
-        return None;
-    }
-    let local_x = u32::try_from(local_x).ok()?;
-    let local_y = u32::try_from(local_y).ok()?;
-    let local_z = u32::try_from(local_z).ok()?;
-    if local_x >= world_size_x || local_y >= world_size_y || local_z >= world_size_z {
-        return None;
-    }
-    Some(Vec3i::new(
-        i32::try_from(local_x / chunk_edge.max(1)).ok()? - i32::try_from(world_chunks.x).ok()? / 2,
-        i32::try_from(local_y / chunk_edge.max(1)).ok()? - i32::try_from(world_chunks.y).ok()? / 2,
-        i32::try_from(local_z / chunk_edge.max(1)).ok()? - i32::try_from(world_chunks.z).ok()? / 2,
-    ))
+/// Centered chunk coordinate of a world position (shared od_core helper).
+fn world_position_to_chunk_coord(position: Vec3i, world_chunks: Vec3u) -> Option<Vec3i> {
+    world_position_to_chunk_voxel(position, world_chunks).map(|(chunk, _)| chunk)
 }
 
 fn chunk_in_bounds(chunk: Vec3i, world_chunks: Vec3u) -> bool {
-    let offset_x = i32::try_from(world_chunks.x).unwrap_or(i32::MAX) / 2;
-    let offset_y = i32::try_from(world_chunks.y).unwrap_or(i32::MAX) / 2;
-    let offset_z = i32::try_from(world_chunks.z).unwrap_or(i32::MAX) / 2;
-    let local_x = chunk.x + offset_x;
-    let local_y = chunk.y + offset_y;
-    let local_z = chunk.z + offset_z;
-    local_x >= 0
-        && local_y >= 0
-        && local_z >= 0
-        && u32::try_from(local_x).is_ok_and(|x| x < world_chunks.x)
-        && u32::try_from(local_y).is_ok_and(|y| y < world_chunks.y)
-        && u32::try_from(local_z).is_ok_and(|z| z < world_chunks.z)
+    chunk_coord_to_index(chunk, world_chunks).is_some()
 }
 
 fn vec3i_json(value: Vec3i) -> Value {
@@ -1274,6 +1227,48 @@ mod tests {
     }
 
     #[test]
+    fn import_replay_rejects_unsupported_chunk_edge_with_error() {
+        let config = WorldConfig::default();
+        let sim = WorldSim::new(config.clone(), true);
+        let final_snapshot = sim.snapshot();
+        let final_state_hash = world_state_hash(&final_snapshot);
+        let mut json_snapshot = final_snapshot;
+        json_snapshot.terrain_blocks.clear();
+        let replay = WorldReplay {
+            metadata: od_core::replay::WorldReplayMetadata {
+                format_version: od_core::WORLD_REPLAY_FORMAT_VERSION,
+                name: "bad_chunk_edge".to_owned(),
+                world_config: WorldConfig {
+                    chunk_edge: 8,
+                    ..config
+                },
+                spawn_default_player: true,
+            },
+            events: Vec::new(),
+            final_snapshot: json_snapshot,
+            final_state_hash,
+        };
+        let bytes = serde_json::to_vec(&replay).expect("replay json");
+        let mut engine = UiEngine::new();
+        let before = engine.debug_world_snapshot_json();
+
+        let err = engine
+            .import_replay_json(&bytes)
+            .expect_err("chunk_edge 8 must be rejected, not panic");
+
+        assert!(
+            err.contains("unsupported WorldReplay world config"),
+            "typed config mapping missing from: {err}"
+        );
+        assert!(
+            err.contains("chunk_edge 8"),
+            "error must name the edge: {err}"
+        );
+        // Failed import must not replace the running world.
+        assert_eq!(engine.debug_world_snapshot_json(), before);
+    }
+
+    #[test]
     fn chat_capture_does_not_freeze_sim_ticks() {
         let mut engine = UiEngine::new();
         engine.input.sampled.framebuffer_w = 640;
@@ -1312,7 +1307,6 @@ mod tests {
 
         let (visible, streaming) = streaming_chunks_for_view(
             &view,
-            snapshot.chunk_edge,
             snapshot.world_chunks,
             sim.world_bounds(),
             player,
@@ -1328,9 +1322,8 @@ mod tests {
         let sim = WorldSim::new(play_world_config(), true);
         let snapshot = sim.snapshot();
         let player = snapshot.entities[0].position;
-        let player_chunk =
-            world_position_to_chunk_coord(player, snapshot.chunk_edge, snapshot.world_chunks)
-                .expect("player chunk");
+        let player_chunk = world_position_to_chunk_coord(player, snapshot.world_chunks)
+            .expect("player chunk");
         let mut view = LocalWorldView {
             view_mode: WorldViewMode::Entity,
             camera: od_core::WorldCamera {
@@ -1344,7 +1337,6 @@ mod tests {
 
         let (_visible, streaming) = streaming_chunks_for_view(
             &view,
-            snapshot.chunk_edge,
             snapshot.world_chunks,
             sim.world_bounds(),
             player,

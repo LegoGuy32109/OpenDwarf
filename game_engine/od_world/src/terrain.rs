@@ -2,51 +2,40 @@
 //!
 //! Uses f64 Perlin-like noise as-is. Native↔wasm bit identity is an accepted
 //! risk for Increment 2; see `docs/design/sim-replay.md` §6.
+//!
+//! Generation fills fixed chunk-local typed arrays directly from world
+//! coordinates; the noise samples depend only on the world position, so the
+//! generated blocks are identical to the legacy world-major fill.
 
-use std::collections::HashMap;
-
+use od_core::world::chunk::{CHUNK_VOLUME, SUPPORTED_CHUNK_EDGE, chunk_min_world_position};
 use od_core::world::{BlockType, TerrainConfig, Vec3i, Vec3u};
 
 const PLAYABLE_NOISE_BAND_HALF_THICKNESS: i32 = 1;
 const STARTER_ROOM_HALF_EXTENT: i32 = 3;
 const STARTER_ROOM_HALF_HEIGHT: i32 = 1;
 
+/// Generate the blocks of one chunk in canonical local-voxel order
+/// (z-major, x fastest).
+///
+/// `seed` is the precomputed [`seed_to_u64`] of the terrain seed string.
 #[must_use]
-pub(crate) fn make_initial_blocks(
-    chunk_edge: u32,
+pub(crate) fn generate_chunk_blocks(
+    chunk: Vec3i,
     world_chunks: Vec3u,
-    block_count: usize,
     terrain: &TerrainConfig,
-) -> Vec<BlockType> {
-    let world_size = Vec3u::new(
-        world_chunks
-            .x
-            .checked_mul(chunk_edge)
-            .expect("world x-size overflowed"),
-        world_chunks
-            .y
-            .checked_mul(chunk_edge)
-            .expect("world y-size overflowed"),
-        world_chunks
-            .z
-            .checked_mul(chunk_edge)
-            .expect("world z-size overflowed"),
-    );
-    let min = world_min_for_size(world_size);
-    let world_size_x = usize::try_from(world_size.x).expect("world size x does not fit in usize");
-    let world_size_y = usize::try_from(world_size.y).expect("world size y does not fit in usize");
-    let seed = seed_to_u64(&terrain.seed);
-
-    let mut blocks = vec![BlockType::SolidStone; block_count];
-    for z in 0..world_size.z {
-        let world_z = min.z + i32::try_from(z).expect("z does not fit in i32");
-        for y in 0..world_size_y {
-            let world_y = min.y + i32::try_from(y).expect("y does not fit in i32");
-            for x in 0..world_size_x {
-                let world_x = min.x + i32::try_from(x).expect("x does not fit in i32");
-                let world_position = Vec3i::new(world_x, world_y, world_z);
-                let index = world_position_to_index(world_position, world_size)
-                    .expect("world position should be in bounds");
+    seed: u64,
+) -> Box<[BlockType; CHUNK_VOLUME]> {
+    let base = chunk_min_world_position(chunk, world_chunks)
+        .expect("generated chunk coordinate should be inside the chunk grid");
+    let edge = i32::try_from(SUPPORTED_CHUNK_EDGE).expect("chunk edge fits in i32");
+    let mut blocks = Box::new([BlockType::SolidStone; CHUNK_VOLUME]);
+    let mut index = 0_usize;
+    for vz in 0..edge {
+        let world_z = base.z + vz;
+        for vy in 0..edge {
+            let world_y = base.y + vy;
+            for vx in 0..edge {
+                let world_position = Vec3i::new(base.x + vx, world_y, world_z);
                 if is_within_starter_room(world_position)
                     || (is_within_playable_noise_band(world_position)
                         && sample_cave_density(world_position, terrain, seed)
@@ -54,103 +43,11 @@ pub(crate) fn make_initial_blocks(
                 {
                     blocks[index] = BlockType::Air;
                 }
+                index += 1;
             }
         }
     }
     blocks
-}
-
-#[must_use]
-pub(crate) fn build_terrain_blocks_cache(
-    blocks: &[BlockType],
-    chunk_edge: u32,
-    world_chunks: Vec3u,
-) -> HashMap<Vec3i, BlockType> {
-    let world_size = Vec3u::new(
-        world_chunks
-            .x
-            .checked_mul(chunk_edge)
-            .expect("world x-size overflowed"),
-        world_chunks
-            .y
-            .checked_mul(chunk_edge)
-            .expect("world y-size overflowed"),
-        world_chunks
-            .z
-            .checked_mul(chunk_edge)
-            .expect("world z-size overflowed"),
-    );
-    let min = world_min_for_size(world_size);
-
-    let mut map = HashMap::with_capacity(blocks.len());
-    let world_size_x = usize::try_from(world_size.x).expect("world size x does not fit in usize");
-    let world_size_y = usize::try_from(world_size.y).expect("world size y does not fit in usize");
-    let layer_size = world_size_x
-        .checked_mul(world_size_y)
-        .expect("world layer size overflowed");
-
-    for z in 0..world_size.z {
-        let z_offset = usize::try_from(z).expect("z does not fit in usize") * layer_size;
-        for y in 0..world_size.y {
-            let y_offset =
-                z_offset + usize::try_from(y).expect("y does not fit in usize") * world_size_x;
-            for x in 0..world_size.x {
-                let index = y_offset + usize::try_from(x).expect("x does not fit in usize");
-                let block = blocks[index];
-                if block == BlockType::SolidStone {
-                    map.insert(
-                        Vec3i::new(
-                            min.x + i32::try_from(x).expect("x does not fit in i32"),
-                            min.y + i32::try_from(y).expect("y does not fit in i32"),
-                            min.z + i32::try_from(z).expect("z does not fit in i32"),
-                        ),
-                        block,
-                    );
-                }
-            }
-        }
-    }
-
-    map
-}
-
-#[must_use]
-pub(crate) fn world_min_for_size(world_size: Vec3u) -> Vec3i {
-    Vec3i::new(
-        -(i32::try_from(world_size.x).expect("world size x does not fit in i32") / 2),
-        -(i32::try_from(world_size.y).expect("world size y does not fit in i32") / 2),
-        -(i32::try_from(world_size.z).expect("world size z does not fit in i32") / 2),
-    )
-}
-
-#[must_use]
-pub(crate) fn world_position_to_index(
-    world_position: Vec3i,
-    world_size: Vec3u,
-) -> Option<usize> {
-    let min = world_min_for_size(world_size);
-    let local_x = world_position.x - min.x;
-    let local_y = world_position.y - min.y;
-    let local_z = world_position.z - min.z;
-    if local_x < 0 || local_y < 0 || local_z < 0 {
-        return None;
-    }
-
-    let local_x = usize::try_from(local_x).ok()?;
-    let local_y = usize::try_from(local_y).ok()?;
-    let local_z = usize::try_from(local_z).ok()?;
-    let world_size_x = usize::try_from(world_size.x).ok()?;
-    let world_size_y = usize::try_from(world_size.y).ok()?;
-    let world_size_z = usize::try_from(world_size.z).ok()?;
-    if local_x >= world_size_x || local_y >= world_size_y || local_z >= world_size_z {
-        return None;
-    }
-
-    let layer_size = world_size_x.checked_mul(world_size_y)?;
-    local_z
-        .checked_mul(layer_size)
-        .and_then(|offset| offset.checked_add(local_y.checked_mul(world_size_x)?))
-        .and_then(|offset| offset.checked_add(local_x))
 }
 
 fn sample_cave_density(world_position: Vec3i, terrain: &TerrainConfig, seed: u64) -> f64 {
@@ -292,7 +189,8 @@ fn mix_u64(mut value: u64) -> u64 {
     value ^ (value >> 31)
 }
 
-fn seed_to_u64(seed: &str) -> u64 {
+#[must_use]
+pub(crate) fn seed_to_u64(seed: &str) -> u64 {
     let mut hash = 0xCBF2_9CE4_8422_2325_u64;
     for byte in seed.as_bytes() {
         hash ^= u64::from(*byte);

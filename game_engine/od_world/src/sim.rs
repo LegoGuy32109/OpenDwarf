@@ -1,7 +1,9 @@
 //! Synchronous in-process [`WorldSim`] handle (Increment 2).
 
+use od_core::world::chunk::CHUNK_VOLUME;
 use od_core::world::{
-    EntitySnapshot, Vec3i, Vec3u, WorldCommand, WorldCommandError, WorldConfig, WorldSnapshot,
+    BlockType, EntitySnapshot, Vec3i, Vec3u, WorldCommand, WorldCommandError, WorldConfig,
+    WorldConfigError, WorldSnapshot,
 };
 
 use crate::state::WorldState;
@@ -21,7 +23,20 @@ impl WorldSim {
     /// role; spawn cell uses supported-floor search rather than raw `(0,0,0)`).
     #[must_use]
     pub fn new(config: WorldConfig, spawn_default_player: bool) -> Self {
-        let mut state = WorldState::new(config);
+        Self::try_new(config, spawn_default_player)
+            .expect("trusted WorldConfig should use the supported chunk edge")
+    }
+
+    /// Fallible constructor for untrusted configs (replay/import paths).
+    ///
+    /// Rejects any chunk edge other than
+    /// [`od_core::world::chunk::SUPPORTED_CHUNK_EDGE`] with a typed error
+    /// before constructing fixed-size chunk storage.
+    pub fn try_new(
+        config: WorldConfig,
+        spawn_default_player: bool,
+    ) -> Result<Self, WorldConfigError> {
+        let mut state = WorldState::try_new(config)?;
         let mut primary_entity_id = None;
         if spawn_default_player {
             let spawn = state
@@ -32,10 +47,10 @@ impl WorldSim {
                 .expect("default player should spawn in bounds");
             primary_entity_id = Some(1);
         }
-        Self {
+        Ok(Self {
             state,
             primary_entity_id,
-        }
+        })
     }
 
     /// Apply a command against the current tick.
@@ -44,9 +59,7 @@ impl WorldSim {
     /// [`WorldCommand::AdvanceTicks`] to progress movement. Illegal moves return
     /// [`Err`] without mutating movement state.
     pub fn send_command(&mut self, command: WorldCommand) -> Result<(), WorldCommandError> {
-        self.state
-            .apply_command(command)
-            .map_err(WorldCommandError::from)
+        self.state.apply_command(command)
     }
 
     /// Advance the sim `n` ticks with no wall clock (fast-forward).
@@ -98,6 +111,17 @@ impl WorldSim {
     #[must_use]
     pub fn loaded_chunk_coords(&self) -> Vec<Vec3i> {
         self.state.loaded_chunk_coords()
+    }
+
+    /// Terrain revision of one chunk, or [`None`] outside the chunk grid.
+    #[must_use]
+    pub fn chunk_terrain_revision(&self, chunk: Vec3i) -> Option<u64> {
+        self.state.chunk_terrain_revision(chunk)
+    }
+
+    /// Copy one chunk's blocks into `out`; see [`WorldState::copy_chunk_blocks`].
+    pub fn copy_chunk_blocks(&self, chunk: Vec3i, out: &mut [BlockType; CHUNK_VOLUME]) -> bool {
+        self.state.copy_chunk_blocks(chunk, out)
     }
 
     /// Access internal state (tests / tooling).

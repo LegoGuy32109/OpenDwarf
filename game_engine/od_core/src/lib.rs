@@ -57,7 +57,10 @@ pub use replay::{
 pub use session::{ChatMsg, SessionIntent, SessionModel, TextEdit};
 pub use view::{LocalWorldView, WORLD_ZOOM_LEVELS, WorldCamera, WorldLookOffset, WorldViewMode};
 pub use world::{
-    BlockType, DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE, DEFAULT_WORLD_CHUNKS, Dir,
-    EntityMovementSnapshot, EntitySnapshot, MoveEntityError, TerrainConfig, Vec3i, Vec3u,
-    WorldCommand, WorldCommandError, WorldConfig, WorldIntent, WorldSnapshot,
+    BlockType, CHUNK_AREA, CHUNK_VOLUME, DEFAULT_CHUNK_EDGE, DEFAULT_MOVEMENT_TICKS_PER_TILE,
+    DEFAULT_WORLD_CHUNKS, Dir, EntityMovementSnapshot, EntitySnapshot, MoveEntityError,
+    SUPPORTED_CHUNK_EDGE, TerrainConfig, VISIBILITY_WORDS, Vec3i, Vec3u, WorldCommand,
+    WorldCommandError, WorldConfig, WorldConfigError, WorldIntent, WorldSnapshot,
+    chunk_coord_to_index, chunk_index_to_coord, chunk_min_world_position,
+    world_position_to_chunk_voxel,
 };

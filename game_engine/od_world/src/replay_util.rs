@@ -3,13 +3,16 @@
 use od_core::replay::{
     world_state_hash, WorldReplay, WorldReplayEvent, WorldReplayRecorder,
 };
-use od_core::world::{WorldCommand, WorldCommandError, WorldSnapshot};
+use od_core::world::{WorldCommand, WorldCommandError, WorldConfigError, WorldSnapshot};
 
 use crate::WorldSim;
 
 /// Errors while replaying commands onto a fresh [`WorldSim`].
 #[derive(Debug)]
 pub enum ReplayApplyError {
+    /// Replay metadata carried an unsupported world config (untrusted JSON is
+    /// rejected with a typed error, never a panic).
+    Config(WorldConfigError),
     Command(WorldCommandError),
     TickMismatch {
         expected: u64,
@@ -21,6 +24,7 @@ pub enum ReplayApplyError {
 impl std::fmt::Display for ReplayApplyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Config(err) => write!(f, "unsupported replay world config: {err}"),
             Self::Command(err) => write!(f, "command failed during replay: {err}"),
             Self::TickMismatch {
                 expected,
@@ -37,6 +41,7 @@ impl std::fmt::Display for ReplayApplyError {
 impl std::error::Error for ReplayApplyError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Config(err) => Some(err),
             Self::Command(err) => Some(err),
             Self::TickMismatch { .. } => None,
         }
@@ -47,10 +52,11 @@ impl std::error::Error for ReplayApplyError {
 ///
 /// Checkpoint payloads are ignored (optional mid-run asserts belong in tests).
 pub fn replay_commands_to_snapshot(replay: &WorldReplay) -> Result<WorldSnapshot, ReplayApplyError> {
-    let mut sim = WorldSim::new(
+    let mut sim = WorldSim::try_new(
         replay.metadata.world_config.clone(),
         replay.metadata.spawn_default_player,
-    );
+    )
+    .map_err(ReplayApplyError::Config)?;
     for (index, event) in replay.events.iter().enumerate() {
         let WorldReplayEvent::Command {
             tick_before,

@@ -38,6 +38,7 @@
     "harnessPerformance": { "type": "object" },
     "sameRunProfile": { "type": "object" },
     "goldens": { "type": "object" },
+    "stageOwned": { "type": "object" },
     "authorizedDeferrals": { "type": "array" },
     "residualRisks": { "type": "array", "minItems": 1 }
   },

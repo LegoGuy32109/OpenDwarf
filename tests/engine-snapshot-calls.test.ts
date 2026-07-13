@@ -110,7 +110,7 @@ test("Stage 1 hot-path snapshot counts cover deterministic frame paths", async (
   if (reportPath) {
     const report = {
       schemaVersion: 1,
-      stage: 1,
+      stage: Number(process.env.ENGINE_REPORT_STAGE ?? "1"),
       artifact: {
         profile: provenance.metadata.profile,
         metadataSha256: provenance.metadata.wasm.sha256,

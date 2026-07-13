@@ -25,10 +25,11 @@ pub mod test_util;
 #[cfg(test)]
 mod tests {
     use od_core::world::{
-        MoveEntityError, Vec3i, Vec3u, WorldCommand, WorldCommandError, WorldConfig,
+        BlockType, MoveEntityError, Vec3i, Vec3u, WorldCommand, WorldCommandError, WorldConfig,
+        WorldConfigError,
     };
 
-    use super::{WorldSim, test_util};
+    use super::{ReplayApplyError, WorldSim, replay_commands_to_snapshot, test_util};
 
     #[test]
     fn new_with_default_player_spawns_entity_one() {
@@ -141,6 +142,194 @@ mod tests {
             odd.world_bounds(),
             (Vec3i::new(-24, -8, -8), Vec3i::new(23, 7, 7))
         );
+    }
+
+    #[test]
+    fn try_new_rejects_non_16_chunk_edge_with_typed_error() {
+        for actual in [0_u32, 8, 15, 17, 32] {
+            let result = WorldSim::try_new(
+                WorldConfig {
+                    chunk_edge: actual,
+                    ..WorldConfig::default()
+                },
+                true,
+            );
+            assert!(
+                matches!(
+                    result.as_ref().err(),
+                    Some(&WorldConfigError::UnsupportedChunkEdge {
+                        actual: got,
+                        supported: 16,
+                    }) if got == actual
+                ),
+                "chunk_edge {actual} must be rejected, got a different result"
+            );
+        }
+        assert!(WorldSim::try_new(WorldConfig::default(), true).is_ok());
+    }
+
+    #[test]
+    fn replay_import_rejects_non_16_chunk_edge_with_typed_error() {
+        use od_core::replay::{WorldReplay, WorldReplayMetadata};
+
+        let good = WorldSim::new(WorldConfig::default(), true);
+        let replay = WorldReplay {
+            metadata: WorldReplayMetadata {
+                format_version: od_core::WORLD_REPLAY_FORMAT_VERSION,
+                name: "bad_chunk_edge".to_owned(),
+                world_config: WorldConfig {
+                    chunk_edge: 32,
+                    ..WorldConfig::default()
+                },
+                spawn_default_player: true,
+            },
+            events: Vec::new(),
+            final_snapshot: good.snapshot(),
+            final_state_hash: od_core::world_state_hash(&good.snapshot()),
+        };
+
+        let err = replay_commands_to_snapshot(&replay).expect_err("non-16 edge must be rejected");
+        assert!(
+            matches!(
+                err,
+                ReplayApplyError::Config(WorldConfigError::UnsupportedChunkEdge {
+                    actual: 32,
+                    supported: 16,
+                })
+            ),
+            "expected typed config error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn out_of_bounds_set_chunk_loaded_is_typed_error_without_state_change() {
+        let mut sim = WorldSim::new(WorldConfig::default(), true);
+        let before = sim.snapshot();
+        let chunk = Vec3i::new(7, 0, 0);
+        let err = sim
+            .send_command(WorldCommand::SetChunkLoaded {
+                chunk,
+                loaded: true,
+            })
+            .expect_err("out-of-bounds chunk must be rejected");
+        assert_eq!(err, WorldCommandError::ChunkOutOfBounds { chunk });
+        assert_eq!(sim.snapshot(), before);
+        assert_eq!(sim.loaded_chunk_coords().len(), 1);
+    }
+
+    #[test]
+    fn unloaded_chunk_blocks_movement_and_leaves_snapshot_until_reloaded() {
+        // 2x1x1 world: the forced starter room spans the chunk boundary at
+        // x == 0 (chunk -1 covers x < 0, chunk 0 covers x >= 0).
+        let config = WorldConfig {
+            world_chunks: Vec3u::new(2, 1, 1),
+            ..WorldConfig::default()
+        };
+        let mut sim = WorldSim::new(config, false);
+        let id = 9;
+        // Stand on the starter-room floor just west of the boundary.
+        sim.state_mut()
+            .spawn_entity(id, Vec3i::new(-1, 0, -1))
+            .expect("spawn in starter room");
+        let east_chunk = Vec3i::new(0, 0, 0);
+
+        sim.send_command(WorldCommand::SetChunkLoaded {
+            chunk: east_chunk,
+            loaded: false,
+        })
+        .expect("unload east chunk");
+
+        // Snapshot excludes the unloaded chunk's terrain and residency.
+        let unloaded = sim.snapshot();
+        assert!(!unloaded.loaded_chunks.contains(&east_chunk));
+        assert!(
+            unloaded.terrain_blocks.keys().all(|pos| pos.x < 0),
+            "terrain from the unloaded chunk must leave the snapshot"
+        );
+
+        // Movement into the unloaded chunk fails closed.
+        let err = sim
+            .send_command(WorldCommand::MoveEntity {
+                id,
+                direction: Vec3i::new(1, 0, 0),
+            })
+            .expect_err("move into unloaded chunk must fail");
+        assert!(matches!(
+            err,
+            WorldCommandError::MoveEntity(MoveEntityError::ChunkNotLoaded { .. })
+        ));
+        assert_eq!(sim.entity_position(id), Some(Vec3i::new(-1, 0, -1)));
+
+        // Reloading restores snapshot membership and movement.
+        sim.send_command(WorldCommand::SetChunkLoaded {
+            chunk: east_chunk,
+            loaded: true,
+        })
+        .expect("reload east chunk");
+        let reloaded = sim.snapshot();
+        assert!(reloaded.loaded_chunks.contains(&east_chunk));
+        assert!(reloaded.terrain_blocks.keys().any(|pos| pos.x >= 0));
+        sim.send_command(WorldCommand::MoveEntity {
+            id,
+            direction: Vec3i::new(1, 0, 0),
+        })
+        .expect("move succeeds after reload");
+        test_util::step_until_idle(&mut sim, id, 256);
+        assert_eq!(sim.entity_position(id), Some(Vec3i::new(0, 0, -1)));
+    }
+
+    #[test]
+    fn copy_chunk_blocks_passthrough_matches_snapshot_terrain() {
+        let sim = WorldSim::new(WorldConfig::default(), false);
+        let mut blocks = Box::new([BlockType::Air; od_core::CHUNK_VOLUME]);
+        assert!(sim.copy_chunk_blocks(Vec3i::ZERO, &mut blocks));
+        assert_eq!(sim.chunk_terrain_revision(Vec3i::ZERO), Some(0));
+        assert_eq!(sim.chunk_terrain_revision(Vec3i::new(1, 0, 0)), None);
+        let snapshot = sim.snapshot();
+        let solid_count = blocks
+            .iter()
+            .filter(|block| **block == BlockType::SolidStone)
+            .count();
+        assert_eq!(solid_count, snapshot.terrain_blocks.len());
+    }
+
+    #[test]
+    fn test_block_mutation_changes_snapshot_and_one_revision() {
+        let mut sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(2, 2, 2),
+                ..WorldConfig::default()
+            },
+            false,
+        );
+        let position = Vec3i::new(0, 0, 0); // starter room => Air
+        let target_chunk = sim
+            .state()
+            .world_position_to_chunk_coord(position)
+            .expect("target chunk");
+        let before = sim.snapshot();
+
+        assert!(test_util::set_block(&mut sim, position, BlockType::SolidStone));
+
+        let after = sim.snapshot();
+        assert_ne!(after, before, "snapshot output must change");
+        assert_eq!(
+            after.terrain_blocks.get(&position),
+            Some(&BlockType::SolidStone)
+        );
+        for chunk in sim.loaded_chunk_coords() {
+            let expected = u64::from(chunk == target_chunk);
+            assert_eq!(
+                sim.chunk_terrain_revision(chunk),
+                Some(expected),
+                "revision for {chunk:?}"
+            );
+        }
+
+        // Same-value write: no revision increment, no snapshot change.
+        assert!(test_util::set_block(&mut sim, position, BlockType::SolidStone));
+        assert_eq!(sim.chunk_terrain_revision(target_chunk), Some(1));
+        assert_eq!(sim.snapshot(), after);
     }
 
     #[test]

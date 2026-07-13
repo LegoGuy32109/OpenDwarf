@@ -2,14 +2,18 @@
 //!
 //! FOV is intentionally omitted for Increment 2 v1 snapshots.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
+use od_core::world::chunk::{
+    CHUNK_VOLUME, SUPPORTED_CHUNK_EDGE, chunk_coord_to_index, chunk_index_to_coord,
+    chunk_min_world_position, world_position_to_chunk_voxel,
+};
 use od_core::world::{
     BlockType, EntityMovementSnapshot, EntitySnapshot, MoveEntityError, Vec3i, Vec3u, WorldCommand,
-    WorldConfig, WorldSnapshot,
+    WorldCommandError, WorldConfig, WorldConfigError, WorldSnapshot,
 };
 
-use crate::terrain::{build_terrain_blocks_cache, make_initial_blocks};
+use crate::terrain::{generate_chunk_blocks, seed_to_u64};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct EntityMovementState {
@@ -106,24 +110,44 @@ impl EntityState {
     }
 }
 
+/// One fixed 16-edge chunk of authoritative terrain.
+///
+/// `blocks` uses the canonical local-voxel order (z-major, x fastest).
+/// `terrain_revision` starts at 0 and increments on every effective block
+/// mutation of this chunk. `simulation_resident` mirrors the legacy
+/// "loaded chunk" gate: non-resident chunks keep their terrain but are
+/// excluded from snapshots and block movement into them.
+#[derive(Debug, Clone)]
+struct ChunkState {
+    blocks: Box<[BlockType; CHUNK_VOLUME]>,
+    terrain_revision: u64,
+    simulation_resident: bool,
+}
+
 /// Internal authoritative world state.
+///
+/// Terrain has exactly one source of truth: `chunks`, in canonical z-major
+/// chunk order with x fastest. Snapshots are derived data.
 #[derive(Debug, Clone)]
 pub struct WorldState {
     tick: u64,
-    chunk_edge: u32,
     world_chunks: Vec3u,
     movement_ticks_per_tile: u32,
-    blocks: Vec<BlockType>,
-    terrain_blocks: HashMap<Vec3i, BlockType>,
+    chunks: Vec<ChunkState>,
     entities: BTreeMap<u64, EntityState>,
-    loaded_chunks: HashSet<Vec3i>,
     next_entity_id: u64,
 }
 
 impl WorldState {
-    #[must_use]
-    pub fn new(config: WorldConfig) -> Self {
-        let block_count = usize::try_from(config.world_chunks.x)
+    /// Construct a world after validating the fixed chunk edge.
+    pub fn try_new(config: WorldConfig) -> Result<Self, WorldConfigError> {
+        if config.chunk_edge != SUPPORTED_CHUNK_EDGE {
+            return Err(WorldConfigError::UnsupportedChunkEdge {
+                actual: config.chunk_edge,
+                supported: SUPPORTED_CHUNK_EDGE,
+            });
+        }
+        let chunk_count = usize::try_from(config.world_chunks.x)
             .expect("world_chunks.x does not fit in usize")
             .checked_mul(
                 usize::try_from(config.world_chunks.y)
@@ -135,34 +159,33 @@ impl WorldState {
                         .expect("world_chunks.z does not fit in usize"),
                 )
             })
-            .and_then(|n| {
-                n.checked_mul(
-                    usize::try_from(config.chunk_edge)
-                        .expect("chunk_edge does not fit in usize")
-                        .pow(3),
-                )
-            })
-            .expect("world block count overflowed");
-        let blocks = make_initial_blocks(
-            config.chunk_edge,
-            config.world_chunks,
-            block_count,
-            &config.terrain,
-        );
-        let terrain_blocks =
-            build_terrain_blocks_cache(&blocks, config.chunk_edge, config.world_chunks);
+            .expect("world chunk count overflowed");
+        let seed = seed_to_u64(&config.terrain.seed);
+        let mut chunks = Vec::with_capacity(chunk_count);
+        for index in 0..chunk_count {
+            let chunk = chunk_index_to_coord(index, config.world_chunks)
+                .expect("canonical chunk index should map to a chunk coordinate");
+            chunks.push(ChunkState {
+                blocks: generate_chunk_blocks(chunk, config.world_chunks, &config.terrain, seed),
+                terrain_revision: 0,
+                simulation_resident: true,
+            });
+        }
 
-        Self {
+        Ok(Self {
             tick: 0,
-            chunk_edge: config.chunk_edge,
             world_chunks: config.world_chunks,
             movement_ticks_per_tile: config.movement_ticks_per_tile.max(1),
-            blocks,
-            terrain_blocks,
+            chunks,
             entities: BTreeMap::new(),
-            loaded_chunks: make_initial_loaded_chunks(config.world_chunks),
             next_entity_id: 1,
-        }
+        })
+    }
+
+    /// Trusted-config constructor; panics on an unsupported chunk edge.
+    #[must_use]
+    pub fn new(config: WorldConfig) -> Self {
+        Self::try_new(config).expect("trusted WorldConfig should use the supported chunk edge")
     }
 
     pub fn spawn_entity(&mut self, id: u64, position: Vec3i) -> Result<(), String> {
@@ -225,30 +248,10 @@ impl WorldState {
         best_spawn.map(|(_, _, _, _, spawn)| spawn)
     }
 
-    fn block_at(&self, pos: Vec3i) -> Option<BlockType> {
-        let edge = self.chunk_edge;
-        let wc = self.world_chunks;
-        let world_size_x = i32::try_from(wc.x.checked_mul(edge)?).ok()?;
-        let world_size_y = i32::try_from(wc.y.checked_mul(edge)?).ok()?;
-        let world_size_z = i32::try_from(wc.z.checked_mul(edge)?).ok()?;
-        let lx = pos.x + world_size_x / 2;
-        let ly = pos.y + world_size_y / 2;
-        let lz = pos.z + world_size_z / 2;
-        if lx < 0
-            || ly < 0
-            || lz < 0
-            || lx >= world_size_x
-            || ly >= world_size_y
-            || lz >= world_size_z
-        {
-            return None;
-        }
-        let ix = lx as usize;
-        let iy = ly as usize;
-        let iz = lz as usize;
-        let sx = world_size_x as usize;
-        let sy = world_size_y as usize;
-        self.blocks.get(iz * sx * sy + iy * sx + ix).copied()
+    pub(crate) fn block_at(&self, pos: Vec3i) -> Option<BlockType> {
+        let (chunk, voxel) = world_position_to_chunk_voxel(pos, self.world_chunks)?;
+        let index = chunk_coord_to_index(chunk, self.world_chunks)?;
+        Some(self.chunks[index].blocks[voxel])
     }
 
     fn highest_supported_z(&self, x: i32, y: i32) -> Option<i32> {
@@ -472,7 +475,7 @@ impl WorldState {
 
     #[must_use]
     pub fn chunk_edge(&self) -> u32 {
-        self.chunk_edge
+        SUPPORTED_CHUNK_EDGE
     }
 
     #[must_use]
@@ -493,9 +496,37 @@ impl WorldState {
 
     #[must_use]
     pub fn loaded_chunk_coords(&self) -> Vec<Vec3i> {
-        let mut chunks: Vec<_> = self.loaded_chunks.iter().copied().collect();
+        let mut chunks: Vec<_> = self
+            .chunks
+            .iter()
+            .enumerate()
+            .filter(|(_, chunk)| chunk.simulation_resident)
+            .map(|(index, _)| {
+                chunk_index_to_coord(index, self.world_chunks)
+                    .expect("stored chunk index should map to a chunk coordinate")
+            })
+            .collect();
         chunks.sort_unstable();
         chunks
+    }
+
+    /// Terrain revision of one chunk, or [`None`] outside the chunk grid.
+    #[must_use]
+    pub fn chunk_terrain_revision(&self, chunk: Vec3i) -> Option<u64> {
+        let index = chunk_coord_to_index(chunk, self.world_chunks)?;
+        Some(self.chunks[index].terrain_revision)
+    }
+
+    /// Copy one chunk's blocks into `out` with a single typed copy.
+    ///
+    /// Returns `false` without touching `out` when `chunk` is outside the
+    /// chunk grid. Never allocates and never derives terrain from a snapshot.
+    pub fn copy_chunk_blocks(&self, chunk: Vec3i, out: &mut [BlockType; CHUNK_VOLUME]) -> bool {
+        let Some(index) = chunk_coord_to_index(chunk, self.world_chunks) else {
+            return false;
+        };
+        out.copy_from_slice(&self.chunks[index].blocks[..]);
+        true
     }
 
     #[must_use]
@@ -515,22 +546,33 @@ impl WorldState {
             .is_some_and(|entity| entity.movement.is_some())
     }
 
-    pub fn set_chunk_loaded(&mut self, chunk: Vec3i, loaded: bool) {
-        if loaded {
-            self.loaded_chunks.insert(chunk);
-        } else {
-            self.loaded_chunks.remove(&chunk);
-        }
+    /// Change one chunk's simulation residency.
+    ///
+    /// Out-of-bounds chunks return a typed error and change no state; a
+    /// phantom chunk is never indexed or inserted.
+    pub fn set_chunk_loaded(
+        &mut self,
+        chunk: Vec3i,
+        loaded: bool,
+    ) -> Result<(), WorldCommandError> {
+        let index = chunk_coord_to_index(chunk, self.world_chunks)
+            .ok_or(WorldCommandError::ChunkOutOfBounds { chunk })?;
+        self.chunks[index].simulation_resident = loaded;
+        Ok(())
     }
 
     #[must_use]
     pub fn is_chunk_loaded(&self, chunk: Vec3i) -> bool {
-        self.loaded_chunks.contains(&chunk)
+        chunk_coord_to_index(chunk, self.world_chunks)
+            .is_some_and(|index| self.chunks[index].simulation_resident)
     }
 
     #[must_use]
     pub fn loaded_chunk_count(&self) -> usize {
-        self.loaded_chunks.len()
+        self.chunks
+            .iter()
+            .filter(|chunk| chunk.simulation_resident)
+            .count()
     }
 
     pub fn spawn_or_replace_entity(&mut self, id: u64, position: Vec3i) -> Result<(), String> {
@@ -543,19 +585,16 @@ impl WorldState {
     }
 
     /// Apply a command. `MoveEntity` starts interpolation only (no hidden tick).
-    pub fn apply_command(&mut self, command: WorldCommand) -> Result<(), MoveEntityError> {
+    pub fn apply_command(&mut self, command: WorldCommand) -> Result<(), WorldCommandError> {
         match command {
-            WorldCommand::MoveEntity { id, direction } => {
-                self.start_entity_move_with_reason(id, direction)
-            }
+            WorldCommand::MoveEntity { id, direction } => self
+                .start_entity_move_with_reason(id, direction)
+                .map_err(WorldCommandError::from),
             WorldCommand::AdvanceTicks { count } => {
                 self.force_advance_ticks(count);
                 Ok(())
             }
-            WorldCommand::SetChunkLoaded { chunk, loaded } => {
-                self.set_chunk_loaded(chunk, loaded);
-                Ok(())
-            }
+            WorldCommand::SetChunkLoaded { chunk, loaded } => self.set_chunk_loaded(chunk, loaded),
         }
     }
 
@@ -574,19 +613,38 @@ impl WorldState {
             })
             .collect();
 
-        let loaded_chunks: BTreeSet<Vec3i> = self.loaded_chunks.iter().copied().collect();
+        let edge = i32::try_from(SUPPORTED_CHUNK_EDGE).expect("chunk edge fits in i32");
+        let mut loaded_chunks = BTreeSet::new();
         let mut terrain_blocks = BTreeMap::new();
-        for (&pos, &block) in &self.terrain_blocks {
-            if let Some(chunk) = self.world_position_to_chunk_coord(pos)
-                && self.loaded_chunks.contains(&chunk)
-            {
-                terrain_blocks.insert(pos, block);
+        for (index, chunk_state) in self.chunks.iter().enumerate() {
+            if !chunk_state.simulation_resident {
+                continue;
+            }
+            let chunk = chunk_index_to_coord(index, self.world_chunks)
+                .expect("stored chunk index should map to a chunk coordinate");
+            loaded_chunks.insert(chunk);
+            let base = chunk_min_world_position(chunk, self.world_chunks)
+                .expect("stored chunk coordinate should have a world base");
+            let mut voxel = 0_usize;
+            for vz in 0..edge {
+                for vy in 0..edge {
+                    for vx in 0..edge {
+                        // Sparse snapshot schema: solid cells only (unchanged).
+                        if chunk_state.blocks[voxel] == BlockType::SolidStone {
+                            terrain_blocks.insert(
+                                Vec3i::new(base.x + vx, base.y + vy, base.z + vz),
+                                BlockType::SolidStone,
+                            );
+                        }
+                        voxel += 1;
+                    }
+                }
             }
         }
 
         WorldSnapshot {
             tick: self.tick,
-            chunk_edge: self.chunk_edge,
+            chunk_edge: SUPPORTED_CHUNK_EDGE,
             world_chunks: self.world_chunks,
             terrain_blocks,
             loaded_chunks,
@@ -616,55 +674,45 @@ impl WorldState {
         Vec3u::new(
             self.world_chunks
                 .x
-                .checked_mul(self.chunk_edge)
+                .checked_mul(SUPPORTED_CHUNK_EDGE)
                 .expect("world x-size overflowed"),
             self.world_chunks
                 .y
-                .checked_mul(self.chunk_edge)
+                .checked_mul(SUPPORTED_CHUNK_EDGE)
                 .expect("world y-size overflowed"),
             self.world_chunks
                 .z
-                .checked_mul(self.chunk_edge)
+                .checked_mul(SUPPORTED_CHUNK_EDGE)
                 .expect("world z-size overflowed"),
         )
     }
 
     #[must_use]
     pub fn world_position_to_chunk_coord(&self, position: Vec3i) -> Option<Vec3i> {
-        let world_size = self.world_size_in_voxels();
-        let min = Vec3i::new(
-            -(i32::try_from(world_size.x).ok()? / 2),
-            -(i32::try_from(world_size.y).ok()? / 2),
-            -(i32::try_from(world_size.z).ok()? / 2),
-        );
+        world_position_to_chunk_voxel(position, self.world_chunks).map(|(chunk, _)| chunk)
+    }
 
-        let local_x = position.x - min.x;
-        let local_y = position.y - min.y;
-        let local_z = position.z - min.z;
-        if local_x < 0 || local_y < 0 || local_z < 0 {
-            return None;
+    /// Test-only terrain mutation: set one block and bump only that chunk's
+    /// terrain revision. Writing the already-stored value does not increment
+    /// the revision. Returns `false` for out-of-bounds positions.
+    ///
+    /// Exists solely to exercise projection/cache invalidation until a
+    /// replayable terrain-edit command is designed.
+    #[cfg(test)]
+    pub(crate) fn set_block_for_test(&mut self, position: Vec3i, block: BlockType) -> bool {
+        let Some((chunk, voxel)) = world_position_to_chunk_voxel(position, self.world_chunks)
+        else {
+            return false;
+        };
+        let Some(index) = chunk_coord_to_index(chunk, self.world_chunks) else {
+            return false;
+        };
+        let chunk_state = &mut self.chunks[index];
+        if chunk_state.blocks[voxel] != block {
+            chunk_state.blocks[voxel] = block;
+            chunk_state.terrain_revision = chunk_state.terrain_revision.saturating_add(1);
         }
-        let local_x_u = u32::try_from(local_x).ok()?;
-        let local_y_u = u32::try_from(local_y).ok()?;
-        let local_z_u = u32::try_from(local_z).ok()?;
-        if local_x_u >= world_size.x || local_y_u >= world_size.y || local_z_u >= world_size.z {
-            return None;
-        }
-
-        let edge = self.chunk_edge.max(1);
-        let chunk_local_x = local_x_u / edge;
-        let chunk_local_y = local_y_u / edge;
-        let chunk_local_z = local_z_u / edge;
-
-        let center_x = i32::try_from(self.world_chunks.x).ok()? / 2;
-        let center_y = i32::try_from(self.world_chunks.y).ok()? / 2;
-        let center_z = i32::try_from(self.world_chunks.z).ok()? / 2;
-
-        Some(Vec3i::new(
-            i32::try_from(chunk_local_x).ok()? - center_x,
-            i32::try_from(chunk_local_y).ok()? - center_y,
-            i32::try_from(chunk_local_z).ok()? - center_z,
-        ))
+        true
     }
 }
 
@@ -750,21 +798,174 @@ fn vec3i_to_f32(position: Vec3i) -> [f32; 3] {
     [position.x as f32, position.y as f32, position.z as f32]
 }
 
-fn make_initial_loaded_chunks(world_chunks: Vec3u) -> HashSet<Vec3i> {
-    let mut loaded = HashSet::new();
-    let offset_x = i32::try_from(world_chunks.x).expect("world_chunks.x too large") / 2;
-    let offset_y = i32::try_from(world_chunks.y).expect("world_chunks.y too large") / 2;
-    let offset_z = i32::try_from(world_chunks.z).expect("world_chunks.z too large") / 2;
-    for z in 0..world_chunks.z {
-        for y in 0..world_chunks.y {
-            for x in 0..world_chunks.x {
-                loaded.insert(Vec3i::new(
-                    i32::try_from(x).expect("x too large") - offset_x,
-                    i32::try_from(y).expect("y too large") - offset_y,
-                    i32::try_from(z).expect("z too large") - offset_z,
-                ));
+#[cfg(test)]
+mod tests {
+    use od_core::world::{TerrainConfig, WorldCommandError, WorldConfigError};
+
+    use super::*;
+
+    fn config(world_chunks: Vec3u) -> WorldConfig {
+        WorldConfig {
+            chunk_edge: 16,
+            world_chunks,
+            movement_ticks_per_tile: 10,
+            terrain: TerrainConfig::default(),
+        }
+    }
+
+    #[test]
+    fn try_new_rejects_unsupported_chunk_edge() {
+        for actual in [0_u32, 8, 15, 17, 32] {
+            let result = WorldState::try_new(WorldConfig {
+                chunk_edge: actual,
+                ..config(Vec3u::new(1, 1, 1))
+            });
+            assert!(
+                matches!(
+                    result.as_ref().err(),
+                    Some(&WorldConfigError::UnsupportedChunkEdge {
+                        actual: got,
+                        supported: SUPPORTED_CHUNK_EDGE,
+                    }) if got == actual
+                ),
+                "chunk_edge {actual} must be rejected, got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_construction_marks_every_generated_chunk_resident() {
+        for dims in [
+            Vec3u::new(1, 1, 1),
+            Vec3u::new(2, 2, 2),
+            Vec3u::new(9, 9, 1),
+        ] {
+            let state = WorldState::new(config(dims));
+            let expected = (dims.x * dims.y * dims.z) as usize;
+            assert_eq!(state.loaded_chunk_count(), expected, "{dims:?}");
+            let coords = state.loaded_chunk_coords();
+            assert_eq!(coords.len(), expected, "{dims:?}");
+            for chunk in &coords {
+                assert!(state.is_chunk_loaded(*chunk), "{chunk:?} in {dims:?}");
+                assert_eq!(
+                    state.chunk_terrain_revision(*chunk),
+                    Some(0),
+                    "fresh revision for {chunk:?} in {dims:?}"
+                );
             }
         }
     }
-    loaded
+
+    #[test]
+    fn copy_chunk_blocks_matches_block_at_for_center_negative_and_edge_chunks() {
+        let state = WorldState::new(config(Vec3u::new(9, 9, 1)));
+        let mut out = Box::new([BlockType::Air; CHUNK_VOLUME]);
+        for chunk in [
+            Vec3i::new(0, 0, 0),
+            Vec3i::new(-4, -4, 0),
+            Vec3i::new(4, 4, 0),
+            Vec3i::new(-4, 3, 0),
+        ] {
+            assert!(state.copy_chunk_blocks(chunk, &mut out), "{chunk:?}");
+            let base = chunk_min_world_position(chunk, state.world_chunks()).expect("base");
+            let mut voxel = 0_usize;
+            for vz in 0..16 {
+                for vy in 0..16 {
+                    for vx in 0..16 {
+                        let pos = Vec3i::new(base.x + vx, base.y + vy, base.z + vz);
+                        assert_eq!(
+                            Some(out[voxel]),
+                            state.block_at(pos),
+                            "parity at {pos:?} (chunk {chunk:?}, voxel {voxel})"
+                        );
+                        voxel += 1;
+                    }
+                }
+            }
+            assert_eq!(voxel, CHUNK_VOLUME);
+        }
+    }
+
+    #[test]
+    fn copy_chunk_blocks_invalid_coord_returns_false_without_touching_out() {
+        let state = WorldState::new(config(Vec3u::new(9, 9, 1)));
+        let mut out = Box::new([BlockType::Air; CHUNK_VOLUME]);
+        assert!(state.copy_chunk_blocks(Vec3i::new(0, 0, 0), &mut out));
+        let before = *out;
+        for invalid in [
+            Vec3i::new(5, 0, 0),
+            Vec3i::new(-5, 0, 0),
+            Vec3i::new(0, 5, 0),
+            Vec3i::new(0, 0, 1),
+            Vec3i::new(0, 0, -1),
+            Vec3i::new(i32::MIN, i32::MAX, 0),
+        ] {
+            assert!(
+                !state.copy_chunk_blocks(invalid, &mut out),
+                "{invalid:?} must be rejected"
+            );
+            assert_eq!(*out, before, "output modified for {invalid:?}");
+        }
+    }
+
+    #[test]
+    fn out_of_bounds_set_chunk_loaded_is_typed_error_and_changes_no_state() {
+        let mut state = WorldState::new(config(Vec3u::new(2, 1, 1)));
+        let before = state.snapshot();
+        let before_count = state.loaded_chunk_count();
+        for chunk in [
+            Vec3i::new(1, 0, 0),
+            Vec3i::new(-2, 0, 0),
+            Vec3i::new(0, 1, 0),
+            Vec3i::new(0, 0, -1),
+        ] {
+            for loaded in [true, false] {
+                let err = state
+                    .apply_command(WorldCommand::SetChunkLoaded { chunk, loaded })
+                    .expect_err("out-of-bounds residency command must fail");
+                assert_eq!(err, WorldCommandError::ChunkOutOfBounds { chunk });
+            }
+            assert!(!state.is_chunk_loaded(chunk), "no phantom chunk {chunk:?}");
+        }
+        assert_eq!(state.loaded_chunk_count(), before_count);
+        assert_eq!(state.snapshot(), before, "state must be unchanged");
+    }
+
+    #[test]
+    fn test_block_mutation_bumps_exactly_one_revision_and_changes_snapshot() {
+        let mut state = WorldState::new(config(Vec3u::new(2, 2, 2)));
+        let position = Vec3i::new(0, 0, 0); // starter room => Air
+        assert_eq!(state.block_at(position), Some(BlockType::Air));
+        let target_chunk = state
+            .world_position_to_chunk_coord(position)
+            .expect("target chunk");
+        let all_chunks = state.loaded_chunk_coords();
+        let snapshot_before = state.snapshot();
+
+        assert!(state.set_block_for_test(position, BlockType::SolidStone));
+
+        assert_eq!(state.block_at(position), Some(BlockType::SolidStone));
+        let snapshot_after = state.snapshot();
+        assert_ne!(snapshot_after, snapshot_before, "snapshot must change");
+        assert_eq!(
+            snapshot_after.terrain_blocks.get(&position),
+            Some(&BlockType::SolidStone)
+        );
+        for chunk in &all_chunks {
+            let expected = u64::from(*chunk == target_chunk);
+            assert_eq!(
+                state.chunk_terrain_revision(*chunk),
+                Some(expected),
+                "revision for {chunk:?}"
+            );
+        }
+
+        // Writing the same value again must not increment the revision.
+        assert!(state.set_block_for_test(position, BlockType::SolidStone));
+        assert_eq!(state.chunk_terrain_revision(target_chunk), Some(1));
+        assert_eq!(state.snapshot(), snapshot_after);
+
+        // Out-of-bounds mutation is rejected.
+        assert!(!state.set_block_for_test(Vec3i::new(1000, 0, 0), BlockType::Air));
+    }
 }

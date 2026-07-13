@@ -59,3 +59,24 @@ impl Default for WorldConfig {
         }
     }
 }
+
+/// Why a [`WorldConfig`] cannot be used to construct a world.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorldConfigError {
+    /// The engine only supports one fixed chunk edge
+    /// ([`super::chunk::SUPPORTED_CHUNK_EDGE`]).
+    UnsupportedChunkEdge { actual: u32, supported: u32 },
+}
+
+impl std::fmt::Display for WorldConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedChunkEdge { actual, supported } => write!(
+                f,
+                "unsupported chunk_edge {actual} (this engine supports exactly {supported})"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WorldConfigError {}

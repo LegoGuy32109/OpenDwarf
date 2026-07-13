@@ -63,6 +63,8 @@ impl std::error::Error for MoveEntityError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorldCommandError {
     MoveEntity(MoveEntityError),
+    /// A residency command named a chunk outside the world's chunk grid.
+    ChunkOutOfBounds { chunk: Vec3i },
 }
 
 impl From<MoveEntityError> for WorldCommandError {
@@ -75,6 +77,11 @@ impl std::fmt::Display for WorldCommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MoveEntity(err) => write!(f, "move entity: {err}"),
+            Self::ChunkOutOfBounds { chunk } => write!(
+                f,
+                "chunk ({}, {}, {}) is outside the world chunk grid",
+                chunk.x, chunk.y, chunk.z
+            ),
         }
     }
 }
@@ -83,6 +90,7 @@ impl std::error::Error for WorldCommandError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::MoveEntity(err) => Some(err),
+            Self::ChunkOutOfBounds { .. } => None,
         }
     }
 }

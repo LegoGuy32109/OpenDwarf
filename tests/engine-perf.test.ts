@@ -85,7 +85,7 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
   if (reportPath) {
     const report = {
       schemaVersion: 1,
-      stage: 1,
+      stage: Number(process.env.ENGINE_REPORT_STAGE ?? "1"),
       artifact: {
         profile: provenance.metadata.profile,
         metadataSha256: provenance.metadata.wasm.sha256,

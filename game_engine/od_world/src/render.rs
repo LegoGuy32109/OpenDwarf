@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use od_core::world::chunk::{SUPPORTED_CHUNK_EDGE, chunk_min_world_position};
 use od_core::{
     BlockType, DRAWCMD_PROGRAM_WORLD_ATLAS_QUAD, DrawCmd, EntitySnapshot, LocalWorldView,
     TEXTURE_ID_FLOOR, TEXTURE_ID_SPRITE, Vec3i, WorldAtlasQuadInstance, WorldSnapshot,
@@ -206,9 +207,12 @@ fn emit_floor_quads(
     let mut floor_batch_start = atlas_quads.len();
     let mut floor_batch_count = 0_usize;
     for chunk in &view.visible_chunks {
-        let [base_x, base_y] = chunk_world_base(snapshot, *chunk);
-        for ty in 0..snapshot.chunk_edge {
-            for tx in 0..snapshot.chunk_edge {
+        let Some(base) = chunk_min_world_position(*chunk, snapshot.world_chunks) else {
+            continue;
+        };
+        let [base_x, base_y] = [base.x, base.y];
+        for ty in 0..SUPPORTED_CHUNK_EDGE {
+            for tx in 0..SUPPORTED_CHUNK_EDGE {
                 let tile_x = base_x + i32::try_from(tx).unwrap_or(i32::MAX);
                 let tile_y = base_y + i32::try_from(ty).unwrap_or(i32::MAX);
                 let Some((floor_z, visibility_state)) =
@@ -258,21 +262,6 @@ fn emit_floor_quads(
         TEXTURE_ID_FLOOR,
         stats,
     );
-}
-
-fn chunk_world_base(snapshot: &WorldSnapshot, chunk: Vec3i) -> [i32; 2] {
-    let world_size_x = i32::try_from(snapshot.world_chunks.x.saturating_mul(snapshot.chunk_edge))
-        .unwrap_or(i32::MAX);
-    let world_size_y = i32::try_from(snapshot.world_chunks.y.saturating_mul(snapshot.chunk_edge))
-        .unwrap_or(i32::MAX);
-    let min_x = -(world_size_x / 2);
-    let min_y = -(world_size_y / 2);
-    let center_x = i32::try_from(snapshot.world_chunks.x).unwrap_or(i32::MAX) / 2;
-    let center_y = i32::try_from(snapshot.world_chunks.y).unwrap_or(i32::MAX) / 2;
-    [
-        min_x + (chunk.x + center_x) * snapshot.chunk_edge as i32,
-        min_y + (chunk.y + center_y) * snapshot.chunk_edge as i32,
-    ]
 }
 
 fn topmost_floor(
