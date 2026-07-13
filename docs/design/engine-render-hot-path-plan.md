@@ -104,6 +104,14 @@ These are review gates, not aspirations.
 12. **Cameras never send residency commands.** Production `UiEngine` emits no
     `SetChunkLoaded` in response to camera, zoom, view-z, viewport, or view
     mode. Those inputs select ClientView projection only.
+13. **Evidence is artifact-bound and value-level.** A browser PASS identifies
+    the exact wasm response Chromium loaded. When an expected value is known,
+    key-presence, `> 0`, file-existence, and exit-code-only assertions do not
+    satisfy acceptance.
+14. **A performance task owns the artifact it measures.** Public performance
+    tasks prepare and verify release wasm themselves. Agents must not rely on a
+    manual build step, infer a profile from a filename/task name, or compare a
+    debug run with a release checkpoint.
 
 ## 3. Ownership and data model
 
@@ -456,11 +464,47 @@ Cached segments are copied into the exported contiguous atlas arena every frame
 for the current ABI. Use a bounded append helper; `Vec::extend_from_slice` must
 not be allowed to grow an exported arena. Player output remains one fresh quad.
 
+### 3.7 Verification and artifact contract
+
+Acceptance evidence is part of the architecture because every later stage
+depends on the previous stage's counters, fixtures, and performance record. A
+green exit code without the required values is not a stage gate.
+
+| Evidence item        | Required contract                                                                                                                                                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Artifact preparation | Debug correctness uses `engine:dev`; each public performance task automatically prepares release wasm.                                                                                                    |
+| Build metadata       | `od_wasm.build.json` records schema, profile, final uncompressed wasm SHA-256, transforms, and tool versions with no timestamp.                                                                           |
+| Served module        | Browser performance code hashes the wasm response body consumed by `/engine`; metadata, `engine/generated`, `static/engine`, and served hashes must agree.                                                |
+| Assertions           | Use exact values or fixture equality when known. Presence, nonempty, `> 0`, and regex-shape checks are supplemental only.                                                                                 |
+| Renderer identity    | Inspect the application canvas's existing WebGL2 context. Record unmasked vendor/renderer when available plus the source/fallback used. A new probe canvas is not evidence about the application context. |
+| WebGL health         | After measurement, fail on context loss or any non-`NO_ERROR` value drained from the application context, in addition to page/console errors.                                                             |
+| Process lifecycle    | Reused servers remain alive. A spawned server is terminated after success, readiness timeout, browser launch failure, navigation failure, or measurement failure; browser/pages close on every path.      |
+| Same-run comparison  | `/webgl` and `/engine` are measured sequentially by one profiler invocation, browser build, launch configuration, viewport, and host.                                                                     |
+| Test discovery       | Record discovered/passed/skipped counts. An unexplained decrease is a failure even if the command exits zero.                                                                                             |
+
+The response hash is authoritative for what Chromium executed. Filesystem
+metadata alone cannot prove a reused server belongs to the current checkout.
+Likewise, a hard-coded `profile: release` label is not provenance; it must come
+from generated metadata whose hash matches the observed response.
+
 ## 4. Staged implementation and checkpoints
 
 Every stage must be independently compilable and reviewable. An agent stops at
 the stage acceptance gate and records results before starting the next stage. Do
 not combine golden-changing stages.
+
+For every nontrivial acceptance item, the implementation and checkpoint must
+identify all six fields below. Missing evidence is `NOT COMPLETE`, not a
+deferral inferred by the next agent.
+
+| Field          | Required answer                                                  |
+| -------------- | ---------------------------------------------------------------- |
+| Task           | Which exact command/test produces the evidence?                  |
+| Artifact       | Which debug/release wasm profile and SHA did it execute?         |
+| Assertion      | Which exact value, fixture, invariant, or ceiling is enforced?   |
+| Evidence       | Which counts, samples, hashes, or artifact path were reproduced? |
+| Stop condition | What result blocks this stage?                                   |
+| Consumer       | Which next stage contract relies on this result?                 |
 
 | Stage | Requires         | Durable output                                      | Golden policy                               |
 | ----- | ---------------- | --------------------------------------------------- | ------------------------------------------- |
@@ -474,6 +518,21 @@ not combine golden-changing stages.
 | 7     | Stage 6          | keyed emission cache and final hot-path budget      | unchanged from Stage 6                      |
 | 8     | Stage 7          | cleanup, release artifact, final records            | no unexplained changes                      |
 
+Coverage becomes a hard gate in the stage where it is introduced, before the
+next stage consumes it:
+
+| Contract                                                                                                                    | First hard gate | Next consumer                                   |
+| --------------------------------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------- |
+| Snapshot path matrix and served-wasm provenance                                                                             | Stage 0         | Stage 1 narrow reads and performance comparison |
+| Missing-entity and active-movement accessors                                                                                | Stage 1         | Stage 2 state migration                         |
+| Chunk coordinate round trips, fixed edge rejection, generation/hash parity, one-copy projection, and out-of-bounds commands | Stage 2         | Stage 3 projection                              |
+| Scheduler bounds, projection revisions, missing residency, and shadow ClientView byte parity                                | Stage 3         | Stage 4 renderer cutover                        |
+| Camera/view independence, render parity, and explicit authority commands                                                    | Stage 4         | Stage 5 perspective                             |
+| FOV bitmap parity, dirty scheduling, and memory persistence                                                                 | Stage 5         | Stage 6 interpolation                           |
+| Interpolation determinism and lifecycle reset/import behavior                                                               | Stage 6         | Stage 7 emission caching                        |
+| Emission hits/rebuilds/eviction and fixed-arena overflow                                                                    | Stage 7         | Stage 8 cleanup                                 |
+| Native/browser scenario hashes, draw hashes, and screenshots                                                                | Every stage     | The next stage and final cutover                |
+
 ### Stage 0 - trustworthy baseline and test prerequisites
 
 1. Keep local artifacts under `exports/engine-golden/` required. Mirror to
@@ -486,12 +545,15 @@ not combine golden-changing stages.
    - warm up 5 frames;
    - collect at least 5 samples of `stepFrame(20)`;
    - report median and p95, not one measurement;
-   - assert semantic counters and zero dropped arenas;
+   - assert the exact Stage 0 play-world floor/player/atlas values,
+     deterministic world tick/hash, draw-command count, and zero dropped arenas;
    - start with a 6,000 ms median regression ceiling so the known-bad baseline
      passes and later stages can tighten it. Gate the file on
      `ENGINE_PERF_TEST=1` so the normal 16-worker full suite does not distort
      it. Add `engine:test-perf-browser` to run that file alone with
-     `--workers=1`; this isolated task is the CI regression gate.
+     `--workers=1`; this isolated task is the CI regression gate. The public
+     task first runs `engine:build`, so this ceiling always applies to release
+     wasm; `engine:dev` remains the mandatory debug correctness build.
 4. Add `scripts/engine-perf-profile.ts` plus an `engine:perf` task. It launches
    `/webgl` and production `/engine` sequentially in the same browser, installs
    the same pre-navigation RAF callback-duration probe, warms both routes, and
@@ -499,10 +561,13 @@ not combine golden-changing stages.
    profile records results but does not carry a cross-host absolute assertion.
    Reuse the Chromium executable/launch arguments from Playwright config (factor
    a shared helper if necessary), collect at least 20 completed callbacks per
-   route with a 30-second route timeout, and fail on page/console/WebGL errors.
-   The task is self-contained: reuse a healthy `127.0.0.1:8000` server or spawn
-   `deno run -A dev.ts`, wait for readiness, and terminate only the child it
-   spawned.
+   route with a 30-second route timeout, and fail on page/console errors,
+   application-context WebGL errors, or context loss. Renderer metadata comes
+   from each route's application canvas, never a newly created probe canvas. The
+   task first runs `engine:build`, is self-contained, and must reuse a healthy
+   `127.0.0.1:8000` server or spawn `deno run -A dev.ts`, wait for readiness,
+   and terminate only the child it spawned on every success/failure path. Child
+   stderr must be inherited or drained rather than left in an unread pipe.
 5. Add `worldRender.snapshotCallsLastFrame` observability. Reset a UiEngine
    hot-path counter at frame start and route every temporary RAF-path snapshot
    through one counting helper. On-demand `harness.snapshot()`, replay, and
@@ -510,6 +575,58 @@ not combine golden-changing stages.
 6. Record Chromium version, renderer, served wasm artifact/profile, viewport,
    and same-run `/webgl` control numbers in this document. Absolute numbers from
    different machines are not directly comparable.
+7. Every debug and release build writes deterministic `od_wasm.build.json`
+   beside the wasm in both `engine/generated/` and `static/engine/`. It records
+   the schema version, profile, final uncompressed wasm SHA-256, transforms, and
+   tool versions; no timestamp is allowed. Builds verify that both copies and
+   their metadata hashes agree. A non-env-gated browser smoke verifies the debug
+   response/profile during the correctness lane; browser perf tests and the
+   profiler verify the release response/profile. All capture the actual
+   `/engine` wasm response and fail on a metadata/hash mismatch.
+8. Add a machine-readable checkpoint schema and validator. Each stage commits
+   `docs/design/checkpoints/engine-render-hot-path-stage-<N>.json`; the Markdown
+   record summarizes it.
+   `deno task engine:validate-hot-path-checkpoint --stage <N>` fails on missing
+   commands/results, sample arrays, artifact hashes, test counts, or stage-owned
+   value fields. A prose-only record is not acceptance evidence.
+
+Stage 0 exact snapshot baselines are deliberately path-specific. The focused
+serial Playwright test exercises the committed wasm/harness; Rust tests retain
+cheap idle/tick coverage. Stage 1 updates every value in this table to `1`, and
+Stage 4 updates every value to `0`.
+
+| Frame path                              | Stage 0 snapshots | Stage 1 snapshots | Test owner        |
+| --------------------------------------- | ----------------: | ----------------: | ----------------- |
+| Idle, no fixed tick                     |                 4 |                 1 | Playwright + Rust |
+| Idle frame advancing one fixed tick     |                 7 |                 1 | Playwright + Rust |
+| Movement frame advancing one fixed tick |                 7 |                 1 | Playwright        |
+| Camera-only frame, no fixed tick        |                 4 |                 1 | Playwright        |
+| Chat frame, no fixed tick               |                 4 |                 1 | Playwright        |
+
+Path names are not evidence by themselves. The movement case also asserts that
+the movement command reached active movement; the camera case asserts camera
+state changed while the world tick did not; and the chat case asserts chat mode
+is active while the world tick did not. This prevents five labels from testing
+the same idle behavior.
+
+The Stage 0 release performance fixture is also value-level:
+
+| Field                                |             Required value |
+| ------------------------------------ | -------------------------: |
+| `floorQuadCount`                     |                        130 |
+| `playerQuadCount`                    |                          1 |
+| `atlasQuadCount`                     |                        131 |
+| `world.tick`                         |                         33 |
+| `world.worldStateHash`               | `fnv1a64:11f96a454cacdf3d` |
+| `frame.drawCount`                    |                          7 |
+| Every frame/world arena drop counter |                          0 |
+
+The combined `frame.drawHash` includes FPS/TPS HUD strings whose state begins
+before `resetWorld`, so it is recorded but is not an exact performance-fixture
+gate. Exact draw hashes remain enforced by the scripted golden tests; the perf
+gate uses deterministic world tick/hash plus exact arena/command values. Any
+change to those stable values is governed by the golden policy and stop
+conditions, not silently accepted as a performance-test update.
 
 Files:
 
@@ -517,6 +634,9 @@ Files:
 - `scripts/bash/engine-test.sh`
 - new `tests/engine-perf.test.ts`
 - new `scripts/engine-perf-profile.ts`
+- new `tests/engine-snapshot-calls.test.ts`
+- wasm build metadata writer/provenance helper
+- checkpoint schema/validator and Stage 0 JSON record
 - `deno.json`
 - `game_engine/od_wasm/src/lib.rs` for hot-path snapshot counters
 - `engine/runtime.ts` only if the harness needs additive performance metadata
@@ -526,10 +646,16 @@ Acceptance:
 - `cargo test --workspace`
 - `deno task unit`
 - engine Playwright suites with `--workers=1`
+- debug browser smoke proves metadata profile `debug` and served hash equality
+- Stage 0 snapshot matrix equals `4/7/7/4/4` in the actual wasm harness
 - golden test passes when `/opt/cursor` is absent or unwritable
-- perf test reproduces the slow route without flaking on a single sample
+- release perf test asserts the exact play-world fixture, reports all samples,
+  and reproduces the slow route without flaking on a single sample
 - `deno task engine:test-perf-browser` passes in isolation
-- `deno task engine:perf` writes a same-run comparison artifact
+- `deno task engine:perf` writes a same-run comparison artifact containing
+  application-context GL identity/health and matching metadata/served wasm
+  hashes
+- `deno task engine:validate-hot-path-checkpoint --stage 0` passes
 
 The best-effort Cursor mirror was completed during this plan review; retain its
 passing non-Cursor test as a Stage 0 prerequisite rather than rewriting it.
@@ -548,7 +674,8 @@ Files:
 
 Acceptance:
 
-- `snapshotCallsLastFrame == 1` on idle and tick frames
+- `snapshotCallsLastFrame == 1` on every Stage 0 path: idle, tick, movement,
+  camera-only, and chat
 - draw hashes, screenshots, world hashes, and scenario goldens unchanged
 - median performance is no worse than Stage 0 (expected to improve materially,
   but do not encode an unproven `3x` CI requirement)
@@ -793,6 +920,17 @@ Acceptance:
 
 ## 5. Required test matrix
 
+A stage gate has two artifact lanes. Do not treat them as one mutable sequence
+whose active wasm profile is implicit.
+
+| Lane                     | Artifact                                                                    | Required result                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Debug correctness        | `engine:dev` metadata says `debug`; served hash matches metadata            | Rust/check/unit and complete engine Playwright suite pass with expected discovery counts           |
+| Release performance      | Public task rebuilds; metadata says `release`; served hash matches metadata | Repeated harness ceiling and value assertions pass                                                 |
+| Release same-run profile | Public task rebuilds; metadata says `release`; served hash matches metadata | `/webgl` and `/engine` samples, application GL identity/health, and environment record are written |
+
+### Debug correctness lane
+
 Run after every stage unless the stage explicitly calls for a golden re-bless:
 
 ```bash
@@ -801,15 +939,60 @@ deno task engine:check
 deno task engine:dev
 deno task unit
 npx playwright test tests/engine*.test.ts --workers=1
-deno task engine:test-perf-browser
 ```
 
 `engine:dev` is mandatory after every Rust change: Playwright imports the
 committed `engine/generated/od_wasm_bg.wasm`, so skipping the rebuild can
 produce a false green run against stale code. Confirm `engine/generated/` and
-`static/engine/` changed when Rust behavior changed. If the wasm target or
-`wasm-bindgen` is missing, install the documented Rust-to-wasm prerequisites; do
-not accept stale-artifact browser results.
+`static/engine/` changed when Rust behavior changed, their metadata profile is
+`debug`, and both wasm hashes agree. If the wasm target or `wasm-bindgen` is
+missing, install the documented Rust-to-wasm prerequisites; do not accept
+stale-artifact browser results.
+
+The Playwright command above relies on shell expansion. Run it unquoted exactly
+as written. Quoting `tests/engine*.test.ts` can make Playwright discover only
+`engine.test.ts` while still exiting zero. Stage 0 expects 17 discovered tests:
+16 pass and the env-gated perf file is the single skip. Every later checkpoint
+records discovered/passed/failed/skipped counts; an unexplained decrease is a
+red gate. Also record the Rust and Deno test counts rather than only exit codes.
+
+### Release performance lane
+
+Run after the debug correctness lane:
+
+```bash
+deno task engine:test-perf-browser
+```
+
+The required artifact sequence is deliberately split: run `engine:dev` for the
+debug correctness matrix, then use the public performance task, which
+automatically runs `engine:build` and verifies release metadata against the wasm
+response actually served to Chromium. This is not a manual prerequisite. The
+task records all five 20-frame samples, median, p95, exact semantic values, and
+drop counters. A PASS requires those values, not only `median < ceiling`.
+
+Run the same-run profiler at Stage 0, every stage that requires a benchmark
+record, and Stage 8:
+
+```bash
+deno task engine:perf
+```
+
+`engine:perf` also owns its release build. It measures both routes in one
+invocation and writes the raw 20-sample arrays plus median/p95, Chromium,
+viewport/DPR, application-context vendor/renderer and source, WebGL errors/loss,
+build metadata, and observed served wasm hash. Verify both profiler modes: reuse
+a healthy existing server without terminating it, and spawn/terminate its own
+server. Confirm the spawned server is absent after both success and a forced
+readiness/navigation failure.
+
+After producing the stage JSON/Markdown record, run:
+
+```bash
+deno task engine:validate-hot-path-checkpoint --stage <N>
+```
+
+The validator is part of every stage gate, not a Stage 8 cleanup check.
 
 At Stage 8, run `deno task engine:build` and repeat the engine
 browser/performance suite against the release-generated artifact. Record whether
@@ -820,20 +1003,11 @@ Before final acceptance also run `deno task test` and `deno lint`; document any
 remaining pre-existing lint findings rather than treating lint output as an
 engine performance result.
 
-Correctness coverage must include:
-
-- snapshot call count on idle/tick/movement/chat paths;
-- chunk coordinate round trips, generation/hash parity, one-copy projection, and
-  out-of-bounds command behavior;
-- paired-engine proof that view/camera inputs do not alter world hash or
-  simulation residency;
-- resident projection add/drop/revision behavior;
-- topmost multi-z dependency invalidation;
-- FOV bitmap parity, dirty scheduling, and memory persistence;
-- interpolation and lifecycle reset behavior;
-- emission hit/rebuild/eviction and fixed-arena overflow;
-- scenario native/browser world-state hash parity;
-- draw hashes and screenshots at existing MVP checkpoints.
+The stage-ownership table in section 4 defines when correctness coverage first
+becomes mandatory. Each checkpoint names the concrete test(s) enforcing every
+contract owned by that stage. Later stages may strengthen those tests but may
+not silently delete, skip, weaken, or replace exact assertions with shape-only
+checks.
 
 ## 6. Shadow/fog layer seam after performance work
 
@@ -860,21 +1034,25 @@ Performance measurements use warmed repeated samples and report median/p95. CI
 gates use the harness ceiling; production RAF targets are recorded on a
 controlled same-run comparison because browser/GPU timing varies by host.
 
-| Concern                     | Required result                                                          |
-| --------------------------- | ------------------------------------------------------------------------ |
-| Terrain source              | one chunk-major authoritative store; no duplicate sparse/world vector    |
-| Camera authority            | view changes alter projection only, never world hash/residency           |
-| Hot-path snapshots          | 0 on all normal frame paths                                              |
-| 20-frame play-world harness | median <= 100 ms                                                         |
-| Idle emission rebuilds      | 0 after warmup                                                           |
-| FOV scheduling              | <= 1 recompute per changed fixed tick; 0 idle                            |
-| Dropped output              | 0 at reference viewport/zoom                                             |
-| World draw commands         | <= 4 for current floor/player MVP                                        |
-| Production RAF              | `/engine` median beats same-run `/webgl` control; stretch target <= 2 ms |
-| Sim recovery                | long frame bounded; alpha in range; no unbounded backlog                 |
-| Determinism                 | native/browser scenario hashes and draw goldens green                    |
-| Visual correctness          | existing MVP checkpoints green; interpolation manually verified          |
-| Full regression             | Rust workspace, engine check, unit, Playwright suites green              |
+| Concern                     | Required result                                                           |
+| --------------------------- | ------------------------------------------------------------------------- |
+| Terrain source              | one chunk-major authoritative store; no duplicate sparse/world vector     |
+| Camera authority            | view changes alter projection only, never world hash/residency            |
+| Hot-path snapshots          | 0 on all normal frame paths                                               |
+| 20-frame play-world harness | median <= 100 ms                                                          |
+| Idle emission rebuilds      | 0 after warmup                                                            |
+| FOV scheduling              | <= 1 recompute per changed fixed tick; 0 idle                             |
+| Dropped output              | 0 at reference viewport/zoom                                              |
+| World draw commands         | <= 4 for current floor/player MVP                                         |
+| Production RAF              | `/engine` median beats same-run `/webgl` control; stretch target <= 2 ms  |
+| Sim recovery                | long frame bounded; alpha in range; no unbounded backlog                  |
+| Determinism                 | native/browser scenario hashes and draw goldens green                     |
+| Visual correctness          | existing MVP checkpoints green; interpolation manually verified           |
+| Full regression             | Rust workspace, engine check, unit, Playwright suites green               |
+| Artifact provenance         | profile plus generated/static/served wasm SHA-256 all agree               |
+| Browser environment         | application-context vendor/renderer recorded; no GL errors/context loss   |
+| Test discovery              | no unexplained decrease; discovered/passed/failed/skipped counts recorded |
+| Profiler lifecycle          | reused server preserved; spawned server/browser cleaned on every path     |
 
 ## 8. Risks and stop conditions
 
@@ -899,37 +1077,121 @@ controlled same-run comparison because browser/GPU timing varies by host.
 - **Performance test flakes across hosts:** keep the correctness/counter gates,
   increase only the coarse CI ceiling with recorded evidence, and preserve the
   same-run `/webgl` control.
+- **Artifact profile/hash is missing or disagrees:** stop. Rebuild through the
+  public task and fix provenance; never relabel the artifact or record a
+  filesystem hash in place of the served response hash.
+- **Test discovery count decreases:** stop and inspect shell expansion, skips,
+  filters, and renamed files. Exit zero does not override missing coverage.
+- **Profiler child/browser survives a failure:** stop and repair cleanup before
+  accepting measurements. A successful happy-path run does not satisfy the
+  lifecycle contract.
+- **A known value is asserted only by presence, positivity, nonempty length, or
+  format:** treat the gate as hollow and add exact/fixture-level coverage before
+  the next stage consumes it.
 
 ## 9. Agent checkpoint record
 
-Each implementation PR/stage appends a short record here or to its PR:
+Each stage commits a machine-readable record at
+`docs/design/checkpoints/engine-render-hot-path-stage-<N>.json`, validates it,
+and appends a short summary here or to its PR. The JSON is the complete
+evidence; the summary is an index, not a substitute.
+
+Required JSON fields:
+
+| Field               | Required contents                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Identity            | schema version, stage, status, reviewed implementation revision, record path                                                   |
+| Artifacts           | debug/release metadata paths, declared profiles, filesystem SHA-256, served-response SHA-256, equality result                  |
+| Environment         | Chromium version, viewport, DPR, per-route application-context vendor/renderer and source                                      |
+| Commands            | exact command string plus `PASS`/`FAIL`/`BLOCKED`, discovered/passed/failed/skipped counts when applicable, and salient output |
+| Snapshot matrix     | exact idle/tick/movement/camera/chat values required by that stage                                                             |
+| Harness performance | every raw sample, median, p95, ceiling, semantic values, and drop counters                                                     |
+| Same-run profile    | artifact path, raw route samples, median/p95, GL health, and served provenance                                                 |
+| Stage-owned values  | FOV, projection, emission, arena, scheduler, or other counters introduced by that stage                                        |
+| Goldens             | changed files, before/after hashes, authorized stage, and reason; explicit `none` when unchanged                               |
+| Deferrals/risks     | only deferrals authorized by section 8 plus concrete residual risks                                                            |
+
+The reviewed implementation uses an explicit mode. An unstaged review uses
+`worktree` mode with `HEAD` plus the validator's canonical digest: tracked
+binary diff plus sorted untracked paths/contents, excluding the checkpoint
+record itself. A durable record uses `commit` mode, stores the implementation
+commit (normally the parent of a follow-up checkpoint-record commit), and has no
+worktree digest. The validator requires that commit to be an ancestor of the
+current revision, avoiding a self-referential checkpoint SHA.
+
+`PASS` means the command and its value-level assertions passed against the
+recorded artifact. `BLOCKED` names the missing external prerequisite and remains
+blocked; it is never upgraded to PASS from static inspection. Commands omitted
+from the record are not presumed to have run. The validator rejects a PASS with
+missing hashes, samples, counts, or stage-owned fields.
+
+Markdown summary template:
 
 ```text
 Stage:
-Commit/artifact:
-Environment (Chromium, renderer, wasm profile, viewport):
-Snapshot calls last frame:
-20-frame median / p95:
+Status: PASS | FAIL | BLOCKED
+Reviewed implementation revision / checkpoint JSON:
+Debug artifact profile / filesystem SHA / served SHA:
+Release artifact profile / filesystem SHA / served SHA:
+Environment (Chromium, viewport, DPR):
+Application GL per route (vendor, renderer, source, errors/lost):
+Command results and test counts:
+Snapshot calls (idle/tick/movement/camera/chat):
+20-frame samples / median / p95 / ceiling:
+Same-run artifact and route samples / median / p95:
 FOV sample median / p95 (when applicable):
 Emission hits/rebuilds (when applicable):
-Commands run:
-Golden changes and reason:
+Golden files, hashes, authorization, and reason:
+Authorized deferrals:
 Residual risks:
 ```
 
 An agent must not proceed on a red correctness gate, unexplained draw/hash
-change, arena drop, or missing benchmark record.
+change, arena drop, missing benchmark/checkpoint record, failed validator,
+unexpected test-count decrease, or artifact provenance mismatch.
 
-Stage 0 implementation record (2026-07-12):
+### Stage 0 initial record - historical, not accepted (2026-07-12)
+
+The record below predates the value/provenance contract and is retained only as
+historical measurement evidence. Adversarial review classified Stage 0 as NOT
+COMPLETE: the required debug build made the release-threshold perf command time
+out, tick/movement paths were not protected by exact browser assertions,
+renderer/profile labels were not verified, lifecycle failure paths were not
+covered, and required matrix commands/counts were absent. Do not use this record
+as permission to begin Stage 1. A conforming Stage 0 record must supersede it.
 
 ```text
-Stage: 0 — trustworthy baseline and test prerequisites
-Commit/artifact: rebuilt release engine wasm; exports/engine-perf/2026-07-12T22-55-38-714Z.json
-Environment: Chromium 148.0.7778.215, WebKit WebGL, production static engine wasm, 1920x1080 @ DPR 1
+Stage: 0 - trustworthy baseline and test prerequisites
+Status: NOT COMPLETE
+Commit/artifact: 56d4f825adf56f94997d995ba61b2d63270d8a32; release wasm ba17d395511f0043d7c308f8e5fe0a52fe229c866d4a792368ac9579faf977a7; exports/engine-perf/2026-07-12T22-55-38-714Z.json
+Environment: Chromium 148.0.7778.215, generic WebKit WebGL label, 1920x1080 @ DPR 1
 Snapshot calls last frame: 4 idle-frame snapshots (observability baseline)
 20-frame median / p95: 3324.9 ms / 3638.7 ms (isolated play-world harness)
 RAF median / p95: /engine 468.6 ms / 482.8 ms; /webgl 13.5 ms / 20.8 ms
 Commands run: cargo test --workspace; deno task unit; deno task engine:test-perf-browser; deno task engine:perf
 Golden changes and reason: none
-Residual risks: this is the intentionally slow baseline; Stage 1 must reduce snapshots without changing render output.
+Missing evidence: engine:check, engine:dev, full Playwright counts, tick/movement/camera/chat values, unmasked renderer, served artifact hash, lifecycle failure paths, checkpoint JSON/validator
+Residual risks: intentionally slow baseline; this record cannot protect Stage 1 from tick-only snapshots or cross-profile comparison.
+```
+
+### Stage 0 completion record (2026-07-12)
+
+```text
+Stage: 0 - trustworthy baseline and verification prerequisites; no Stage 1 work
+Status: PASS
+Reviewed implementation revision / checkpoint JSON: worktree on 56d4f825adf56f94997d995ba61b2d63270d8a32; docs/design/checkpoints/engine-render-hot-path-stage-0.json
+Debug artifact profile / filesystem SHA / served SHA: debug / 30304c24736453569fe1565de84e541cecd27a5da88cc05c24d63a9001bdeea6 / 30304c24736453569fe1565de84e541cecd27a5da88cc05c24d63a9001bdeea6
+Release artifact profile / filesystem SHA / served SHA: release / ba17d395511f0043d7c308f8e5fe0a52fe229c866d4a792368ac9579faf977a7 / ba17d395511f0043d7c308f8e5fe0a52fe229c866d4a792368ac9579faf977a7
+  static/engine and engine/generated metadata/wasm hashes agree; schema=1; wasm-bindgen + wasm-opt -O4 + brotli q11 applied
+Environment (Chromium, viewport, DPR): Chromium 148.0.7778.215; 1920x1080; DPR 1
+Application GL per route (vendor, renderer, source, errors/lost): /engine and /webgl: Google Inc. (Intel); ANGLE (Intel, Vulkan 1.4.348 (Intel(R) Iris(R) Xe Graphics (RPL-U) (0x0000A7A1)), Intel open-source Mesa driver); WEBGL_debug_renderer_info; []/false
+Command results and test counts: engine:test PASS (8 od_wasm + 72 total Rust tests); engine:check PASS; engine:dev PASS; unit PASS (26); engine*.test PASS (17 discovered, 16 passed, 1 perf-gated skipped); engine:test-perf-browser PASS (1); engine:perf PASS in self-spawn/reuse modes; forced readiness failure exited 1 and cleaned only its attempted child; checkpoint validator PASS
+Snapshot calls (idle/tick/movement/camera/chat): 4 / 7 / 7 / 4 / 4; 20-frame perf sample final non-tick frame=4
+20-frame samples / median / p95 / ceiling: 3537.7, 3472.9, 3555.1, 3548.4, 3502.2 ms / 3537.7 ms / 3555.1 ms / 6000 ms PASS; tick=33, worldHash=fnv1a64:11f96a454cacdf3d, drawCount=7, floor/player/atlas=130/1/131, all drops=0
+Same-run artifact and route samples / median / p95: exports/engine-perf/2026-07-13T00-00-38-135Z.json; /engine 492.0, 505.5, 500.9, 481.9, 479.5, 474.7, 499.0, 485.4, 504.6, 468.7, 464.3, 477.3, 482.1, 490.6, 488.7, 508.2, 490.0, 485.5, 489.6, 496.9 ms / 489.6 / 508.2; /webgl 22.0, 8.7, 15.9, 18.9, 10.5, 16.7, 16.1, 10.9, 17.9, 10.4, 14.7, 12.6, 9.7, 18.1, 7.3, 13.7, 16.5, 8.1, 18.7, 11.1 ms / 14.7 / 22.0
+FOV sample median / p95 (when applicable): not a Stage 0 metric
+Emission hits/rebuilds (when applicable): not a Stage 0 metric
+Golden files, hashes, authorization, and reason: no golden files or draw/world hashes changed; no blessing authorized or performed
+Authorized deferrals: none
+Residual risks: intentionally slow snapshot baseline; combined perf draw hash includes pre-reset FPS/TPS HUD state and is recorded but not gated; Stage 1 must update the exact-count table to 1 while preserving scripted draw/world goldens.
 ```

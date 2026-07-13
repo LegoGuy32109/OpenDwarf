@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "stage": 0,
+  "status": "PASS",
+  "reviewedImplementation": {
+    "mode": "worktree",
+    "head": "56d4f825adf56f94997d995ba61b2d63270d8a32",
+    "workspaceDiffSha256": "ef4931ffb0948d8810c89b503b4c6a3b59d3d7652c4bc36aafea4196f2a8b37a"
+  },
+  "artifacts": {
+    "debug": {
+      "profile": "debug",
+      "metadataPath": "engine/generated/od_wasm.build.json",
+      "generatedSha256": "30304c24736453569fe1565de84e541cecd27a5da88cc05c24d63a9001bdeea6",
+      "staticSha256": "30304c24736453569fe1565de84e541cecd27a5da88cc05c24d63a9001bdeea6",
+      "servedSha256": "30304c24736453569fe1565de84e541cecd27a5da88cc05c24d63a9001bdeea6"
+    },
+    "release": {
+      "profile": "release",
+      "metadataPath": "engine/generated/od_wasm.build.json",
+      "generatedSha256": "ba17d395511f0043d7c308f8e5fe0a52fe229c866d4a792368ac9579faf977a7",
+      "staticSha256": "ba17d395511f0043d7c308f8e5fe0a52fe229c866d4a792368ac9579faf977a7",
+      "servedSha256": "ba17d395511f0043d7c308f8e5fe0a52fe229c866d4a792368ac9579faf977a7"
+    }
+  },
+  "environment": {
+    "chromium": "Chromium 148.0.7778.215 Arch Linux",
+    "viewport": {
+      "width": 1920,
+      "height": 1080,
+      "deviceScaleFactor": 1
+    }
+  },
+  "commands": [
+    {
+      "command": "deno task engine:test",
+      "status": "PASS",
+      "discovered": 72,
+      "passed": 72,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "cargo test --workspace; 8 od_wasm tests included"
+    },
+    {
+      "command": "deno task engine:check",
+      "status": "PASS",
+      "failed": 0,
+      "evidence": "ABI current; native and wasm-target cargo checks passed"
+    },
+    {
+      "command": "deno task engine:dev",
+      "status": "PASS",
+      "failed": 0,
+      "evidence": "debug metadata profile; generated/static/served SHA 30304c24736453569fe1565de84e541cecd27a5da88cc05c24d63a9001bdeea6"
+    },
+    {
+      "command": "deno task unit",
+      "status": "PASS",
+      "discovered": 26,
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "26 Deno unit tests passed"
+    },
+    {
+      "command": "npx playwright test tests/engine*.test.ts --workers=1",
+      "status": "PASS",
+      "discovered": 17,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 1,
+      "evidence": "single expected skip is env-gated perf test; Cursor mirror EACCES warned without bypassing golden assertions"
+    },
+    {
+      "command": "deno task engine:test-perf-browser",
+      "status": "PASS",
+      "discovered": 1,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "release response hash matched metadata on measured reload; median 3537.7 ms < 6000 ms"
+    },
+    {
+      "command": "deno task engine:perf (self-spawn)",
+      "status": "PASS",
+      "passed": 1,
+      "failed": 0,
+      "evidence": "exports/engine-perf/2026-07-13T00-00-38-135Z.json written; spawned process group absent afterward"
+    },
+    {
+      "command": "deno task engine:perf (reuse existing server)",
+      "status": "PASS",
+      "passed": 1,
+      "failed": 0,
+      "evidence": "exports/engine-perf/2026-07-12T23-46-56-822Z.json written; existing server remained healthy afterward"
+    },
+    {
+      "command": "deno run -A scripts/engine-perf-profile.ts (forced readiness failure)",
+      "status": "PASS",
+      "expectedExitCode": 1,
+      "actualExitCode": 1,
+      "evidence": "unhealthy 503 listener forced strict-port startup failure and 30-second readiness timeout; attempted child process group was absent and unrelated listener survived"
+    }
+  ],
+  "snapshotCalls": {
+    "idle": 4,
+    "tick": 7,
+    "movement": 7,
+    "camera": 4,
+    "chat": 4
+  },
+  "harnessPerformance": {
+    "samplesMs": [3537.7, 3472.9, 3555.1, 3548.4, 3502.2],
+    "medianMs": 3537.7,
+    "p95Ms": 3555.1,
+    "ceilingMs": 6000,
+    "semantics": {
+      "floorQuadCount": 130,
+      "playerQuadCount": 1,
+      "atlasQuadCount": 131,
+      "worldTick": 33,
+      "worldStateHash": "fnv1a64:11f96a454cacdf3d",
+      "drawCount": 7,
+      "observedDrawHash": "fnv1a64:f578c02bc3c331d8",
+      "droppedRects": 0,
+      "droppedGlyphs": 0,
+      "droppedFrameDrawCmds": 0,
+      "droppedAtlasQuads": 0,
+      "droppedSolidQuads": 0,
+      "droppedWorldDrawCmds": 0
+    }
+  },
+  "sameRunProfile": {
+    "artifactPath": "exports/engine-perf/2026-07-13T00-00-38-135Z.json",
+    "webgl": {
+      "samplesMs": [
+        22.0,
+        8.700000002980232,
+        15.900000005960464,
+        18.900000005960464,
+        10.5,
+        16.700000002980232,
+        16.099999994039536,
+        10.899999991059303,
+        17.900000005960464,
+        10.400000005960464,
+        14.699999988079071,
+        12.599999994039536,
+        9.700000002980232,
+        18.100000008940697,
+        7.300000011920929,
+        13.700000002980232,
+        16.5,
+        8.100000008940697,
+        18.700000002980232,
+        11.100000008940697
+      ],
+      "medianMs": 14.699999988079071,
+      "p95Ms": 22.0,
+      "gl": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Vulkan 1.4.348 (Intel(R) Iris(R) Xe Graphics (RPL-U) (0x0000A7A1)), Intel open-source Mesa driver)",
+        "rendererSource": "WEBGL_debug_renderer_info",
+        "errors": [],
+        "contextLost": false
+      }
+    },
+    "engine": {
+      "samplesMs": [
+        492.0,
+        505.5,
+        500.8999999910593,
+        481.90000000596046,
+        479.5,
+        474.70000000298023,
+        499.0,
+        485.40000000596046,
+        504.59999999403954,
+        468.70000000298023,
+        464.30000001192093,
+        477.30000001192093,
+        482.1000000089407,
+        490.59999999403954,
+        488.70000000298023,
+        508.20000000298023,
+        490.0,
+        485.5,
+        489.59999999403954,
+        496.8999999910593
+      ],
+      "medianMs": 489.59999999403954,
+      "p95Ms": 508.20000000298023,
+      "gl": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Vulkan 1.4.348 (Intel(R) Iris(R) Xe Graphics (RPL-U) (0x0000A7A1)), Intel open-source Mesa driver)",
+        "rendererSource": "WEBGL_debug_renderer_info",
+        "errors": [],
+        "contextLost": false
+      }
+    }
+  },
+  "goldens": {
+    "changedFiles": [],
+    "reason": "No golden files changed and no blessing was authorized or performed."
+  },
+  "authorizedDeferrals": [],
+  "residualRisks": [
+    "Stage 0 intentionally retains the slow snapshot baseline; Stage 1 must update all five exact path counts to 1.",
+    "The combined perf draw hash includes pre-reset FPS/TPS HUD state, so deterministic world tick/hash and scripted draw goldens remain the exact gates."
+  ]
+}

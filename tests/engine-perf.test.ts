@@ -6,6 +6,10 @@ import {
   stepEngineFrame,
   waitForEngineHarness,
 } from "./helpers/engine-harness.ts";
+import {
+  captureEngineWasmResponse,
+  expectServedEngineWasm,
+} from "./helpers/wasm-provenance.ts";
 
 const enabled = process.env.ENGINE_PERF_TEST === "1";
 
@@ -23,8 +27,17 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
   );
   test.setTimeout(90_000);
 
-  await page.goto("/engine?harness=1");
+  const provenance = await expectServedEngineWasm(page);
+  expect(provenance.metadata.profile).toBe("release");
   await waitForEngineHarness(page);
+  // Let Vite finish its initial module graph/HMR bookkeeping after a fresh
+  // release build, then make one explicit settled navigation before timing.
+  await page.waitForTimeout(10_000);
+  const finishMeasuredWasm = captureEngineWasmResponse(page);
+  await page.reload({ waitUntil: "networkidle" });
+  await waitForEngineHarness(page);
+  const measuredWasm = await finishMeasuredWasm();
+  expect(measuredWasm.sha256).toBe(provenance.metadata.wasm.sha256);
   await engineResetWorld(page, "play");
   await stepEngineFrame(page, 5);
 
@@ -43,15 +56,27 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
       p95.toFixed(1)
     }ms samples=${samples.map((sample) => sample.toFixed(1)).join(",")}`,
   );
+  console.log(
+    `engine measured release wasm: metadata=${provenance.metadata.wasm.sha256} served=${measuredWasm.sha256}`,
+  );
+  console.log(
+    `engine perf semantics: tick=${snapshot.world.tick} worldStateHash=${snapshot.world.worldStateHash} drawCount=${snapshot.frame.drawCount} observedDrawHash=${snapshot.frame.drawHash} floor=${snapshot.worldRender.floorQuadCount} player=${snapshot.worldRender.playerQuadCount} atlas=${snapshot.worldRender.atlasQuadCount}`,
+  );
 
   expect(median).toBeLessThan(6_000);
-  expect(snapshot.worldRender.floorQuadCount).toBeGreaterThan(0);
+  expect(snapshot.worldRender.floorQuadCount).toBe(130);
   expect(snapshot.worldRender.playerQuadCount).toBe(1);
+  expect(snapshot.worldRender.atlasQuadCount).toBe(131);
+  expect(snapshot.world.tick).toBe(33);
+  expect(snapshot.world.worldStateHash).toBe("fnv1a64:11f96a454cacdf3d");
+  expect(snapshot.frame.drawCount).toBe(7);
+  expect(snapshot.frame.drawHash).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
   expect(snapshot.frame.droppedRects).toBe(0);
   expect(snapshot.frame.droppedGlyphs).toBe(0);
   expect(snapshot.frame.droppedDrawCmds).toBe(0);
   expect(snapshot.worldRender.droppedAtlasQuads).toBe(0);
   expect(snapshot.worldRender.droppedSolidQuads).toBe(0);
   expect(snapshot.worldRender.droppedDrawCmds).toBe(0);
-  expect(snapshot.worldRender.snapshotCallsLastFrame).toBeGreaterThan(0);
+  // 20 synthetic 16 ms frames end on a non-tick frame in the 50 ms schedule.
+  expect(snapshot.worldRender.snapshotCallsLastFrame).toBe(4);
 });

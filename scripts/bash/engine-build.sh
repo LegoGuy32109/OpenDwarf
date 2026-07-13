@@ -22,6 +22,9 @@ cp "$ROOT_DIR/static/engine/od_wasm_bg.wasm" "$ROOT_DIR/engine/generated/od_wasm
 cp "$ROOT_DIR/static/engine/od_wasm_bg.wasm.d.ts" "$ROOT_DIR/engine/generated/od_wasm_bg.wasm.d.ts" || true
 cp "$ROOT_DIR/static/engine/od_wasm.d.ts" "$ROOT_DIR/engine/generated/od_wasm.d.ts" || true
 
+WASM_OPT_APPLIED=false
+BROTLI_APPLIED=false
+
 if command -v wasm-opt >/dev/null 2>&1; then
   wasm-opt -O4 \
     --strip-debug \
@@ -30,13 +33,18 @@ if command -v wasm-opt >/dev/null 2>&1; then
     --enable-sign-ext \
     --enable-nontrapping-float-to-int
   mv "$ROOT_DIR/static/engine/opt_od_wasm.wasm" "$ROOT_DIR/static/engine/od_wasm_bg.wasm"
+  WASM_OPT_APPLIED=true
 fi
 
 if command -v brotli >/dev/null 2>&1; then
   brotli -q 11 "$ROOT_DIR/static/engine/od_wasm_bg.wasm" -f -o "$ROOT_DIR/static/engine/od_wasm_bg.wasm.br"
+  BROTLI_APPLIED=true
 fi
 
 cp "$ROOT_DIR/static/engine/od_wasm.js" "$ROOT_DIR/engine/generated/od_wasm.js"
 cp "$ROOT_DIR/static/engine/od_wasm_bg.wasm" "$ROOT_DIR/engine/generated/od_wasm_bg.wasm"
 cp "$ROOT_DIR/static/engine/od_wasm_bg.wasm.d.ts" "$ROOT_DIR/engine/generated/od_wasm_bg.wasm.d.ts" || true
 cp "$ROOT_DIR/static/engine/od_wasm.d.ts" "$ROOT_DIR/engine/generated/od_wasm.d.ts" || true
+
+cd "$ROOT_DIR"
+deno run -A scripts/engine-wasm-metadata.ts release "$WASM_OPT_APPLIED" "$BROTLI_APPLIED"

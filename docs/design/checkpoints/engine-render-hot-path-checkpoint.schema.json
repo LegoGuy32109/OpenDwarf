@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "engine-render-hot-path-checkpoint.schema.json",
+  "title": "OpenDwarf engine hot-path checkpoint",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "stage",
+    "status",
+    "reviewedImplementation",
+    "artifacts",
+    "environment",
+    "commands",
+    "snapshotCalls",
+    "harnessPerformance",
+    "sameRunProfile",
+    "goldens",
+    "authorizedDeferrals",
+    "residualRisks"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "stage": { "type": "integer", "minimum": 0 },
+    "status": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+    "reviewedImplementation": {
+      "type": "object",
+      "required": ["mode", "head", "workspaceDiffSha256"]
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["debug", "release"]
+    },
+    "environment": { "type": "object" },
+    "commands": { "type": "array", "minItems": 9 },
+    "snapshotCalls": { "type": "object" },
+    "harnessPerformance": { "type": "object" },
+    "sameRunProfile": { "type": "object" },
+    "goldens": { "type": "object" },
+    "authorizedDeferrals": { "type": "array" },
+    "residualRisks": { "type": "array", "minItems": 1 }
+  },
+  "additionalProperties": false
+}

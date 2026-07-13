@@ -1249,6 +1249,19 @@ mod tests {
     }
 
     #[test]
+    fn tick_frame_reports_all_stage_zero_hot_path_snapshots() {
+        let mut engine = UiEngine::new();
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        engine.input.sampled.window_focused = 1;
+        let _ = engine.frame();
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["worldRender"]["snapshotCallsLastFrame"].as_u64(),
+            Some(7)
+        );
+    }
+
+    #[test]
     fn import_replay_returns_hash_before_streaming_mutates_loaded_chunks() {
         let config = play_world_config();
         let sim = WorldSim::new(config.clone(), true);

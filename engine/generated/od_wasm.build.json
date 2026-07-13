@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "profile": "release",
+  "wasm": {
+    "file": "od_wasm_bg.wasm",
+    "sha256": "ba17d395511f0043d7c308f8e5fe0a52fe229c866d4a792368ac9579faf977a7"
+  },
+  "transforms": {
+    "wasmBindgen": {
+      "applied": true
+    },
+    "wasmOpt": {
+      "available": true,
+      "applied": true
+    },
+    "brotli": {
+      "available": true,
+      "applied": true,
+      "file": "od_wasm_bg.wasm.br"
+    }
+  },
+  "tools": {
+    "cargo": "cargo 1.91.1 (ea2d97820 2025-10-10)",
+    "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)",
+    "wasmBindgen": "wasm-bindgen 0.2.108",
+    "wasmOpt": "wasm-opt version 129",
+    "brotli": "brotli 1.2.0"
+  }
+}

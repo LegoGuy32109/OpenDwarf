@@ -21,3 +21,6 @@ cp "$ROOT_DIR/static/engine/od_wasm.js" "$ROOT_DIR/engine/generated/od_wasm.js"
 cp "$ROOT_DIR/static/engine/od_wasm_bg.wasm" "$ROOT_DIR/engine/generated/od_wasm_bg.wasm"
 cp "$ROOT_DIR/static/engine/od_wasm_bg.wasm.d.ts" "$ROOT_DIR/engine/generated/od_wasm_bg.wasm.d.ts" || true
 cp "$ROOT_DIR/static/engine/od_wasm.d.ts" "$ROOT_DIR/engine/generated/od_wasm.d.ts" || true
+
+cd "$ROOT_DIR"
+deno run -A scripts/engine-wasm-metadata.ts debug false false
