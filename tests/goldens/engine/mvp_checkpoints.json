@@ -25,7 +25,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -76,7 +76,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -127,7 +127,7 @@
       "viewZ": 2,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 133,
@@ -178,7 +178,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -229,7 +229,7 @@
       "viewZ": 1,
       "zoom": 1.5,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -280,7 +280,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 256,
@@ -331,7 +331,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -382,7 +382,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 256,
@@ -433,7 +433,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -458,11 +458,11 @@
       "hudModeLine": "mode: entity  z: 1  zoom: 1.00"
     }
   },
-  "play_streaming": {
+  "play_projection": {
     "world": {
-      "tick": 0,
-      "world_state_hash": "fnv1a64:c47278038a501a18",
-      "loadedChunkCount": 12,
+      "tick": 1,
+      "world_state_hash": "fnv1a64:ba7d579ed3ee548a",
+      "loadedChunkCount": 81,
       "worldChunks": {
         "x": 9,
         "y": 9,
@@ -484,7 +484,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 2,
-      "streamingChunkCount": 12
+      "projectedChunkCount": 12
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -496,13 +496,13 @@
       "visibleTileCount": 412,
       "rememberedTileCount": 0,
       "fovDirty": false,
-      "fovRecomputeCount": 1
+      "fovRecomputeCount": 2
     },
     "viewGlobals": {
       "zoom": 1,
       "dpr": 1,
       "viewZ": 1,
-      "simTick": 0
+      "simTick": 1
     },
     "session": {
       "uiMode": "world",
@@ -539,7 +539,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -590,7 +590,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 130,
@@ -641,7 +641,7 @@
       "viewZ": 1,
       "zoom": 1,
       "visibleChunkCount": 1,
-      "streamingChunkCount": 1
+      "projectedChunkCount": 1
     },
     "worldRender": {
       "floorQuadCount": 83,

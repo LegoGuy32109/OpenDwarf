@@ -33,7 +33,7 @@ const CHECKPOINTS = [
   "after_move_west",
   "master_keeps_memory",
   "entity_restores_fov",
-  "play_streaming",
+  "play_projection",
   "diagonal_sw_start",
   "chat_sim_advances",
   "import_move_west",
@@ -139,8 +139,10 @@ test("engine MVP golden path — world/view/render checkpoints", async ({ page }
   );
 
   await engineResetWorld(page, "play");
-  await stepEngineFrame(page, 1);
-  actual.play_streaming = mvpAllowlistFromSnapshot(await engineSnapshot(page));
+  // Four 16 ms frames advance one fixed tick, trimming the lifecycle
+  // projection back to the local window.
+  await stepEngineFrame(page, 4);
+  actual.play_projection = mvpAllowlistFromSnapshot(await engineSnapshot(page));
 
   await engineResetWorld(page, "default");
   await stepEngineFrame(page, 1);
@@ -239,13 +241,16 @@ test("engine MVP golden path — world/view/render checkpoints", async ({ page }
     .toBeGreaterThan(
       0,
     );
-  const playTotal = actual.play_streaming.world.worldChunks.x *
-    actual.play_streaming.world.worldChunks.y *
-    actual.play_streaming.world.worldChunks.z;
-  expect(actual.play_streaming.world.loadedChunkCount).toBeLessThan(playTotal);
-  expect(actual.play_streaming.localWorldView.streamingChunkCount).toBe(
-    actual.play_streaming.world.loadedChunkCount,
-  );
+  const playTotal = actual.play_projection.world.worldChunks.x *
+    actual.play_projection.world.worldChunks.y *
+    actual.play_projection.world.worldChunks.z;
+  // Stage 4: every generated chunk stays simulation-resident; the camera
+  // controls only the local projection window.
+  expect(actual.play_projection.world.loadedChunkCount).toBe(playTotal);
+  expect(actual.play_projection.localWorldView.projectedChunkCount)
+    .toBeGreaterThan(0);
+  expect(actual.play_projection.localWorldView.projectedChunkCount)
+    .toBeLessThan(playTotal);
   expect(actual.diagonal_sw_start.world.primaryEntity?.moving).toBe(true);
   expect(actual.diagonal_sw_start.world.primaryEntity?.movementTarget).toEqual({
     x: -5,

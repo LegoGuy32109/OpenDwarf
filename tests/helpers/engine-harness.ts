@@ -59,7 +59,7 @@ export type EngineSnapshot = {
     fps: number;
     tps: number;
     visibleChunks: { x: number; y: number; z: number }[];
-    streamingChunks: { x: number; y: number; z: number }[];
+    projectedChunks: { x: number; y: number; z: number }[];
   };
   viewGlobals: {
     camera: [number, number, number, number];
@@ -367,7 +367,7 @@ export function mvpAllowlistFromSnapshot(snapshot: EngineSnapshot) {
       viewZ: snapshot.localWorldView.viewZ,
       zoom: snapshot.localWorldView.camera.zoom,
       visibleChunkCount: snapshot.localWorldView.visibleChunks.length,
-      streamingChunkCount: snapshot.localWorldView.streamingChunks.length,
+      projectedChunkCount: snapshot.localWorldView.projectedChunks.length,
     },
     worldRender: {
       floorQuadCount: snapshot.worldRender.floorQuadCount,

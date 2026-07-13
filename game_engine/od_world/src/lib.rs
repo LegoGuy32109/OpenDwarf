@@ -78,15 +78,6 @@ mod tests {
             .expect("idle entity");
         assert_eq!(sim.entity_position(id), Some(idle_entity.position));
         assert_eq!(sim.entity_snapshot(id).as_ref(), Some(idle_entity));
-        let loaded = sim.loaded_chunk_coords();
-        assert!(loaded.windows(2).all(|pair| pair[0] < pair[1]));
-        assert_eq!(
-            loaded
-                .iter()
-                .copied()
-                .collect::<std::collections::BTreeSet<_>>(),
-            idle_snapshot.loaded_chunks
-        );
         assert_eq!(sim.world_chunks(), idle_snapshot.world_chunks);
         assert_eq!(sim.chunk_edge(), idle_snapshot.chunk_edge);
         assert_eq!(sim.world_bounds(), sim.state().centered_bounds());
@@ -215,7 +206,7 @@ mod tests {
             .expect_err("out-of-bounds chunk must be rejected");
         assert_eq!(err, WorldCommandError::ChunkOutOfBounds { chunk });
         assert_eq!(sim.snapshot(), before);
-        assert_eq!(sim.loaded_chunk_coords().len(), 1);
+        assert_eq!(sim.snapshot().loaded_chunks.len(), 1);
     }
 
     #[test]
@@ -234,14 +225,18 @@ mod tests {
             .expect("spawn in starter room");
         let east_chunk = Vec3i::new(0, 0, 0);
 
+        let hash_before = od_core::world_state_hash(&sim.snapshot());
         sim.send_command(WorldCommand::SetChunkLoaded {
             chunk: east_chunk,
             loaded: false,
         })
         .expect("unload east chunk");
 
-        // Snapshot excludes the unloaded chunk's terrain and residency.
+        // Snapshot excludes the unloaded chunk's terrain and residency, and
+        // the explicit authority command changes the world hash (Stage 4:
+        // authority control retained after camera streaming was removed).
         let unloaded = sim.snapshot();
+        assert_ne!(od_core::world_state_hash(&unloaded), hash_before);
         assert!(!unloaded.loaded_chunks.contains(&east_chunk));
         assert!(
             unloaded.terrain_blocks.keys().all(|pos| pos.x < 0),
@@ -261,13 +256,14 @@ mod tests {
         ));
         assert_eq!(sim.entity_position(id), Some(Vec3i::new(-1, 0, -1)));
 
-        // Reloading restores snapshot membership and movement.
+        // Reloading restores snapshot membership, hash, and movement.
         sim.send_command(WorldCommand::SetChunkLoaded {
             chunk: east_chunk,
             loaded: true,
         })
         .expect("reload east chunk");
         let reloaded = sim.snapshot();
+        assert_eq!(od_core::world_state_hash(&reloaded), hash_before);
         assert!(reloaded.loaded_chunks.contains(&east_chunk));
         assert!(reloaded.terrain_blocks.keys().any(|pos| pos.x >= 0));
         sim.send_command(WorldCommand::MoveEntity {
@@ -277,6 +273,53 @@ mod tests {
         .expect("move succeeds after reload");
         test_util::step_until_idle(&mut sim, id, 256);
         assert_eq!(sim.entity_position(id), Some(Vec3i::new(0, 0, -1)));
+    }
+
+    #[test]
+    fn replayed_set_chunk_loaded_changes_final_world_hash() {
+        use od_core::replay::{WorldReplay, WorldReplayMetadata};
+
+        let config = WorldConfig {
+            world_chunks: Vec3u::new(2, 1, 1),
+            ..WorldConfig::default()
+        };
+        let baseline = WorldSim::new(config.clone(), true);
+        let baseline_hash = od_core::world_state_hash(&baseline.snapshot());
+
+        let mut recorded = WorldSim::new(config.clone(), true);
+        recorded
+            .send_command(WorldCommand::SetChunkLoaded {
+                chunk: Vec3i::new(0, 0, 0),
+                loaded: false,
+            })
+            .expect("unload east chunk");
+        let final_snapshot = recorded.snapshot();
+        let final_hash = od_core::world_state_hash(&final_snapshot);
+        assert_ne!(
+            final_hash, baseline_hash,
+            "replayed residency command must change the world hash"
+        );
+
+        let replay = WorldReplay {
+            metadata: WorldReplayMetadata {
+                format_version: od_core::WORLD_REPLAY_FORMAT_VERSION,
+                name: "set_chunk_loaded_authority".to_owned(),
+                world_config: config,
+                spawn_default_player: true,
+            },
+            events: vec![od_core::replay::WorldReplayEvent::Command {
+                tick_before: 0,
+                command: WorldCommand::SetChunkLoaded {
+                    chunk: Vec3i::new(0, 0, 0),
+                    loaded: false,
+                },
+            }],
+            final_snapshot,
+            final_state_hash: final_hash.clone(),
+        };
+        let replayed = replay_commands_to_snapshot(&replay).expect("replay applies");
+        assert_eq!(od_core::world_state_hash(&replayed), final_hash);
+        assert!(!replayed.loaded_chunks.contains(&Vec3i::new(0, 0, 0)));
     }
 
     #[test]
@@ -318,7 +361,7 @@ mod tests {
             after.terrain_blocks.get(&position),
             Some(&BlockType::SolidStone)
         );
-        for chunk in sim.loaded_chunk_coords() {
+        for chunk in sim.snapshot().loaded_chunks {
             let expected = u64::from(chunk == target_chunk);
             assert_eq!(
                 sim.chunk_terrain_revision(chunk),

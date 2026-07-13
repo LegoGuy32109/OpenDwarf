@@ -506,22 +506,6 @@ impl WorldState {
         })
     }
 
-    #[must_use]
-    pub fn loaded_chunk_coords(&self) -> Vec<Vec3i> {
-        let mut chunks: Vec<_> = self
-            .chunks
-            .iter()
-            .enumerate()
-            .filter(|(_, chunk)| chunk.simulation_resident)
-            .map(|(index, _)| {
-                chunk_index_to_coord(index, self.world_chunks)
-                    .expect("stored chunk index should map to a chunk coordinate")
-            })
-            .collect();
-        chunks.sort_unstable();
-        chunks
-    }
-
     /// Terrain revision of one chunk, or [`None`] outside the chunk grid.
     #[must_use]
     pub fn chunk_terrain_revision(&self, chunk: Vec3i) -> Option<u64> {
@@ -855,7 +839,7 @@ mod tests {
             let state = WorldState::new(config(dims));
             let expected = (dims.x * dims.y * dims.z) as usize;
             assert_eq!(state.loaded_chunk_count(), expected, "{dims:?}");
-            let coords = state.loaded_chunk_coords();
+            let coords = state.snapshot().loaded_chunks;
             assert_eq!(coords.len(), expected, "{dims:?}");
             for chunk in &coords {
                 assert!(state.is_chunk_loaded(*chunk), "{chunk:?} in {dims:?}");
@@ -951,7 +935,7 @@ mod tests {
         let target_chunk = state
             .world_position_to_chunk_coord(position)
             .expect("target chunk");
-        let all_chunks = state.loaded_chunk_coords();
+        let all_chunks: Vec<Vec3i> = state.snapshot().loaded_chunks.into_iter().collect();
         let snapshot_before = state.snapshot();
 
         assert!(state.set_block_for_test(position, BlockType::SolidStone));

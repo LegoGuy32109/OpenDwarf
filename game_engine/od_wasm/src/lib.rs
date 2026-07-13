@@ -6,8 +6,8 @@ use od_core::{
     ClientView, Dir, DrawCmd, EntityPerspective, EventKind, InputArena, KeyCode, LocalWorldView,
     ProgramId, Vec3i, Vec3u, ViewGlobals, WorldAtlasQuadInstance, WorldCommand, WorldConfig,
     WorldIntent, WorldReplay, WorldReplayEvent, WorldSolidQuadInstance, WorldViewMode,
-    chunk_coord_to_index, draw_hash_with_world, draw_state_hash_with_world, format_state_hash,
-    world_position_to_chunk_voxel, world_state_hash,
+    chunk_index_to_coord, draw_hash_with_world, draw_state_hash_with_world, format_state_hash,
+    world_state_hash,
 };
 #[cfg(target_arch = "wasm32")]
 use od_ui::HostEffect;
@@ -16,8 +16,11 @@ use od_ui::{DomainEngine, MonospaceVga};
 use od_world::WorldSim;
 use od_world::project::{
     ProjectionSyncStats, compute_projection_window, project_entities, sync_view_chunks,
+    visible_chunk_layer,
 };
-use od_world::render::{RenderInput, RenderStats, VisibilityState, entity_render_position_xy};
+use od_world::render::{
+    RenderCaches, RenderInput, RenderStats, VisibilityState, entity_render_position_xy,
+};
 use serde_json::{Value, json};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -56,6 +59,8 @@ pub struct UiEngine {
     view: LocalWorldView,
     view_globals: ViewGlobals,
     world_visibility: VisibilityState,
+    /// Render-owned caches (topmost columns this stage); derived data only.
+    render_caches: RenderCaches,
     world_render_stats: RenderStats,
     world_atlas_quads: Vec<WorldAtlasQuadInstance>,
     world_solid_quads: Vec<WorldSolidQuadInstance>,
@@ -64,10 +69,9 @@ pub struct UiEngine {
     smooth_player_world_pos: Option<[f32; 2]>,
     counters: FrameCounters,
     sim_accumulator_ms: f32,
-    streaming_fingerprint: String,
     last_sampled_dpr: f32,
-    /// Shadow projection (Stage 3): rebuilt after fixed ticks/lifecycle only;
-    /// draw output still consumes the legacy snapshot path.
+    /// Local read model consumed by `render()` (Stage 4): rebuilt after
+    /// fixed ticks and lifecycle operations only, never on the RAF path.
     client_view: ClientView,
     /// Introduced in Stage 3; bitmap FOV recomputation lands in Stage 5.
     entity_perspective: EntityPerspective,
@@ -76,8 +80,8 @@ pub struct UiEngine {
     perspective_view_mode: Option<WorldViewMode>,
     /// Simulated time discarded by the accumulated-lag cap.
     dropped_sim_time_ms: f64,
-    /// Interpolation alpha handed to the most recent render (unused by the
-    /// legacy renderer until Stage 6).
+    /// Interpolation alpha handed to the most recent render (unused until
+    /// the Stage 6 interpolation change).
     last_render_alpha: f32,
     /// Number of leading `draw_cmds` produced by the world renderer.
     world_draw_cmd_count: usize,
@@ -87,13 +91,14 @@ pub struct UiEngine {
 impl UiEngine {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new() -> Self {
-        Self {
+        let mut engine = Self {
             engine: DomainEngine::new(),
             input: InputArena::default(),
             world: WorldSim::new(play_world_config(), true),
             view: LocalWorldView::default(),
             view_globals: ViewGlobals::default(),
             world_visibility: VisibilityState::default(),
+            render_caches: RenderCaches::default(),
             world_render_stats: RenderStats::default(),
             world_atlas_quads: Vec::with_capacity(WORLD_ATLAS_CAPACITY),
             world_solid_quads: Vec::with_capacity(WORLD_SOLID_CAPACITY),
@@ -102,7 +107,6 @@ impl UiEngine {
             smooth_player_world_pos: None,
             counters: FrameCounters::default(),
             sim_accumulator_ms: 0.0,
-            streaming_fingerprint: String::new(),
             last_sampled_dpr: 1.0,
             client_view: ClientView::default(),
             entity_perspective: EntityPerspective::default(),
@@ -112,7 +116,11 @@ impl UiEngine {
             dropped_sim_time_ms: 0.0,
             last_render_alpha: 0.0,
             world_draw_cmd_count: 0,
-        }
+        };
+        // Boot is a lifecycle operation: project the ClientView before the
+        // first frame so render never has to touch WorldState.
+        engine.project_lifecycle_client_view();
+        engine
     }
 
     pub fn rect_ptr(&self) -> u32 {
@@ -273,8 +281,8 @@ impl UiEngine {
         for _ in 0..n {
             self.run_fixed_tick(self.last_framebuffer_size());
         }
-        self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size(), true);
-        self.render_legacy(0.0);
+        self.sync_local_view(SIM_TICK_MS, self.last_framebuffer_size());
+        self.render(0.0);
     }
 
     pub fn import_replay_json(&mut self, bytes: &[u8]) -> Result<String, String> {
@@ -324,20 +332,20 @@ impl UiEngine {
         self.world_input.clear();
         self.view = LocalWorldView::default();
         self.world_visibility.reset();
+        self.render_caches.reset();
         self.world_render_stats = RenderStats::default();
         self.world_atlas_quads.clear();
         self.world_solid_quads.clear();
         self.draw_cmds.clear();
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
-        self.streaming_fingerprint.clear();
         self.reset_projection_state();
         self.engine.reset_session_shell();
-        self.sync_local_view(0.0, self.last_framebuffer_size(), false);
+        self.sync_local_view(0.0, self.last_framebuffer_size());
         // Lifecycle rebuild: fresh projection state means every entity starts
         // with prev_xy == curr_xy and every chunk is copied anew.
-        self.project_shadow_client_view(self.last_framebuffer_size());
-        self.render_legacy(0.0);
+        self.project_lifecycle_client_view();
+        self.render(0.0);
         Ok(self.combined_debug_snapshot_json())
     }
 
@@ -379,9 +387,8 @@ impl UiEngine {
                 || self.last_framebuffer_size(),
                 |sample| (sample.framebuffer_w, sample.framebuffer_h),
             ),
-            true,
         );
-        self.render_legacy(alpha);
+        self.render(alpha);
         self.engine.set_session_hud_lines(self.session_hud_lines());
         let out = self.engine.frame(input_bytes);
         self.append_ui_draw_cmds();
@@ -398,29 +405,28 @@ impl UiEngine {
         self.draw_cmds.len() as u32
     }
 
-    /// Legacy world render path: still consumes its single canonical
-    /// snapshot. `alpha` is recorded but unused until the Stage 6
-    /// interpolation change; draw output is unchanged by the scheduler split.
-    fn render_legacy(&mut self, alpha: f32) -> u32 {
+    /// World render (Stage 4): consumes only the projected [`ClientView`],
+    /// the local view, visibility state, and render caches. Performs zero
+    /// `WorldSim::snapshot()` calls and never reads `WorldState`; it mutates
+    /// render caches/arenas only. `alpha` is recorded but unused until the
+    /// Stage 6 interpolation change.
+    fn render(&mut self, alpha: f32) -> u32 {
         self.last_render_alpha = alpha;
         self.world_atlas_quads.clear();
         self.world_solid_quads.clear();
         self.draw_cmds.clear();
-        let snapshot = self.hot_path_snapshot();
-        let snapshot_calls_last_frame = self.world_render_stats.snapshot_calls_last_frame;
         let output = od_world::render::render(
             RenderInput {
-                snapshot: &snapshot,
+                client: &self.client_view,
                 view: &self.view,
-                primary_entity_id: self.world.primary_entity_id(),
                 smooth_player_xy: self.smooth_player_world_pos,
             },
             &mut self.world_visibility,
+            &mut self.render_caches,
             &mut self.world_atlas_quads,
             &mut self.draw_cmds,
         );
         self.world_render_stats = output.stats;
-        self.world_render_stats.snapshot_calls_last_frame = snapshot_calls_last_frame;
         self.world_draw_cmd_count = self.draw_cmds.len();
         self.draw_cmds.len() as u32
     }
@@ -497,11 +503,9 @@ impl UiEngine {
 
     /// One fixed 50 ms simulation tick.
     ///
-    /// 1. Apply queued gameplay intents (view input emits no `WorldCommand`;
-    ///    the camera-derived streaming calls in `sync_local_view` are
-    ///    temporary legacy-render support that Stage 4 deletes).
+    /// 1. Apply queued gameplay intents (view input emits no `WorldCommand`).
     /// 2. Advance `WorldSim` exactly one tick.
-    /// 3-5. Project the shadow `ClientView` from the final tick state.
+    /// 3-5. Project the `ClientView` from the final tick state.
     fn run_fixed_tick(&mut self, framebuffer: (u32, u32)) {
         let before = self.primary_entity_position();
         self.process_player_movement();
@@ -510,37 +514,68 @@ impl UiEngine {
             self.world_visibility.mark_fov_dirty();
         }
         self.counters.record_sim_tick();
-        self.project_shadow_client_view(framebuffer);
+        self.project_client_view(framebuffer);
     }
 
-    /// Shadow-mode projection (Stage 3): observes the final state of the tick
-    /// (or lifecycle rebuild); never consulted for draw output yet.
-    fn project_shadow_client_view(&mut self, framebuffer: (u32, u32)) {
-        let primary_position = self.primary_entity_position();
-        self.client_view.tick = self.world.tick_count();
-        self.client_view.world_chunks = self.world.world_chunks();
+    /// Fixed-tick projection: observes the final state of the tick and syncs
+    /// the local projection window. Camera/zoom/view-z/viewport/view-mode
+    /// input alters only this window, never authoritative residency.
+    fn project_client_view(&mut self, framebuffer: (u32, u32)) {
         let window = compute_projection_window(
             &self.view,
             self.world.world_chunks(),
-            primary_position,
+            self.primary_entity_position(),
             framebuffer,
         );
-        let stats = sync_view_chunks(&mut self.client_view, self.world.state(), &window.resident);
+        self.project_client_view_window(&window.resident);
+    }
+
+    /// Lifecycle (boot/reset/import) projection rebuild: project every
+    /// simulation-resident chunk so the first rendered frame after a
+    /// lifecycle operation is complete for any camera/viewport. The next
+    /// fixed tick trims the ClientView back to the local projection window.
+    fn project_lifecycle_client_view(&mut self) {
+        let dims = self.world.world_chunks();
+        let count = usize::try_from(dims.x)
+            .unwrap_or(0)
+            .saturating_mul(usize::try_from(dims.y).unwrap_or(0))
+            .saturating_mul(usize::try_from(dims.z).unwrap_or(0));
+        let desired: BTreeSet<Vec3i> = (0..count)
+            .filter_map(|index| chunk_index_to_coord(index, dims))
+            .collect();
+        self.project_client_view_window(&desired);
+    }
+
+    /// Sync projected chunks/entities for `desired` and update the local
+    /// view's projected-chunk debug list plus perspective scheduling state.
+    fn project_client_view_window(&mut self, desired: &BTreeSet<Vec3i>) {
+        let primary_position = self.primary_entity_position();
+        self.client_view.tick = self.world.tick_count();
+        self.client_view.world_chunks = self.world.world_chunks();
+        let stats = sync_view_chunks(&mut self.client_view, self.world.state(), desired);
         project_entities(
             &mut self.client_view,
             self.world.state(),
             self.world.primary_entity_id(),
         );
-        // Minimal Stage 3 perspective scheduling: mark dirty when the entity,
-        // view mode, or resident terrain changed. Recomputation is Stage 5.
+        let mut projected: Vec<Vec3i> = self.client_view.chunks.keys().copied().collect();
+        projected.sort_unstable();
+        self.view.projected_chunks = projected;
+        // Minimal perspective scheduling: mark dirty when the entity, view
+        // mode, or projected terrain changed. Recomputation is Stage 5.
         let mode = self.view.view_mode;
+        let terrain_changed = stats.inserted > 0 || stats.recopied > 0 || stats.removed > 0;
         if primary_position != self.perspective_entity_position
             || self.perspective_view_mode != Some(mode)
-            || stats.inserted > 0
-            || stats.recopied > 0
-            || stats.removed > 0
+            || terrain_changed
         {
             self.entity_perspective.fov_dirty = true;
+        }
+        // The legacy FOV reads projected terrain, so a window change must
+        // also schedule a recompute (matches the legacy streaming-change
+        // behavior; a same-input recompute is visibility-neutral).
+        if terrain_changed && mode == WorldViewMode::Entity {
+            self.world_visibility.mark_fov_dirty();
         }
         self.perspective_entity_position = primary_position;
         self.perspective_view_mode = Some(mode);
@@ -641,19 +676,19 @@ impl UiEngine {
         self.view = LocalWorldView::default();
         self.view_globals = ViewGlobals::default();
         self.world_visibility.reset();
+        self.render_caches.reset();
         self.world_render_stats = RenderStats::default();
         self.world_atlas_quads.clear();
         self.world_solid_quads.clear();
         self.draw_cmds.clear();
         self.smooth_player_world_pos = None;
         self.sim_accumulator_ms = 0.0;
-        self.streaming_fingerprint.clear();
         self.reset_projection_state();
         self.last_sampled_dpr = 1.0;
         self.engine.reset_session_shell();
-        self.sync_local_view(0.0, self.last_framebuffer_size(), true);
-        // Lifecycle rebuild of the shadow projection (prev_xy == curr_xy).
-        self.project_shadow_client_view(self.last_framebuffer_size());
+        self.sync_local_view(0.0, self.last_framebuffer_size());
+        // Lifecycle rebuild of the projection (prev_xy == curr_xy).
+        self.project_lifecycle_client_view();
     }
 
     fn apply_view_key_presses(&mut self) {
@@ -724,7 +759,10 @@ impl UiEngine {
         self.write_view_globals(framebuffer_w, framebuffer_h);
     }
 
-    fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32), apply_streaming: bool) {
+    /// Per-frame local view maintenance: camera smoothing/follow, HUD
+    /// counters, the visible-chunk window, and view globals. Never sends a
+    /// `WorldCommand`; reads only narrow entity accessors.
+    fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32)) {
         self.counters.record_frame(dt_ms);
         let Some(primary_entity_id) = self.world.primary_entity_id() else {
             self.write_view_globals(framebuffer.0, framebuffer.1);
@@ -759,63 +797,17 @@ impl UiEngine {
             }
         }
 
-        let (visible, streaming) = streaming_chunks_for_view(
-            &self.view,
-            self.world.world_chunks(),
-            self.world.world_bounds(),
-            entity.position,
-            framebuffer,
-        );
-        self.view.visible_chunks = visible.iter().copied().collect();
-        self.view.streaming_chunks = streaming.iter().copied().collect();
-        if apply_streaming {
-            let fingerprint = streaming_fingerprint(&streaming);
-            if fingerprint != self.streaming_fingerprint {
-                if self.apply_streaming_chunks(&streaming)
-                    && self.view.view_mode == WorldViewMode::Entity
-                {
-                    self.world_visibility.mark_fov_dirty();
-                }
-                self.streaming_fingerprint = fingerprint;
-            }
-        }
+        // The visible window follows the camera at frame rate; the projected
+        // window is sampled by fixed ticks, so render fails closed on chunks
+        // entering the visible window for at most one tick.
+        self.view.visible_chunks =
+            visible_chunk_layer(&self.view, self.world.world_chunks(), framebuffer)
+                .iter()
+                .copied()
+                .collect();
         self.view.fps = self.counters.fps();
         self.view.tps = self.counters.tps();
         self.write_view_globals(framebuffer.0, framebuffer.1);
-    }
-
-    fn apply_streaming_chunks(&mut self, desired: &std::collections::BTreeSet<Vec3i>) -> bool {
-        let mut changed = false;
-        let loaded = self.world.loaded_chunk_coords();
-        for chunk in &loaded {
-            if !desired.contains(chunk) {
-                if self
-                    .world
-                    .send_command(WorldCommand::SetChunkLoaded {
-                        chunk: *chunk,
-                        loaded: false,
-                    })
-                    .is_ok()
-                {
-                    changed = true;
-                }
-            }
-        }
-        for chunk in desired {
-            if !loaded.contains(chunk) {
-                if self
-                    .world
-                    .send_command(WorldCommand::SetChunkLoaded {
-                        chunk: *chunk,
-                        loaded: true,
-                    })
-                    .is_ok()
-                {
-                    changed = true;
-                }
-            }
-        }
-        changed
     }
 
     fn write_view_globals(&mut self, framebuffer_w: u32, framebuffer_h: u32) {
@@ -867,9 +859,9 @@ impl UiEngine {
             ),
             format!("fps: {:.0}  tps: {:.0}", self.view.fps, self.view.tps),
             format!(
-                "chunks: {} visible / {} streaming",
+                "chunks: {} visible / {} projected",
                 self.view.visible_chunks.len(),
-                self.view.streaming_chunks.len()
+                self.view.projected_chunks.len()
             ),
         ]
     }
@@ -976,17 +968,6 @@ impl UiEngine {
             "loadedChunkCount": snapshot.loaded_chunks.len(),
             "loadedChunks": loaded_chunks,
         })
-    }
-
-    /// Counts temporary canonical snapshots created during a production RAF
-    /// frame. Replay, import/export, and debug/harness snapshots deliberately
-    /// bypass this helper.
-    fn hot_path_snapshot(&mut self) -> od_core::WorldSnapshot {
-        self.world_render_stats.snapshot_calls_last_frame = self
-            .world_render_stats
-            .snapshot_calls_last_frame
-            .saturating_add(1);
-        self.world.snapshot()
     }
 }
 
@@ -1144,109 +1125,12 @@ fn play_world_config() -> WorldConfig {
     }
 }
 
-fn streaming_chunks_for_view(
-    view: &LocalWorldView,
-    world_chunks: Vec3u,
-    world_bounds: (Vec3i, Vec3i),
-    player_position: Vec3i,
-    framebuffer: (u32, u32),
-) -> (BTreeSet<Vec3i>, BTreeSet<Vec3i>) {
-    let visible = chunk_window_from_camera(view, world_chunks, world_bounds, framebuffer, 0);
-    let mut streaming = chunk_window_from_camera(view, world_chunks, world_bounds, framebuffer, 1);
-    if view.view_mode == WorldViewMode::Entity
-        && let Some(player_chunk) = world_position_to_chunk_coord(player_position, world_chunks)
-    {
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                let chunk = Vec3i::new(player_chunk.x + dx, player_chunk.y + dy, player_chunk.z);
-                if chunk_in_bounds(chunk, world_chunks) {
-                    streaming.insert(chunk);
-                }
-            }
-        }
-    }
-    (visible, streaming)
-}
-
-fn chunk_window_from_camera(
-    view: &LocalWorldView,
-    world_chunks: Vec3u,
-    world_bounds: (Vec3i, Vec3i),
-    framebuffer: (u32, u32),
-    padding_chunks: i32,
-) -> BTreeSet<Vec3i> {
-    let (world_min, world_max) = world_bounds;
-    if view.view_z < world_min.z || view.view_z > world_max.z {
-        return BTreeSet::new();
-    }
-
-    let zoom = view.camera.zoom.max(0.01);
-    let framebuffer_w = framebuffer.0.max(1) as f32;
-    let framebuffer_h = framebuffer.1.max(1) as f32;
-    let half_w_tiles = framebuffer_w / (2.0 * zoom * TILE_SIZE_PX);
-    let half_h_tiles = framebuffer_h / (2.0 * zoom * TILE_SIZE_PX);
-    let center_x = view.camera.x / TILE_SIZE_PX;
-    let center_y = view.camera.y / TILE_SIZE_PX;
-    let min_x = (center_x - half_w_tiles).floor() as i32;
-    let max_x = (center_x + half_w_tiles).floor() as i32;
-    let min_y = (center_y - half_h_tiles).floor() as i32;
-    let max_y = (center_y + half_h_tiles).floor() as i32;
-
-    let min_x = min_x.max(world_min.x);
-    let max_x = max_x.min(world_max.x);
-    let min_y = min_y.max(world_min.y);
-    let max_y = max_y.min(world_max.y);
-    if min_x > max_x || min_y > max_y {
-        return BTreeSet::new();
-    }
-
-    let Some(min_chunk) =
-        world_position_to_chunk_coord(Vec3i::new(min_x, min_y, view.view_z), world_chunks)
-    else {
-        return BTreeSet::new();
-    };
-    let Some(max_chunk) =
-        world_position_to_chunk_coord(Vec3i::new(max_x, max_y, view.view_z), world_chunks)
-    else {
-        return BTreeSet::new();
-    };
-
-    let mut chunks = BTreeSet::new();
-    for y in (min_chunk.y - padding_chunks)..=(max_chunk.y + padding_chunks) {
-        for x in (min_chunk.x - padding_chunks)..=(max_chunk.x + padding_chunks) {
-            let chunk = Vec3i::new(x, y, min_chunk.z);
-            if chunk_in_bounds(chunk, world_chunks) {
-                chunks.insert(chunk);
-            }
-        }
-    }
-    chunks
-}
-
-fn streaming_fingerprint(chunks: &BTreeSet<Vec3i>) -> String {
-    let mut fingerprint = String::new();
-    for chunk in chunks {
-        use std::fmt::Write as _;
-        let _ = write!(&mut fingerprint, "{},{},{};", chunk.x, chunk.y, chunk.z);
-    }
-    fingerprint
-}
-
 fn sanitize_dpr(dpr: f32) -> f32 {
     if dpr.is_finite() && dpr > 0.0 {
         dpr
     } else {
         1.0
     }
-}
-
-/// Centered chunk coordinate of a world position (shared od_core helper).
-fn world_position_to_chunk_coord(position: Vec3i, world_chunks: Vec3u) -> Option<Vec3i> {
-    world_position_to_chunk_voxel(position, world_chunks).map(|(chunk, _)| chunk)
-}
-
-fn chunk_in_bounds(chunk: Vec3i, world_chunks: Vec3u) -> bool {
-    chunk_coord_to_index(chunk, world_chunks).is_some()
 }
 
 fn vec3i_json(value: Vec3i) -> Value {
@@ -1294,18 +1178,18 @@ mod tests {
     }
 
     #[test]
-    fn idle_frame_reports_only_legacy_render_snapshot() {
+    fn idle_frame_performs_zero_snapshot_calls() {
         let mut engine = UiEngine::new();
         engine.frame();
         let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
         assert_eq!(
             debug["worldRender"]["snapshotCallsLastFrame"].as_u64(),
-            Some(1)
+            Some(0)
         );
     }
 
     #[test]
-    fn tick_frame_reports_only_legacy_render_snapshot() {
+    fn tick_frame_performs_zero_snapshot_calls() {
         let mut engine = UiEngine::new();
         engine.input.sampled.dt_ms = SIM_TICK_MS;
         engine.input.sampled.window_focused = 1;
@@ -1313,12 +1197,12 @@ mod tests {
         let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
         assert_eq!(
             debug["worldRender"]["snapshotCallsLastFrame"].as_u64(),
-            Some(1)
+            Some(0)
         );
     }
 
     #[test]
-    fn import_replay_returns_hash_before_streaming_mutates_loaded_chunks() {
+    fn import_replay_returns_hash_and_keeps_all_chunks_resident() {
         let config = play_world_config();
         let sim = WorldSim::new(config.clone(), true);
         let final_snapshot = sim.snapshot();
@@ -1417,68 +1301,145 @@ mod tests {
         assert!(engine.world.snapshot().tick > before);
     }
 
+    /// Stage 4: cameras never send residency commands. Two identical play
+    /// worlds advance identical tick counts while only one side pans, zooms,
+    /// resizes, and switches view mode; authoritative state stays equal
+    /// while only the local projection differs.
     #[test]
-    fn master_view_off_map_streaming_window_is_empty() {
-        let sim = WorldSim::new(play_world_config(), true);
-        let snapshot = sim.snapshot();
-        let player = snapshot.entities[0].position;
-        let view = LocalWorldView {
-            view_mode: WorldViewMode::Master,
-            view_z: player.z,
-            camera: od_core::WorldCamera {
-                x: 1_000_000.0,
-                y: 1_000_000.0,
-                zoom: 1.0,
-            },
-            ..LocalWorldView::default()
-        };
+    fn paired_engines_view_input_never_changes_authoritative_state() {
+        let mut control = focused_engine((640, 480));
+        control.reset_play_world();
+        let mut viewer = focused_engine((640, 480));
+        viewer.reset_play_world();
 
-        let (visible, streaming) = streaming_chunks_for_view(
-            &view,
-            snapshot.world_chunks,
-            sim.world_bounds(),
-            player,
-            (640, 480),
+        // Frame 1 (one fixed tick each): identical.
+        for engine in [&mut control, &mut viewer] {
+            engine.input.sampled.dt_ms = SIM_TICK_MS;
+            let _ = engine.frame();
+        }
+
+        // Viewer-only view input: master mode, camera pan, zoom, viewport
+        // resize, view-z, then back to entity mode. Two more tick frames on
+        // both engines interleave with the view churn.
+        viewer.view.view_mode = WorldViewMode::Master;
+        viewer.view.camera.x = 4096.0;
+        viewer.view.camera.y = 4096.0;
+        viewer.view.step_zoom(-1);
+        viewer.input.sampled.framebuffer_w = 1920;
+        viewer.input.sampled.framebuffer_h = 1080;
+        for engine in [&mut control, &mut viewer] {
+            engine.input.sampled.dt_ms = SIM_TICK_MS;
+            let _ = engine.frame();
+        }
+        viewer.view.view_z = viewer.view.view_z.saturating_sub(1);
+        viewer.view.view_mode = WorldViewMode::Entity;
+        for engine in [&mut control, &mut viewer] {
+            engine.input.sampled.dt_ms = SIM_TICK_MS;
+            let _ = engine.frame();
+        }
+
+        assert_eq!(control.world.tick_count(), viewer.world.tick_count());
+        assert_eq!(control.world.tick_count(), 3);
+        let control_snapshot = control.world.snapshot();
+        let viewer_snapshot = viewer.world.snapshot();
+        assert_eq!(
+            world_state_hash(&control_snapshot),
+            world_state_hash(&viewer_snapshot),
+            "view input must not change the world hash"
         );
-
-        assert!(visible.is_empty());
-        assert!(streaming.is_empty());
+        assert_eq!(
+            control_snapshot.loaded_chunks, viewer_snapshot.loaded_chunks,
+            "view input must not change authoritative residency"
+        );
+        assert_eq!(
+            control_snapshot.loaded_chunks.len(),
+            81,
+            "play world keeps every generated chunk simulation-resident"
+        );
+        // Only the local projection differs.
+        assert_ne!(
+            control.view.projected_chunks, viewer.view.projected_chunks,
+            "projected chunk membership follows the local view"
+        );
     }
 
+    /// Stage 4 one-tick-stale bound: a camera pan changes projected chunk
+    /// membership only at the next fixed tick; until then the renderer
+    /// fails closed on chunks entering the visible window.
     #[test]
-    fn streaming_policy_adds_entity_safety_chunks() {
-        let sim = WorldSim::new(play_world_config(), true);
-        let snapshot = sim.snapshot();
-        let player = snapshot.entities[0].position;
-        let player_chunk = world_position_to_chunk_coord(player, snapshot.world_chunks)
-            .expect("player chunk");
-        let mut view = LocalWorldView {
-            view_mode: WorldViewMode::Entity,
-            camera: od_core::WorldCamera {
-                x: 4.0 * snapshot.chunk_edge as f32 * TILE_SIZE_PX,
-                y: 4.0 * snapshot.chunk_edge as f32 * TILE_SIZE_PX,
-                zoom: 2.0,
-            },
-            ..LocalWorldView::default()
-        };
-        view.view_z = player.z;
+    fn pan_fails_closed_until_next_fixed_tick_then_projects() {
+        let mut engine = focused_engine((640, 480));
+        engine.reset_play_world();
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame(); // first tick trims the lifecycle projection
+        let target = Vec3i::new(4, 4, 0);
+        assert!(!engine.client_view.chunks.contains_key(&target));
+        let residency_before = engine.world.snapshot().loaded_chunks;
 
-        let (_visible, streaming) = streaming_chunks_for_view(
-            &view,
-            snapshot.world_chunks,
-            sim.world_bounds(),
-            player,
-            (320, 240),
+        // Master-mode pan onto the far corner chunk; no fixed tick.
+        engine.view.view_mode = WorldViewMode::Master;
+        engine.view.camera.x = 4416.0; // tile 69 => centered chunk 4
+        engine.view.camera.y = 4416.0;
+        engine.input.sampled.dt_ms = 1.0;
+        let _ = engine.frame();
+        assert!(
+            engine.view.visible_chunks.contains(&target),
+            "the pan makes the target chunk visible this frame"
+        );
+        assert!(
+            !engine.client_view.chunks.contains_key(&target),
+            "projection is sampled at fixed ticks only"
+        );
+        let base = od_core::chunk_min_world_position(target, engine.world.world_chunks())
+            .expect("target base");
+        let in_target_rect = |quad: &WorldAtlasQuadInstance| {
+            quad.pos[0] >= base.x as f32 * TILE_SIZE_PX
+                && quad.pos[0] < (base.x + 16) as f32 * TILE_SIZE_PX
+                && quad.pos[1] >= base.y as f32 * TILE_SIZE_PX
+                && quad.pos[1] < (base.y + 16) as f32 * TILE_SIZE_PX
+        };
+        let floor_quads = engine.world_render_stats.floor_quads as usize;
+        assert!(
+            !engine.world_atlas_quads[..floor_quads]
+                .iter()
+                .any(in_target_rect),
+            "renderer fails closed: no floor emitted from the stale chunk"
         );
 
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                let chunk = Vec3i::new(player_chunk.x + dx, player_chunk.y + dy, player_chunk.z);
-                if chunk_in_bounds(chunk, snapshot.world_chunks) {
-                    assert!(streaming.contains(&chunk), "missing safety chunk {chunk:?}");
-                }
+        // The next fixed tick projects the entering chunk and emits it.
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        assert!(engine.client_view.chunks.contains_key(&target));
+        let floor_quads = engine.world_render_stats.floor_quads as usize;
+        assert!(
+            engine.world_atlas_quads[..floor_quads]
+                .iter()
+                .any(in_target_rect),
+            "entering chunk emits after the next fixed tick"
+        );
+        // Authoritative residency never changed across the pan.
+        assert_eq!(engine.world.snapshot().loaded_chunks, residency_before);
+    }
+
+    /// Stage 4: the world hash of a play world is independent of viewport
+    /// dimensions (browser asserts the same constant for its own viewport).
+    #[test]
+    fn play_world_hash_is_viewport_independent() {
+        let mut hashes = Vec::new();
+        for framebuffer in [(640, 480), (1920, 1080)] {
+            let mut engine = focused_engine(framebuffer);
+            engine.reset_play_world();
+            engine.input.sampled.dt_ms = 16.0;
+            for _ in 0..105 {
+                let _ = engine.frame();
             }
+            assert_eq!(engine.world.tick_count(), 33);
+            hashes.push(world_state_hash(&engine.world.snapshot()));
         }
+        assert_eq!(hashes[0], hashes[1], "viewport must not affect the hash");
+        // Pinned all-resident play-world hash at tick 33; the browser perf
+        // fixture asserts the same value.
+        assert_eq!(hashes[0], "fnv1a64:718bb0099657e9aa");
     }
 
     fn focused_engine(framebuffer: (u32, u32)) -> UiEngine {
@@ -1551,8 +1512,8 @@ mod tests {
 
         assert_eq!(engine.world.tick_count(), 5);
         assert_eq!(engine.client_view.tick, 5, "projection observed every tick");
-        // Exactly one render (and its single legacy snapshot) afterward.
-        assert_eq!(engine.world_render_stats.snapshot_calls_last_frame, 1);
+        // Exactly one render afterward, with zero snapshot calls.
+        assert_eq!(engine.world_render_stats.snapshot_calls_last_frame, 0);
         assert!(engine.world_draw_cmd_count > 0, "one render happened");
         assert_eq!(engine.last_render_alpha, 0.0);
 
@@ -1694,6 +1655,81 @@ mod tests {
                 .all(|entity| entity.prev_xy == entity.curr_xy),
             "import reinitializes interpolation history"
         );
+    }
+
+    /// Stage 4 world-layer parity anchors, captured on the Stage 3 renderer.
+    ///
+    /// Scripted camera/entity states whose world DrawCmd prefix + world
+    /// arenas must be byte-identical (same `worldDrawHash`) after the
+    /// ClientView renderer cutover. Any difference is a stage stop
+    /// condition, not a re-bless.
+    #[test]
+    fn world_draw_hash_parity_anchors_for_scripted_states() {
+        fn world_hash(engine: &UiEngine) -> String {
+            let debug: Value =
+                serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+            debug["worldRender"]["worldDrawHash"]
+                .as_str()
+                .expect("worldDrawHash")
+                .to_owned()
+        }
+
+        // State 1: default-world boot render (no fixed tick yet).
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = 1.0;
+        let _ = engine.frame();
+        let s1 = world_hash(&engine);
+
+        // State 2: one fixed tick in the default world (entity mode).
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        let s2 = world_hash(&engine);
+
+        // State 3: default-world entity movement (FOV motion + memory).
+        engine.world
+            .send_command(WorldCommand::MoveEntity {
+                id: 1,
+                direction: Vec3i::new(-1, 0, 0),
+            })
+            .expect("starter room west move");
+        for _ in 0..12 {
+            engine.input.sampled.dt_ms = SIM_TICK_MS;
+            let _ = engine.frame();
+        }
+        let s3 = world_hash(&engine);
+
+        // State 4: play-world master pan followed by one fixed tick.
+        let mut engine = focused_engine((1280, 720));
+        engine.reset_play_world();
+        engine.input.sampled.dt_ms = 16.0;
+        let _ = engine.frame();
+        engine.view.view_mode = WorldViewMode::Master;
+        engine.view.camera.x = 4096.0;
+        engine.view.camera.y = 4096.0;
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+        let s4 = world_hash(&engine);
+
+        // State 5: the scripted perf scenario (play world, 105 idle 16 ms
+        // frames => tick 33), the Stage 3 checkpoint reference.
+        let mut engine = focused_engine((1280, 720));
+        engine.reset_play_world();
+        engine.input.sampled.dt_ms = 16.0;
+        for _ in 0..105 {
+            let _ = engine.frame();
+        }
+        assert_eq!(engine.world.tick_count(), 33, "perf scenario tick");
+        let s5 = world_hash(&engine);
+
+        println!("parity anchors: s1={s1} s2={s2} s3={s3} s4={s4} s5={s5}");
+        // Captured on the Stage 3 legacy renderer (commit f869ed1 worktree).
+        assert_eq!(s1, "fnv1a64:c55ac880b00ac4d0");
+        assert_eq!(s2, "fnv1a64:c55ac880b00ac4d0");
+        assert_eq!(s3, "fnv1a64:ee3f36f2bdc3a71a");
+        assert_eq!(s4, "fnv1a64:c6e10e16605cd905");
+        // The scripted perf scenario must equal the Stage 3 checkpoint
+        // reference recorded in the plan.
+        assert_eq!(s5, "fnv1a64:c55ac880b00ac4d0");
     }
 
     #[test]

@@ -181,6 +181,74 @@ pub fn project_entities(
     client.primary_entity_id = primary_entity_id;
 }
 
+/// Chunks of the single z-chunk layer containing `view_z` covered by the
+/// camera rectangle, with no padding: the visible-chunk window consumed by
+/// floor emission (exactly one entry per emitted XY column).
+///
+/// This intentionally differs from [`ProjectionWindow::visible`], which also
+/// spans the z-chunks of the scanned topmost slice for residency purposes;
+/// emission iterates XY columns and must not receive z duplicates.
+#[must_use]
+pub fn visible_chunk_layer(
+    view: &LocalWorldView,
+    world_chunks: Vec3u,
+    framebuffer: (u32, u32),
+) -> BTreeSet<Vec3i> {
+    let mut chunks = BTreeSet::new();
+    let Some((world_min, world_max)) = centered_world_bounds(world_chunks) else {
+        return chunks;
+    };
+    if view.view_z < world_min.z || view.view_z > world_max.z {
+        return chunks;
+    }
+    let Some((min_x, max_x, min_y, max_y)) =
+        camera_tile_rect(view, world_min, world_max, framebuffer)
+    else {
+        return chunks;
+    };
+    let Some((min_chunk, _)) =
+        world_position_to_chunk_voxel(Vec3i::new(min_x, min_y, view.view_z), world_chunks)
+    else {
+        return chunks;
+    };
+    let Some((max_chunk, _)) =
+        world_position_to_chunk_voxel(Vec3i::new(max_x, max_y, view.view_z), world_chunks)
+    else {
+        return chunks;
+    };
+    for cy in min_chunk.y..=max_chunk.y {
+        for cx in min_chunk.x..=max_chunk.x {
+            chunks.insert(Vec3i::new(cx, cy, min_chunk.z));
+        }
+    }
+    chunks
+}
+
+/// World-clipped tile rectangle covered by the camera, or [`None`] when the
+/// camera sees no in-world tiles.
+fn camera_tile_rect(
+    view: &LocalWorldView,
+    world_min: Vec3i,
+    world_max: Vec3i,
+    framebuffer: (u32, u32),
+) -> Option<(i32, i32, i32, i32)> {
+    let zoom = view.camera.zoom.max(0.01);
+    let framebuffer_w = framebuffer.0.max(1) as f32;
+    let framebuffer_h = framebuffer.1.max(1) as f32;
+    let half_w_tiles = framebuffer_w / (2.0 * zoom * TILE_SIZE_PX);
+    let half_h_tiles = framebuffer_h / (2.0 * zoom * TILE_SIZE_PX);
+    let center_x = view.camera.x / TILE_SIZE_PX;
+    let center_y = view.camera.y / TILE_SIZE_PX;
+    let min_x = ((center_x - half_w_tiles).floor() as i32).max(world_min.x);
+    let max_x = ((center_x + half_w_tiles).floor() as i32).min(world_max.x);
+    let min_y = ((center_y - half_h_tiles).floor() as i32).max(world_min.y);
+    let max_y = ((center_y + half_h_tiles).floor() as i32).min(world_max.y);
+    if min_x > max_x || min_y > max_y {
+        return None;
+    }
+    Some((min_x, max_x, min_y, max_y))
+}
+
 /// Centered world voxel bounds for a chunk grid (see `od_core::world::chunk`).
 fn centered_world_bounds(dims: Vec3u) -> Option<(Vec3i, Vec3i)> {
     let axis = |dim: u32| -> Option<(i32, i32)> {
@@ -216,20 +284,11 @@ fn camera_chunk_window(
         return chunks;
     }
 
-    let zoom = view.camera.zoom.max(0.01);
-    let framebuffer_w = framebuffer.0.max(1) as f32;
-    let framebuffer_h = framebuffer.1.max(1) as f32;
-    let half_w_tiles = framebuffer_w / (2.0 * zoom * TILE_SIZE_PX);
-    let half_h_tiles = framebuffer_h / (2.0 * zoom * TILE_SIZE_PX);
-    let center_x = view.camera.x / TILE_SIZE_PX;
-    let center_y = view.camera.y / TILE_SIZE_PX;
-    let min_x = ((center_x - half_w_tiles).floor() as i32).max(world_min.x);
-    let max_x = ((center_x + half_w_tiles).floor() as i32).min(world_max.x);
-    let min_y = ((center_y - half_h_tiles).floor() as i32).max(world_min.y);
-    let max_y = ((center_y + half_h_tiles).floor() as i32).min(world_max.y);
-    if min_x > max_x || min_y > max_y {
+    let Some((min_x, max_x, min_y, max_y)) =
+        camera_tile_rect(view, world_min, world_max, framebuffer)
+    else {
         return chunks;
-    }
+    };
 
     // Topmost emission scans [view_z - Z_LEVELS_BELOW, view_z]; that slice
     // spans at most two z-chunks with the fixed 16 edge.

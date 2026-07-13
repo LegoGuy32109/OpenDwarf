@@ -46,11 +46,20 @@ export type RemnantResult = {
   actualExitCode: number;
 };
 
+export type GoldenRebless = {
+  file: string;
+  beforeSha256: string;
+  afterSha256: string;
+  reason: string;
+};
+
 export type StageOwnedContext = {
   rustCounts: { passed: number; failed: number };
   perf: PerfEvidence;
   baselinePerf: { label: string; evidencePath: string; medianMs: number };
   remnant?: RemnantResult;
+  snapshotCalls: Record<string, number>;
+  goldens: GoldenRebless[];
 };
 
 export type StageAcceptanceConfig = {
@@ -61,8 +70,17 @@ export type StageAcceptanceConfig = {
   baselinePerf: { label: string; evidencePath: string };
   // Optional `rg` remnant check that must exit 1 (no matches).
   remnant?: { pattern: string; searchPath: string; evidence: string };
+  // Exact snapshot calls required on every recorded frame path (default 1).
+  expectedSnapshotCallsPerPath?: number;
+  // Exact release perf harness ceiling the evidence must record, when pinned.
+  requiredCeilingMs?: number;
   // Exact stage-owned values required in the release perf harness semantics.
   requiredSemantics?: Record<string, string | number>;
+  // Golden files this stage authorizes for re-blessing, with the exact
+  // expected before (HEAD) and after (working tree) SHA-256 per file. The
+  // observed golden diff must match this list exactly; an empty/omitted list
+  // requires zero golden changes.
+  authorizedGoldens?: GoldenRebless[];
   goldensReason: string;
   buildStageOwned: (context: StageOwnedContext) => Record<string, unknown>;
   residualRisks: string[];
@@ -128,6 +146,20 @@ async function git(args: string[]) {
 
 async function sha256(path: string) {
   return createHash("sha256").update(await readFile(path)).digest("hex");
+}
+
+// SHA-256 of a blob as committed at `rev`, without trimming (a trimmed
+// string digest would not match `sha256sum` for newline-terminated files).
+async function gitShowSha256(rev: string, path: string) {
+  const output = await new Deno.Command("git", {
+    args: ["show", `${rev}:${path}`],
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  if (!output.success) {
+    throw new Error(new TextDecoder().decode(output.stderr));
+  }
+  return createHash("sha256").update(output.stdout).digest("hex");
 }
 
 async function readJson(path: string) {
@@ -324,9 +356,12 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
   if (snapshot.stage !== STAGE) {
     throw new Error("snapshot evidence stage mismatch");
   }
+  const expectedSnapshotCalls = config.expectedSnapshotCallsPerPath ?? 1;
   for (const [path, calls] of Object.entries(snapshot.snapshotCalls)) {
-    if (calls !== 1) {
-      throw new Error(`snapshot path ${path} recorded ${calls} calls, want 1`);
+    if (calls !== expectedSnapshotCalls) {
+      throw new Error(
+        `snapshot path ${path} recorded ${calls} calls, want ${expectedSnapshotCalls}`,
+      );
     }
   }
   const debugArtifact = await artifact("debug", snapshot.artifact.servedSha256);
@@ -377,6 +412,14 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
   );
   const perf = await readJson(PERF_REPORT) as PerfEvidence;
   if (perf.stage !== STAGE) throw new Error("perf evidence stage mismatch");
+  if (
+    config.requiredCeilingMs !== undefined &&
+    perf.ceilingMs !== config.requiredCeilingMs
+  ) {
+    throw new Error(
+      `perf evidence ceiling ${perf.ceilingMs} ms != required ${config.requiredCeilingMs} ms`,
+    );
+  }
   const baselinePerfEvidence = await readJson(config.baselinePerf.evidencePath);
   if (perf.medianMs > baselinePerfEvidence.medianMs) {
     throw new Error(
@@ -433,10 +476,33 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
     "game_engine/od_ui/goldens",
     "game_engine/od_world/goldens",
   ]))
-    .split("\n").filter(Boolean);
-  if (changedGoldens.length > 0) {
+    .split("\n").filter(Boolean).sort();
+  const authorizedGoldens = [...(config.authorizedGoldens ?? [])]
+    .sort((a, b) => a.file.localeCompare(b.file));
+  const authorizedGoldenFiles = authorizedGoldens.map((golden) => golden.file);
+  if (
+    JSON.stringify(changedGoldens) !== JSON.stringify(authorizedGoldenFiles)
+  ) {
     throw new Error(
-      `goldens changed without authorization: ${changedGoldens.join(", ")}`,
+      `changed goldens [${changedGoldens.join(", ")}] do not match the ` +
+        `authorized Stage ${STAGE} list [${authorizedGoldenFiles.join(", ")}]`,
+    );
+  }
+  for (const golden of authorizedGoldens) {
+    const beforeSha256 = await gitShowSha256("HEAD", golden.file);
+    if (beforeSha256 !== golden.beforeSha256) {
+      throw new Error(
+        `golden ${golden.file} HEAD hash ${beforeSha256} != authorized before hash ${golden.beforeSha256}`,
+      );
+    }
+    const afterSha256 = await sha256(golden.file);
+    if (afterSha256 !== golden.afterSha256) {
+      throw new Error(
+        `golden ${golden.file} working-tree hash ${afterSha256} != authorized after hash ${golden.afterSha256}`,
+      );
+    }
+    console.log(
+      `golden rebless verified: ${golden.file} ${golden.beforeSha256} -> ${golden.afterSha256}`,
     );
   }
   const goldenSha256ByFile = Object.fromEntries(
@@ -501,7 +567,10 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
       engine: route(profile.results["/engine"]),
     },
     goldens: {
-      changedFiles: [],
+      changedFiles: authorizedGoldenFiles,
+      ...(authorizedGoldens.length > 0
+        ? { authorizedStage: STAGE, changed: authorizedGoldens }
+        : {}),
       reason: config.goldensReason,
       sha256ByFile: goldenSha256ByFile,
     },
@@ -514,6 +583,8 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
         medianMs: baselinePerfEvidence.medianMs,
       },
       remnant,
+      snapshotCalls: snapshot.snapshotCalls,
+      goldens: authorizedGoldens,
     }),
     authorizedDeferrals: [],
     residualRisks: config.residualRisks,

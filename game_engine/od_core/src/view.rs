@@ -76,7 +76,9 @@ pub struct LocalWorldView {
     pub fps: f32,
     pub tps: f32,
     pub visible_chunks: Vec<Vec3i>,
-    pub streaming_chunks: Vec<Vec3i>,
+    /// Chunks currently held by the local `ClientView` projection. Purely
+    /// local read-model state: never authoritative residency.
+    pub projected_chunks: Vec<Vec3i>,
 }
 
 impl Default for LocalWorldView {
@@ -89,7 +91,7 @@ impl Default for LocalWorldView {
             fps: 0.0,
             tps: 0.0,
             visible_chunks: Vec::new(),
-            streaming_chunks: Vec::new(),
+            projected_chunks: Vec::new(),
         }
     }
 }

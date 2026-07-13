@@ -108,11 +108,6 @@ impl WorldSim {
         self.state.entity_snapshot(id)
     }
 
-    #[must_use]
-    pub fn loaded_chunk_coords(&self) -> Vec<Vec3i> {
-        self.state.loaded_chunk_coords()
-    }
-
     /// Terrain revision of one chunk, or [`None`] outside the chunk grid.
     #[must_use]
     pub fn chunk_terrain_revision(&self, chunk: Vec3i) -> Option<u64> {

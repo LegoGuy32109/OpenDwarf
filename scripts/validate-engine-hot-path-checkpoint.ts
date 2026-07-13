@@ -53,13 +53,7 @@ type Checkpoint = {
     viewport: { width: number; height: number; deviceScaleFactor: number };
   };
   commands: CommandResult[];
-  snapshotCalls: {
-    idle: number;
-    tick: number;
-    movement: number;
-    camera: number;
-    chat: number;
-  };
+  snapshotCalls: Record<string, number>;
   snapshotEvidencePath?: string;
   harnessPerformance: {
     artifactPath?: string;
@@ -93,6 +87,13 @@ type Checkpoint = {
   };
   goldens: {
     changedFiles: string[];
+    authorizedStage?: number;
+    changed?: {
+      file: string;
+      beforeSha256: string;
+      afterSha256: string;
+      reason: string;
+    }[];
     reason: string;
     sha256ByFile?: Record<string, string>;
   };
@@ -109,8 +110,28 @@ type GeneratedStageSpec = {
     | { label: string; evidencePath: string };
   remnantCommand?: string;
   rustTests?: { command: string; minimumPassed: number };
+  // Exact per-path snapshot matrix (default: the Stage 1-3 all-1 five-path
+  // matrix). Keys and values must match exactly.
+  snapshotMatrix?: Record<string, number>;
+  // Exact `snapshotCallsLastFrame` in the perf semantics (default 1).
+  snapshotCallsLastFrame?: number;
+  // Exact perf `worldStateHash` (default: the Stage 0 play-world hash).
+  worldStateHash?: string;
+  // Exact perf harness ceiling, when a stage pins/tightens it.
+  ceilingMs?: number;
+  // Extra exact snapshot-evidence pathState assertions beyond the Stage 0-3
+  // core set.
+  pathState?: Record<string, unknown>;
   // Exact stage-owned values required in the recorded perf harness semantics.
   requiredSemantics?: Record<string, string | number>;
+  // Golden re-blesses this stage authorizes, pinned by exact hashes. The
+  // checkpoint must record exactly this list; an omitted/empty list requires
+  // zero golden changes.
+  authorizedGoldens?: {
+    file: string;
+    beforeSha256: string;
+    afterSha256: string;
+  }[];
   stageOwnedKeys?: string[];
 };
 
@@ -356,6 +377,8 @@ const acceptanceLaneCommands = [
 ];
 const stageTwoRemnantCommand =
   'rg "self\\.terrain_blocks|terrain_blocks: HashMap|build_terrain_blocks_cache|blocks: Vec<BlockType>" game_engine/od_world';
+const stageFourRemnantCommand =
+  'rg "apply_streaming_chunks|streaming_fingerprint" game_engine/od_wasm/src';
 const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
   [1, {
     acceptTask: "deno task engine:accept-stage1",
@@ -403,6 +426,93 @@ const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
       "perfMedianVsStage2",
       "worldDrawHash",
       "droppedSimTimeMs",
+    ],
+  }],
+  [4, {
+    acceptTask: "deno task engine:accept-stage4",
+    requiredCommands: [...acceptanceLaneCommands, stageFourRemnantCommand],
+    baseline: {
+      label: "Stage 3",
+      evidencePath:
+        "docs/design/checkpoints/evidence/engine-render-hot-path-stage-3-perf.json",
+    },
+    remnantCommand: stageFourRemnantCommand,
+    // Stage 4 records 119 passing workspace tests (paired-engine camera
+    // independence, topmost invalidation, explicit authority residency,
+    // ClientView render); a decrease is a red gate.
+    rustTests: { command: "deno task engine:test", minimumPassed: 119 },
+    // The ClientView renderer performs zero WorldSim::snapshot() calls on
+    // every recorded frame path (authorized matrix update: 1 -> 0).
+    snapshotMatrix: {
+      idle: 0,
+      tick: 0,
+      movement: 0,
+      camera: 0,
+      zoom: 0,
+      viewZ: 0,
+      resize: 0,
+      master: 0,
+      entity: 0,
+      chat: 0,
+      shell: 0,
+    },
+    snapshotCallsLastFrame: 0,
+    // Authorized Stage 4 residency re-bless: camera streaming removed, so
+    // all 81 play-world chunks remain simulation-resident.
+    worldStateHash: "fnv1a64:718bb0099657e9aa",
+    // Stage 4 tightens the 20-frame median ceiling to 400 ms.
+    ceilingMs: 400,
+    pathState: {
+      zoomChanged: true,
+      viewZDelta: 1,
+      framebufferChanged: true,
+      masterMode: "master",
+      entityMode: "entity",
+      shellOpen: true,
+    },
+    requiredSemantics: {
+      // Stage 3 world-layer parity reference held exactly through the
+      // ClientView render cutover; a difference is a stop condition.
+      worldDrawHash: "fnv1a64:c55ac880b00ac4d0",
+      // Bounded lag handling must not discard simulated time at the
+      // deterministic 16 ms harness pacing.
+      droppedSimTimeMs: 0,
+    },
+    // Exactly these three golden re-blesses are authorized for Stage 4;
+    // "none" or any other changed set is a red gate.
+    authorizedGoldens: [
+      {
+        file: "tests/goldens/engine/checkpoints.json",
+        beforeSha256:
+          "4ac28f1536294af411c1932031a24a196e1ab8bd3a3119d1f99541e8d0528933",
+        afterSha256:
+          "b60c07e2439c5d6f010d5b056db50f13fcad35b2447824fc86dd537cbe99544d",
+      },
+      {
+        file: "tests/goldens/engine/mvp_checkpoints.json",
+        beforeSha256:
+          "a5326ab85d9267d4631693c1da7e30f57aebb63b438323494565e299b4219668",
+        afterSha256:
+          "50570106acb9c6242333b734ab8b10404a7f33fe198497f08b131091bcf2e391",
+      },
+      {
+        file: "tests/goldens/engine/scenario_browser.json",
+        beforeSha256:
+          "ccc75b6dfa177f49a5dc618eb5fe9f0694d3d86666d61ec15861ead30b710d3d",
+        afterSha256:
+          "6bb8cb237b746f0dfdee24afffdd2dad8f47529ad6bf243f92cc5de93673d0ca",
+      },
+    ],
+    stageOwnedKeys: [
+      "snapshotMatrix",
+      "remnantCheck",
+      "rustWorkspaceTests",
+      "perfMedianVsStage3",
+      "worldDrawHash",
+      "worldStateHash",
+      "droppedSimTimeMs",
+      "goldenRebless",
+      "perfFixtureRebless",
     ],
   }],
 ]);
@@ -469,16 +579,21 @@ if (spec) {
     checkpoint.generatedBy === spec.acceptTask,
     `${label} checkpoint was not generated by ${spec.acceptTask}`,
   );
+  const requiredMatrix = spec.snapshotMatrix ??
+    { idle: 1, tick: 1, movement: 1, camera: 1, chat: 1 };
   assert(
-    JSON.stringify(checkpoint.snapshotCalls) === JSON.stringify({
-      idle: 1,
-      tick: 1,
-      movement: 1,
-      camera: 1,
-      chat: 1,
-    }),
-    `${label} snapshot matrix must be 1/1/1/1/1`,
+    Object.keys(checkpoint.snapshotCalls).length ===
+      Object.keys(requiredMatrix).length,
+    `${label} snapshot matrix path set mismatch`,
   );
+  for (const [path, expected] of Object.entries(requiredMatrix)) {
+    assert(
+      checkpoint.snapshotCalls[path] === expected,
+      `${label} snapshot path ${path}: recorded ${
+        checkpoint.snapshotCalls[path]
+      }, required ${expected}`,
+    );
+  }
   const perf = checkpoint.harnessPerformance;
   assert(
     perf.samplesMs.length >= 5,
@@ -498,6 +613,12 @@ if (spec) {
     perf.medianMs < perf.ceilingMs,
     `${label} perf median exceeds ceiling`,
   );
+  if (spec.ceilingMs !== undefined) {
+    assert(
+      perf.ceilingMs === spec.ceilingMs,
+      `${label} ceiling must be ${spec.ceilingMs} ms`,
+    );
+  }
   const baselineMedianMs = "medianMs" in spec.baseline
     ? spec.baseline.medianMs
     : (JSON.parse(
@@ -517,18 +638,21 @@ if (spec) {
     `${label} atlasQuadCount != 131`,
   );
   assert(perf.semantics.worldTick === 33, `${label} world tick mismatch`);
+  const requiredWorldStateHash = spec.worldStateHash ??
+    "fnv1a64:11f96a454cacdf3d";
   assert(
-    perf.semantics.worldStateHash === "fnv1a64:11f96a454cacdf3d",
-    `${label} world hash mismatch`,
+    perf.semantics.worldStateHash === requiredWorldStateHash,
+    `${label} world hash mismatch: recorded ${perf.semantics.worldStateHash}, required ${requiredWorldStateHash}`,
   );
   assert(perf.semantics.drawCount === 7, `${label} draw count mismatch`);
   assert(
     /^fnv1a64:[0-9a-f]{16}$/.test(perf.semantics.observedDrawHash),
     `${label} draw hash malformed`,
   );
+  const requiredSnapshotCallsLastFrame = spec.snapshotCallsLastFrame ?? 1;
   assert(
-    perf.semantics.snapshotCallsLastFrame === 1,
-    `${label} final snapshot count != 1`,
+    perf.semantics.snapshotCallsLastFrame === requiredSnapshotCallsLastFrame,
+    `${label} final snapshot count != ${requiredSnapshotCallsLastFrame}`,
   );
   for (const [name, expected] of Object.entries(spec.requiredSemantics ?? {})) {
     const actual = (perf.semantics as Record<string, unknown>)[name];
@@ -635,6 +759,14 @@ if (spec) {
       snapshotEvidence.pathState.chatMode === "chat",
     "chat path state mismatch",
   );
+  for (const [field, expected] of Object.entries(spec.pathState ?? {})) {
+    assert(
+      snapshotEvidence.pathState[field] === expected,
+      `${label} pathState ${field}: recorded ${
+        JSON.stringify(snapshotEvidence.pathState[field])
+      }, required ${JSON.stringify(expected)}`,
+    );
+  }
 
   assert(perf.artifactPath, `${label} perf evidence path missing`);
   const perfEvidence = JSON.parse(await Deno.readTextFile(perf.artifactPath));
@@ -726,7 +858,45 @@ if (spec) {
 assertRoute(checkpoint.sameRunProfile.webgl, "/webgl");
 assertRoute(checkpoint.sameRunProfile.engine, "/engine");
 await Deno.stat(checkpoint.sameRunProfile.artifactPath);
-assert(checkpoint.goldens.changedFiles.length === 0, "golden files changed");
+const authorizedGoldens = [...(spec?.authorizedGoldens ?? [])]
+  .sort((a, b) => a.file.localeCompare(b.file));
+if (authorizedGoldens.length === 0) {
+  assert(checkpoint.goldens.changedFiles.length === 0, "golden files changed");
+} else {
+  assert(
+    JSON.stringify([...checkpoint.goldens.changedFiles].sort()) ===
+      JSON.stringify(authorizedGoldens.map((golden) => golden.file)),
+    `stage ${stage} changed goldens must be exactly the authorized list [${
+      authorizedGoldens.map((golden) => golden.file).join(", ")
+    }]`,
+  );
+  assert(
+    checkpoint.goldens.authorizedStage === stage,
+    `golden re-blesses must record authorized stage ${stage}`,
+  );
+  for (const expected of authorizedGoldens) {
+    const record = (checkpoint.goldens.changed ?? []).find((candidate) =>
+      candidate.file === expected.file
+    );
+    assert(record, `golden rebless record missing: ${expected.file}`);
+    assert(
+      record.beforeSha256 === expected.beforeSha256,
+      `golden ${expected.file} before hash: recorded ${record.beforeSha256}, required ${expected.beforeSha256}`,
+    );
+    assert(
+      record.afterSha256 === expected.afterSha256,
+      `golden ${expected.file} after hash: recorded ${record.afterSha256}, required ${expected.afterSha256}`,
+    );
+    assert(
+      record.reason.length > 0,
+      `golden ${expected.file} is missing a re-bless reason`,
+    );
+    assert(
+      await fileSha256(expected.file) === expected.afterSha256,
+      `golden ${expected.file} on disk disagrees with the authorized after hash`,
+    );
+  }
+}
 assert(checkpoint.goldens.reason.length > 0, "missing golden status reason");
 assert(checkpoint.residualRisks.length > 0, "missing residual risks");
 

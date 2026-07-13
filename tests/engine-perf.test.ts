@@ -68,12 +68,19 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
     `engine perf world draw prefix: worldDrawHash=${snapshot.worldRender.worldDrawHash} droppedSimTimeMs=${snapshot.worldRender.droppedSimTimeMs}`,
   );
 
-  expect(median).toBeLessThan(6_000);
+  // Stage 4 ceiling: 400 ms (tightened from the 6,000 ms Stage 0 baseline).
+  expect(median).toBeLessThan(400);
   expect(snapshot.worldRender.floorQuadCount).toBe(130);
   expect(snapshot.worldRender.playerQuadCount).toBe(1);
   expect(snapshot.worldRender.atlasQuadCount).toBe(131);
   expect(snapshot.world.tick).toBe(33);
-  expect(snapshot.world.worldStateHash).toBe("fnv1a64:11f96a454cacdf3d");
+  // Stage 4 re-bless: the play world keeps all 81 chunks simulation-resident
+  // (camera streaming removed), which changes the world-state hash. The
+  // world-LAYER draw output is unchanged (worldDrawHash below).
+  expect(snapshot.world.worldStateHash).toBe("fnv1a64:718bb0099657e9aa");
+  // Stage 3 world-layer parity reference: any difference is a stop
+  // condition, never a re-bless.
+  expect(snapshot.worldRender.worldDrawHash).toBe("fnv1a64:c55ac880b00ac4d0");
   expect(snapshot.frame.drawCount).toBe(7);
   expect(snapshot.frame.drawHash).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
   expect(snapshot.frame.droppedRects).toBe(0);
@@ -82,7 +89,7 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
   expect(snapshot.worldRender.droppedAtlasQuads).toBe(0);
   expect(snapshot.worldRender.droppedSolidQuads).toBe(0);
   expect(snapshot.worldRender.droppedDrawCmds).toBe(0);
-  expect(snapshot.worldRender.snapshotCallsLastFrame).toBe(1);
+  expect(snapshot.worldRender.snapshotCallsLastFrame).toBe(0);
 
   const reportPath = process.env.ENGINE_PERF_REPORT_PATH;
   if (reportPath) {
@@ -97,7 +104,7 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
       samplesMs: samples,
       medianMs: median,
       p95Ms: p95,
-      ceilingMs: 6_000,
+      ceilingMs: 400,
       semantics: {
         floorQuadCount: snapshot.worldRender.floorQuadCount,
         playerQuadCount: snapshot.worldRender.playerQuadCount,

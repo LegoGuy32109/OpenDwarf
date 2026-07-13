@@ -106,23 +106,54 @@ test("engine LocalWorldView handles viewZ, zoom, slash modes, and camera behavio
   expect(snapshot.worldRender.rememberedTileCount).toBeGreaterThan(0);
 });
 
-test("engine play world streams a viewport window plus entity safety chunks", async ({ page }) => {
+test("engine play world keeps all chunks resident while the camera drives only the local projection", async ({ page }) => {
   await page.goto("/engine?harness=1");
   await waitForEngineHarness(page);
   await page.focus("#engine-canvas");
   await engineResetWorld(page, "play");
-  await stepEngineFrame(page, 1);
+  // Four 16 ms frames advance exactly one fixed tick, trimming the
+  // lifecycle projection back to the local window.
+  await stepEngineFrame(page, 4);
 
   const snapshot = await engineSnapshot(page);
   const totalChunks = snapshot.world.worldChunks.x *
     snapshot.world.worldChunks.y *
     snapshot.world.worldChunks.z;
   expect(totalChunks).toBeGreaterThan(1);
-  expect(snapshot.world.loadedChunkCount).toBeGreaterThanOrEqual(9);
-  expect(snapshot.world.loadedChunkCount).toBeLessThan(totalChunks);
-  expect(snapshot.localWorldView.streamingChunks.length).toBe(
-    snapshot.world.loadedChunkCount,
+  // Camera/residency split: every generated chunk stays simulation-resident;
+  // the projected window is a strictly local read model.
+  expect(snapshot.world.loadedChunkCount).toBe(totalChunks);
+  expect(snapshot.localWorldView.projectedChunks.length).toBeGreaterThan(0);
+  expect(snapshot.localWorldView.projectedChunks.length).toBeLessThan(
+    totalChunks,
   );
+  const projected = new Set(
+    snapshot.localWorldView.projectedChunks.map((c) => `${c.x},${c.y},${c.z}`),
+  );
+  for (const chunk of snapshot.localWorldView.visibleChunks) {
+    expect(projected.has(`${chunk.x},${chunk.y},${chunk.z}`)).toBe(true);
+  }
+
+  // A master-mode camera pan changes the projection after the next fixed
+  // tick but never authoritative residency or the world hash.
+  await enginePress(page, "Slash");
+  await stepEngineFrame(page, 1);
+  await engineTypeText(page, "master");
+  await stepEngineFrame(page, 1);
+  await enginePress(page, "Enter");
+  await stepEngineFrame(page, 1);
+  await engineKeyDown(page, "KeyL");
+  await stepEngineFrame(page, 8);
+  await engineKeyUp(page, "KeyL");
+  const panned = await engineSnapshot(page);
+  expect(panned.localWorldView.viewMode).toBe("master");
+  expect(panned.localWorldView.camera.x).toBeGreaterThan(
+    snapshot.localWorldView.camera.x,
+  );
+  expect(panned.world.loadedChunkCount).toBe(totalChunks);
+  expect(panned.world.worldStateHash).not.toBe(snapshot.world.worldStateHash);
+  // Ticks advanced (hash covers tick), but residency membership is equal.
+  expect(panned.world.loadedChunks).toEqual(snapshot.world.loadedChunks);
 });
 
 test("engine live ESDF chords start diagonal movement", async ({ page }) => {
