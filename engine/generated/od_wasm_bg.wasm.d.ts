@@ -12,9 +12,7 @@ export const uiengine_abi_program_world_solid_quad: (a: number) => number;
 export const uiengine_abi_rect_stride_floats: (a: number) => number;
 export const uiengine_debug_draw_hash: (a: number) => [number, number];
 export const uiengine_debug_snapshot_json: (a: number) => [number, number];
-export const uiengine_debug_world_snapshot_json: (
-  a: number,
-) => [number, number];
+export const uiengine_debug_world_snapshot_json: (a: number) => [number, number];
 export const uiengine_drawlist_capacity: (a: number) => number;
 export const uiengine_drawlist_ptr: (a: number) => number;
 export const uiengine_dropped_draw_cmds: (a: number) => number;
@@ -23,16 +21,8 @@ export const uiengine_dropped_rects: (a: number) => number;
 export const uiengine_frame: (a: number) => number;
 export const uiengine_glyph_capacity: (a: number) => number;
 export const uiengine_glyph_ptr: (a: number) => number;
-export const uiengine_hydrate_settings: (
-  a: number,
-  b: number,
-  c: number,
-) => void;
-export const uiengine_import_replay_json: (
-  a: number,
-  b: number,
-  c: number,
-) => [number, number, number, number];
+export const uiengine_hydrate_settings: (a: number, b: number, c: number) => void;
+export const uiengine_import_replay_json: (a: number, b: number, c: number) => [number, number, number, number];
 export const uiengine_input_capacity: (a: number) => number;
 export const uiengine_input_ptr: (a: number) => number;
 export const uiengine_new: () => number;

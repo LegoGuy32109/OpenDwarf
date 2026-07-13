@@ -61,6 +61,89 @@ mod tests {
     }
 
     #[test]
+    fn narrow_accessors_exactly_match_snapshot_and_bounds() {
+        let mut sim = WorldSim::new(WorldConfig::default(), true);
+        assert_eq!(sim.tick_count(), 0);
+        assert_eq!(sim.entity_position(999), None);
+        assert_eq!(sim.entity_snapshot(999), None);
+
+        let id = sim.primary_entity_id().expect("player");
+        let idle_snapshot = sim.snapshot();
+        let idle_entity = idle_snapshot
+            .entities
+            .iter()
+            .find(|entity| entity.id == id)
+            .expect("idle entity");
+        assert_eq!(sim.entity_position(id), Some(idle_entity.position));
+        assert_eq!(sim.entity_snapshot(id).as_ref(), Some(idle_entity));
+        let loaded = sim.loaded_chunk_coords();
+        assert!(loaded.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(
+            loaded
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
+            idle_snapshot.loaded_chunks
+        );
+        assert_eq!(sim.world_chunks(), idle_snapshot.world_chunks);
+        assert_eq!(sim.chunk_edge(), idle_snapshot.chunk_edge);
+        assert_eq!(sim.world_bounds(), sim.state().centered_bounds());
+        let direction = [
+            Vec3i::new(1, 0, 0),
+            Vec3i::new(-1, 0, 0),
+            Vec3i::new(0, 1, 0),
+            Vec3i::new(0, -1, 0),
+        ]
+        .into_iter()
+        .find(|direction| {
+            sim.send_command(WorldCommand::MoveEntity {
+                id,
+                direction: *direction,
+            })
+            .is_ok()
+        })
+        .expect("open move");
+        let moving_snapshot = sim.snapshot();
+        let moving_entity = moving_snapshot
+            .entities
+            .iter()
+            .find(|entity| entity.id == id)
+            .expect("moving entity");
+        assert_eq!(
+            sim.entity_snapshot(id).as_ref(),
+            Some(moving_entity),
+            "movement accessor mismatch for {direction:?}"
+        );
+        assert_eq!(sim.entity_position(id), Some(moving_entity.position));
+        assert!(moving_entity.movement.is_some());
+
+        let even = WorldSim::new(
+            WorldConfig {
+                chunk_edge: 16,
+                world_chunks: Vec3u::new(2, 2, 2),
+                ..WorldConfig::default()
+            },
+            false,
+        );
+        assert_eq!(
+            even.world_bounds(),
+            (Vec3i::new(-16, -16, -16), Vec3i::new(15, 15, 15))
+        );
+        let odd = WorldSim::new(
+            WorldConfig {
+                chunk_edge: 16,
+                world_chunks: Vec3u::new(3, 1, 1),
+                ..WorldConfig::default()
+            },
+            false,
+        );
+        assert_eq!(
+            odd.world_bounds(),
+            (Vec3i::new(-24, -8, -8), Vec3i::new(23, 7, 7))
+        );
+    }
+
+    #[test]
     fn move_into_unloaded_chunk_fails_closed() {
         let config = WorldConfig {
             chunk_edge: 16,

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import {
   engineResetWorld,
@@ -77,6 +79,40 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
   expect(snapshot.worldRender.droppedAtlasQuads).toBe(0);
   expect(snapshot.worldRender.droppedSolidQuads).toBe(0);
   expect(snapshot.worldRender.droppedDrawCmds).toBe(0);
-  // 20 synthetic 16 ms frames end on a non-tick frame in the 50 ms schedule.
-  expect(snapshot.worldRender.snapshotCallsLastFrame).toBe(4);
+  expect(snapshot.worldRender.snapshotCallsLastFrame).toBe(1);
+
+  const reportPath = process.env.ENGINE_PERF_REPORT_PATH;
+  if (reportPath) {
+    const report = {
+      schemaVersion: 1,
+      stage: 1,
+      artifact: {
+        profile: provenance.metadata.profile,
+        metadataSha256: provenance.metadata.wasm.sha256,
+        servedSha256: measuredWasm.sha256,
+      },
+      samplesMs: samples,
+      medianMs: median,
+      p95Ms: p95,
+      ceilingMs: 6_000,
+      semantics: {
+        floorQuadCount: snapshot.worldRender.floorQuadCount,
+        playerQuadCount: snapshot.worldRender.playerQuadCount,
+        atlasQuadCount: snapshot.worldRender.atlasQuadCount,
+        worldTick: snapshot.world.tick,
+        worldStateHash: snapshot.world.worldStateHash,
+        drawCount: snapshot.frame.drawCount,
+        observedDrawHash: snapshot.frame.drawHash,
+        droppedRects: snapshot.frame.droppedRects,
+        droppedGlyphs: snapshot.frame.droppedGlyphs,
+        droppedFrameDrawCmds: snapshot.frame.droppedDrawCmds,
+        droppedAtlasQuads: snapshot.worldRender.droppedAtlasQuads,
+        droppedSolidQuads: snapshot.worldRender.droppedSolidQuads,
+        droppedWorldDrawCmds: snapshot.worldRender.droppedDrawCmds,
+        snapshotCallsLastFrame: snapshot.worldRender.snapshotCallsLastFrame,
+      },
+    };
+    await mkdir(dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  }
 });

@@ -5,8 +5,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use od_core::world::{
-    BlockType, EntityMovementSnapshot, EntitySnapshot, MoveEntityError, Vec3i, Vec3u,
-    WorldCommand, WorldConfig, WorldSnapshot,
+    BlockType, EntityMovementSnapshot, EntitySnapshot, MoveEntityError, Vec3i, Vec3u, WorldCommand,
+    WorldConfig, WorldSnapshot,
 };
 
 use crate::terrain::{build_terrain_blocks_cache, make_initial_blocks};
@@ -461,6 +461,44 @@ impl WorldState {
     }
 
     #[must_use]
+    pub fn tick_count(&self) -> u64 {
+        self.tick
+    }
+
+    #[must_use]
+    pub fn world_chunks(&self) -> Vec3u {
+        self.world_chunks
+    }
+
+    #[must_use]
+    pub fn chunk_edge(&self) -> u32 {
+        self.chunk_edge
+    }
+
+    #[must_use]
+    pub fn entity_position(&self, id: u64) -> Option<Vec3i> {
+        self.entities.get(&id).map(|entity| entity.position)
+    }
+
+    #[must_use]
+    pub fn entity_snapshot(&self, id: u64) -> Option<EntitySnapshot> {
+        self.entities.get(&id).map(|entity| EntitySnapshot {
+            id,
+            position: entity.position,
+            facing_left: entity.facing_left,
+            is_prone: entity.is_prone,
+            movement: entity.movement.map(EntityMovementState::snapshot),
+        })
+    }
+
+    #[must_use]
+    pub fn loaded_chunk_coords(&self) -> Vec<Vec3i> {
+        let mut chunks: Vec<_> = self.loaded_chunks.iter().copied().collect();
+        chunks.sort_unstable();
+        chunks
+    }
+
+    #[must_use]
     pub fn next_entity_id(&self) -> u64 {
         self.next_entity_id
     }
@@ -660,16 +698,14 @@ fn is_diagonal_move_blocked(from: Vec3i, to: Vec3i, world: &WorldState) -> bool 
     let dy = (to.y - from.y).signum();
     let dz = (to.z - from.z).signum();
 
-    let axes_moving =
-        u32::from(dx != 0) + u32::from(dy != 0) + u32::from(dz != 0);
+    let axes_moving = u32::from(dx != 0) + u32::from(dy != 0) + u32::from(dz != 0);
 
     if axes_moving < 2 {
         return false;
     }
 
-    let is_solid = |pos: Vec3i| -> bool {
-        matches!(world.block_at(pos), Some(BlockType::SolidStone))
-    };
+    let is_solid =
+        |pos: Vec3i| -> bool { matches!(world.block_at(pos), Some(BlockType::SolidStone)) };
 
     if dx != 0 && dy != 0 && dz == 0 {
         let neighbor1 = Vec3i::new(to.x, from.y, to.z);

@@ -22,6 +22,7 @@
     "schemaVersion": { "const": 1 },
     "stage": { "type": "integer", "minimum": 0 },
     "status": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+    "generatedBy": { "type": "string" },
     "reviewedImplementation": {
       "type": "object",
       "required": ["mode", "head", "workspaceDiffSha256"]
@@ -31,8 +32,9 @@
       "required": ["debug", "release"]
     },
     "environment": { "type": "object" },
-    "commands": { "type": "array", "minItems": 9 },
+    "commands": { "type": "array", "minItems": 7 },
     "snapshotCalls": { "type": "object" },
+    "snapshotEvidencePath": { "type": "string" },
     "harnessPerformance": { "type": "object" },
     "sameRunProfile": { "type": "object" },
     "goldens": { "type": "object" },

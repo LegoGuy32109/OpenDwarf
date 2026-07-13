@@ -440,12 +440,10 @@ impl UiEngine {
             self.world_input.clear_just_pressed();
             return;
         };
-        let snapshot = self.hot_path_snapshot();
-        let active_entity = snapshot
-            .entities
-            .iter()
-            .find(|entity| entity.id == entity_id);
-        let is_moving = active_entity.is_some_and(|entity| entity.movement.is_some());
+        let active_entity = self.world.entity_snapshot(entity_id);
+        let is_moving = active_entity
+            .as_ref()
+            .is_some_and(|entity| entity.movement.is_some());
         let should_chain_held = self.world_input.was_moving_last_tick && !is_moving;
         self.world_input.was_moving_last_tick = is_moving;
 
@@ -460,6 +458,7 @@ impl UiEngine {
             }
         } else if just_pressed_non_zero {
             let active_dir = active_entity
+                .as_ref()
                 .and_then(|entity| entity.movement.as_ref())
                 .map(|movement| {
                     Vec3i::new(
@@ -507,14 +506,9 @@ impl UiEngine {
         }
     }
 
-    fn primary_entity_position(&mut self) -> Option<Vec3i> {
-        let snapshot = self.hot_path_snapshot();
+    fn primary_entity_position(&self) -> Option<Vec3i> {
         let primary_entity_id = self.world.primary_entity_id()?;
-        snapshot
-            .entities
-            .iter()
-            .find(|entity| entity.id == primary_entity_id)
-            .map(|entity| entity.position)
+        self.world.entity_position(primary_entity_id)
     }
 
     fn reset_world(&mut self, config: WorldConfig) {
@@ -548,7 +542,7 @@ impl UiEngine {
         if self.world_input.just_pressed.is_held(KeyCode::KeyM) {
             self.view.step_zoom(1);
         }
-        let (min, max) = self.world.state().world_bounds();
+        let (min, max) = self.world.world_bounds();
         self.view.view_z = self.view.view_z.clamp(min.z, max.z);
         self.world_input.clear_view_just_pressed();
     }
@@ -605,21 +599,16 @@ impl UiEngine {
 
     fn sync_local_view(&mut self, dt_ms: f32, framebuffer: (u32, u32), apply_streaming: bool) {
         self.counters.record_frame(dt_ms);
-        let snapshot = self.hot_path_snapshot();
         let Some(primary_entity_id) = self.world.primary_entity_id() else {
             self.write_view_globals(framebuffer.0, framebuffer.1);
             return;
         };
-        let Some(entity) = snapshot
-            .entities
-            .iter()
-            .find(|entity| entity.id == primary_entity_id)
-        else {
+        let Some(entity) = self.world.entity_snapshot(primary_entity_id) else {
             self.write_view_globals(framebuffer.0, framebuffer.1);
             return;
         };
 
-        let entity_pos = entity_render_position_xy(entity);
+        let entity_pos = entity_render_position_xy(&entity);
         if self.smooth_player_world_pos.is_none() {
             self.smooth_player_world_pos = Some(entity_pos);
             if self.view.camera.x == 0.0 && self.view.camera.y == 0.0 {
@@ -643,14 +632,20 @@ impl UiEngine {
             }
         }
 
-        let (visible, streaming) =
-            streaming_chunks_for_view(&self.view, &snapshot, entity.position, framebuffer);
+        let (visible, streaming) = streaming_chunks_for_view(
+            &self.view,
+            self.world.chunk_edge(),
+            self.world.world_chunks(),
+            self.world.world_bounds(),
+            entity.position,
+            framebuffer,
+        );
         self.view.visible_chunks = visible.iter().copied().collect();
         self.view.streaming_chunks = streaming.iter().copied().collect();
         if apply_streaming {
             let fingerprint = streaming_fingerprint(&streaming);
             if fingerprint != self.streaming_fingerprint {
-                if self.apply_streaming_chunks(&snapshot, &streaming)
+                if self.apply_streaming_chunks(&streaming)
                     && self.view.view_mode == WorldViewMode::Entity
                 {
                     self.world_visibility.mark_fov_dirty();
@@ -663,13 +658,10 @@ impl UiEngine {
         self.write_view_globals(framebuffer.0, framebuffer.1);
     }
 
-    fn apply_streaming_chunks(
-        &mut self,
-        snapshot: &od_core::WorldSnapshot,
-        desired: &std::collections::BTreeSet<Vec3i>,
-    ) -> bool {
+    fn apply_streaming_chunks(&mut self, desired: &std::collections::BTreeSet<Vec3i>) -> bool {
         let mut changed = false;
-        for chunk in &snapshot.loaded_chunks {
+        let loaded = self.world.loaded_chunk_coords();
+        for chunk in &loaded {
             if !desired.contains(chunk) {
                 if self
                     .world
@@ -684,7 +676,7 @@ impl UiEngine {
             }
         }
         for chunk in desired {
-            if !snapshot.loaded_chunks.contains(chunk) {
+            if !loaded.contains(chunk) {
                 if self
                     .world
                     .send_command(WorldCommand::SetChunkLoaded {
@@ -701,7 +693,6 @@ impl UiEngine {
     }
 
     fn write_view_globals(&mut self, framebuffer_w: u32, framebuffer_h: u32) {
-        let snapshot = self.hot_path_snapshot();
         self.view_globals = ViewGlobals {
             camera: [
                 self.view.camera.x,
@@ -716,7 +707,7 @@ impl UiEngine {
                 0.0,
             ],
             sim: [
-                snapshot.tick as f32,
+                self.world.tick_count() as f32,
                 self.view.view_z as f32,
                 self.view.view_mode.as_abi_f32(),
                 0.0,
@@ -1027,23 +1018,24 @@ fn play_world_config() -> WorldConfig {
 
 fn streaming_chunks_for_view(
     view: &LocalWorldView,
-    snapshot: &od_core::WorldSnapshot,
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+    world_bounds: (Vec3i, Vec3i),
     player_position: Vec3i,
     framebuffer: (u32, u32),
 ) -> (BTreeSet<Vec3i>, BTreeSet<Vec3i>) {
-    let visible = chunk_window_from_camera(view, snapshot, framebuffer, 0);
-    let mut streaming = chunk_window_from_camera(view, snapshot, framebuffer, 1);
+    let visible =
+        chunk_window_from_camera(view, chunk_edge, world_chunks, world_bounds, framebuffer, 0);
+    let mut streaming =
+        chunk_window_from_camera(view, chunk_edge, world_chunks, world_bounds, framebuffer, 1);
     if view.view_mode == WorldViewMode::Entity
-        && let Some(player_chunk) = world_position_to_chunk_coord(
-            player_position,
-            snapshot.chunk_edge,
-            snapshot.world_chunks,
-        )
+        && let Some(player_chunk) =
+            world_position_to_chunk_coord(player_position, chunk_edge, world_chunks)
     {
         for dy in -1..=1 {
             for dx in -1..=1 {
                 let chunk = Vec3i::new(player_chunk.x + dx, player_chunk.y + dy, player_chunk.z);
-                if chunk_in_bounds(chunk, snapshot.world_chunks) {
+                if chunk_in_bounds(chunk, world_chunks) {
                     streaming.insert(chunk);
                 }
             }
@@ -1054,13 +1046,13 @@ fn streaming_chunks_for_view(
 
 fn chunk_window_from_camera(
     view: &LocalWorldView,
-    snapshot: &od_core::WorldSnapshot,
+    chunk_edge: u32,
+    world_chunks: Vec3u,
+    world_bounds: (Vec3i, Vec3i),
     framebuffer: (u32, u32),
     padding_chunks: i32,
 ) -> BTreeSet<Vec3i> {
-    let Some((world_min, world_max)) = world_tile_bounds(snapshot) else {
-        return BTreeSet::new();
-    };
+    let (world_min, world_max) = world_bounds;
     if view.view_z < world_min.z || view.view_z > world_max.z {
         return BTreeSet::new();
     }
@@ -1087,15 +1079,15 @@ fn chunk_window_from_camera(
 
     let Some(min_chunk) = world_position_to_chunk_coord(
         Vec3i::new(min_x, min_y, view.view_z),
-        snapshot.chunk_edge,
-        snapshot.world_chunks,
+        chunk_edge,
+        world_chunks,
     ) else {
         return BTreeSet::new();
     };
     let Some(max_chunk) = world_position_to_chunk_coord(
         Vec3i::new(max_x, max_y, view.view_z),
-        snapshot.chunk_edge,
-        snapshot.world_chunks,
+        chunk_edge,
+        world_chunks,
     ) else {
         return BTreeSet::new();
     };
@@ -1104,7 +1096,7 @@ fn chunk_window_from_camera(
     for y in (min_chunk.y - padding_chunks)..=(max_chunk.y + padding_chunks) {
         for x in (min_chunk.x - padding_chunks)..=(max_chunk.x + padding_chunks) {
             let chunk = Vec3i::new(x, y, min_chunk.z);
-            if chunk_in_bounds(chunk, snapshot.world_chunks) {
+            if chunk_in_bounds(chunk, world_chunks) {
                 chunks.insert(chunk);
             }
         }
@@ -1127,23 +1119,6 @@ fn sanitize_dpr(dpr: f32) -> f32 {
     } else {
         1.0
     }
-}
-
-fn world_tile_bounds(snapshot: &od_core::WorldSnapshot) -> Option<(Vec3i, Vec3i)> {
-    let world_size_x = snapshot.world_chunks.x.checked_mul(snapshot.chunk_edge)?;
-    let world_size_y = snapshot.world_chunks.y.checked_mul(snapshot.chunk_edge)?;
-    let world_size_z = snapshot.world_chunks.z.checked_mul(snapshot.chunk_edge)?;
-    let min = Vec3i::new(
-        -(i32::try_from(world_size_x).ok()? / 2),
-        -(i32::try_from(world_size_y).ok()? / 2),
-        -(i32::try_from(world_size_z).ok()? / 2),
-    );
-    let max = Vec3i::new(
-        min.x + i32::try_from(world_size_x).ok()? - 1,
-        min.y + i32::try_from(world_size_y).ok()? - 1,
-        min.z + i32::try_from(world_size_z).ok()? - 1,
-    );
-    Some((min, max))
 }
 
 fn world_position_to_chunk_coord(
@@ -1238,18 +1213,18 @@ mod tests {
     }
 
     #[test]
-    fn frame_reports_hot_path_snapshot_count_without_counting_debug_reads() {
+    fn idle_frame_reports_only_legacy_render_snapshot() {
         let mut engine = UiEngine::new();
         engine.frame();
         let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
         assert_eq!(
             debug["worldRender"]["snapshotCallsLastFrame"].as_u64(),
-            Some(4)
+            Some(1)
         );
     }
 
     #[test]
-    fn tick_frame_reports_all_stage_zero_hot_path_snapshots() {
+    fn tick_frame_reports_only_legacy_render_snapshot() {
         let mut engine = UiEngine::new();
         engine.input.sampled.dt_ms = SIM_TICK_MS;
         engine.input.sampled.window_focused = 1;
@@ -1257,7 +1232,7 @@ mod tests {
         let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
         assert_eq!(
             debug["worldRender"]["snapshotCallsLastFrame"].as_u64(),
-            Some(7)
+            Some(1)
         );
     }
 
@@ -1335,7 +1310,14 @@ mod tests {
             ..LocalWorldView::default()
         };
 
-        let (visible, streaming) = streaming_chunks_for_view(&view, &snapshot, player, (640, 480));
+        let (visible, streaming) = streaming_chunks_for_view(
+            &view,
+            snapshot.chunk_edge,
+            snapshot.world_chunks,
+            sim.world_bounds(),
+            player,
+            (640, 480),
+        );
 
         assert!(visible.is_empty());
         assert!(streaming.is_empty());
@@ -1360,7 +1342,14 @@ mod tests {
         };
         view.view_z = player.z;
 
-        let (_visible, streaming) = streaming_chunks_for_view(&view, &snapshot, player, (320, 240));
+        let (_visible, streaming) = streaming_chunks_for_view(
+            &view,
+            snapshot.chunk_edge,
+            snapshot.world_chunks,
+            sim.world_bounds(),
+            player,
+            (320, 240),
+        );
 
         for dy in -1..=1 {
             for dx in -1..=1 {

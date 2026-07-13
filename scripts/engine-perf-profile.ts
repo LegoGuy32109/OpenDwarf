@@ -213,9 +213,10 @@ try {
     results,
   };
   await mkdir("exports/engine-perf", { recursive: true });
-  const path = `exports/engine-perf/${
-    new Date().toISOString().replace(/[:.]/g, "-")
-  }.json`;
+  const path = Deno.env.get("ENGINE_PERF_OUTPUT") ??
+    `exports/engine-perf/${
+      new Date().toISOString().replace(/[:.]/g, "-")
+    }.json`;
   await writeFile(path, `${JSON.stringify(output, null, 2)}\n`);
   console.log(`wrote ${path}`);
 } finally {

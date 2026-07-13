@@ -1,6 +1,8 @@
 //! Synchronous in-process [`WorldSim`] handle (Increment 2).
 
-use od_core::world::{Vec3i, WorldCommand, WorldCommandError, WorldConfig, WorldSnapshot};
+use od_core::world::{
+    EntitySnapshot, Vec3i, Vec3u, WorldCommand, WorldCommandError, WorldConfig, WorldSnapshot,
+};
 
 use crate::state::WorldState;
 
@@ -42,7 +44,9 @@ impl WorldSim {
     /// [`WorldCommand::AdvanceTicks`] to progress movement. Illegal moves return
     /// [`Err`] without mutating movement state.
     pub fn send_command(&mut self, command: WorldCommand) -> Result<(), WorldCommandError> {
-        self.state.apply_command(command).map_err(WorldCommandError::from)
+        self.state
+            .apply_command(command)
+            .map_err(WorldCommandError::from)
     }
 
     /// Advance the sim `n` ticks with no wall clock (fast-forward).
@@ -59,6 +63,41 @@ impl WorldSim {
     #[must_use]
     pub fn primary_entity_id(&self) -> Option<u64> {
         self.primary_entity_id
+    }
+
+    #[must_use]
+    pub fn tick_count(&self) -> u64 {
+        self.state.tick_count()
+    }
+
+    #[must_use]
+    pub fn world_chunks(&self) -> Vec3u {
+        self.state.world_chunks()
+    }
+
+    #[must_use]
+    pub fn chunk_edge(&self) -> u32 {
+        self.state.chunk_edge()
+    }
+
+    #[must_use]
+    pub fn world_bounds(&self) -> (Vec3i, Vec3i) {
+        self.state.world_bounds()
+    }
+
+    #[must_use]
+    pub fn entity_position(&self, id: u64) -> Option<Vec3i> {
+        self.state.entity_position(id)
+    }
+
+    #[must_use]
+    pub fn entity_snapshot(&self, id: u64) -> Option<EntitySnapshot> {
+        self.state.entity_snapshot(id)
+    }
+
+    #[must_use]
+    pub fn loaded_chunk_coords(&self) -> Vec<Vec3i> {
+        self.state.loaded_chunk_coords()
     }
 
     /// Access internal state (tests / tooling).

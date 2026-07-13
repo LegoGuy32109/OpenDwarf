@@ -18,6 +18,7 @@
     "engine:test-scenario-browser": "bash scripts/bash/engine-test-scenario-browser.sh",
     "engine:test-perf-browser": "deno task engine:build && ENGINE_PERF_TEST=1 npx playwright test tests/engine-perf.test.ts --workers=1",
     "engine:perf": "deno task engine:build && deno run -A scripts/engine-perf-profile.ts",
+    "engine:accept-stage1": "deno run -A scripts/engine-accept-stage1.ts",
     "engine:validate-hot-path-checkpoint": "deno run -A scripts/validate-engine-hot-path-checkpoint.ts",
     "engine:bless-goldens": "bash scripts/bash/engine-bless-goldens.sh",
     "engine:bless-goldens-native": "bash scripts/bash/engine-bless-goldens-native.sh",

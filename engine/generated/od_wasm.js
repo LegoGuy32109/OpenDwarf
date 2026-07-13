@@ -1,543 +1,502 @@
 /* @ts-self-types="./od_wasm.d.ts" */
 
 export class UiEngine {
-  __destroy_into_raw() {
-    const ptr = this.__wbg_ptr;
-    this.__wbg_ptr = 0;
-    UiEngineFinalization.unregister(this);
-    return ptr;
-  }
-  free() {
-    const ptr = this.__destroy_into_raw();
-    wasm.__wbg_uiengine_free(ptr, 0);
-  }
-  /**
-   * @returns {number}
-   */
-  abi_drawcmd_stride() {
-    const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_glyph_stride() {
-    const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_glyph_stride_floats() {
-    const ret = wasm.uiengine_abi_glyph_stride_floats(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_program_rect() {
-    const ret = wasm.uiengine_abi_program_rect(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_program_text() {
-    const ret = wasm.uiengine_abi_program_text(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_program_world_atlas_quad() {
-    const ret = wasm.uiengine_abi_program_world_atlas_quad(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_program_world_solid_quad() {
-    const ret = wasm.uiengine_abi_program_world_solid_quad(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_rect_stride() {
-    const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_rect_stride_floats() {
-    const ret = wasm.uiengine_abi_rect_stride_floats(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_world_atlas_stride() {
-    const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_world_atlas_stride_floats() {
-    const ret = wasm.uiengine_abi_glyph_stride_floats(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_world_solid_stride() {
-    const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  abi_world_solid_stride_floats() {
-    const ret = wasm.uiengine_abi_rect_stride_floats(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * Compute-on-call draw hash (`"fnv1a64:<hex>"`). Not paid on the RAF path.
-   * @returns {string}
-   */
-  debug_draw_hash() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-      const ret = wasm.uiengine_debug_draw_hash(this.__wbg_ptr);
-      deferred1_0 = ret[0];
-      deferred1_1 = ret[1];
-      return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        UiEngineFinalization.unregister(this);
+        return ptr;
     }
-  }
-  /**
-   * @returns {string}
-   */
-  debug_snapshot_json() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-      const ret = wasm.uiengine_debug_snapshot_json(this.__wbg_ptr);
-      deferred1_0 = ret[0];
-      deferred1_1 = ret[1];
-      return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_uiengine_free(ptr, 0);
     }
-  }
-  /**
-   * @returns {string}
-   */
-  debug_world_snapshot_json() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-      const ret = wasm.uiengine_debug_world_snapshot_json(this.__wbg_ptr);
-      deferred1_0 = ret[0];
-      deferred1_1 = ret[1];
-      return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    /**
+     * @returns {number}
+     */
+    abi_drawcmd_stride() {
+        const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
+        return ret >>> 0;
     }
-  }
-  /**
-   * @returns {number}
-   */
-  drawlist_capacity() {
-    const ret = wasm.uiengine_drawlist_capacity(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  drawlist_ptr() {
-    const ret = wasm.uiengine_drawlist_ptr(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  dropped_draw_cmds() {
-    const ret = wasm.uiengine_dropped_draw_cmds(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  dropped_glyphs() {
-    const ret = wasm.uiengine_dropped_glyphs(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  dropped_rects() {
-    const ret = wasm.uiengine_dropped_rects(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  frame() {
-    const ret = wasm.uiengine_frame(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  glyph_capacity() {
-    const ret = wasm.uiengine_glyph_capacity(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  glyph_ptr() {
-    const ret = wasm.uiengine_glyph_ptr(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @param {Uint8Array} bytes
-   */
-  hydrate_settings(bytes) {
-    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    wasm.uiengine_hydrate_settings(this.__wbg_ptr, ptr0, len0);
-  }
-  /**
-   * @param {Uint8Array} bytes
-   * @returns {string}
-   */
-  import_replay_json(bytes) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-      const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.uiengine_import_replay_json(this.__wbg_ptr, ptr0, len0);
-      var ptr2 = ret[0];
-      var len2 = ret[1];
-      if (ret[3]) {
-        ptr2 = 0;
-        len2 = 0;
-        throw takeFromExternrefTable0(ret[2]);
-      }
-      deferred3_0 = ptr2;
-      deferred3_1 = len2;
-      return getStringFromWasm0(ptr2, len2);
-    } finally {
-      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    /**
+     * @returns {number}
+     */
+    abi_glyph_stride() {
+        const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
+        return ret >>> 0;
     }
-  }
-  /**
-   * @returns {number}
-   */
-  input_capacity() {
-    const ret = wasm.uiengine_input_capacity(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  input_ptr() {
-    const ret = wasm.uiengine_input_ptr(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  constructor() {
-    const ret = wasm.uiengine_new();
-    this.__wbg_ptr = ret >>> 0;
-    UiEngineFinalization.register(this, this.__wbg_ptr, this);
-    return this;
-  }
-  /**
-   * @returns {number}
-   */
-  rect_capacity() {
-    const ret = wasm.uiengine_rect_capacity(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  rect_ptr() {
-    const ret = wasm.uiengine_rect_ptr(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  reset_for_harness() {
-    wasm.uiengine_reset_for_harness(this.__wbg_ptr);
-  }
-  reset_play_world() {
-    wasm.uiengine_reset_play_world(this.__wbg_ptr);
-  }
-  /**
-   * @param {number} n
-   */
-  step_sim_ticks(n) {
-    wasm.uiengine_step_sim_ticks(this.__wbg_ptr, n);
-  }
-  /**
-   * @returns {number}
-   */
-  view_globals_capacity() {
-    const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  view_globals_ptr() {
-    const ret = wasm.uiengine_view_globals_ptr(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  world_atlas_capacity() {
-    const ret = wasm.uiengine_world_atlas_capacity(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  world_atlas_ptr() {
-    const ret = wasm.uiengine_world_atlas_ptr(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  world_solid_capacity() {
-    const ret = wasm.uiengine_world_solid_capacity(this.__wbg_ptr);
-    return ret >>> 0;
-  }
-  /**
-   * @returns {number}
-   */
-  world_solid_ptr() {
-    const ret = wasm.uiengine_world_solid_ptr(this.__wbg_ptr);
-    return ret >>> 0;
-  }
+    /**
+     * @returns {number}
+     */
+    abi_glyph_stride_floats() {
+        const ret = wasm.uiengine_abi_glyph_stride_floats(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_program_rect() {
+        const ret = wasm.uiengine_abi_program_rect(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_program_text() {
+        const ret = wasm.uiengine_abi_program_text(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_program_world_atlas_quad() {
+        const ret = wasm.uiengine_abi_program_world_atlas_quad(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_program_world_solid_quad() {
+        const ret = wasm.uiengine_abi_program_world_solid_quad(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_rect_stride() {
+        const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_rect_stride_floats() {
+        const ret = wasm.uiengine_abi_rect_stride_floats(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_atlas_stride() {
+        const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_atlas_stride_floats() {
+        const ret = wasm.uiengine_abi_glyph_stride_floats(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_solid_stride() {
+        const ret = wasm.uiengine_abi_drawcmd_stride(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    abi_world_solid_stride_floats() {
+        const ret = wasm.uiengine_abi_rect_stride_floats(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Compute-on-call draw hash (`"fnv1a64:<hex>"`). Not paid on the RAF path.
+     * @returns {string}
+     */
+    debug_draw_hash() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.uiengine_debug_draw_hash(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    debug_snapshot_json() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.uiengine_debug_snapshot_json(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    debug_world_snapshot_json() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.uiengine_debug_world_snapshot_json(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    drawlist_capacity() {
+        const ret = wasm.uiengine_drawlist_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    drawlist_ptr() {
+        const ret = wasm.uiengine_drawlist_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    dropped_draw_cmds() {
+        const ret = wasm.uiengine_dropped_draw_cmds(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    dropped_glyphs() {
+        const ret = wasm.uiengine_dropped_glyphs(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    dropped_rects() {
+        const ret = wasm.uiengine_dropped_rects(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    frame() {
+        const ret = wasm.uiengine_frame(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    glyph_capacity() {
+        const ret = wasm.uiengine_glyph_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    glyph_ptr() {
+        const ret = wasm.uiengine_glyph_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @param {Uint8Array} bytes
+     */
+    hydrate_settings(bytes) {
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.uiengine_hydrate_settings(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
+     * @param {Uint8Array} bytes
+     * @returns {string}
+     */
+    import_replay_json(bytes) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.uiengine_import_replay_json(this.__wbg_ptr, ptr0, len0);
+            var ptr2 = ret[0];
+            var len2 = ret[1];
+            if (ret[3]) {
+                ptr2 = 0; len2 = 0;
+                throw takeFromExternrefTable0(ret[2]);
+            }
+            deferred3_0 = ptr2;
+            deferred3_1 = len2;
+            return getStringFromWasm0(ptr2, len2);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    input_capacity() {
+        const ret = wasm.uiengine_input_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    input_ptr() {
+        const ret = wasm.uiengine_input_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    constructor() {
+        const ret = wasm.uiengine_new();
+        this.__wbg_ptr = ret >>> 0;
+        UiEngineFinalization.register(this, this.__wbg_ptr, this);
+        return this;
+    }
+    /**
+     * @returns {number}
+     */
+    rect_capacity() {
+        const ret = wasm.uiengine_rect_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    rect_ptr() {
+        const ret = wasm.uiengine_rect_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    reset_for_harness() {
+        wasm.uiengine_reset_for_harness(this.__wbg_ptr);
+    }
+    reset_play_world() {
+        wasm.uiengine_reset_play_world(this.__wbg_ptr);
+    }
+    /**
+     * @param {number} n
+     */
+    step_sim_ticks(n) {
+        wasm.uiengine_step_sim_ticks(this.__wbg_ptr, n);
+    }
+    /**
+     * @returns {number}
+     */
+    view_globals_capacity() {
+        const ret = wasm.uiengine_abi_glyph_stride(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    view_globals_ptr() {
+        const ret = wasm.uiengine_view_globals_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_atlas_capacity() {
+        const ret = wasm.uiengine_world_atlas_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_atlas_ptr() {
+        const ret = wasm.uiengine_world_atlas_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_solid_capacity() {
+        const ret = wasm.uiengine_world_solid_capacity(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    world_solid_ptr() {
+        const ret = wasm.uiengine_world_solid_ptr(this.__wbg_ptr);
+        return ret >>> 0;
+    }
 }
-if (Symbol.dispose) {
-  UiEngine.prototype[Symbol.dispose] = UiEngine.prototype.free;
-}
+if (Symbol.dispose) UiEngine.prototype[Symbol.dispose] = UiEngine.prototype.free;
 
 function __wbg_get_imports() {
-  const import0 = {
-    __proto__: null,
-    __wbg___wbindgen_throw_be289d5034ed271b: function (arg0, arg1) {
-      throw new Error(getStringFromWasm0(arg0, arg1));
-    },
-    __wbg_host_leave_game_0bc3aea13d42e74b: function () {
-      globalThis.host_leave_game();
-    },
-    __wbg_host_persist_settings_d8f08f1513dfa838: function (arg0, arg1) {
-      globalThis.host_persist_settings(arg0 >>> 0, arg1 >>> 0);
-    },
-    __wbg_host_set_text_capture_8230b8a23c099203: function (
-      arg0,
-      arg1,
-      arg2,
-      arg3,
-      arg4,
-      arg5,
-    ) {
-      globalThis.host_set_text_capture(
-        arg0 >>> 0,
-        arg1,
-        arg2,
-        arg3,
-        arg4,
-        arg5 >>> 0,
-      );
-    },
-    __wbindgen_cast_0000000000000001: function (arg0, arg1) {
-      // Cast intrinsic for `Ref(String) -> Externref`.
-      const ret = getStringFromWasm0(arg0, arg1);
-      return ret;
-    },
-    __wbindgen_init_externref_table: function () {
-      const table = wasm.__wbindgen_externrefs;
-      const offset = table.grow(4);
-      table.set(0, undefined);
-      table.set(offset + 0, undefined);
-      table.set(offset + 1, null);
-      table.set(offset + 2, true);
-      table.set(offset + 3, false);
-    },
-  };
-  return {
-    __proto__: null,
-    "./od_wasm_bg.js": import0,
-  };
+    const import0 = {
+        __proto__: null,
+        __wbg___wbindgen_throw_be289d5034ed271b: function(arg0, arg1) {
+            throw new Error(getStringFromWasm0(arg0, arg1));
+        },
+        __wbg_host_leave_game_0bc3aea13d42e74b: function() {
+            globalThis.host_leave_game();
+        },
+        __wbg_host_persist_settings_d8f08f1513dfa838: function(arg0, arg1) {
+            globalThis.host_persist_settings(arg0 >>> 0, arg1 >>> 0);
+        },
+        __wbg_host_set_text_capture_8230b8a23c099203: function(arg0, arg1, arg2, arg3, arg4, arg5) {
+            globalThis.host_set_text_capture(arg0 >>> 0, arg1, arg2, arg3, arg4, arg5 >>> 0);
+        },
+        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
+            return ret;
+        },
+        __wbindgen_init_externref_table: function() {
+            const table = wasm.__wbindgen_externrefs;
+            const offset = table.grow(4);
+            table.set(0, undefined);
+            table.set(offset + 0, undefined);
+            table.set(offset + 1, null);
+            table.set(offset + 2, true);
+            table.set(offset + 3, false);
+        },
+    };
+    return {
+        __proto__: null,
+        "./od_wasm_bg.js": import0,
+    };
 }
 
-const UiEngineFinalization = (typeof FinalizationRegistry === "undefined")
-  ? { register: () => {}, unregister: () => {} }
-  : new FinalizationRegistry((ptr) => wasm.__wbg_uiengine_free(ptr >>> 0, 1));
+const UiEngineFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_uiengine_free(ptr >>> 0, 1));
 
 function getStringFromWasm0(ptr, len) {
-  ptr = ptr >>> 0;
-  return decodeText(ptr, len);
+    ptr = ptr >>> 0;
+    return decodeText(ptr, len);
 }
 
 let cachedUint8ArrayMemory0 = null;
 function getUint8ArrayMemory0() {
-  if (
-    cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0
-  ) {
-    cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
-  }
-  return cachedUint8ArrayMemory0;
+    if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
+        cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
+    }
+    return cachedUint8ArrayMemory0;
 }
 
 function passArray8ToWasm0(arg, malloc) {
-  const ptr = malloc(arg.length * 1, 1) >>> 0;
-  getUint8ArrayMemory0().set(arg, ptr / 1);
-  WASM_VECTOR_LEN = arg.length;
-  return ptr;
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function takeFromExternrefTable0(idx) {
-  const value = wasm.__wbindgen_externrefs.get(idx);
-  wasm.__externref_table_dealloc(idx);
-  return value;
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
 }
 
-let cachedTextDecoder = new TextDecoder("utf-8", {
-  ignoreBOM: true,
-  fatal: true,
-});
+let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
 let numBytesDecoded = 0;
 function decodeText(ptr, len) {
-  numBytesDecoded += len;
-  if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
-    cachedTextDecoder = new TextDecoder("utf-8", {
-      ignoreBOM: true,
-      fatal: true,
-    });
-    cachedTextDecoder.decode();
-    numBytesDecoded = len;
-  }
-  return cachedTextDecoder.decode(
-    getUint8ArrayMemory0().subarray(ptr, ptr + len),
-  );
+    numBytesDecoded += len;
+    if (numBytesDecoded >= MAX_SAFARI_DECODE_BYTES) {
+        cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
+        cachedTextDecoder.decode();
+        numBytesDecoded = len;
+    }
+    return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
 let WASM_VECTOR_LEN = 0;
 
 let wasmModule, wasm;
 function __wbg_finalize_init(instance, module) {
-  wasm = instance.exports;
-  wasmModule = module;
-  cachedUint8ArrayMemory0 = null;
-  wasm.__wbindgen_start();
-  return wasm;
+    wasm = instance.exports;
+    wasmModule = module;
+    cachedUint8ArrayMemory0 = null;
+    wasm.__wbindgen_start();
+    return wasm;
 }
 
 async function __wbg_load(module, imports) {
-  if (typeof Response === "function" && module instanceof Response) {
-    if (typeof WebAssembly.instantiateStreaming === "function") {
-      try {
-        return await WebAssembly.instantiateStreaming(module, imports);
-      } catch (e) {
-        const validResponse = module.ok && expectedResponseType(module.type);
+    if (typeof Response === 'function' && module instanceof Response) {
+        if (typeof WebAssembly.instantiateStreaming === 'function') {
+            try {
+                return await WebAssembly.instantiateStreaming(module, imports);
+            } catch (e) {
+                const validResponse = module.ok && expectedResponseType(module.type);
 
-        if (
-          validResponse &&
-          module.headers.get("Content-Type") !== "application/wasm"
-        ) {
-          console.warn(
-            "`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n",
-            e,
-          );
-        } else throw e;
-      }
-    }
+                if (validResponse && module.headers.get('Content-Type') !== 'application/wasm') {
+                    console.warn("`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n", e);
 
-    const bytes = await module.arrayBuffer();
-    return await WebAssembly.instantiate(bytes, imports);
-  } else {
-    const instance = await WebAssembly.instantiate(module, imports);
+                } else { throw e; }
+            }
+        }
 
-    if (instance instanceof WebAssembly.Instance) {
-      return { instance, module };
+        const bytes = await module.arrayBuffer();
+        return await WebAssembly.instantiate(bytes, imports);
     } else {
-      return instance;
-    }
-  }
+        const instance = await WebAssembly.instantiate(module, imports);
 
-  function expectedResponseType(type) {
-    switch (type) {
-      case "basic":
-      case "cors":
-      case "default":
-        return true;
+        if (instance instanceof WebAssembly.Instance) {
+            return { instance, module };
+        } else {
+            return instance;
+        }
     }
-    return false;
-  }
+
+    function expectedResponseType(type) {
+        switch (type) {
+            case 'basic': case 'cors': case 'default': return true;
+        }
+        return false;
+    }
 }
 
 function initSync(module) {
-  if (wasm !== undefined) return wasm;
+    if (wasm !== undefined) return wasm;
 
-  if (module !== undefined) {
-    if (Object.getPrototypeOf(module) === Object.prototype) {
-      ({ module } = module);
-    } else {
-      console.warn(
-        "using deprecated parameters for `initSync()`; pass a single object instead",
-      );
+
+    if (module !== undefined) {
+        if (Object.getPrototypeOf(module) === Object.prototype) {
+            ({module} = module)
+        } else {
+            console.warn('using deprecated parameters for `initSync()`; pass a single object instead')
+        }
     }
-  }
 
-  const imports = __wbg_get_imports();
-  if (!(module instanceof WebAssembly.Module)) {
-    module = new WebAssembly.Module(module);
-  }
-  const instance = new WebAssembly.Instance(module, imports);
-  return __wbg_finalize_init(instance, module);
+    const imports = __wbg_get_imports();
+    if (!(module instanceof WebAssembly.Module)) {
+        module = new WebAssembly.Module(module);
+    }
+    const instance = new WebAssembly.Instance(module, imports);
+    return __wbg_finalize_init(instance, module);
 }
 
 async function __wbg_init(module_or_path) {
-  if (wasm !== undefined) return wasm;
+    if (wasm !== undefined) return wasm;
 
-  if (module_or_path !== undefined) {
-    if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
-      ({ module_or_path } = module_or_path);
-    } else {
-      console.warn(
-        "using deprecated parameters for the initialization function; pass a single object instead",
-      );
+
+    if (module_or_path !== undefined) {
+        if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
+            ({module_or_path} = module_or_path)
+        } else {
+            console.warn('using deprecated parameters for the initialization function; pass a single object instead')
+        }
     }
-  }
 
-  if (module_or_path === undefined) {
-    module_or_path = new URL("od_wasm_bg.wasm", import.meta.url);
-  }
-  const imports = __wbg_get_imports();
+    if (module_or_path === undefined) {
+        module_or_path = new URL('od_wasm_bg.wasm', import.meta.url);
+    }
+    const imports = __wbg_get_imports();
 
-  if (
-    typeof module_or_path === "string" ||
-    (typeof Request === "function" && module_or_path instanceof Request) ||
-    (typeof URL === "function" && module_or_path instanceof URL)
-  ) {
-    module_or_path = fetch(module_or_path);
-  }
+    if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {
+        module_or_path = fetch(module_or_path);
+    }
 
-  const { instance, module } = await __wbg_load(await module_or_path, imports);
+    const { instance, module } = await __wbg_load(await module_or_path, imports);
 
-  return __wbg_finalize_init(instance, module);
+    return __wbg_finalize_init(instance, module);
 }
 
-export { __wbg_init as default, initSync };
+export { initSync, __wbg_init as default };
