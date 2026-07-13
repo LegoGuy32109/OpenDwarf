@@ -68,8 +68,9 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
     `engine perf world draw prefix: worldDrawHash=${snapshot.worldRender.worldDrawHash} droppedSimTimeMs=${snapshot.worldRender.droppedSimTimeMs}`,
   );
 
-  // Stage 5 ceiling: 250 ms (tightened from the Stage 4 400 ms ceiling).
-  expect(median).toBeLessThan(250);
+  // Stage 7 ceiling: 100 ms (tightened from the Stage 5 250 ms ceiling);
+  // this is also the final acceptance-matrix budget.
+  expect(median).toBeLessThan(100);
   expect(snapshot.worldRender.floorQuadCount).toBe(130);
   expect(snapshot.worldRender.playerQuadCount).toBe(1);
   expect(snapshot.worldRender.atlasQuadCount).toBe(131);
@@ -90,6 +91,16 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
   expect(snapshot.worldRender.droppedSolidQuads).toBe(0);
   expect(snapshot.worldRender.droppedDrawCmds).toBe(0);
   expect(snapshot.worldRender.snapshotCallsLastFrame).toBe(0);
+  // Stage 7: after the warmed idle sequence the final frame performs zero
+  // emission rebuilds — every visible column hits the emission cache.
+  expect(snapshot.worldRender.emitColumnRebuilds).toBe(0);
+  expect(snapshot.worldRender.emitColumnHits).toBe(
+    snapshot.worldRender.emissionCacheSize,
+  );
+  expect(snapshot.worldRender.emissionCacheSize).toBe(
+    snapshot.localWorldView.visibleChunks.length,
+  );
+  expect(snapshot.worldRender.emissionCacheSize).toBeGreaterThan(0);
 
   const reportPath = process.env.ENGINE_PERF_REPORT_PATH;
   if (reportPath) {
@@ -104,7 +115,7 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
       samplesMs: samples,
       medianMs: median,
       p95Ms: p95,
-      ceilingMs: 250,
+      ceilingMs: 100,
       semantics: {
         floorQuadCount: snapshot.worldRender.floorQuadCount,
         playerQuadCount: snapshot.worldRender.playerQuadCount,
@@ -122,6 +133,9 @@ test("engine play-world frame baseline remains semantically healthy", async ({ p
         snapshotCallsLastFrame: snapshot.worldRender.snapshotCallsLastFrame,
         worldDrawHash: snapshot.worldRender.worldDrawHash,
         droppedSimTimeMs: snapshot.worldRender.droppedSimTimeMs,
+        emitColumnRebuilds: snapshot.worldRender.emitColumnRebuilds,
+        emitColumnHits: snapshot.worldRender.emitColumnHits,
+        emissionCacheSize: snapshot.worldRender.emissionCacheSize,
       },
     };
     await mkdir(dirname(reportPath), { recursive: true });

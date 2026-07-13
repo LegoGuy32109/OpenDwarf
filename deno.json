@@ -24,6 +24,7 @@
     "engine:accept-stage4": "deno run -A scripts/engine-accept-stage4.ts",
     "engine:accept-stage5": "deno run -A scripts/engine-accept-stage5.ts",
     "engine:accept-stage6": "deno run -A scripts/engine-accept-stage6.ts",
+    "engine:accept-stage7": "deno run -A scripts/engine-accept-stage7.ts",
     "engine:validate-hot-path-checkpoint": "deno run -A scripts/validate-engine-hot-path-checkpoint.ts",
     "engine:bless-goldens": "bash scripts/bash/engine-bless-goldens.sh",
     "engine:bless-goldens-native": "bash scripts/bash/engine-bless-goldens-native.sh",

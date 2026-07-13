@@ -78,6 +78,9 @@ type Checkpoint = {
       snapshotCallsLastFrame?: number;
       worldDrawHash?: string;
       droppedSimTimeMs?: number;
+      emitColumnRebuilds?: number;
+      emitColumnHits?: number;
+      emissionCacheSize?: number;
     };
   };
   sameRunProfile: {
@@ -662,6 +665,89 @@ const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
       "stage6ContractTests",
       "lifecycleCoverage",
       "observabilityKeys",
+    ],
+  }],
+  [7, {
+    acceptTask: "deno task engine:accept-stage7",
+    requiredCommands: acceptanceLaneCommands,
+    baseline: {
+      label: "Stage 6",
+      evidencePath:
+        "docs/design/checkpoints/evidence/engine-render-hot-path-stage-6-perf.json",
+      // "No worse than Stage 6 beyond normal recorded variance": at the
+      // ~4.5 ms Stage 6 median, run-to-run noise exceeds a strict
+      // comparison, so the allowance is the Stage 6 evidence's own
+      // recorded sample spread (the rule Stage 6 established).
+      toleranceFromRecordedSpread: true,
+    },
+    // Stage 7 records 147 passing workspace tests (emission cache
+    // hit/rebuild/eviction, bounded arena overflow, DrawCmd instance-limit
+    // preservation, HUD string caching); a decrease is a red gate.
+    rustTests: { command: "deno task engine:test", minimumPassed: 147 },
+    // Emission caching is render-only: zero WorldSim::snapshot() calls on
+    // every Stage 4 frame path.
+    snapshotMatrix: {
+      idle: 0,
+      tick: 0,
+      movement: 0,
+      camera: 0,
+      zoom: 0,
+      viewZ: 0,
+      resize: 0,
+      master: 0,
+      entity: 0,
+      chat: 0,
+      shell: 0,
+    },
+    snapshotCallsLastFrame: 0,
+    // Emission caching changes no authoritative state: the Stage 4
+    // all-resident play-world hash must hold exactly.
+    worldStateHash: "fnv1a64:718bb0099657e9aa",
+    // Stage 7 tightens the 20-frame median ceiling to 100 ms — the final
+    // acceptance-matrix budget.
+    ceilingMs: 100,
+    pathState: {
+      zoomChanged: true,
+      viewZDelta: 1,
+      framebufferChanged: true,
+      masterMode: "master",
+      entityMode: "entity",
+      shellOpen: true,
+    },
+    requiredSemantics: {
+      // Cached emission must be value-identical to rebuilt emission: the
+      // Stage 3 world-layer parity reference holds exactly ("draw hash
+      // unchanged from Stage 6").
+      worldDrawHash: "fnv1a64:c55ac880b00ac4d0",
+      // Bounded lag handling must not discard simulated time at the
+      // deterministic 16 ms harness pacing.
+      droppedSimTimeMs: 0,
+      // Stage 7 browser gate: the warmed final idle frame performs zero
+      // emission rebuilds and every visible column is a hit —
+      // emitColumnHits == emissionCacheSize == the scripted scenario's 2
+      // projected visible chunk columns at the reference viewport. The
+      // all-columns idle case (0 rebuilds / 81 hits) is owned by the named
+      // Rust contract tests recorded in stage-owned data.
+      emitColumnRebuilds: 0,
+      emitColumnHits: 2,
+      emissionCacheSize: 2,
+    },
+    // Stage 7 authorizes no golden changes ("unchanged from Stage 6").
+    stageOwnedKeys: [
+      "snapshotMatrix",
+      "rustWorkspaceTests",
+      "perfMedianVsStage6",
+      "worldDrawHash",
+      "worldStateHash",
+      "droppedSimTimeMs",
+      "emissionCacheCounters",
+      "emissionCounterEvidence",
+      "arenaOverflowProof",
+      "drawCmdInstanceLimit",
+      "hudLineCache",
+      "stage7ContractTests",
+      "observabilityKeys",
+      "perfFixtureCeiling",
     ],
   }],
 ]);

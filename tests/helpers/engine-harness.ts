@@ -81,6 +81,9 @@ export type EngineSnapshot = {
     snapshotCallsLastFrame?: number;
     droppedSimTimeMs?: number;
     worldDrawHash?: string;
+    emitColumnRebuilds?: number;
+    emitColumnHits?: number;
+    emissionCacheSize?: number;
   };
 };
 

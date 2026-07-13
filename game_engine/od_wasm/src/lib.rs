@@ -88,6 +88,9 @@ pub struct UiEngine {
     last_render_alpha: f32,
     /// Number of leading `draw_cmds` produced by the world renderer.
     world_draw_cmd_count: usize,
+    /// Session HUD string cache (Stage 7): each line is rebuilt only when
+    /// its displayed values changed.
+    hud_lines: HudLineCache,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -118,6 +121,7 @@ impl UiEngine {
             dropped_sim_time_ms: 0.0,
             last_render_alpha: 0.0,
             world_draw_cmd_count: 0,
+            hud_lines: HudLineCache::default(),
         };
         // Boot is a lifecycle operation: project the ClientView before the
         // first frame so render never has to touch WorldState.
@@ -342,6 +346,9 @@ impl UiEngine {
         self.sim_accumulator_ms = 0.0;
         self.reset_projection_state();
         self.engine.reset_session_shell();
+        // The shell reset cleared the retained HUD lines; invalidate the
+        // HUD string cache so the next frame repushes them.
+        self.hud_lines = HudLineCache::default();
         // Lifecycle rebuild: fresh projection state means every entity starts
         // with prev_xy == curr_xy and every chunk is copied anew. Projection
         // precedes view sync so camera follow reads the fresh projection.
@@ -389,7 +396,7 @@ impl UiEngine {
             alpha,
         );
         self.render(alpha);
-        self.engine.set_session_hud_lines(self.session_hud_lines());
+        self.sync_session_hud_lines();
         let out = self.engine.frame(input_bytes);
         self.append_ui_draw_cmds();
         self.apply_submitted_chat(out.submitted_chat);
@@ -700,6 +707,9 @@ impl UiEngine {
         self.reset_projection_state();
         self.last_sampled_dpr = 1.0;
         self.engine.reset_session_shell();
+        // The shell reset cleared the retained HUD lines; invalidate the
+        // HUD string cache so the next frame repushes them.
+        self.hud_lines = HudLineCache::default();
         // Lifecycle rebuild of the projection (prev_xy == curr_xy) before
         // view sync so camera follow reads the fresh projection.
         self.project_lifecycle_client_view();
@@ -888,21 +898,56 @@ impl UiEngine {
         }
     }
 
-    fn session_hud_lines(&self) -> Vec<String> {
-        vec![
-            format!(
+    /// Stage 7 HUD string caching: each session HUD line is rebuilt only
+    /// when the values it displays changed (exact key per line), and the UI
+    /// engine receives a new line vector only when at least one line was
+    /// rebuilt. On unchanged frames the engine keeps its retained lines, so
+    /// no HUD strings are formatted or allocated. Line content is identical
+    /// to the uncached builder, so draw output never changes.
+    fn sync_session_hud_lines(&mut self) {
+        let mut changed = false;
+        let mode_key = (
+            self.view.view_mode,
+            self.view.view_z,
+            self.view.camera.zoom.to_bits(),
+        );
+        if self.hud_lines.mode_key != Some(mode_key) {
+            self.hud_lines.lines[0] = format!(
                 "mode: {}  z: {}  zoom: {:.2}",
                 self.view.view_mode.as_str(),
                 self.view.view_z,
                 self.view.camera.zoom
-            ),
-            format!("fps: {:.0}  tps: {:.0}", self.view.fps, self.view.tps),
-            format!(
+            );
+            self.hud_lines.mode_key = Some(mode_key);
+            self.hud_lines.line_rebuilds[0] = self.hud_lines.line_rebuilds[0].saturating_add(1);
+            changed = true;
+        }
+        let rates_key = (self.view.fps.to_bits(), self.view.tps.to_bits());
+        if self.hud_lines.rates_key != Some(rates_key) {
+            self.hud_lines.lines[1] =
+                format!("fps: {:.0}  tps: {:.0}", self.view.fps, self.view.tps);
+            self.hud_lines.rates_key = Some(rates_key);
+            self.hud_lines.line_rebuilds[1] = self.hud_lines.line_rebuilds[1].saturating_add(1);
+            changed = true;
+        }
+        let chunks_key = (
+            self.view.visible_chunks.len(),
+            self.view.projected_chunks.len(),
+        );
+        if self.hud_lines.chunks_key != Some(chunks_key) {
+            self.hud_lines.lines[2] = format!(
                 "chunks: {} visible / {} projected",
                 self.view.visible_chunks.len(),
                 self.view.projected_chunks.len()
-            ),
-        ]
+            );
+            self.hud_lines.chunks_key = Some(chunks_key);
+            self.hud_lines.line_rebuilds[2] = self.hud_lines.line_rebuilds[2].saturating_add(1);
+            changed = true;
+        }
+        if changed {
+            self.engine
+                .set_session_hud_lines(self.hud_lines.lines.to_vec());
+        }
     }
 
     fn last_framebuffer_size(&self) -> (u32, u32) {
@@ -968,6 +1013,12 @@ impl UiEngine {
                     "snapshotCallsLastFrame": self.world_render_stats.snapshot_calls_last_frame,
                     "droppedSimTimeMs": self.dropped_sim_time_ms,
                     "worldDrawHash": self.world_draw_hash(),
+                    // Stage 7 emission-cache observability: per-frame
+                    // counters (reset at frame start) plus the current
+                    // entry count.
+                    "emitColumnRebuilds": self.render_caches.floor_emission.column_rebuilds(),
+                    "emitColumnHits": self.render_caches.floor_emission.column_hits(),
+                    "emissionCacheSize": self.render_caches.floor_emission.len(),
                 }),
             );
         }
@@ -1061,6 +1112,25 @@ impl FrameCounters {
     const fn tps(self) -> f32 {
         self.tps_display
     }
+}
+
+/// Session HUD string cache (Stage 7). Every line stores the exact
+/// displayed-value key it was formatted from (`f32` display inputs are keyed
+/// by their bit pattern — exact, and slightly broader than the rounded
+/// display text per the plan's exact-tuple rule). A `None` key forces a
+/// rebuild after lifecycle operations that clear the UI engine's retained
+/// HUD lines.
+#[derive(Clone, Debug, Default)]
+struct HudLineCache {
+    /// Line 0: (view mode, view z, camera zoom bits).
+    mode_key: Option<(WorldViewMode, i32, u32)>,
+    /// Line 1: (fps display bits, tps display bits).
+    rates_key: Option<(u32, u32)>,
+    /// Line 2: (visible chunk count, projected chunk count).
+    chunks_key: Option<(usize, usize)>,
+    lines: [String; 3],
+    /// Cumulative per-line rebuild counters (observability/tests).
+    line_rebuilds: [u64; 3],
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -2089,6 +2159,119 @@ mod tests {
         assert!(
             first.windows(2).any(|pair| pair[0] != pair[1]),
             "the sequence includes frames whose draw output changed"
+        );
+    }
+
+    /// Stage 7: the second identical idle frame performs zero emission
+    /// rebuilds; every visible column hits the cache and the counters are
+    /// exposed through `worldRender` debug output.
+    #[test]
+    fn second_idle_frame_performs_zero_emission_rebuilds() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = 1.0; // idle: no fixed tick
+        let _ = engine.frame();
+        let columns = engine.view.visible_chunks.len() as u64;
+        assert!(columns > 0);
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["worldRender"]["emitColumnRebuilds"].as_u64(),
+            Some(columns),
+            "first frame builds every visible column"
+        );
+        assert_eq!(debug["worldRender"]["emitColumnHits"].as_u64(), Some(0));
+        assert_eq!(
+            debug["worldRender"]["emissionCacheSize"].as_u64(),
+            Some(columns)
+        );
+
+        let _ = engine.frame();
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["worldRender"]["emitColumnRebuilds"].as_u64(),
+            Some(0),
+            "second idle frame performs zero emission rebuilds"
+        );
+        assert_eq!(
+            debug["worldRender"]["emitColumnHits"].as_u64(),
+            Some(columns),
+            "every visible column is a hit"
+        );
+        assert_eq!(
+            debug["worldRender"]["emissionCacheSize"].as_u64(),
+            Some(columns)
+        );
+    }
+
+    /// Stage 7: HUD strings are cached by their displayed values — a HUD
+    /// line is rebuilt only when the values it displays changed, the
+    /// retained lines stay content-identical to the uncached builder, and
+    /// lifecycle resets repush the lines.
+    #[test]
+    fn hud_lines_rebuild_only_when_displayed_values_change() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = 1.0; // idle: fps/tps displays stable
+        let _ = engine.frame();
+        assert_eq!(
+            engine.hud_lines.line_rebuilds,
+            [1, 1, 1],
+            "first frame builds every HUD line"
+        );
+        let expected_mode_line = format!(
+            "mode: {}  z: {}  zoom: {:.2}",
+            engine.view.view_mode.as_str(),
+            engine.view.view_z,
+            engine.view.camera.zoom
+        );
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["session"]["hud"][0].as_str(),
+            Some(expected_mode_line.as_str()),
+            "cached line content matches the displayed values"
+        );
+
+        // Idle frames with unchanged displayed values rebuild nothing.
+        for _ in 0..5 {
+            let _ = engine.frame();
+        }
+        assert_eq!(
+            engine.hud_lines.line_rebuilds,
+            [1, 1, 1],
+            "unchanged displayed values must not rebuild any HUD line"
+        );
+
+        // A view-z change rebuilds only the mode line.
+        engine.view.view_z += 1;
+        let _ = engine.frame();
+        assert_eq!(
+            engine.hud_lines.line_rebuilds,
+            [2, 1, 1],
+            "only the line whose displayed value changed is rebuilt"
+        );
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert_eq!(
+            debug["session"]["hud"][0].as_str().map(str::to_owned),
+            Some(format!(
+                "mode: {}  z: {}  zoom: {:.2}",
+                engine.view.view_mode.as_str(),
+                engine.view.view_z,
+                engine.view.camera.zoom
+            )),
+            "the rebuilt line reflects the new displayed value"
+        );
+
+        // Lifecycle reset clears the retained UI lines and invalidates the
+        // cache: the next frame repushes all three lines.
+        engine.reset_play_world();
+        assert_eq!(engine.hud_lines.line_rebuilds, [0, 0, 0]);
+        engine.input.sampled.dt_ms = 1.0;
+        let _ = engine.frame();
+        assert_eq!(engine.hud_lines.line_rebuilds, [1, 1, 1]);
+        let debug: Value = serde_json::from_str(&engine.debug_snapshot_json()).expect("debug JSON");
+        assert!(
+            debug["session"]["hud"][0]
+                .as_str()
+                .is_some_and(|line| line.starts_with("mode: ")),
+            "reset repushes the HUD lines"
         );
     }
 

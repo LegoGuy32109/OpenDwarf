@@ -56,12 +56,13 @@ fn tile_visibility(perspective: &EntityPerspective, dims: Vec3u, pos: Vec3i) -> 
     }
 }
 
-/// Render-owned caches (topmost this stage; the keyed floor-emission cache
-/// lands in Stage 7). Derived data only: safe to clear at any lifecycle
+/// Render-owned caches (topmost columns plus the Stage 7 keyed floor
+/// emission cache). Derived data only: safe to clear at any lifecycle
 /// boundary.
 #[derive(Debug, Default)]
 pub struct RenderCaches {
     pub topmost: TopmostCache,
+    pub floor_emission: EmissionCache,
 }
 
 impl RenderCaches {
@@ -69,6 +70,99 @@ impl RenderCaches {
     /// new world, so stale entries must never be allowed to match.
     pub fn reset(&mut self) {
         self.topmost.clear();
+        self.floor_emission.clear();
+    }
+}
+
+/// Per-XY-chunk-column cache of emitted floor atlas-quad segments (Stage 7).
+///
+/// An entry is valid only when **every** dependency matches exactly
+/// (invariant 5 — no global epoch shortcuts):
+/// - `view_z` and the view mode,
+/// - the exact `(chunk_z, terrain_revision)` tuple of every source chunk in
+///   the scanned z-slice `[view_z - Z_LEVELS_BELOW, view_z]` (at most two
+///   z-chunks with the fixed 16 edge). The topmost solid mask consumed by
+///   emission is a pure function of `(view_z, sources)`, so these fields are
+///   also the exact topmost-result dependency,
+/// - entity mode only: that column's perspective paint revision
+///   (`visibility_revision_by_column`). Master-mode floor emission has no
+///   FOV dependency and stores `None`.
+///
+/// Cached segments allocate privately; every frame they are copied into the
+/// exported contiguous atlas arena through the bounded append helper
+/// (invariant 6: the arena never grows; overflow increments the drop
+/// counter). Columns whose slice touches a missing projected chunk are
+/// rebuilt every frame and never cached (fail closed). Entries for columns
+/// outside the visible window are evicted after emission.
+#[derive(Debug, Default)]
+pub struct EmissionCache {
+    entries: HashMap<(i32, i32), EmissionColumn>,
+    /// Per-frame counters, reset at frame start by [`render`].
+    column_hits: u32,
+    column_rebuilds: u32,
+    /// Columns rebuilt this frame (per-frame, same reset as the counters).
+    rebuilt_columns: Vec<(i32, i32)>,
+}
+
+#[derive(Debug)]
+struct EmissionColumn {
+    view_z: i32,
+    view_mode: WorldViewMode,
+    /// Exact `(chunk_z, terrain_revision)` dependency tuples, never a
+    /// global epoch.
+    sources: Vec<(i32, u64)>,
+    /// Entity mode: `Some(column paint revision)`; master mode: `None`
+    /// (no FOV dependency).
+    paint_revision: Option<u64>,
+    /// Privately allocated floor quads for this column, in emission order.
+    quads: Vec<WorldAtlasQuadInstance>,
+}
+
+impl EmissionCache {
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.column_hits = 0;
+        self.column_rebuilds = 0;
+        self.rebuilt_columns.clear();
+    }
+
+    /// Frame-start reset of the per-frame hit/rebuild observability state.
+    fn begin_frame(&mut self) {
+        self.column_hits = 0;
+        self.column_rebuilds = 0;
+        self.rebuilt_columns.clear();
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Columns whose cached segment was reused this frame.
+    #[must_use]
+    pub fn column_hits(&self) -> u32 {
+        self.column_hits
+    }
+
+    /// Columns rebuilt this frame.
+    #[must_use]
+    pub fn column_rebuilds(&self) -> u32 {
+        self.column_rebuilds
+    }
+
+    /// Exact set of columns rebuilt this frame (emission order).
+    #[must_use]
+    pub fn rebuilt_columns(&self) -> &[(i32, i32)] {
+        &self.rebuilt_columns
+    }
+
+    fn retain_columns(&mut self, keys: &HashSet<(i32, i32)>) {
+        self.entries.retain(|key, _| keys.contains(key));
     }
 }
 
@@ -138,15 +232,18 @@ impl TopmostCache {
     }
 
     /// Terrain-solid mask for one XY chunk column, cached when every source
-    /// tuple is available and unchanged.
+    /// tuple is available and unchanged. `sources` is the caller-computed
+    /// [`column_sources`] result for this column (shared with the emission
+    /// cache so the exact dependency tuple is computed once per frame).
     fn solid_mask(
         &mut self,
         client: &ClientView,
         key: (i32, i32),
         base_xy: [i32; 2],
         view_z: i32,
+        sources: Option<&[(i32, u64)]>,
     ) -> &[u8; CHUNK_AREA] {
-        match column_sources(client, key, view_z) {
+        match sources {
             Some(sources) => {
                 let valid = self
                     .entries
@@ -161,7 +258,7 @@ impl TopmostCache {
                         key,
                         TopmostColumn {
                             view_z,
-                            sources,
+                            sources: sources.to_vec(),
                             solid,
                         },
                     );
@@ -284,11 +381,12 @@ pub fn render(
         ..RenderStats::default()
     };
 
+    caches.floor_emission.begin_frame();
     emit_floor_quads(
         input.client,
         input.view,
         perspective,
-        &mut caches.topmost,
+        caches,
         atlas_quads,
         draw_cmds,
         &mut stats,
@@ -333,79 +431,203 @@ fn push_cmd(
     });
 }
 
+/// Running floor DrawCmd batch over the exported atlas arena.
+struct FloorBatch {
+    start: usize,
+    count: usize,
+}
+
+/// Bounded copy of floor quads into the exported contiguous atlas arena.
+///
+/// Invariant 6: the arena is a fixed ABI allocation and must never grow, so
+/// every copy length is clamped to the remaining capacity before
+/// `extend_from_slice`; overflow increments `dropped_atlas_quads` (one per
+/// dropped quad, matching per-tile emission exactly). DrawCmd batches split
+/// at exactly [`MAX_WORLD_ATLAS_INSTANCES_PER_DRAW`] instances, so cached
+/// and freshly built segments produce byte-identical command streams.
+fn append_floor_quads_bounded(
+    quads: &[WorldAtlasQuadInstance],
+    atlas_quads: &mut Vec<WorldAtlasQuadInstance>,
+    draw_cmds: &mut Vec<DrawCmd>,
+    batch: &mut FloorBatch,
+    stats: &mut RenderStats,
+) {
+    let mut remaining = quads;
+    while !remaining.is_empty() {
+        let room = atlas_quads.capacity() - atlas_quads.len();
+        if room == 0 {
+            stats.dropped_atlas_quads = stats
+                .dropped_atlas_quads
+                .saturating_add(u32::try_from(remaining.len()).unwrap_or(u32::MAX));
+            return;
+        }
+        let batch_room = MAX_WORLD_ATLAS_INSTANCES_PER_DRAW - batch.count;
+        let take = remaining.len().min(room).min(batch_room);
+        // Bounded: `take <= room`, so this can never reallocate the arena.
+        atlas_quads.extend_from_slice(&remaining[..take]);
+        stats.floor_quads = stats
+            .floor_quads
+            .saturating_add(u32::try_from(take).unwrap_or(u32::MAX));
+        batch.count += take;
+        remaining = &remaining[take..];
+        if batch.count >= MAX_WORLD_ATLAS_INSTANCES_PER_DRAW {
+            push_cmd(draw_cmds, batch.start, batch.count, TEXTURE_ID_FLOOR, stats);
+            batch.start = atlas_quads.len();
+            batch.count = 0;
+        }
+    }
+}
+
+/// Build one column's floor quads (tile order: y-major, x fastest) into a
+/// privately allocated segment. No arena bounds apply here; the bounded
+/// append helper enforces them at copy time.
+fn build_column_floor_quads(
+    client: &ClientView,
+    view: &LocalWorldView,
+    perspective: &EntityPerspective,
+    mask: &[u8; CHUNK_AREA],
+    base: [i32; 2],
+    out: &mut Vec<WorldAtlasQuadInstance>,
+) {
+    let edge = i32::try_from(SUPPORTED_CHUNK_EDGE).expect("chunk edge fits in i32");
+    for ty in 0..edge {
+        for tx in 0..edge {
+            let tile_x = base[0] + tx;
+            let tile_y = base[1] + ty;
+            let bits = mask[usize::try_from(ty * edge + tx).expect("tile index fits in usize")];
+            let Some((floor_z, visibility_state)) =
+                topmost_floor(bits, perspective, client.world_chunks, view, tile_x, tile_y)
+            else {
+                continue;
+            };
+            let z_offset = floor_z - view.view_z;
+            let (tint, alpha) = match visibility_state {
+                TileVisibility::Remembered => (REMEMBERED_TINT, 0.95),
+                TileVisibility::Visible | TileVisibility::Unseen => {
+                    let idx = usize::try_from((-z_offset).max(0)).unwrap_or(usize::MAX);
+                    (DEPTH_TINTS[idx.min(DEPTH_TINTS.len() - 1)], 1.0)
+                }
+            };
+            out.push(WorldAtlasQuadInstance {
+                pos: [tile_x as f32 * TILE_SIZE_PX, tile_y as f32 * TILE_SIZE_PX],
+                size: [TILE_SIZE_PX, TILE_SIZE_PX],
+                uv_rect: floor_uv_rect(),
+                tint,
+                alpha,
+            });
+        }
+    }
+}
+
 fn emit_floor_quads(
     client: &ClientView,
     view: &LocalWorldView,
     perspective: &EntityPerspective,
-    topmost: &mut TopmostCache,
+    caches: &mut RenderCaches,
     atlas_quads: &mut Vec<WorldAtlasQuadInstance>,
     draw_cmds: &mut Vec<DrawCmd>,
     stats: &mut RenderStats,
 ) {
-    let mut floor_batch_start = atlas_quads.len();
-    let mut floor_batch_count = 0_usize;
+    let mut batch = FloorBatch {
+        start: atlas_quads.len(),
+        count: 0,
+    };
     let mut visible_columns: HashSet<(i32, i32)> = HashSet::new();
-    let edge = i32::try_from(SUPPORTED_CHUNK_EDGE).expect("chunk edge fits in i32");
     for chunk in &view.visible_chunks {
         let Some(base) = chunk_min_world_position(*chunk, client.world_chunks) else {
             continue;
         };
         let key = (chunk.x, chunk.y);
         visible_columns.insert(key);
-        let mask = *topmost.solid_mask(client, key, [base.x, base.y], view.view_z);
-        for ty in 0..edge {
-            for tx in 0..edge {
-                let tile_x = base.x + tx;
-                let tile_y = base.y + ty;
-                let bits = mask[usize::try_from(ty * edge + tx).expect("tile index fits in usize")];
-                let Some((floor_z, visibility_state)) =
-                    topmost_floor(bits, perspective, client.world_chunks, view, tile_x, tile_y)
-                else {
-                    continue;
-                };
-                if atlas_quads.len() == atlas_quads.capacity() {
-                    stats.dropped_atlas_quads = stats.dropped_atlas_quads.saturating_add(1);
-                    continue;
-                }
-                let z_offset = floor_z - view.view_z;
-                let (tint, alpha) = match visibility_state {
-                    TileVisibility::Remembered => (REMEMBERED_TINT, 0.95),
-                    TileVisibility::Visible | TileVisibility::Unseen => {
-                        let idx = usize::try_from((-z_offset).max(0)).unwrap_or(usize::MAX);
-                        (DEPTH_TINTS[idx.min(DEPTH_TINTS.len() - 1)], 1.0)
-                    }
-                };
-                atlas_quads.push(WorldAtlasQuadInstance {
-                    pos: [tile_x as f32 * TILE_SIZE_PX, tile_y as f32 * TILE_SIZE_PX],
-                    size: [TILE_SIZE_PX, TILE_SIZE_PX],
-                    uv_rect: floor_uv_rect(),
-                    tint,
-                    alpha,
-                });
-                stats.floor_quads = stats.floor_quads.saturating_add(1);
-                floor_batch_count += 1;
-                if floor_batch_count >= MAX_WORLD_ATLAS_INSTANCES_PER_DRAW {
-                    push_cmd(
-                        draw_cmds,
-                        floor_batch_start,
-                        floor_batch_count,
-                        TEXTURE_ID_FLOOR,
-                        stats,
-                    );
-                    floor_batch_start = atlas_quads.len();
-                    floor_batch_count = 0;
-                }
+        // Exact dependency tuple for this column, computed once per frame
+        // and shared by the topmost and emission caches. `None` means a
+        // required source chunk is missing from the projection: fail closed,
+        // rebuild every frame, never cache.
+        let sources = column_sources(client, key, view.view_z);
+        // Entity-mode emission depends on this column's perspective paint
+        // revision; master-mode floor emission has no FOV dependency.
+        let paint_revision = match view.view_mode {
+            WorldViewMode::Entity => Some(
+                perspective
+                    .visibility_revision_by_column
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(0),
+            ),
+            WorldViewMode::Master => None,
+        };
+        let cached = sources.as_deref().is_some_and(|sources| {
+            caches
+                .floor_emission
+                .entries
+                .get(&key)
+                .is_some_and(|entry| {
+                    entry.view_z == view.view_z
+                        && entry.view_mode == view.view_mode
+                        && entry.sources == sources
+                        && entry.paint_revision == paint_revision
+                })
+        });
+        // Topmost maintenance runs for every visible column (hit or miss) so
+        // its exact-tuple validation, counters, and entries stay coherent;
+        // on an emission hit this is a cheap <= 2-tuple compare.
+        let mask = caches.topmost.solid_mask(
+            client,
+            key,
+            [base.x, base.y],
+            view.view_z,
+            sources.as_deref(),
+        );
+        if cached {
+            let entry = caches
+                .floor_emission
+                .entries
+                .get(&key)
+                .expect("validated above");
+            append_floor_quads_bounded(&entry.quads, atlas_quads, draw_cmds, &mut batch, stats);
+            caches.floor_emission.column_hits = caches.floor_emission.column_hits.saturating_add(1);
+        } else {
+            let mask = *mask;
+            // Reuse the invalidated entry's private allocation when present.
+            let mut quads = caches
+                .floor_emission
+                .entries
+                .remove(&key)
+                .map(|entry| {
+                    let mut quads = entry.quads;
+                    quads.clear();
+                    quads
+                })
+                .unwrap_or_default();
+            build_column_floor_quads(
+                client,
+                view,
+                perspective,
+                &mask,
+                [base.x, base.y],
+                &mut quads,
+            );
+            append_floor_quads_bounded(&quads, atlas_quads, draw_cmds, &mut batch, stats);
+            caches.floor_emission.column_rebuilds =
+                caches.floor_emission.column_rebuilds.saturating_add(1);
+            caches.floor_emission.rebuilt_columns.push(key);
+            if let Some(sources) = sources {
+                caches.floor_emission.entries.insert(
+                    key,
+                    EmissionColumn {
+                        view_z: view.view_z,
+                        view_mode: view.view_mode,
+                        sources,
+                        paint_revision,
+                        quads,
+                    },
+                );
             }
         }
     }
-    push_cmd(
-        draw_cmds,
-        floor_batch_start,
-        floor_batch_count,
-        TEXTURE_ID_FLOOR,
-        stats,
-    );
-    topmost.retain_columns(&visible_columns);
+    push_cmd(draw_cmds, batch.start, batch.count, TEXTURE_ID_FLOOR, stats);
+    caches.topmost.retain_columns(&visible_columns);
+    caches.floor_emission.retain_columns(&visible_columns);
 }
 
 /// Topmost solid floor for one tile from the column's terrain-solid bits,
@@ -932,6 +1154,20 @@ mod tests {
         );
         // The uncached (fail-closed) column is never stored.
         assert!(!caches.topmost.entries.contains_key(&(4, 4)));
+        // Stage 7: the emission cache also fails closed — the column is
+        // rebuilt every frame and never cached.
+        assert!(!caches.floor_emission.entries.contains_key(&(4, 4)));
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.rebuilt_columns(), &[(4, 4)]);
+        assert_eq!(caches.floor_emission.column_hits(), 80);
+        assert!(!caches.floor_emission.entries.contains_key(&(4, 4)));
     }
 
     #[test]
@@ -1146,6 +1382,521 @@ mod tests {
         assert!(!caches.topmost.entries.contains_key(&(0, 0)), "evicted");
         assert!(caches.topmost.entries.contains_key(&(2, 0)), "entered");
         assert_eq!(caches.topmost.hits(), 1, "the retained column was a hit");
+    }
+
+    fn quads_equal(a: &[WorldAtlasQuadInstance], b: &[WorldAtlasQuadInstance]) -> bool {
+        a.len() == b.len()
+            && a.iter().zip(b.iter()).all(|(x, y)| {
+                x.pos == y.pos
+                    && x.size == y.size
+                    && x.uv_rect == y.uv_rect
+                    && x.tint == y.tint
+                    && x.alpha == y.alpha
+            })
+    }
+
+    fn cmds_equal(a: &[DrawCmd], b: &[DrawCmd]) -> bool {
+        a.len() == b.len()
+            && a.iter().zip(b.iter()).all(|(x, y)| {
+                x.program == y.program
+                    && x.instance_offset == y.instance_offset
+                    && x.instance_count == y.instance_count
+                    && x.reserved == y.reserved
+            })
+    }
+
+    /// Stage 7: the second identical frame performs zero emission rebuilds —
+    /// every visible column is a cache hit and the exported arena/commands
+    /// are byte-identical to the rebuilt frame.
+    #[test]
+    fn emission_cache_second_idle_frame_performs_zero_rebuilds() {
+        let sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(9, 9, 1),
+                ..WorldConfig::default()
+            },
+            true,
+        );
+        let client = full_client_view(&sim);
+        let mut view = LocalWorldView::default();
+        view.view_z = sim.entity_position(1).expect("player").z;
+        view.view_mode = WorldViewMode::Master;
+        view.visible_chunks = all_chunks(&sim);
+        let perspective = EntityPerspective::default();
+        let mut caches = RenderCaches::default();
+        let mut atlas = Vec::with_capacity(24_000);
+        let mut cmds = Vec::with_capacity(8);
+
+        let first = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 81);
+        assert_eq!(caches.floor_emission.column_hits(), 0);
+        assert_eq!(caches.floor_emission.len(), 81);
+        let first_quads = atlas.clone();
+        let first_cmds = cmds.clone();
+
+        let second = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(
+            caches.floor_emission.column_rebuilds(),
+            0,
+            "second identical frame rebuilds nothing"
+        );
+        assert_eq!(
+            caches.floor_emission.column_hits(),
+            81,
+            "every visible column is a hit"
+        );
+        assert_eq!(caches.floor_emission.len(), 81);
+        assert_eq!(second.stats.floor_quads, first.stats.floor_quads);
+        assert!(
+            quads_equal(&atlas, &first_quads),
+            "cached emission is value-identical"
+        );
+        assert!(
+            cmds_equal(&cmds, &first_cmds),
+            "cached DrawCmd stream is identical"
+        );
+    }
+
+    /// Stage 7: entity-mode movement rebuilds exactly the columns whose
+    /// perspective paint revision changed; all other visible columns hit.
+    /// The hit/rebuild mixed frame is value-identical to a fresh-cache
+    /// render of the same state.
+    #[test]
+    fn emission_cache_movement_rebuilds_only_paint_changed_columns() {
+        let mut sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(9, 9, 1),
+                ..WorldConfig::default()
+            },
+            true,
+        );
+        let mut client = full_client_view(&sim);
+        let mut view = LocalWorldView::default();
+        view.view_z = sim.entity_position(1).expect("player").z;
+        view.view_mode = WorldViewMode::Entity;
+        view.visible_chunks = all_chunks(&sim);
+        let mut perspective = EntityPerspective::default();
+        recompute_entity_perspective(&mut perspective, &client);
+        let mut caches = RenderCaches::default();
+        let mut atlas = Vec::with_capacity(24_000);
+        let mut cmds = Vec::with_capacity(8);
+
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 81);
+        let revisions_before = perspective.visibility_revision_by_column.clone();
+
+        // Complete a one-tile move; the tick-exit recompute bumps only the
+        // columns whose paint changed. Terrain revisions are untouched.
+        sim.send_command(od_core::WorldCommand::MoveEntity {
+            id: 1,
+            direction: Vec3i::new(-1, 0, 0),
+        })
+        .expect("starter room west move");
+        sim.step_ticks(10);
+        sync_full_client_view(&sim, &mut client);
+        recompute_entity_perspective(&mut perspective, &client);
+        let mut expected_changed: Vec<(i32, i32)> = perspective
+            .visibility_revision_by_column
+            .iter()
+            .filter(|(column, revision)| revisions_before.get(*column) != Some(*revision))
+            .map(|(column, _)| *column)
+            .collect();
+        expected_changed.sort_unstable();
+        assert!(
+            !expected_changed.is_empty() && expected_changed.len() < 81,
+            "movement must change some but not all column paint ({} changed)",
+            expected_changed.len()
+        );
+
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        let mut rebuilt: Vec<(i32, i32)> = caches.floor_emission.rebuilt_columns().to_vec();
+        rebuilt.sort_unstable();
+        println!(
+            "movement emission evidence: rebuilt={rebuilt:?} hits={} of 81 columns",
+            caches.floor_emission.column_hits()
+        );
+        assert_eq!(
+            rebuilt, expected_changed,
+            "rebuilt columns must equal exactly the paint-changed columns"
+        );
+        assert_eq!(
+            caches.floor_emission.column_hits() as usize,
+            81 - expected_changed.len(),
+            "every unchanged column is a hit"
+        );
+
+        // The mixed hit/rebuild frame equals a fresh-cache render exactly.
+        let mut fresh_caches = RenderCaches::default();
+        let mut fresh_atlas = Vec::with_capacity(24_000);
+        let mut fresh_cmds = Vec::with_capacity(8);
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut fresh_caches,
+            &mut fresh_atlas,
+            &mut fresh_cmds,
+        );
+        assert!(quads_equal(&atlas, &fresh_atlas), "hit path value parity");
+        assert!(cmds_equal(&cmds, &fresh_cmds), "hit path DrawCmd parity");
+    }
+
+    /// Stage 7: a view-z change invalidates every visible column.
+    #[test]
+    fn emission_cache_view_z_change_invalidates_all_visible_columns() {
+        let sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(9, 9, 1),
+                ..WorldConfig::default()
+            },
+            true,
+        );
+        let client = full_client_view(&sim);
+        let mut view = LocalWorldView::default();
+        view.view_z = sim.entity_position(1).expect("player").z;
+        view.view_mode = WorldViewMode::Master;
+        view.visible_chunks = all_chunks(&sim);
+        let perspective = EntityPerspective::default();
+        let mut caches = RenderCaches::default();
+        let mut atlas = Vec::with_capacity(24_000);
+        let mut cmds = Vec::with_capacity(8);
+
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 0);
+        assert_eq!(caches.floor_emission.column_hits(), 81);
+
+        view.view_z -= 1;
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(
+            caches.floor_emission.column_rebuilds(),
+            81,
+            "view-z change invalidates all visible columns"
+        );
+        assert_eq!(caches.floor_emission.column_hits(), 0);
+        assert_eq!(caches.floor_emission.len(), 81);
+    }
+
+    /// Stage 7: a view-mode change is an exact cache dependency in both
+    /// directions (entity emission additionally keys the column paint
+    /// revision; master emission has no FOV dependency).
+    #[test]
+    fn emission_cache_view_mode_change_invalidates_columns() {
+        let sim = WorldSim::new(WorldConfig::default(), true);
+        let client = full_client_view(&sim);
+        let mut view = LocalWorldView::default();
+        view.view_z = sim.entity_position(1).expect("player").z;
+        view.view_mode = WorldViewMode::Entity;
+        view.visible_chunks = all_chunks(&sim);
+        let mut perspective = EntityPerspective::default();
+        recompute_entity_perspective(&mut perspective, &client);
+        let mut caches = RenderCaches::default();
+        let mut atlas = Vec::with_capacity(4096);
+        let mut cmds = Vec::with_capacity(8);
+
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 1);
+
+        view.view_mode = WorldViewMode::Master;
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(
+            caches.floor_emission.column_rebuilds(),
+            1,
+            "entity -> master rebuilds the column"
+        );
+        assert_eq!(caches.floor_emission.column_hits(), 0);
+
+        // Master-mode frames have no FOV dependency: mutating the
+        // perspective (paint change) does not invalidate master entries.
+        perspective.clear_visible_preserve_memory();
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(
+            caches.floor_emission.column_hits(),
+            1,
+            "master emission ignores perspective paint changes"
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 0);
+    }
+
+    /// Stage 7: a master-mode camera pan builds entering columns and evicts
+    /// leaving columns (exact counts and keys).
+    #[test]
+    fn emission_cache_master_pan_builds_entering_and_evicts_leaving_columns() {
+        let sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(9, 9, 1),
+                ..WorldConfig::default()
+            },
+            false,
+        );
+        let client = full_client_view(&sim);
+        let mut view = LocalWorldView::default();
+        view.view_z = 0;
+        view.view_mode = WorldViewMode::Master;
+        view.visible_chunks = vec![Vec3i::new(0, 0, 0), Vec3i::new(1, 0, 0)];
+        let perspective = EntityPerspective::default();
+        let mut caches = RenderCaches::default();
+        let mut atlas = Vec::with_capacity(8192);
+        let mut cmds = Vec::with_capacity(8);
+
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 2);
+        assert_eq!(caches.floor_emission.len(), 2);
+
+        // Pan one column east: (0,0) leaves, (2,0) enters, (1,0) stays.
+        view.visible_chunks = vec![Vec3i::new(1, 0, 0), Vec3i::new(2, 0, 0)];
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(
+            caches.floor_emission.column_rebuilds(),
+            1,
+            "exactly the entering column is built"
+        );
+        assert_eq!(caches.floor_emission.rebuilt_columns(), &[(2, 0)]);
+        assert_eq!(
+            caches.floor_emission.column_hits(),
+            1,
+            "the retained column is a hit"
+        );
+        assert_eq!(caches.floor_emission.len(), 2);
+        assert!(
+            !caches.floor_emission.entries.contains_key(&(0, 0)),
+            "leaving column evicted"
+        );
+        assert!(caches.floor_emission.entries.contains_key(&(1, 0)));
+        assert!(caches.floor_emission.entries.contains_key(&(2, 0)));
+    }
+
+    /// Stage 7 / invariant 6: the exported atlas arena pointer and capacity
+    /// stay stable under overflow on both the rebuild path and the cached
+    /// copy path; overflow increments the drop counter exactly.
+    #[test]
+    fn emission_cache_copy_path_never_grows_exported_arena_on_overflow() {
+        let sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(9, 9, 1),
+                ..WorldConfig::default()
+            },
+            true,
+        );
+        let client = full_client_view(&sim);
+        let mut view = LocalWorldView::default();
+        view.view_z = sim.entity_position(1).expect("player").z;
+        view.view_mode = WorldViewMode::Master;
+        view.visible_chunks = all_chunks(&sim);
+        let perspective = EntityPerspective::default();
+
+        // Reference: the total quads this state produces without overflow.
+        let mut big_caches = RenderCaches::default();
+        let mut big_atlas = Vec::with_capacity(24_000);
+        let mut big_cmds = Vec::with_capacity(8);
+        let big = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut big_caches,
+            &mut big_atlas,
+            &mut big_cmds,
+        );
+        assert_eq!(big.stats.dropped_atlas_quads, 0);
+        let total_floor = big.stats.floor_quads;
+        assert!(total_floor > 100, "fixture must overflow the small arena");
+        assert_eq!(big.stats.player_quads, 1);
+
+        // Overflow arena: capacity 100 (fixed exported allocation).
+        const SMALL_CAPACITY: usize = 100;
+        let mut caches = RenderCaches::default();
+        let mut atlas: Vec<WorldAtlasQuadInstance> = Vec::with_capacity(SMALL_CAPACITY);
+        let mut cmds = Vec::with_capacity(8);
+        let ptr_before = atlas.as_ptr();
+
+        // Frame 1: rebuild path (cache miss) under overflow.
+        let first = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(atlas.as_ptr(), ptr_before, "arena pointer stable (rebuild)");
+        assert_eq!(atlas.capacity(), SMALL_CAPACITY, "arena capacity stable");
+        assert_eq!(atlas.len(), SMALL_CAPACITY, "arena filled to capacity");
+        assert_eq!(first.stats.floor_quads, SMALL_CAPACITY as u32);
+        // Every overflowing floor quad plus the player quad is dropped.
+        println!(
+            "overflow evidence: total_floor={total_floor} arena_capacity={SMALL_CAPACITY} dropped={}",
+            first.stats.dropped_atlas_quads
+        );
+        assert_eq!(
+            first.stats.dropped_atlas_quads,
+            total_floor - SMALL_CAPACITY as u32 + 1,
+            "overflow increments the drop counter exactly"
+        );
+        assert_eq!(first.stats.player_quads, 0);
+        let first_quads = atlas.clone();
+
+        // Frame 2: cached copy path (all hits) under the same overflow.
+        let second = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 0);
+        assert_eq!(caches.floor_emission.column_hits(), 81);
+        assert_eq!(atlas.as_ptr(), ptr_before, "arena pointer stable (cached)");
+        assert_eq!(atlas.capacity(), SMALL_CAPACITY, "arena capacity stable");
+        assert_eq!(
+            second.stats.dropped_atlas_quads, first.stats.dropped_atlas_quads,
+            "cached copy path drops identically"
+        );
+        assert!(
+            quads_equal(&atlas, &first_quads),
+            "overflow output value-identical on the cached path"
+        );
+    }
+
+    /// Stage 7: cached emission preserves the 8,192-instance DrawCmd split;
+    /// the cached frame's command stream is identical and every world
+    /// DrawCmd stays at or below the WebGL instance limit.
+    #[test]
+    fn emission_cache_preserves_draw_cmd_split_at_instance_limit() {
+        let sim = WorldSim::new(
+            WorldConfig {
+                world_chunks: Vec3u::new(9, 9, 1),
+                ..WorldConfig::default()
+            },
+            true,
+        );
+        let client = full_client_view(&sim);
+        let mut view = LocalWorldView::default();
+        view.view_z = sim.entity_position(1).expect("player").z;
+        view.view_mode = WorldViewMode::Master;
+        view.visible_chunks = all_chunks(&sim);
+        let perspective = EntityPerspective::default();
+        let mut caches = RenderCaches::default();
+        let mut atlas = Vec::with_capacity(24_000);
+        let mut cmds = Vec::with_capacity(8);
+
+        let first = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert!(first.stats.floor_quads > MAX_WORLD_ATLAS_INSTANCES_PER_DRAW as u32);
+        let first_cmds = cmds.clone();
+
+        let _ = render_once(
+            &client,
+            &view,
+            &perspective,
+            &mut caches,
+            &mut atlas,
+            &mut cmds,
+        );
+        assert_eq!(caches.floor_emission.column_rebuilds(), 0, "pure hits");
+        assert!(
+            cmds_equal(&cmds, &first_cmds),
+            "cached DrawCmd stream matches the rebuilt stream"
+        );
+        assert!(
+            cmds.iter()
+                .all(|cmd| cmd.instance_count <= MAX_WORLD_ATLAS_INSTANCES_PER_DRAW as u32),
+            "every world DrawCmd stays <= 8192 instances"
+        );
+        assert_eq!(
+            cmds[0].instance_count,
+            MAX_WORLD_ATLAS_INSTANCES_PER_DRAW as u32
+        );
     }
 
     /// Stage 6: `lerp_xy` endpoint and interior semantics are exact.
