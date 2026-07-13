@@ -95,12 +95,12 @@ Authored once, consumed by every layer:
 - **`Scenario` (intent/semantic authoring)** — full dual-layer contract is
   locked in [`scenario.md`](./scenario.md): `od_scenario` crate, `WorldIntent`
   in `od_core`, step kinds (Session / World / Engine / Assert / Shell / Input),
-  Rust builders + JSON schema, Stage A/B gates. Native applies world intents
-  and records `WorldReplay`; browser lowers Session/Shell/Input to real DOM
-  keys via a keymap profile.
-- **`WorldReplay` (command-level proof)** — see [`sim-replay.md`](./sim-replay.md).
-  Produced by recording a Scenario (or command-driven) run; not a second
-  authoring DSL.
+  Rust builders + JSON schema, Stage A/B gates. Native applies world intents and
+  records `WorldReplay`; browser lowers Session/Shell/Input to real DOM keys via
+  a keymap profile.
+- **`WorldReplay` (command-level proof)** — see
+  [`sim-replay.md`](./sim-replay.md). Produced by recording a Scenario (or
+  command-driven) run; not a second authoring DSL.
 - **`StateHash` convention** — a **tagged hex string** (`"fnv1a64:<16hex>"`)
   used by both the render **draw-hash** (§5.2) and **world-state-hash**, so
   algorithms can evolve unambiguously. FNV-1a 64-bit, reusing the `FnvHasher`
@@ -240,7 +240,6 @@ remains the Bevy-free core in `game_library/world_sim/` (`world_core`, API
 types), without `WorldSimApp`/plugin. Wire types live in `od_core`; stepping
 lives in `od_world`; Scenario DSL/runners in `od_scenario`.
 
-
 ---
 
 ## 7. Increments
@@ -280,26 +279,26 @@ Decision records:
 - **Stage A — done:** `od_scenario` + native runner (World / Engine / Assert) →
   record → `WorldReplay`; `deno task engine:test-scenario`.
 - **Stage B — done:** harness v3 `runScenario` (Session/Shell/Input lowering);
-  Engine fail-closed; thin Playwright + `deno task engine:test-scenario-browser`.
-  `importReplay` / `stepSimTick` throw until wasm world exists.
+  Engine fail-closed; thin Playwright +
+  `deno task engine:test-scenario-browser`. `importReplay` / `stepSimTick` throw
+  until wasm world exists.
 
 Still deferred outside Scenario: world render, worker protocol, client-view
 replay, real browser `importReplay`.
-
 
 ---
 
 ## 8. Deferred / out of scope (with the enabling seam)
 
-| Deferred                                                     | Seam that keeps it cheap                                                   |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Native Scenario runner / `od_scenario` impl                  | Design locked: [`scenario.md`](./scenario.md) Stage A gates                |
-| Browser `runScenario` / `importReplay`                       | Design locked: [`scenario.md`](./scenario.md) Stage B gates                |
-| Pointer/wheel input                                          | Keyboard-only by design; add only with a deliberate mouse path             |
-| IME / composition                                            | ASCII font prunes CJK; `Composition` event kind reserved                   |
-| Pixel-diff golden gating                                     | Draw-hash is the gate; screenshots stay non-gating, parity by eye          |
-| Stripping the hash from release wasm                         | `debug_assertions` gate as a later fallback if lean-core size demands it   |
-| Browser-controllable `Engine` escapes                        | Fail-closed for now; revisit with an explicit allowlist                    |
+| Deferred                                    | Seam that keeps it cheap                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| Native Scenario runner / `od_scenario` impl | Design locked: [`scenario.md`](./scenario.md) Stage A gates              |
+| Browser `runScenario` / `importReplay`      | Design locked: [`scenario.md`](./scenario.md) Stage B gates              |
+| Pointer/wheel input                         | Keyboard-only by design; add only with a deliberate mouse path           |
+| IME / composition                           | ASCII font prunes CJK; `Composition` event kind reserved                 |
+| Pixel-diff golden gating                    | Draw-hash is the gate; screenshots stay non-gating, parity by eye        |
+| Stripping the hash from release wasm        | `debug_assertions` gate as a later fallback if lean-core size demands it |
+| Browser-controllable `Engine` escapes       | Fail-closed for now; revisit with an explicit allowlist                  |
 
 ---
 

@@ -206,7 +206,9 @@ test("engine MVP golden path — world/view/render checkpoints", async ({ page }
   const imported = await engineImportReplay(page, replay);
   expect(imported.ok, imported.ok ? "" : imported.message).toBe(true);
   await stepEngineFrame(page, 1);
-  actual.import_move_west = mvpAllowlistFromSnapshot(await engineSnapshot(page));
+  actual.import_move_west = mvpAllowlistFromSnapshot(
+    await engineSnapshot(page),
+  );
   expect(actual.import_move_west.world.world_state_hash).toBe(MOVE_WEST_HASH);
 
   // Hard MVP invariants (even during bless).
@@ -224,17 +226,19 @@ test("engine MVP golden path — world/view/render checkpoints", async ({ page }
   expect(actual.after_move_west.world.primaryEntity?.position).not.toEqual(
     actual.boot_entity.world.primaryEntity?.position,
   );
-  expect(actual.after_move_west.worldRender.rememberedTileCount).toBeGreaterThan(
-    0,
-  );
+  expect(actual.after_move_west.worldRender.rememberedTileCount)
+    .toBeGreaterThan(
+      0,
+    );
   expect(actual.master_keeps_memory.worldRender.rememberedTileCount).toBe(
     actual.after_move_west.worldRender.rememberedTileCount,
   );
   expect(actual.master_keeps_memory.worldRender.visibleTileCount).toBe(0);
   expect(actual.entity_restores_fov.localWorldView.viewMode).toBe("entity");
-  expect(actual.entity_restores_fov.worldRender.visibleTileCount).toBeGreaterThan(
-    0,
-  );
+  expect(actual.entity_restores_fov.worldRender.visibleTileCount)
+    .toBeGreaterThan(
+      0,
+    );
   const playTotal = actual.play_streaming.world.worldChunks.x *
     actual.play_streaming.world.worldChunks.y *
     actual.play_streaming.world.worldChunks.z;

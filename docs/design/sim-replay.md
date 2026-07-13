@@ -1,16 +1,16 @@
 # Sim Replay — `WorldReplay` v1 & `world_state_hash`
 
-**Status:** Implemented — 2026-07-11 (interview-locked design)
-**Parent:** [`game-testing-harness.md`](./game-testing-harness.md) §3 / §6 / §7
-Increment 2; [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md)
+**Status:** Implemented — 2026-07-11 (interview-locked design) **Parent:**
+[`game-testing-harness.md`](./game-testing-harness.md) §3 / §6 / §7 Increment 2;
+[`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md)
 **Companion:** [`od-world.md`](./od-world.md) — `WorldSim`, type placement, port
 map; [`scenario.md`](./scenario.md) — Scenario → record → `WorldReplay`
 
 This document defines the **authoritative sim/server replay** contract for the
-new engine: what is recorded, what a snapshot contains, how
-`world_state_hash` is computed, and which native goldens Increment 2 must pass.
-It is intentionally separate from [`od-world.md`](./od-world.md) so the file
-format and hash layout can evolve without rewriting the sim narrative.
+new engine: what is recorded, what a snapshot contains, how `world_state_hash`
+is computed, and which native goldens Increment 2 must pass. It is intentionally
+separate from [`od-world.md`](./od-world.md) so the file format and hash layout
+can evolve without rewriting the sim narrative.
 
 ---
 
@@ -26,7 +26,7 @@ WorldReplay (command-level, recorded)  ←── deterministic proof artifact
 ```
 
 - **Scenario** — human/agent-authored program at intent/semantic level; browser
-  *lowers* input-bearing steps to real DOM keys. **Design locked:**
+  _lowers_ input-bearing steps to real DOM keys. **Design locked:**
   [`scenario.md`](./scenario.md) (impl staged A→B).
 - **WorldReplay** — observed **server/sim** command log + proof snapshots.
   Produced by **recording** a run (not by naïvely compiling intents without
@@ -34,12 +34,12 @@ WorldReplay (command-level, recorded)  ←── deterministic proof artifact
 
 ### Increment 2 MVP (this doc) — implemented
 
-| Build now | Defer (see scenario.md) |
-| --- | --- |
-| `WorldReplay` v1 format + I/O | Intent-level Scenario API / step enum |
-| `WorldReplayRecorder` | Browser `runScenario` / `importReplay` |
-| `world_state_hash` + canonical encode | Client-view replay format |
-| Command-driven native goldens | ScenarioBuilder / `od_scenario` |
+| Build now                             | Defer (see scenario.md)                |
+| ------------------------------------- | -------------------------------------- |
+| `WorldReplay` v1 format + I/O         | Intent-level Scenario API / step enum  |
+| `WorldReplayRecorder`                 | Browser `runScenario` / `importReplay` |
+| `world_state_hash` + canonical encode | Client-view replay format              |
+| Command-driven native goldens         | ScenarioBuilder / `od_scenario`        |
 
 Scenario authoring types are designed in [`scenario.md`](./scenario.md); do not
 invent parallel step enums inside this replay doc.
@@ -67,12 +67,12 @@ invent parallel step enums inside this replay doc.
 
 ### Naming
 
-| Name | Role |
-| --- | --- |
-| `WorldReplay` | The versioned file / in-memory document |
-| `WorldReplayRecorder` | Appends commands & checkpoints while a sim runs |
-| `WorldReplayEvent` | `Command` \| `Checkpoint` |
-| `world_state_hash` | FNV `StateHash` over the canonical snapshot encoding |
+| Name                  | Role                                                 |
+| --------------------- | ---------------------------------------------------- |
+| `WorldReplay`         | The versioned file / in-memory document              |
+| `WorldReplayRecorder` | Appends commands & checkpoints while a sim runs      |
+| `WorldReplayEvent`    | `Command` \| `Checkpoint`                            |
+| `world_state_hash`    | FNV `StateHash` over the canonical snapshot encoding |
 
 Avoid bare `ReplayFile` in new code — it invited client/server confusion.
 
@@ -112,11 +112,11 @@ pub struct WorldReplay {
 
 ### Event policy
 
-| Include in v1 | Exclude |
-| --- | --- |
+| Include in v1                                                            | Exclude                                                |
+| ------------------------------------------------------------------------ | ------------------------------------------------------ |
 | `Command` — every `WorldCommand` applied, with sim tick **before** apply | Live `Update` / delta stream (regenerate by replaying) |
-| `Checkpoint` — periodic full v1 snapshots + hash | FOV / visibility blobs |
-| `final_snapshot` + `final_state_hash` | Client input events |
+| `Checkpoint` — periodic full v1 snapshots + hash                         | FOV / visibility blobs                                 |
+| `final_snapshot` + `final_state_hash`                                    | Client input events                                    |
 
 **Initial checkpoint:** recorder should emit a checkpoint of the post-`new`
 snapshot (tick 0 / boot) before commands, so boot hash is in-file.
@@ -230,8 +230,8 @@ Reuse Increment 1 machinery: `od_core::FnvHasher`, `format_state_hash` →
 
 ### Canonical layout (normative)
 
-All multi-byte integers **little-endian**. Floats: write `canonicalize_f32`
-bits as LE `u32` (`-0.0` → `+0.0`).
+All multi-byte integers **little-endian**. Floats: write `canonicalize_f32` bits
+as LE `u32` (`-0.0` → `+0.0`).
 
 ```
 u32   encoding_version        # = 1 for this layout
@@ -293,9 +293,8 @@ expected vs actual without re-encoding ambiguity.
 
 ### Terrain noise (accepted risk)
 
-Legacy/port path uses **f64** Perlin-like cave noise. Harness §4’s
-native↔wasm bit-identity goal is **not** guaranteed for that noise under this
-MVP.
+Legacy/port path uses **f64** Perlin-like cave noise. Harness §4’s native↔wasm
+bit-identity goal is **not** guaranteed for that noise under this MVP.
 
 **Increment 2 decision:** port noise as-is; include terrain in snapshot/hash;
 prove **native↔native** replay. Document that when an in-wasm sim or
@@ -339,17 +338,17 @@ and keep one shared helper used by both record and replay paths.
 
 ## 8. Native golden suite (Increment 2 bar)
 
-Command-driven (no ScenarioBuilder). Suggested location:
-`od_world` integration tests and/or `od_core` hash unit tests for the encoder.
+Command-driven (no ScenarioBuilder). Suggested location: `od_world` integration
+tests and/or `od_core` hash unit tests for the encoder.
 
-| Golden | Proves |
-| --- | --- |
-| **Boot hash stability** | `new` → snapshot → `world_state_hash` stable across runs |
-| **Record → replay** | Drive moves/ticks with recorder; `replay_commands_to_snapshot` hash equals `final_state_hash` |
-| **Chunk load gate** | Move into unloaded chunk fails; after `SetChunkLoaded`, move succeeds; hashes differ appropriately |
-| **Multi-chunk stream** | Load adjacent chunk, cross boundary, record/replay hash match |
+| Golden                  | Proves                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| **Boot hash stability** | `new` → snapshot → `world_state_hash` stable across runs                                           |
+| **Record → replay**     | Drive moves/ticks with recorder; `replay_commands_to_snapshot` hash equals `final_state_hash`      |
+| **Chunk load gate**     | Move into unloaded chunk fails; after `SetChunkLoaded`, move succeeds; hashes differ appropriately |
+| **Multi-chunk stream**  | Load adjacent chunk, cross boundary, record/replay hash match                                      |
 
-Port the *intent* of legacy `scenario_regression` cases; do not require the old
+Port the _intent_ of legacy `scenario_regression` cases; do not require the old
 Scenario DSL.
 
 Blessing: plain `cargo test` never rewrites fixtures; if checked-in expected
@@ -360,14 +359,14 @@ analogous to Increment 1 UI bless tasks — wire a deno task when useful.
 
 ## 9. Future seams (do not implement now)
 
-| Seam | Use later |
-| --- | --- |
-| Intent `Scenario` → record → `WorldReplay` | [`scenario.md`](./scenario.md) Stage A |
+| Seam                                                        | Use later                                                               |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Intent `Scenario` → record → `WorldReplay`                  | [`scenario.md`](./scenario.md) Stage A                                  |
 | Browser lowers Scenario to DOM; compares `world_state_hash` | `runScenario` / `importReplay` — [`scenario.md`](./scenario.md) Stage B |
-| Worker: commands in / snapshots out | Same `WorldCommand` / `WorldSnapshot` types |
-| `ClientReplay` | Separate format over `ClientView` |
-| Integer/noise-crate terrain | If wasm hash parity is required |
-| FOV in snapshot / secondary hash | When fog/render needs it |
+| Worker: commands in / snapshots out                         | Same `WorldCommand` / `WorldSnapshot` types                             |
+| `ClientReplay`                                              | Separate format over `ClientView`                                       |
+| Integer/noise-crate terrain                                 | If wasm hash parity is required                                         |
+| FOV in snapshot / secondary hash                            | When fog/render needs it                                                |
 
 ---
 
@@ -379,5 +378,6 @@ analogous to Increment 1 UI bless tasks — wire a deno task when useful.
 - [ ] `world_state_hash` uses documented canonical layout + FNV `StateHash`
 - [ ] Default checkpoint interval 128 (overridable)
 - [x] Core golden suite green on native
-- [x] No Scenario authoring types shipped (Scenario design: [`scenario.md`](./scenario.md))
+- [x] No Scenario authoring types shipped (Scenario design:
+      [`scenario.md`](./scenario.md))
 - [x] Noise wasm risk documented in code module docs as well as here

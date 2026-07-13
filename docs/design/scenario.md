@@ -1,7 +1,7 @@
 # Scenario — Dual-Layer Authoring Contract
 
-**Status:** Design locked — 2026-07-11; **Stage A + Stage B implemented**.
-Stage B browser `runScenario` lowers Session/Shell/Input; `importReplay` /
+**Status:** Design locked — 2026-07-11; **Stage A + Stage B implemented**. Stage
+B browser `runScenario` lowers Session/Shell/Input; `importReplay` /
 `stepSimTick` are **explicit unimplemented** stubs until wasm world exists.
 **Parent:** [`game-testing-harness.md`](./game-testing-harness.md) §3 / §7
 **Companions:** [`sim-replay.md`](./sim-replay.md) (`WorldReplay` proof),
@@ -24,10 +24,10 @@ Scenario (intent / semantic, authored)
 WorldReplay (command-level, recorded)  ←── deterministic proof artifact
 ```
 
-| Layer | Role |
-| --- | --- |
-| **Scenario** | Human/agent-authored program. Wraps **real** intents (`WorldIntent`, session/UI semantics), not a parallel toy language. |
-| **WorldReplay** | Observed sim/server command log + checkpoints + hashes. Produced by **recording** a run (Increment 2). |
+| Layer           | Role                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Scenario**    | Human/agent-authored program. Wraps **real** intents (`WorldIntent`, session/UI semantics), not a parallel toy language. |
+| **WorldReplay** | Observed sim/server command log + checkpoints + hashes. Produced by **recording** a run (Increment 2).                   |
 
 Browser e2e and native goldens share one Scenario schema. Browser never injects
 `WorldCommand` behind the input path for Session/Shell steps; it lowers to DOM.
@@ -46,13 +46,13 @@ World steps drive the sim clock (`stepSimTick` / native tick), not `stepFrame`.
 
 ### Explicit non-goals (until a later interview / stage)
 
-| Deferred | Notes |
-| --- | --- |
-| Wasm world surface + real `importReplay` / `stepSimTick` | Explicit stubs throw today |
-| Browser-controllable `Engine` escapes | Stage rule: fail-closed; revisit with a real allowlist |
-| Client-view / FOV replay | Separate from Scenario → `WorldReplay` |
-| Deleting legacy `world_sim` Scenario DSL | Inspiration only |
-| Production gameplay wiring of `WorldIntent` | Types live in `od_core` early; game loop may adopt later |
+| Deferred                                                 | Notes                                                    |
+| -------------------------------------------------------- | -------------------------------------------------------- |
+| Wasm world surface + real `importReplay` / `stepSimTick` | Explicit stubs throw today                               |
+| Browser-controllable `Engine` escapes                    | Stage rule: fail-closed; revisit with a real allowlist   |
+| Client-view / FOV replay                                 | Separate from Scenario → `WorldReplay`                   |
+| Deleting legacy `world_sim` Scenario DSL                 | Inspiration only                                         |
+| Production gameplay wiring of `WorldIntent`              | Types live in `od_core` early; game loop may adopt later |
 
 ### Staging rule
 
@@ -70,17 +70,17 @@ Architecture’s four-crate table gains a row (amend
 [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md) Part 2 when
 implementing):
 
-| Crate | Role |
-| --- | --- |
-| `od_core` | Wire / shared contracts: `WorldIntent`, existing `WorldCommand` / `WorldReplay` / hashes |
-| `od_ui` | Session/shell UI models (unchanged ownership) |
-| `od_world` | `WorldSim` + recording helpers used by the native runner |
+| Crate             | Role                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `od_core`         | Wire / shared contracts: `WorldIntent`, existing `WorldCommand` / `WorldReplay` / hashes                                                                     |
+| `od_ui`           | Session/shell UI models (unchanged ownership)                                                                                                                |
+| `od_world`        | `WorldSim` + recording helpers used by the native runner                                                                                                     |
 | **`od_scenario`** | Scenario document, step enums (Session/World/Engine/Assert/Shell/Input), builders, JSON I/O, keymap profiles, lowering, native runner, goldens/bless helpers |
-| `od_wasm` | Thin wasm glue; **must not** pull Scenario builders into production release builds unless an explicit harness feature needs them |
+| `od_wasm`         | Thin wasm glue; **must not** pull Scenario builders into production release builds unless an explicit harness feature needs them                             |
 
-**Why not stuff Scenario into `od_core` or `od_world`:** a full runner depends on
-**both** `od_ui` and `od_world`. `od_core` cannot. `od_world` must not own UI/Shell
-scenarios. Scenario volume is **harness-supplemental**, not game TCB.
+**Why not stuff Scenario into `od_core` or `od_world`:** a full runner depends
+on **both** `od_ui` and `od_world`. `od_core` cannot. `od_world` must not own
+UI/Shell scenarios. Scenario volume is **harness-supplemental**, not game TCB.
 
 ### `WorldIntent` in `od_core` from day one
 
@@ -100,12 +100,12 @@ redirect stub. Scenario lives only in **`od_scenario`** (plus this design doc).
 
 ### Separate intent families
 
-| Family | Home | Scenario role |
-| --- | --- | --- |
-| `WorldIntent` | `od_core` | World steps wrap these |
-| `SessionIntent` (existing / evolving) | `od_core` | Session steps wrap real session intents |
-| Shell | **Not** a `ShellIntent` in `od_core` | `ScenarioStep::Shell` is **semantic sugar** that lowers to keys |
-| Engine | Scenario-only escape | Not a gameplay intent |
+| Family                                | Home                                 | Scenario role                                                   |
+| ------------------------------------- | ------------------------------------ | --------------------------------------------------------------- |
+| `WorldIntent`                         | `od_core`                            | World steps wrap these                                          |
+| `SessionIntent` (existing / evolving) | `od_core`                            | Session steps wrap real session intents                         |
+| Shell                                 | **Not** a `ShellIntent` in `od_core` | `ScenarioStep::Shell` is **semantic sugar** that lowers to keys |
+| Engine                                | Scenario-only escape                 | Not a gameplay intent                                           |
 
 Scenario wraps **real** intents where they exist. It does not invent a second
 movement ontology for the live game.
@@ -124,8 +124,8 @@ pub enum WorldIntent {
 
 - **`SetChunkLoaded` is not a `WorldIntent`.** It is an **`Engine`** step
   (native escape), mapping to the existing `WorldCommand::SetChunkLoaded`.
-- Movement sugar (`MovePlayerExact`, `WaitUntilIdle`) lives in `od_scenario`
-  and **expands** into raw intents / recorded `WorldCommand`s. Interruptions
+- Movement sugar (`MovePlayerExact`, `WaitUntilIdle`) lives in `od_scenario` and
+  **expands** into raw intents / recorded `WorldCommand`s. Interruptions
   (attack/effects) are why raw `MovePlayer` + `WaitTicks` stay first-class.
 
 ### Direction & keymap
@@ -155,11 +155,11 @@ ScenarioStep:
 
 ### Clocks (decoupled)
 
-| Step kind | Advances |
-| --- | --- |
-| `WaitTicks` / sim waits | **Sim clock** — native ticks / browser `stepSimTick` |
+| Step kind               | Advances                                                              |
+| ----------------------- | --------------------------------------------------------------------- |
+| `WaitTicks` / sim waits | **Sim clock** — native ticks / browser `stepSimTick`                  |
 | Session / Shell / Input | **Frame / input path** — browser `stepFrame` (+ key events) as needed |
-| Engine | Native sim side-effects; not lowered to keys |
+| Engine                  | Native sim side-effects; not lowered to keys                          |
 
 Do **not** conflate `stepFrame` with sim advancement.
 
@@ -193,10 +193,10 @@ browser e2e. Agents may inject JSON at runtime via `runScenario`.
 
 ### Pure Rust e2e?
 
-| Layer | Pure Rust? |
-| --- | --- |
-| Native Scenario goldens | **Yes** (`cargo test` / `engine:test-scenario`) |
-| Browser DOM proof | **No** — thin Playwright (or equivalent) must own the page |
+| Layer                   | Pure Rust?                                                 |
+| ----------------------- | ---------------------------------------------------------- |
+| Native Scenario goldens | **Yes** (`cargo test` / `engine:test-scenario`)            |
+| Browser DOM proof       | **No** — thin Playwright (or equivalent) must own the page |
 
 Browser TS stays a **boot + `runScenario` + assert** shell, not a second
 lowering implementation.
@@ -236,8 +236,8 @@ opcodes.
 
 ## 7. Browser harness API (v3 contract)
 
-Reserve both entry points (names locked; Stage B may implement
-`runScenario` before `importReplay`):
+Reserve both entry points (names locked; Stage B may implement `runScenario`
+before `importReplay`):
 
 ```ts
 // Illustrative — version bump when landing (harness v3)
@@ -260,9 +260,9 @@ type EngineHarness = {
 };
 ```
 
-| API | Accepts | Role |
-| --- | --- | --- |
-| `runScenario` | Scenario document | Author / agent path |
+| API            | Accepts                | Role                 |
+| -------------- | ---------------------- | -------------------- |
+| `runScenario`  | Scenario document      | Author / agent path  |
 | `importReplay` | `WorldReplay` document | Proof / CI dump path |
 
 Do **not** overload one method with a tagged union that hides the layer split.
@@ -295,12 +295,12 @@ Done when:
 
 Done when:
 
-- [x] Harness v3: `runScenario` landed; `importReplay` reserved and
-      **explicit** unimplemented (throws; e2e asserts the error — no silent
-      no-op). `stepSimTick` same stub until wasm world.
+- [x] Harness v3: `runScenario` landed; `importReplay` reserved and **explicit**
+      unimplemented (throws; e2e asserts the error — no silent no-op).
+      `stepSimTick` same stub until wasm world.
 - [x] Engine-containing Scenario **fail-closed** in browser (reject up front).
-- [x] Thin Playwright: load Scenario JSON → `runScenario` → assert
-      draw-hash / shell checkpoints (`tests/engine-scenario.test.ts`).
+- [x] Thin Playwright: load Scenario JSON → `runScenario` → assert draw-hash /
+      shell checkpoints (`tests/engine-scenario.test.ts`).
 - [x] Named `deno task engine:test-scenario-browser` green.
 
 **Artifacts:** `tests/fixtures/scenarios/*.json`,
@@ -312,12 +312,12 @@ until the wasm sim surface lands.
 
 ## 9. Relationship to prior docs
 
-| Doc | Change of meaning |
-| --- | --- |
-| [`game-testing-harness.md`](./game-testing-harness.md) §3 | Scenario contract lives here; harness doc points here |
-| [`sim-replay.md`](./sim-replay.md) | `WorldReplay` remains proof format; Scenario authoring no longer “deferred forever” — deferred only until Stage A impl |
-| [`od-world.md`](./od-world.md) | Sim unchanged; Scenario runner consumes `WorldSim` from `od_scenario` |
-| Increment 1 `od_core::scenario` stub | **Deleted**; use `od_scenario` + this doc |
+| Doc                                                       | Change of meaning                                                                                                      |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| [`game-testing-harness.md`](./game-testing-harness.md) §3 | Scenario contract lives here; harness doc points here                                                                  |
+| [`sim-replay.md`](./sim-replay.md)                        | `WorldReplay` remains proof format; Scenario authoring no longer “deferred forever” — deferred only until Stage A impl |
+| [`od-world.md`](./od-world.md)                            | Sim unchanged; Scenario runner consumes `WorldSim` from `od_scenario`                                                  |
+| Increment 1 `od_core::scenario` stub                      | **Deleted**; use `od_scenario` + this doc                                                                              |
 
 ---
 
@@ -331,6 +331,7 @@ until the wasm sim surface lands.
 - [x] Rust builders + JSON schema; Rust-primary goldens
 - [x] `runScenario` + `importReplay` both reserved
 - [x] Stage A/B gates with verifiable tasks/artifacts
-- [x] Stage A implementation (`od_scenario`, native goldens, `engine:test-scenario`)
+- [x] Stage A implementation (`od_scenario`, native goldens,
+      `engine:test-scenario`)
 - [x] Stage B implementation (harness v3 `runScenario`, Playwright,
       `engine:test-scenario-browser`; `importReplay`/`stepSimTick` stubs)

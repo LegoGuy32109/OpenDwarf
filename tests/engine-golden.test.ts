@@ -6,12 +6,12 @@ import {
   allowlistFromSnapshot,
   captureEngineCheckpoint,
   enginePress,
+  type EngineSnapshot,
   engineTypeText,
   exportEngineBundle,
   stepEngineFrame,
   waitForEngineHarness,
   writeEngineGoldenArtifacts,
-  type EngineSnapshot,
 } from "./helpers/engine-harness.ts";
 
 const CHECKPOINTS = [
@@ -24,7 +24,12 @@ const CHECKPOINTS = [
   "shell_settings_scale",
 ] as const;
 
-const GOLDENS_PATH = path.join("tests", "goldens", "engine", "checkpoints.json");
+const GOLDENS_PATH = path.join(
+  "tests",
+  "goldens",
+  "engine",
+  "checkpoints.json",
+);
 
 type GoldenEntry = {
   drawHash: string;

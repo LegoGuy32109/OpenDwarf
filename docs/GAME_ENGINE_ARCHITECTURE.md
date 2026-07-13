@@ -97,17 +97,16 @@ Bevy-free core also runs native server-side for multiplayer.
 
 A Cargo workspace at `game_engine/`, **`od_` prefix**. Only one crate touches
 wasm. The core four crates are product runtime; **`od_scenario`** is the
-harness/authoring crate (design:
-[`design/scenario.md`](design/scenario.md)) and must not bloat release wasm
-unless an explicit harness feature needs it.
+harness/authoring crate (design: [`design/scenario.md`](design/scenario.md)) and
+must not bloat release wasm unless an explicit harness feature needs it.
 
-| Crate         | Role                                                                                                                                  | wasm-bindgen? | Tested            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ----------------- |
+| Crate         | Role                                                                                                                                      | wasm-bindgen? | Tested            |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ----------------- |
 | `od_core`     | Shared types (`Vec3i`, world_api), **render-command ABI structs**, intent/snapshot types (`ClientView`, `WorldIntent`), `serde`/`bincode` | No            | native            |
-| `od_ui`       | Clay-like immediate-mode UI: layout solver, widgets, render-command emission, `FontMetrics`                                           | No            | **native (fast)** |
-| `od_world`    | Sim: worldgen, FOV, chunkgen, topmost                                                                                                 | No            | native            |
-| `od_scenario` | Scenario DSL, builders, JSON I/O, lowering, native/browser runner helpers (harness-supplemental)                                      | No            | native (+ e2e)    |
-| `od_wasm`     | The **only** `cdylib` + `wasm-bindgen` crate; thin boundary glue (`ui_frame`, `world_*`); instantiated on both main thread and worker | Yes           | via harness       |
+| `od_ui`       | Clay-like immediate-mode UI: layout solver, widgets, render-command emission, `FontMetrics`                                               | No            | **native (fast)** |
+| `od_world`    | Sim: worldgen, FOV, chunkgen, topmost                                                                                                     | No            | native            |
+| `od_scenario` | Scenario DSL, builders, JSON I/O, lowering, native/browser runner helpers (harness-supplemental)                                          | No            | native (+ e2e)    |
+| `od_wasm`     | The **only** `cdylib` + `wasm-bindgen` crate; thin boundary glue (`ui_frame`, `world_*`); instantiated on both main thread and worker     | Yes           | via harness       |
 
 **Why:** `wasm-bindgen` quarantined to one crate → `od_ui`/`od_world`/`od_core`
 are plain Rust with millisecond native unit tests. One `cdylib` = "one binary

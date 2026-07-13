@@ -78,8 +78,8 @@ element lives in the DOM:
 
 ```html
 <input id="od-text-capture" autocomplete="off" autocorrect="off"
-       autocapitalize="off" spellcheck="false" inputmode="text"
-       style="position:absolute; opacity:0; caret-color:transparent; ...">
+  autocapitalize="off" spellcheck="false" inputmode="text"
+  style="position:absolute; opacity:0; caret-color:transparent; ...">
 ```
 
 - Transparent overlay positioned under the visible caret (so a mobile keyboard /

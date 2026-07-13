@@ -1,11 +1,10 @@
 # `od_world` — Bevy-free World Simulation (Increment 2)
 
-**Status:** Implemented — 2026-07-11 (interview-locked design)
-**Parent:** [`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md) →
-parallel `od_world` track; harness
-[`game-testing-harness.md`](./game-testing-harness.md) §6 / §7 Increment 2
-**Companion:** [`sim-replay.md`](./sim-replay.md) — `WorldReplay` v1,
-`WorldSnapshot` subset, `world_state_hash`, native goldens;
+**Status:** Implemented — 2026-07-11 (interview-locked design) **Parent:**
+[`../GAME_ENGINE_ARCHITECTURE.md`](../GAME_ENGINE_ARCHITECTURE.md) → parallel
+`od_world` track; harness [`game-testing-harness.md`](./game-testing-harness.md)
+§6 / §7 Increment 2 **Companion:** [`sim-replay.md`](./sim-replay.md) —
+`WorldReplay` v1, `WorldSnapshot` subset, `world_state_hash`, native goldens;
 [`scenario.md`](./scenario.md) — intent-level Scenario dual-layer (design)
 
 This document is the decision record for the **first `od_world` implementation
@@ -35,27 +34,27 @@ server/wasm/tests share one schema with zero later moves.
 
 ### In scope
 
-| Item | Notes |
-| --- | --- |
-| Bevy-free `WorldSim` in `od_world` | In-process, single-threaded |
-| Port `world_core` behavior | Terrain gen, chunk load/unload, entities, movement interpolation |
-| Wire types in `od_core` | `Vec3i`, `Vec3u`, `BlockType`, `WorldConfig`, `WorldCommand`, `WorldSnapshot` (v1 subset), movement/entity snapshot structs |
-| FOV code port (optional colocated) | May land as `od_world::fov` for future use; **not** in v1 snapshot/hash |
-| Native tests driving commands | See companion golden suite |
-| Integration with `WorldReplay` recorder | Companion doc |
+| Item                                    | Notes                                                                                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Bevy-free `WorldSim` in `od_world`      | In-process, single-threaded                                                                                                 |
+| Port `world_core` behavior              | Terrain gen, chunk load/unload, entities, movement interpolation                                                            |
+| Wire types in `od_core`                 | `Vec3i`, `Vec3u`, `BlockType`, `WorldConfig`, `WorldCommand`, `WorldSnapshot` (v1 subset), movement/entity snapshot structs |
+| FOV code port (optional colocated)      | May land as `od_world::fov` for future use; **not** in v1 snapshot/hash                                                     |
+| Native tests driving commands           | See companion golden suite                                                                                                  |
+| Integration with `WorldReplay` recorder | Companion doc                                                                                                               |
 
 ### Explicit non-goals (this increment)
 
-| Deferred | Why / where |
-| --- | --- |
-| Intent-level `Scenario` authoring API | Design locked: [`scenario.md`](./scenario.md); impl is Stage A/B |
-| Browser `runScenario` / `importReplay` / `stepSimTick` | [`scenario.md`](./scenario.md) Stage B + wasm sim surface |
-| `/engine` world rendering / draw-hash of tiles | Separate render/`ClientView` work (Phase 5+) |
-| Worker / multi-instance protocol | Separate architecture track; in-process only now |
-| `drain_updates` / live delta bus | No consumer in Increment 2 |
-| Client-view replay format | Different artifact; needs `ClientView` |
-| Rewriting terrain noise for wasm float parity | Port f64 as-is; call out risk (companion §6) |
-| Extending `SessionIntent` with movement | `WorldIntent` designed in [`scenario.md`](./scenario.md); live game loop may adopt later |
+| Deferred                                               | Why / where                                                                              |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| Intent-level `Scenario` authoring API                  | Design locked: [`scenario.md`](./scenario.md); impl is Stage A/B                         |
+| Browser `runScenario` / `importReplay` / `stepSimTick` | [`scenario.md`](./scenario.md) Stage B + wasm sim surface                                |
+| `/engine` world rendering / draw-hash of tiles         | Separate render/`ClientView` work (Phase 5+)                                             |
+| Worker / multi-instance protocol                       | Separate architecture track; in-process only now                                         |
+| `drain_updates` / live delta bus                       | No consumer in Increment 2                                                               |
+| Client-view replay format                              | Different artifact; needs `ClientView`                                                   |
+| Rewriting terrain noise for wasm float parity          | Port f64 as-is; call out risk (companion §6)                                             |
+| Extending `SessionIntent` with movement                | `WorldIntent` designed in [`scenario.md`](./scenario.md); live game loop may adopt later |
 
 ---
 
@@ -108,14 +107,14 @@ od_world/
 
 **Port map** (from `game_library/world_sim/`):
 
-| Legacy | Destination |
-| --- | --- |
-| `world_api.rs` (`Vec3i`, commands, snapshots, …) | `od_core::world` (reshape snapshot per companion) |
-| `world_core.rs` | `od_world::{state,terrain,movement}` |
-| `fov.rs` | `od_world::fov` (optional this increment) |
-| `bevy_app.rs` | **Deleted for new path** — replaced by `WorldSim` |
-| `scenario.rs` | **Deleted** from `od_core`; see [`scenario.md`](./scenario.md) / `od_scenario` |
-| `replay.rs` | Replaced by `od_core::replay` (`WorldReplay` v1) — inspired by, not compatible with, legacy v5 |
+| Legacy                                           | Destination                                                                                    |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `world_api.rs` (`Vec3i`, commands, snapshots, …) | `od_core::world` (reshape snapshot per companion)                                              |
+| `world_core.rs`                                  | `od_world::{state,terrain,movement}`                                                           |
+| `fov.rs`                                         | `od_world::fov` (optional this increment)                                                      |
+| `bevy_app.rs`                                    | **Deleted for new path** — replaced by `WorldSim`                                              |
+| `scenario.rs`                                    | **Deleted** from `od_core`; see [`scenario.md`](./scenario.md) / `od_scenario`                 |
+| `replay.rs`                                      | Replaced by `od_core::replay` (`WorldReplay` v1) — inspired by, not compatible with, legacy v5 |
 
 Legacy `game_library/world_sim` remains in-tree until cutover; new code must not
 add Bevy dependencies.
@@ -131,8 +130,8 @@ Authoritative single-player / future-server sim:
   (`chunk_edge=16`, `1×1×1` chunks, `10` ticks/tile, seed `"opendwarf"`, …).
 - **Chunks** — generated on load; unloaded chunks reject entry (movement fails
   closed). `SetChunkLoaded` is the streaming control surface.
-- **Entities** — id, grid position, facing, prone, optional in-progress
-  movement (origin/target/progress).
+- **Entities** — id, grid position, facing, prone, optional in-progress movement
+  (origin/target/progress).
 - **Ticks** — discrete; `AdvanceTicks { count }` and per-command stepping via
   `step_ticks` advance movement and any tick-scoped logic.
 - **Terrain** — `BlockType::{Air, SolidStone}` for v1 (legacy set). Generated
@@ -180,7 +179,7 @@ pub enum WorldCommand {
 }
 ```
 
-**Raw movement:** `MoveEntity` *starts* interpolation toward an adjacent cell
+**Raw movement:** `MoveEntity` _starts_ interpolation toward an adjacent cell
 (subject to collision/load rules). Completing the move requires enough
 subsequent ticks (`movement_ticks_per_tile`). The command stream in
 `WorldReplay` records exactly what was sent — no hidden “wait until idle”
@@ -244,8 +243,8 @@ domain rule); that wiring is out of scope here.
 ## 7. Acceptance checklist
 
 - [ ] `WorldSim` constructs with default config and optional default player
-- [ ] `MoveEntity` / `AdvanceTicks` / `SetChunkLoaded` match legacy semantics
-      on the ported core
+- [ ] `MoveEntity` / `AdvanceTicks` / `SetChunkLoaded` match legacy semantics on
+      the ported core
 - [ ] `snapshot()` returns the v1 field set only (no visibility)
 - [ ] No Bevy dependency in `od_world` / new `od_core` world modules
 - [ ] Companion `WorldReplay` round-trip goldens green (see sim-replay.md)
