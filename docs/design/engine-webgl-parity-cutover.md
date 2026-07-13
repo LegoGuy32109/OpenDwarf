@@ -8,9 +8,11 @@ Phase 5+; parallel `od_world` track **Companions:**
 [`od-world.md`](./od-world.md), [`sim-replay.md`](./sim-replay.md),
 [`scenario.md`](./scenario.md),
 [`game-testing-harness.md`](./game-testing-harness.md),
-[`render-command-abi.md`](./render-command-abi.md) **Round-2 interview
-(locked):** [`engine-mvp-abi-interview.md`](./engine-mvp-abi-interview.md)
-**Post-review fix plan:**
+[`render-command-abi.md`](./render-command-abi.md),
+[`engine-render-hot-path-plan.md`](./engine-render-hot-path-plan.md)
+(post-Slice-3 render hot path) **Round-2 interview (locked):**
+[`engine-mvp-abi-interview.md`](./engine-mvp-abi-interview.md) **Post-review fix
+plan:**
 [`engine-mvp-post-review-fix-plan.md`](./engine-mvp-post-review-fix-plan.md)
 
 This is the plan to bring **UI, textures, and basic game logic** onto `/engine`
@@ -100,7 +102,10 @@ the bar):
 
 ---
 
-## 2. Verification checks (2026-07-11)
+## 2. Verification checks (2026-07-11 — historical)
+
+Pre-implementation survey; Slices 1–3 and the render hot-path work have since
+closed the "Missing" rows.
 
 | Check                                                              | Result                                                                                                                                                                                                                         |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -145,7 +150,13 @@ Design interviews for ABI/keymap/camera (round 2) land before Slice 1–3 coding
 - Local view state (name TBD in round 2): camera, viewZ, zoom, view mode.
 - Entity follow + look / master pan from held IJKL; R/V; U/M; `/master`
   `/entity`.
-- Streaming window → `SetChunkLoaded`.
+- ~~Streaming window → `SetChunkLoaded`~~ **Superseded by the render hot-path
+  work** ([`engine-render-hot-path-plan.md`](./engine-render-hot-path-plan.md)
+  Stage 4): the camera **never** sends residency commands. View input (camera,
+  zoom, viewZ, viewport, view mode) selects only the local `ClientView`
+  projection window (`LocalWorldView.projected_chunks`); all generated chunks
+  stay simulation-resident, and `SetChunkLoaded` remains an explicit
+  authority/replay/test command.
 - Session HUD (mode/z/zoom/fps|tps).
 - **Done when:** snapshot exposes view fields; movement doesn’t fail from
   missing neighbor chunks.
@@ -169,10 +180,30 @@ Design interviews for ABI/keymap/camera (round 2) land before Slice 1–3 coding
 - **Done when:** `rg` clean of retired paths; unit + engine e2e green on
   `/engine` only.
 
+### Render hot path (landed after Slices 1–3 — 2026-07-13)
+
+[`engine-render-hot-path-plan.md`](./engine-render-hot-path-plan.md) reworked
+the `/engine` frame path that Slices 1–3 first delivered; the cutover MVP now
+runs on:
+
+- **Chunk-major authority:** `WorldState` stores terrain as canonical
+  `Vec<ChunkState>` (fixed 16-edge, per-chunk revisions). Snapshots are derived
+  on demand for replay/hash/import-export only.
+- **Fixed tick/render schedule:** `frame()` = bounded 20 TPS accumulator (max 3
+  ticks/frame, dropped lag counted) → `render(alpha)` with fixed-tick entity
+  interpolation.
+- **Zero-snapshot renderer:** `render(alpha)` consumes the locally projected
+  `ClientView` + immutable `EntityPerspective` (FOV bitmaps + memory, tick-exit
+  recompute) + render-owned topmost/emission caches; zero `WorldSim::snapshot()`
+  calls on every frame path.
+- **Local projection residency:** the camera never sends residency commands (see
+  the Slice 2 supersession above); `SetChunkLoaded` stays an explicit authority
+  command.
+
 ### Post-cutover (not gating delete)
 
-- Shadows, fog/FOV, bubbles, layer toggles, Phase 5 surfaces/`ClientView`
-  replication, workers, persistence.
+- Shadows, fog/FOV darken overlay, bubbles, layer toggles, Phase 5
+  surfaces/`ClientView` replication, workers, persistence.
 
 ---
 
@@ -212,10 +243,11 @@ Design interviews for ABI/keymap/camera (round 2) land before Slice 1–3 coding
 
 ## 8. Relation to old plans
 
-| Doc                               | Role now                                      |
-| --------------------------------- | --------------------------------------------- |
-| `old_plans/WEBGL2_PARITY_PLAN.md` | Historical — TS rewrite done                  |
-| Architecture Phases 0–4           | Built (HUD folded into MVP)                   |
-| Architecture Phase 5              | Post-MVP for full surfaces/net `ClientView`   |
-| This doc                          | Cutover bridge; rounds 1–2 locked; impl-ready |
-| `engine-mvp-abi-interview.md`     | Round-2 locks + implementation contract       |
+| Doc                               | Role now                                                                                                  |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `old_plans/WEBGL2_PARITY_PLAN.md` | Historical — TS rewrite done                                                                              |
+| Architecture Phases 0–4           | Built (HUD folded into MVP)                                                                               |
+| Architecture Phase 5              | Post-MVP for full surfaces/net `ClientView`                                                               |
+| This doc                          | Cutover bridge; rounds 1–2 locked; impl-ready                                                             |
+| `engine-mvp-abi-interview.md`     | Round-2 locks + implementation contract                                                                   |
+| `engine-render-hot-path-plan.md`  | Landed: chunk-major authority, projected `ClientView`, fixed tick/render schedule, zero-snapshot renderer |

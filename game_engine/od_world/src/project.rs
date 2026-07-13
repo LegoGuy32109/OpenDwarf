@@ -1185,7 +1185,7 @@ mod tests {
     }
 
     #[test]
-    fn shadow_client_view_matches_authoritative_bytes_for_complete_window() {
+    fn client_view_matches_authoritative_bytes_for_complete_window() {
         let sim = sim(Vec3u::new(9, 9, 1), true);
         let dims = sim.world_chunks();
         // Zoomed-out master camera covering the whole world.

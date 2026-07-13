@@ -604,7 +604,7 @@ impl UiEngine {
         }
     }
 
-    /// Reset all shadow projection/scheduler observability state.
+    /// Reset all projection/scheduler observability state.
     fn reset_projection_state(&mut self) {
         self.client_view = ClientView::default();
         self.entity_perspective.reset();
@@ -1645,7 +1645,7 @@ mod tests {
     }
 
     #[test]
-    fn shadow_client_view_matches_authoritative_chunks_after_tick_frame() {
+    fn client_view_matches_authoritative_chunks_after_tick_frame() {
         let mut engine = focused_engine((640, 480));
         engine.input.sampled.dt_ms = SIM_TICK_MS;
         let _ = engine.frame();
@@ -2310,6 +2310,24 @@ mod tests {
             engine.world_draw_hash(),
             world_hash,
             "world-layer changes must change worldDrawHash"
+        );
+    }
+
+    /// Final acceptance matrix: the floor/player MVP emits at most 4 world
+    /// DrawCmds. The current entity-mode scene is exactly 2: one merged
+    /// floor-atlas batch (splits only at 8,192 instances) plus one player
+    /// sprite batch.
+    #[test]
+    fn world_draw_cmd_count_is_two_for_floor_player_mvp() {
+        let mut engine = focused_engine((640, 480));
+        engine.input.sampled.dt_ms = SIM_TICK_MS;
+        let _ = engine.frame();
+
+        assert!(engine.world_render_stats.floor_quads > 0, "floor visible");
+        assert_eq!(engine.world_render_stats.player_quads, 1, "player visible");
+        assert_eq!(
+            engine.world_draw_cmd_count, 2,
+            "floor batch + player batch; must stay <= 4 for the MVP"
         );
     }
 }

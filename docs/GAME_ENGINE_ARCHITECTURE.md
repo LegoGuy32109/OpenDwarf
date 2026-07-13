@@ -104,7 +104,7 @@ must not bloat release wasm unless an explicit harness feature needs it.
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ----------------- |
 | `od_core`     | Shared types (`Vec3i`, world_api), **render-command ABI structs**, intent/snapshot types (`ClientView`, `WorldIntent`), `serde`/`bincode` | No            | native            |
 | `od_ui`       | Clay-like immediate-mode UI: layout solver, widgets, render-command emission, `FontMetrics`                                               | No            | **native (fast)** |
-| `od_world`    | Sim: worldgen, FOV, chunkgen, topmost                                                                                                     | No            | native            |
+| `od_world`    | Sim: worldgen, chunk-major `WorldState`/`WorldSim`, `ClientView` projection, FOV perspective, world render emission                       | No            | native            |
 | `od_scenario` | Scenario DSL, builders, JSON I/O, lowering, native/browser runner helpers (harness-supplemental)                                          | No            | native (+ e2e)    |
 | `od_wasm`     | The **only** `cdylib` + `wasm-bindgen` crate; thin boundary glue (`ui_frame`, `world_*`); instantiated on both main thread and worker     | Yes           | via harness       |
 
@@ -291,11 +291,36 @@ Two boundaries, not one:
   it received.
 - **`ClientView` is a first-class type**: the wire format for remote clients,
   and the type the UI renders from everywhere. Produced by server-side filtering
-  for remotes, and by a **cheap local projection over full `GameState`**
-  (borrows/indices, computed with FOV each tick) for the host — so single-player
-  pays no copy.
-- Render at 60 fps by **interpolating** between the last two tick snapshots
-  (existing pattern).
+  for remotes, and by a **cheap local projection** over the authoritative world
+  state for the host.
+- Render at 60 fps by **interpolating** between the last two tick samples.
+
+**Implemented (render hot-path work, 2026-07 —
+[`design/engine-render-hot-path-plan.md`](design/engine-render-hot-path-plan.md)):**
+the local half of this boundary is live on `/engine`:
+
+- **Chunk-major authority.** `WorldState` owns terrain as canonical
+  `Vec<ChunkState>` (fixed 16-edge chunks, per-chunk terrain revisions,
+  authority-owned `simulation_resident`). It is the **single** terrain source of
+  truth; `WorldSnapshot` is derived on demand for replay/hash/import-export,
+  never read on the frame path.
+- **Fixed tick/render schedule.** `frame()` runs a bounded accumulator (50 ms
+  sim ticks, max 3 ticks/frame, excess lag dropped and counted), then
+  `render(alpha)` interpolates entity positions between the last two tick
+  samples (`prev_xy`/`curr_xy` in `EntityView`).
+- **Projection after ticks.** After each fixed tick (or lifecycle rebuild) the
+  engine syncs `ClientView` chunk copies for the local projection window and
+  projects entities; `EntityPerspective` (per-chunk visibility bitmaps +
+  persistent memory) is recomputed at tick exit only when dirty.
+- **Zero-snapshot renderer.** `render(alpha)` consumes only `ClientView`,
+  `EntityPerspective`, `LocalWorldView`, and render-owned caches
+  (topmost/emission in `od_world::render`); it performs zero
+  `WorldSim::snapshot()` calls and cannot reach `WorldState`.
+- **Local projection residency.** Camera, zoom, view-z, viewport, and view mode
+  select the local `ClientView` projection window only — they never send
+  residency commands. `SetChunkLoaded` remains an explicit authority/replay/test
+  command (a future server residency policy may drive it; a recipient viewport
+  never does).
 
 ### 3.10 Domains & surfaces / compositing (Q10) — Option A
 
@@ -377,7 +402,10 @@ interview and saved under `docs/design/`, then linked from its phase. Completed:
 [`design/input-arena.md`](design/input-arena.md) (Phase 2);
 [`design/domains-and-shell-router.md`](design/domains-and-shell-router.md)
 (Phase 3); [`design/text-input-and-chat.md`](design/text-input-and-chat.md)
-(Phase 4).
+(Phase 4);
+[`design/engine-render-hot-path-plan.md`](design/engine-render-hot-path-plan.md)
+(post-Slice-3 render hot path: chunk-major authority, projected `ClientView`,
+fixed tick/render schedule, zero-snapshot renderer).
 
 ### Code organization & incremental build discipline
 

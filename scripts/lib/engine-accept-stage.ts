@@ -53,8 +53,21 @@ export type GoldenRebless = {
   reason: string;
 };
 
+export type ProfileEvidence = {
+  chromium: string;
+  viewport: { width: number; height: number; deviceScaleFactor: number };
+  results: Record<string, ProfileRoute>;
+};
+
 export type StageOwnedContext = {
   rustCounts: { passed: number; failed: number };
+  unitCounts: { passed: number; failed: number };
+  playwrightCounts: {
+    discovered: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
   perf: PerfEvidence;
   baselinePerf: {
     label: string;
@@ -63,6 +76,9 @@ export type StageOwnedContext = {
     recordedSpreadMs?: number;
     allowedMedianMs: number;
   };
+  // Same-run RAF profile written by `deno task engine:perf` during this
+  // acceptance run (both routes, GL identity/health, environment).
+  profile: ProfileEvidence;
   remnant?: RemnantResult;
   snapshotCalls: Record<string, number>;
   goldens: GoldenRebless[];
@@ -97,6 +113,11 @@ export type StageAcceptanceConfig = {
   // requires zero golden changes.
   authorizedGoldens?: GoldenRebless[];
   goldensReason: string;
+  // Additional command records the stage script executed itself before
+  // invoking the shared lanes (e.g. Stage 8's `deno task engine:build`,
+  // `deno task test`, and `deno lint`); appended verbatim to the checkpoint
+  // command list. The stage script owns their gating.
+  extraCommands?: CommandRecord[];
   buildStageOwned: (context: StageOwnedContext) => Record<string, unknown>;
   residualRisks: string[];
 };
@@ -479,6 +500,7 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
       { ENGINE_PERF_OUTPUT: PROFILE_REPORT },
     ),
   );
+  commands.push(...(config.extraCommands ?? []));
   const profile = await readJson(PROFILE_REPORT);
   const releaseArtifact = await artifact(
     "release",
@@ -600,6 +622,8 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
     },
     stageOwned: config.buildStageOwned({
       rustCounts,
+      unitCounts,
+      playwrightCounts,
       perf,
       baselinePerf: {
         label: config.baselinePerf.label,
@@ -610,6 +634,7 @@ export async function runStageAcceptance(config: StageAcceptanceConfig) {
           : {}),
         allowedMedianMs,
       },
+      profile: profile as ProfileEvidence,
       remnant,
       snapshotCalls: snapshot.snapshotCalls,
       goldens: authorizedGoldens,

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "stage": 8,
+  "artifact": {
+    "profile": "debug",
+    "metadataSha256": "3644ec4953fe2c11bf1bddc5e56587eccec9f32e696d7255cc48d04fde90a5ed",
+    "servedSha256": "3644ec4953fe2c11bf1bddc5e56587eccec9f32e696d7255cc48d04fde90a5ed"
+  },
+  "snapshotCalls": {
+    "idle": 0,
+    "tick": 0,
+    "movement": 0,
+    "camera": 0,
+    "zoom": 0,
+    "viewZ": 0,
+    "resize": 0,
+    "master": 0,
+    "entity": 0,
+    "chat": 0,
+    "shell": 0
+  },
+  "pathState": {
+    "idleTick": 0,
+    "tickDelta": 1,
+    "movementTickDelta": 1,
+    "movementActive": true,
+    "cameraTickDelta": 0,
+    "cameraMoved": true,
+    "zoomChanged": true,
+    "viewZDelta": 1,
+    "framebufferChanged": true,
+    "masterMode": "master",
+    "entityMode": "entity",
+    "chatTickDelta": 0,
+    "chatMode": "chat",
+    "shellOpen": true
+  }
+}

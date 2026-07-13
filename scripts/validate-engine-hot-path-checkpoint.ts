@@ -391,6 +391,8 @@ const stageTwoRemnantCommand =
 const stageFourRemnantCommand =
   'rg "apply_streaming_chunks|streaming_fingerprint" game_engine/od_wasm/src';
 const stageSixRemnantCommand = 'rg "smooth_player_world_pos" game_engine';
+const stageEightRemnantCommand =
+  'rg "render_legacy|smooth_player_world_pos|apply_streaming_chunks|streaming_fingerprint" game_engine';
 const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
   [1, {
     acceptTask: "deno task engine:accept-stage1",
@@ -747,6 +749,97 @@ const generatedStageSpecs = new Map<number, GeneratedStageSpec>([
       "hudLineCache",
       "stage7ContractTests",
       "observabilityKeys",
+      "perfFixtureCeiling",
+    ],
+  }],
+  [8, {
+    acceptTask: "deno task engine:accept-stage8",
+    requiredCommands: [
+      ...acceptanceLaneCommands,
+      stageEightRemnantCommand,
+      // Stage 8 extras (plan sections 4/5): explicit release rebuild with
+      // wasm-opt/brotli availability recorded, the full Playwright suite
+      // and lint documentation before final acceptance, and the targeted
+      // pinned world-DrawCmd-count lane.
+      "deno task engine:build",
+      "deno task test",
+      "deno lint",
+      "cargo test -p od_wasm world_draw_cmd_count_is_two_for_floor_player_mvp",
+    ],
+    baseline: {
+      label: "Stage 7",
+      evidencePath:
+        "docs/design/checkpoints/evidence/engine-render-hot-path-stage-7-perf.json",
+      // "No worse than Stage 7 beyond normal recorded variance": the
+      // allowance is the Stage 7 evidence's own recorded sample spread
+      // (max - min), the rule Stages 6 and 7 established.
+      toleranceFromRecordedSpread: true,
+    },
+    // Section 4 Stage 8 acceptance: no obsolete hot-path helper survives
+    // the final cleanup.
+    remnantCommand: stageEightRemnantCommand,
+    // Stage 8 records 148 passing workspace tests (the Stage 7 floor plus
+    // the pinned world_draw_cmd_count_is_two_for_floor_player_mvp final
+    // acceptance test); a decrease is a red gate.
+    rustTests: { command: "deno task engine:test", minimumPassed: 148 },
+    // The zero-snapshot renderer holds: zero WorldSim::snapshot() calls on
+    // every Stage 4 frame path.
+    snapshotMatrix: {
+      idle: 0,
+      tick: 0,
+      movement: 0,
+      camera: 0,
+      zoom: 0,
+      viewZ: 0,
+      resize: 0,
+      master: 0,
+      entity: 0,
+      chat: 0,
+      shell: 0,
+    },
+    snapshotCallsLastFrame: 0,
+    // Stage 8 changes no authoritative state: the Stage 4 all-resident
+    // play-world hash must hold exactly.
+    worldStateHash: "fnv1a64:718bb0099657e9aa",
+    // The Stage 7 100 ms ceiling is the final acceptance-matrix budget.
+    ceilingMs: 100,
+    pathState: {
+      zoomChanged: true,
+      viewZDelta: 1,
+      framebufferChanged: true,
+      masterMode: "master",
+      entityMode: "entity",
+      shellOpen: true,
+    },
+    requiredSemantics: {
+      // Terminology cleanup must be behavior-neutral: the Stage 3
+      // world-layer parity reference holds exactly through Stage 8.
+      worldDrawHash: "fnv1a64:c55ac880b00ac4d0",
+      // Bounded lag handling must not discard simulated time at the
+      // deterministic 16 ms harness pacing.
+      droppedSimTimeMs: 0,
+      // The Stage 7 emission-cache browser gate holds unchanged.
+      emitColumnRebuilds: 0,
+      emitColumnHits: 2,
+      emissionCacheSize: 2,
+    },
+    // Stage 8 authorizes no golden changes: final acceptance is cleanup
+    // and documentation only.
+    stageOwnedKeys: [
+      "snapshotMatrix",
+      "remnantCheck",
+      "rustWorkspaceTests",
+      "perfMedianVsStage7",
+      "worldDrawHash",
+      "worldStateHash",
+      "droppedSimTimeMs",
+      "worldDrawCmdCount",
+      "finalAcceptanceMatrix",
+      "toolAvailability",
+      "denoTaskTest",
+      "denoLint",
+      "deadCodeCleanup",
+      "docsUpdated",
       "perfFixtureCeiling",
     ],
   }],

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "stage": 8,
+  "artifact": {
+    "profile": "release",
+    "metadataSha256": "ded8d22fdd9854f87a8997ca63ff0c2c9dd44c8aa2dbe3379445f283e4d8ce15",
+    "servedSha256": "ded8d22fdd9854f87a8997ca63ff0c2c9dd44c8aa2dbe3379445f283e4d8ce15"
+  },
+  "samplesMs": [
+    3.9507160000011936,
+    3.6821230000005016,
+    3.2475180000001274,
+    3.7191359999997076,
+    2.9916810000013356
+  ],
+  "medianMs": 3.6821230000005016,
+  "p95Ms": 3.9507160000011936,
+  "ceilingMs": 100,
+  "semantics": {
+    "floorQuadCount": 130,
+    "playerQuadCount": 1,
+    "atlasQuadCount": 131,
+    "worldTick": 33,
+    "worldStateHash": "fnv1a64:718bb0099657e9aa",
+    "drawCount": 7,
+    "observedDrawHash": "fnv1a64:1574646c032c47cd",
+    "droppedRects": 0,
+    "droppedGlyphs": 0,
+    "droppedFrameDrawCmds": 0,
+    "droppedAtlasQuads": 0,
+    "droppedSolidQuads": 0,
+    "droppedWorldDrawCmds": 0,
+    "snapshotCallsLastFrame": 0,
+    "worldDrawHash": "fnv1a64:c55ac880b00ac4d0",
+    "droppedSimTimeMs": 0,
+    "emitColumnRebuilds": 0,
+    "emitColumnHits": 2,
+    "emissionCacheSize": 2
+  }
+}
