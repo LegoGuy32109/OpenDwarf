@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#17191c">
+    <title>Open Dwarf · Touch Controls Smoke</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-right: env(safe-area-inset-right, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-left: env(safe-area-inset-left, 0px);
+        --ui-safe-top: var(--safe-top);
+        --ui-safe-right: var(--safe-right);
+        --ui-safe-bottom: var(--safe-bottom);
+        --ui-safe-left: var(--safe-left);
+      }
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #17191c; }
+      body { overscroll-behavior: none; }
+      button { color: inherit; font: inherit; }
+      .demo {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        isolation: isolate;
+        color: #d1d4d8;
+        background: #17191c;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: auto;
+      }
+      .screen {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: #202327;
+      }
+      .screen::before {
+        position: absolute;
+        z-index: 0;
+        inset: 0;
+        content: "";
+        pointer-events: none;
+        opacity: .17;
+        background-image: linear-gradient(#555a60 1px, transparent 1px), linear-gradient(90deg, #555a60 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(ellipse at center, #000 10%, transparent 80%);
+      }
+      .safe-boundary {
+        position: absolute;
+        z-index: 2;
+        inset: var(--ui-safe-top) var(--ui-safe-right) var(--ui-safe-bottom) var(--ui-safe-left);
+        border: 1px dashed #676d74;
+        pointer-events: none;
+        transition: inset 150ms ease;
+      }
+      .safe-content {
+        position: absolute;
+        z-index: 1;
+        inset: var(--ui-safe-top) var(--ui-safe-right) var(--ui-safe-bottom) var(--ui-safe-left);
+        background: rgba(180, 185, 192, .1);
+        pointer-events: none;
+      }
+      .preview-insets {
+        --ui-safe-top: max(48px, var(--safe-top));
+        --ui-safe-right: max(18px, var(--safe-right));
+        --ui-safe-bottom: max(30px, var(--safe-bottom));
+        --ui-safe-left: max(18px, var(--safe-left));
+      }
+      .center-label {
+        position: absolute;
+        top: 50%; left: 50%;
+        color: #777d84;
+        font-size: 11px;
+        letter-spacing: .14em;
+        transform: translate(-50%, -50%);
+        white-space: nowrap;
+      }
+      .stick {
+        position: absolute;
+        z-index: 5;
+        bottom: calc(var(--ui-safe-bottom) + clamp(22px, 6vh, 52px));
+        display: grid;
+        justify-items: center;
+        gap: 7px;
+      }
+      .stick.move { left: calc(var(--ui-safe-left) + clamp(18px, 7vw, 66px)); }
+      .stick.camera { right: calc(var(--ui-safe-right) + clamp(18px, 7vw, 66px)); }
+      .control-name { color: #b9bdc2; font-size: 9px; letter-spacing: .1em; }
+      .control-name b { margin-left: 5px; color: #858b92; font-weight: 500; }
+      .stick-hit {
+        position: relative;
+        display: grid;
+        width: clamp(112px, 25vw, 164px);
+        aspect-ratio: 1;
+        padding: 0;
+        place-items: center;
+        border: 1px solid #484d53;
+        border-radius: 50%;
+        background: #292c30;
+        box-shadow: inset 0 0 0 12px #25282c, 0 8px 22px rgba(0, 0, 0, .24);
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .stick-ring { position: absolute; inset: 20%; border: 1px solid #4a4f55; border-radius: 50%; }
+      .stick-knob {
+        position: absolute;
+        width: 34%; aspect-ratio: 1;
+        border: 1px solid #7a8087;
+        border-radius: 50%;
+        background: #747a81;
+        box-shadow: inset 0 1px 2px rgba(255, 255, 255, .16), 0 3px 8px rgba(0, 0, 0, .38);
+        pointer-events: none;
+      }
+      .stick-hit.is-active .stick-knob { background: #a1a6ac; border-color: #c2c6ca; }
+      .actions {
+        position: absolute;
+        right: 0;
+        bottom: -9px;
+        left: 0;
+        display: flex;
+        justify-content: space-around;
+      }
+      .action {
+        display: grid;
+        width: clamp(40px, 9vw, 48px);
+        aspect-ratio: 1;
+        padding: 0;
+        place-items: center;
+        border: 1px solid #8b9095;
+        border-radius: 50%;
+        color: #282b2f;
+        background: #c5c8cb;
+        box-shadow: 0 3px 0 #111315, 0 5px 10px rgba(0, 0, 0, .3);
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-size: 16px;
+        font-weight: 700;
+        touch-action: pinch-zoom;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .action-b { background: #aeb2b6; }
+      .action.is-active { background: #e0e2e4; transform: translateY(3px); box-shadow: 0 0 0 #111315, 0 0 0 2px #7b8187; }
+      .status {
+        position: absolute;
+        z-index: 5;
+        bottom: calc(var(--ui-safe-bottom) + 12px);
+        left: 50%;
+        color: #92979d;
+        font-size: 9px;
+        letter-spacing: .08em;
+        text-align: center;
+        white-space: nowrap;
+        transform: translateX(-50%);
+      }
+      .orientation-portrait { display: inline; }
+      .orientation-landscape { display: none; }
+      @media (orientation: portrait) {
+        .preview-insets {
+          --ui-safe-top: max(48px, var(--safe-top));
+          --ui-safe-right: max(18px, var(--safe-right));
+          --ui-safe-bottom: max(30px, var(--safe-bottom));
+          --ui-safe-left: max(18px, var(--safe-left));
+        }
+        .stick { bottom: calc(var(--ui-safe-bottom) + clamp(54px, 10vh, 94px)); }
+        .stick.move { left: calc(var(--ui-safe-left) + 12px); }
+        .stick.camera { right: calc(var(--ui-safe-right) + 12px); }
+        .stick-hit { width: clamp(104px, 28vw, 146px); }
+      }
+      @media (orientation: landscape) {
+        .preview-insets {
+          --ui-safe-top: max(16px, var(--safe-top));
+          --ui-safe-right: max(48px, var(--safe-right));
+          --ui-safe-bottom: max(26px, var(--safe-bottom));
+          --ui-safe-left: max(48px, var(--safe-left));
+        }
+        .orientation-portrait { display: none; }
+        .orientation-landscape { display: inline; }
+        .stick { bottom: calc(var(--ui-safe-bottom) + 14px); gap: 5px; }
+        .stick-hit { width: clamp(104px, 20vh, 150px); }
+        .control-name { font-size: 8px; }
+        .action { width: clamp(38px, 8vh, 46px); }
+        .status { bottom: calc(var(--ui-safe-bottom) + 10px); }
+      }
+      @media (max-height: 420px) and (orientation: landscape) {
+        .stick-hit { width: min(28vh, 104px); }
+        .status { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="demo preview-insets" id="demo" aria-label="Open Dwarf touch controls smoke">
+      <section class="screen" aria-label="Game viewport">
+        <span class="center-label">GAME VIEWPORT</span>
+      </section>
+      <div class="safe-content" aria-hidden="true"></div>
+      <div class="safe-boundary" aria-hidden="true"></div>
+      <section class="stick move" aria-label="Move controller, ESDF">
+        <span class="control-name">MOVE <b>ESDF</b></span>
+        <button class="stick-hit" type="button" data-control="move" aria-label="Move controller">
+          <span class="stick-ring"></span><span class="stick-knob"></span>
+        </button>
+      </section>
+      <section class="stick camera" aria-label="Camera controller, IJKL">
+        <span class="control-name">CAMERA <b>IJKL</b></span>
+        <button class="stick-hit" type="button" data-control="camera" aria-label="Camera controller">
+          <span class="stick-ring"></span><span class="stick-knob"></span>
+        </button>
+        <span class="actions" aria-label="Action buttons">
+          <button class="action action-a" type="button" data-control="A" aria-label="Action A">A</button>
+          <button class="action action-b" type="button" data-control="B" aria-label="Action B">B</button>
+        </span>
+      </section>
+      <output class="status" id="status" aria-live="polite"><span class="orientation-portrait">PORTRAIT</span><span class="orientation-landscape">LANDSCAPE</span> · DRAG STICKS · PINCH VIEW TO ZOOM</output>
+    </main>
+    <script>
+      const status = document.querySelector("#status");
+      const active = new Map();
+      const stickPointers = new Map();
+      const directions = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
+
+      function refresh() {
+        document.querySelectorAll("[data-control]").forEach((el) => {
+          const down = [...active.values()].some((item) => item.control === el.dataset.control);
+          el.classList.toggle("is-active", down);
+        });
+        const held = [...new Set([...active.values()].map((item) => item.label))];
+        const orientation = matchMedia("(orientation: portrait)").matches ? "PORTRAIT" : "LANDSCAPE";
+        status.textContent = held.length ? `HELD · ${held.join(" + ")}` : `${orientation} · DRAG STICKS · PINCH VIEW TO ZOOM`;
+      }
+
+      function moveStick(el, event) {
+        const rect = el.getBoundingClientRect();
+        const radius = rect.width * .3;
+        const dx = event.clientX - (rect.left + rect.width / 2);
+        const dy = event.clientY - (rect.top + rect.height / 2);
+        const length = Math.hypot(dx, dy) || 1;
+        const scale = Math.min(1, radius / length);
+        const x = dx * scale;
+        const y = dy * scale;
+        el.querySelector(":scope > .stick-knob").style.transform = `translate(${x}px, ${y}px)`;
+        const angle = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        const direction = length < 12 ? "CENTER" : directions[Math.round(angle / 45) % 8];
+        const item = active.get(event.pointerId);
+        el.dataset.direction = direction;
+        if (item) item.label = `${item.control === "move" ? "MOVE" : "CAMERA"} ${direction}`;
+        refresh();
+      }
+
+      function release(event) {
+        const item = active.get(event.pointerId);
+        if (!item) return;
+        active.delete(event.pointerId);
+        if (item.stick) {
+          stickPointers.delete(item.control);
+          item.element.querySelector(":scope > .stick-knob").style.transform = "translate(0px, 0px)";
+          item.element.dataset.direction = "CENTER";
+        }
+        refresh();
+      }
+
+      document.querySelectorAll("[data-control]").forEach((el) => {
+        el.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          const control = el.dataset.control;
+          const isStick = control === "move" || control === "camera";
+          if (isStick && stickPointers.has(control)) return;
+          const item = { control, element: el, stick: isStick, label: control };
+          active.set(event.pointerId, item);
+          if (isStick) stickPointers.set(control, event.pointerId);
+          el.setPointerCapture(event.pointerId);
+          if (isStick) moveStick(el, event);
+          refresh();
+        });
+        el.addEventListener("pointermove", (event) => {
+          const item = active.get(event.pointerId);
+          if (item?.element === el && item.stick) moveStick(el, event);
+        });
+        el.addEventListener("pointerup", release);
+        el.addEventListener("pointercancel", release);
+        el.addEventListener("lostpointercapture", release);
+      });
+
+      window.addEventListener("blur", () => {
+        active.clear();
+        stickPointers.clear();
+        document.querySelectorAll(".stick-hit").forEach((el) => {
+          el.querySelector(":scope > .stick-knob").style.transform = "translate(0px, 0px)";
+          el.dataset.direction = "CENTER";
+        });
+        refresh();
+      });
+      window.addEventListener("contextmenu", (event) => event.preventDefault());
+    </script>
+  </body>
+</html>
