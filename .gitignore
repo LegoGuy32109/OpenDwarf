@@ -1,16 +1,10 @@
-# dotenv environment variable files
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# Fresh build directory
-_fresh/
-# npm + other dependencies
+.env.*
+!.env.example
+.deno/
 node_modules/
-vendor/
-/**/target
-
-# testing artifacts
 exports/
+game_engine/
+game_library/
+vendor/
+**/target/

@@ -1,8 +1,6 @@
-import "$std/dotenv/load.ts";
+/// <reference lib="deno.unstable" />
+import { createApp } from "./src/server/app.ts";
 
-import { App, cors, staticFiles } from "fresh";
-
-export const app = new App()
-  .use(cors({ origin: "*" }))
-  .use(staticFiles())
-  .fsRoutes();
+const kv = await Deno.openKv();
+const port = Number(Deno.env.get("PORT") ?? 8000);
+Deno.serve({ port }, createApp(kv));

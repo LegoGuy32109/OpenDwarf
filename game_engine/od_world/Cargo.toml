@@ -1,7 +1,0 @@
-[package]
-name = "od_world"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-od_core = { path = "../od_core" }

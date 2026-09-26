@@ -1,0 +1,182 @@
+import { expect, test } from "@playwright/test";
+
+test("local world renders, moves, names and chats", async ({ page }) => {
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  const before = await page.evaluate(() =>
+    (globalThis as unknown as {
+      __od: { scene: { world: { players: { self: { x: number } } } } };
+    }).__od.scene.world.players.self.x
+  );
+  await page.keyboard.down("f");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { x: number } } } } };
+      }).__od.scene.world.players.self.x
+    )
+  ).toBe(before + 1);
+  await page.keyboard.up("f");
+  await page.keyboard.press("t");
+  await page.locator("#chat-input").fill("/nick Josh Hale");
+  await page.locator("#chat-input").press("Enter");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { name: string } } } } };
+      }).__od.scene.world.players.self.name
+    )
+  ).toBe("Josh Hale");
+  await page.keyboard.press("t");
+  await page.locator("#chat-input").fill("hello");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { typing: boolean } } } } };
+      }).__od.scene.world.players.self.typing
+    )
+  ).toBe(true);
+  await page.locator("#chat-input").press("Enter");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { message: string } } } } };
+      }).__od.scene.world.players.self.message
+    )
+  ).toBe("hello");
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveScreenshot("desktop-menu.png", {
+    maxDiffPixelRatio: 0.02,
+  });
+  await page.mouse.click(640, 419);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { menuPage: string } } }).__od
+        .scene.menuPage
+    )
+  ).toBe("settings");
+  await page.mouse.click(696, 414);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { uiScale: number } } }).__od
+        .scene.uiScale
+    )
+  ).toBe(1.25);
+});
+
+test("phone controls fit safe area and move", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  await expect(page.locator("[data-stick=move]")).toBeVisible();
+  const box = await page.locator("[data-stick=move]").boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.8, box!.y + box!.height / 2);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { x: number } } } } };
+      }).__od.scene.world.players.self.x
+    )
+  ).toBeGreaterThan(7);
+  await page.mouse.up();
+  await expect(page).toHaveScreenshot("phone-world.png", {
+    maxDiffPixelRatio: 0.02,
+  });
+  await page.locator("#chat-button").click();
+  await expect(page.locator("#chat-input")).toBeFocused();
+  await page.locator("#chat-input").fill("hello phone");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { typing: boolean } } } } };
+      }).__od.scene.world.players.self.typing
+    )
+  ).toBe(true);
+  await page.locator("#chat-input").fill("");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { typing: boolean } } } } };
+      }).__od.scene.world.players.self.typing
+    )
+  ).toBe(false);
+  await page.locator("#chat-input").press("Escape");
+  const landscape = await context.newPage();
+  await landscape.setViewportSize({ width: 844, height: 390 });
+  await landscape.goto("/?harness=1");
+  await expect(landscape.locator("#loading")).toBeHidden();
+  await expect(landscape.locator("[data-stick=move]")).toBeInViewport();
+  await expect(landscape.locator("[data-stick=camera]")).toBeInViewport();
+  await expect(landscape).toHaveScreenshot("phone-landscape.png", {
+    maxDiffPixelRatio: 0.02,
+  });
+  await context.close();
+});
+
+for (const transport of ["webrtc", "sse"] as const) {
+  test(`admin joins over ${transport} and sees movement`, async ({ browser }) => {
+    const visitor = await browser.newPage();
+    const admin = await browser.newPage();
+    await visitor.goto("/?harness=1");
+    await expect(visitor.locator("#loading")).toBeHidden();
+    const session = await visitor.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+        .scene.sessionId
+    );
+    await admin.goto("/admin?harness=1");
+    await expect(admin.locator("#loading")).toBeHidden();
+    const join = admin.locator(
+      `[data-session-id="${session}"][data-transport="${transport}"]`,
+    );
+    await expect(join).toBeVisible();
+    await join.click();
+    await expect.poll(
+      () =>
+        admin.evaluate(() =>
+          (globalThis as unknown as { __od: { scene: { localId: string } } })
+            .__od.scene.localId
+        ),
+      { timeout: 15_000 },
+    ).toBe("admin");
+    await expect.poll(() =>
+      visitor.evaluate(() =>
+        Object.keys(
+          (globalThis as unknown as {
+            __od: { scene: { world: { players: object } } };
+          }).__od.scene.world.players,
+        )
+      )
+    ).toContain("admin");
+    await admin.keyboard.down("f");
+    await expect.poll(() =>
+      visitor.evaluate(() =>
+        (globalThis as unknown as {
+          __od: { scene: { world: { players: { admin: { x: number } } } } };
+        }).__od.scene.world.players.admin.x
+      )
+    ).toBeGreaterThan(8);
+    await admin.keyboard.up("f");
+    await expect.poll(() => admin.locator("#net-stats").textContent(), {
+      timeout: 8_000,
+    }).toMatch(/RTT median \d+ ms/);
+    await visitor.close();
+    await expect.poll(
+      () =>
+        admin.evaluate(() =>
+          (globalThis as unknown as { __od: { scene: { status: string } } })
+            .__od.scene.status
+        ),
+      { timeout: 8_000 },
+    ).toBe("Visitor left. World ended.");
+    await admin.close();
+  });
+}

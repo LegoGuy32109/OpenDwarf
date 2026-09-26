@@ -1,33 +1,73 @@
 # Open Dwarf
 
-A dwarf fortress inspired game playable in your browser
+A small browser world for testing movement, touch controls, chat, and a direct
+connection between two players. This branch starts from `webgl-version` and has
+no client build step or Rust runtime.
 
-Connect with other players through WebRTC
+## Run
 
-## Usage
-
-Make sure to install Deno:
-[getting_started](https://deno.land/manual/getting_started/installation)
-
-Then start the project:
-
-```bash
-deno task dev
+```sh
+deno task start
 ```
 
-This will watch the project directory and restart as necessary.
+Open `http://localhost:8000/` to start a local 16×16 world. Open
+`http://localhost:8000/admin` in another browser to see active worlds and join
+one. The `/admin` route has no access control in this demo. Only one visitor can
+join a world.
 
-## Compile
+On a keyboard, ESDF moves the player, IJKL moves the camera, `T` opens chat,
+`/` opens a command, and Escape opens the menu. On a touch screen, the left
+stick moves the player and the right stick moves the camera. Pinch or use the
+mouse wheel to zoom. The A button opens the chat bar and the B button opens the
+menu. Use `/nick Josh Hale` to set a name. Names are unique within a world.
 
-To create the wasm files to run in the web app
+## Code
 
-```bash
-deno task web-release
+- `src/client/`: browser input, WebGL2 rendering, and network transports.
+- `src/shared/`: world rules and move intent validation. Plain JavaScript with
+  JSDoc types runs in the browser without compilation.
+- `src/server/`: Deno TypeScript routes for static files, presence, ICE
+  configuration, and a KV signal mailbox.
+- `public/`: HTML, custom CSS, browser entrypoint, and three sprite textures.
+
+Each visitor owns their world in the browser. Movement begins locally on the
+next 50 ms simulation tick. The admin joins as another player through WebRTC
+or HTTP POST plus SSE. Deno KV stores short lived presence and signal messages.
+It does not run the world. The host sends the small world state every 500 ms to
+correct the joined player's prediction. The admin panel shows connection time
+and recent round trip times for either transport.
+
+The floor tile and player sprite come from the WebGL experiment. The bitmap
+font and the Escape menu labels come from the engine page. The old engine and
+world generation code remain in `webgl-version` for reference. See
+[`docs/architecture.md`](docs/architecture.md) for the design choice and
+limits.
+
+## Check
+
+```sh
+deno task verify
+deno task e2e
+deno task hooks
 ```
 
-For quicker iteration reachable at
-[localhost://8000/?debug](localhost://8000/?debug)
+`verify` checks formatting, lint, types, and deterministic world tests. The
+Git pre-push hook runs the same task. CI also runs Playwright in Chromium. The
+Playwright tests compare desktop and phone screenshots and exercise both
+connection paths. A system Chromium installation is used locally when present.
 
-```bash
-deno task web-dev
-```
+## Deploy
+
+The `deploy` section in `deno.json` uses a dynamic Deno Deploy app with
+`main.ts` as its entrypoint. Create the `open-dwarf` app in the selected Deno
+Deploy organization, then provision a Deno KV database and assign it to the
+app. Deno Deploy supplies that database to `Deno.openKv()`. Set
+`XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` if WebRTC should work
+across networks that need TURN. The SSE path still works without TURN.
+
+Set `opendwarf.joshhale.me` and any extra domains in Deno Deploy and DNS after
+the app is deployed. Domain setup and deployment are manual steps. The code
+does not register domains or publish a deployment.
+
+See the [Deno Deploy KV guide](https://docs.deno.com/deploy/reference/deno_kv/)
+and [build configuration](https://docs.deno.com/deploy/reference/builds/).
