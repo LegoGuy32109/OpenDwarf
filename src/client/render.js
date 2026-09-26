@@ -1,6 +1,15 @@
 // @ts-check
 
-import { renderPosition, WORLD_EDGE } from "../shared/world.js";
+import { renderPosition, Z_LEVELS_BELOW } from "../shared/world.js";
+import { entityOpacity, tileVisibility } from "../shared/visibility.js";
+import {
+  ceilingMask,
+  DEPTH_TINTS,
+  elevationMask,
+  playerOccluded,
+  shadowMaskToAtlasId,
+  surfaceAt,
+} from "../shared/surface.js";
 
 const TILE = 64;
 const VERTEX = `#version 300 es
@@ -65,7 +74,8 @@ function texture(gl, source) {
 }
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,chatOpen:boolean,chatDraft:string,status:string,cameraOffset:{x:number,y:number}}} Scene */
+/** @typedef {import('../shared/visibility.js').Visibility} Visibility */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},chatOpen:boolean,chatDraft:string,status:string}} Scene */
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -99,12 +109,14 @@ export async function createRenderer(canvas) {
   gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  const [floorImage, spriteImage, fontImage] =
+  const [floorImage, spriteImage, fontImage, edgeImage, ceilingImage] =
     /** @type {HTMLImageElement[]} */ (
       await Promise.all([
         image("/assets/floor.png"),
         image("/assets/dwarf.png"),
         image("/assets/font.png"),
+        image("/assets/edge.png"),
+        image("/assets/ceiling.png"),
       ])
     );
   const whiteImage = document.createElement("canvas");
@@ -118,6 +130,8 @@ export async function createRenderer(canvas) {
     floor: texture(gl, floorImage),
     sprite: texture(gl, spriteImage),
     font: texture(gl, fontImage),
+    edge: texture(gl, edgeImage),
+    ceiling: texture(gl, ceilingImage),
     white: texture(gl, whiteImage),
   };
   const locationSize = gl.getUniformLocation(program, "u_size");
@@ -190,32 +204,176 @@ export async function createRenderer(canvas) {
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.uniform2f(locationSize, width, height);
-    const local = scene.world.players[scene.localId];
-    const localPos = local
-      ? renderPosition(local, scene.world.tick + alpha)
-      : { x: 7, y: 7 };
-    const zoom = dpr * scene.zoom *
-      Math.max(0.75, Math.min(1.25, canvas.clientWidth / 900));
-    const cameraX = (localPos.x + 0.5) * TILE + scene.cameraOffset.x;
-    const cameraY = (localPos.y + 0.5) * TILE + scene.cameraOffset.y;
+    const zoom = dpr * scene.zoom;
+    const cameraX = scene.camera.x;
+    const cameraY = scene.camera.y;
     gl.uniform2f(locationCamera, cameraX, cameraY);
     gl.uniform1f(locationZoom, zoom);
-    const floorFrame = 5;
-    for (let y = 0; y < WORLD_EDGE; y++) {
-      for (let x = 0; x < WORLD_EDGE; x++) {
-        quad(textures.floor, false, x * TILE, y * TILE, TILE, TILE, [
-          0,
-          floorFrame / 31,
-          1,
-          1 / 31,
-        ]);
+    const left = Math.floor((cameraX - width / (2 * zoom)) / TILE) - 1;
+    const right = Math.ceil((cameraX + width / (2 * zoom)) / TILE) + 1;
+    const top = Math.floor((cameraY - height / (2 * zoom)) / TILE) - 1;
+    const bottom = Math.ceil((cameraY + height / (2 * zoom)) / TILE) + 1;
+    /** @type {Map<string,ReturnType<typeof surfaceAt>>} */
+    const surfaces = new Map();
+    /** @param {number} x @param {number} y */
+    const surface = (x, y) => {
+      const key = `${x},${y}`;
+      if (!surfaces.has(key)) {
+        surfaces.set(
+          key,
+          surfaceAt(x, y, scene.viewZ, scene.viewMode, scene.visibility),
+        );
+      }
+      return surfaces.get(key) ?? null;
+    };
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const tile = surface(x, y);
+        if (!tile) continue;
+        const tint = tile.seen === "remembered"
+          ? [1, 0.86, 0.34]
+          : DEPTH_TINTS[tile.depth];
+        quad(
+          textures.floor,
+          false,
+          x * TILE,
+          y * TILE,
+          TILE,
+          TILE,
+          [0, 5 / 31, 1, 1 / 31],
+          /** @type {[number,number,number,number]} */ ([
+            ...tint,
+            tile.seen === "remembered" ? 0.95 : 1,
+          ]),
+        );
+      }
+    }
+    flush();
+    // The authored edge atlas covers the corner mask; narrow bands preserve the old ledge shading.
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const mask = elevationMask(
+          x,
+          y,
+          scene.viewZ,
+          scene.viewMode,
+          scene.visibility,
+        );
+        if (!mask) continue;
+        const frame = shadowMaskToAtlasId(mask) - 1;
+        quad(
+          textures.edge,
+          false,
+          (x + 0.5) * TILE,
+          (y + 0.5) * TILE,
+          TILE,
+          TILE,
+          [0, frame / 15, 1, 1 / 15],
+          [1, 1, 1, 0.4],
+        );
+      }
+    }
+    flush();
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const here = surface(x, y);
+        if (!here) continue;
+        const rightTile = surface(x + 1, y);
+        const downTile = surface(x, y + 1);
+        if (rightTile?.depth !== here.depth) {
+          const lowerRight = !rightTile || rightTile.depth > here.depth;
+          const edgeX = (x + 1) * TILE;
+          quad(
+            textures.white,
+            false,
+            edgeX + (lowerRight ? 0 : -4),
+            y * TILE,
+            4,
+            TILE,
+            [0, 0, 1, 1],
+            [0, 0, 0, 0.28],
+          );
+          quad(
+            textures.white,
+            false,
+            edgeX + (lowerRight ? 4 : -8),
+            y * TILE,
+            4,
+            TILE,
+            [0, 0, 1, 1],
+            [0, 0, 0, 0.11],
+          );
+        }
+        if (downTile?.depth !== here.depth) {
+          const lowerDown = !downTile || downTile.depth > here.depth;
+          const edgeY = (y + 1) * TILE;
+          quad(
+            textures.white,
+            false,
+            x * TILE,
+            edgeY + (lowerDown ? 0 : -4),
+            TILE,
+            4,
+            [0, 0, 1, 1],
+            [0, 0, 0, 0.28],
+          );
+          quad(
+            textures.white,
+            false,
+            x * TILE,
+            edgeY + (lowerDown ? 4 : -8),
+            TILE,
+            4,
+            [0, 0, 1, 1],
+            [0, 0, 0, 0.11],
+          );
+        }
+      }
+    }
+    flush();
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const mask = ceilingMask(
+          x,
+          y,
+          scene.viewZ,
+          scene.viewMode,
+          scene.visibility,
+        );
+        if (!mask) continue;
+        const frame = shadowMaskToAtlasId(mask) - 1;
+        quad(
+          textures.ceiling,
+          false,
+          (x + 0.5) * TILE,
+          (y + 0.5) * TILE,
+          TILE,
+          TILE,
+          [0, frame / 15, 1, 1 / 15],
+          [1, 1, 1, 0.55],
+        );
       }
     }
     flush();
     const players = Object.values(scene.world.players);
+    /** @type {Map<string,number>} */
+    const opacity = new Map();
     for (const player of players) {
+      let visible = scene.viewMode === "master"
+        ? 1
+        : entityOpacity(player, scene.world.tick + alpha, (x, y, z) =>
+          tileVisibility(scene.visibility, x, y, z) === "visible");
+      if (
+        playerOccluded(player, scene.viewZ) ||
+        player.z < scene.viewZ - Z_LEVELS_BELOW
+      ) visible = 0;
+      opacity.set(player.id, visible);
+      if (visible <= 0) continue;
       const pos = renderPosition(player, scene.world.tick + alpha);
       const uv = player.facingLeft ? [1, 0, -1, 1] : [0, 0, 1, 1];
+      const tint = pos.z < scene.viewZ
+        ? DEPTH_TINTS[Math.min(scene.viewZ - Math.floor(pos.z), 5)]
+        : [1, 1, 1];
       quad(
         textures.sprite,
         false,
@@ -224,11 +382,14 @@ export async function createRenderer(canvas) {
         TILE,
         TILE,
         /** @type {[number,number,number,number]} */ (uv),
+        /** @type {[number,number,number,number]} */ ([...tint, visible]),
       );
     }
     flush();
     const scale = Math.max(1, Math.round(dpr * 1.5 * scene.uiScale));
     for (const player of players) {
+      const visible = opacity.get(player.id) ?? 0;
+      if (visible <= 0) continue;
       const pos = renderPosition(player, scene.world.tick + alpha);
       const sx = (pos.x * TILE + TILE / 2 - cameraX) * zoom + width / 2;
       const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
@@ -238,6 +399,7 @@ export async function createRenderer(canvas) {
           sx - player.name.length * 4 * scale,
           sy + TILE * zoom + 4 * dpr,
           scale,
+          [0.95, 0.9, 0.78, visible],
         );
       }
       const bubble = player.message || (player.typing ? "[...]" : "");
@@ -251,8 +413,18 @@ export async function createRenderer(canvas) {
           Math.min(width - bubbleWidth - 8 * dpr, sx - bubbleWidth / 2),
         );
         const by = Math.max(8 * dpr, sy - 28 * scale);
-        rect(bx, by, bubbleWidth, 20 * scale, [0.06, 0.06, 0.06, 0.85]);
-        text(bubble, bx + 8 * scale, by + 2 * scale, scale);
+        rect(bx, by, bubbleWidth, 20 * scale, [
+          0.06,
+          0.06,
+          0.06,
+          0.85 * visible,
+        ]);
+        text(bubble, bx + 8 * scale, by + 2 * scale, scale, [
+          0.95,
+          0.9,
+          0.78,
+          visible,
+        ]);
       }
     }
     const status = scene.status.slice(0, 75);
@@ -266,6 +438,13 @@ export async function createRenderer(canvas) {
       );
       text(status, 16 * dpr, 12 * dpr, scale);
     }
+    if (scene.touchGesture || performance.now() < scene.hudUntil) {
+      const value = `Z ${scene.viewZ}  ZOOM ${scene.zoom.toFixed(2)}`;
+      const hudWidth = (value.length * 8 + 16) * scale;
+      const x = Math.max(8 * dpr, width - hudWidth - 10 * dpr);
+      rect(x, 10 * dpr, hudWidth, 20 * scale, [0.06, 0.08, 0.12, 0.75]);
+      text(value, x + 8 * scale, 12 * dpr, scale, [1, 0.86, 0.56, 1]);
+    }
     if (scene.chatOpen) {
       const barX = 12 * dpr;
       const barY = height - 54 * dpr;
@@ -274,38 +453,60 @@ export async function createRenderer(canvas) {
     }
     if (scene.menu) {
       rect(0, 0, width, height, [0, 0, 0, 0.55]);
+      const panelWidth = Math.min(320, canvas.clientWidth - 20) * dpr;
+      const panelHeight = Math.min(300, canvas.clientHeight - 20) * dpr;
+      const x = (width - panelWidth) / 2;
+      const y = (height - panelHeight) / 2;
+      rect(x, y, panelWidth, panelHeight, [0.08, 0.09, 0.1, 0.96]);
       rect(
-        width / 2 - 140 * dpr,
-        height / 2 - 100 * dpr,
-        280 * dpr,
-        200 * dpr,
-        [0.09, 0.1, 0.11, 0.95],
+        x + 2 * dpr,
+        y + 2 * dpr,
+        panelWidth - 4 * dpr,
+        panelHeight - 4 * dpr,
+        [0.2, 0.21, 0.22, 0.85],
       );
-      rect(width / 2 - 138 * dpr, height / 2 - 98 * dpr, 276 * dpr, 196 * dpr, [
-        0.2,
-        0.21,
-        0.22,
-        0.85,
-      ]);
-      const menuScale = Math.max(1, Math.round(dpr * 1.5));
-      /** @param {string} value @param {number} y */
-      const centerText = (value, y) =>
+      const menuScale = Math.max(1, Math.round(dpr * 1.25));
+      /** @param {string} value @param {number} row */
+      const centerText = (value, row) =>
         text(
           value,
           width / 2 - value.length * 4 * menuScale,
-          height / 2 + y * dpr,
+          y + row * dpr,
           menuScale,
         );
       if (scene.menuPage === "settings") {
-        centerText("Settings", -70);
-        centerText("UI Scale", -27);
-        centerText(`-   ${scene.uiScale.toFixed(2)}   +`, 14);
-        centerText("Back", 59);
+        centerText("Settings", 16);
+        centerText("UI Scale", 56);
+        centerText(`-   ${scene.uiScale.toFixed(2)}   +`, 96);
+        centerText("Back", 136);
       } else {
-        centerText("Open Dwarf", -70);
-        centerText("Resume", -27);
-        centerText("Settings", 14);
-        centerText("Leave Game", 59);
+        centerText("Open Dwarf", 12);
+        centerText("Resume", 45);
+        centerText("Settings", 78);
+        centerText("Leave Game", 111);
+        rect(x + 12 * dpr, y + 145 * dpr, panelWidth - 24 * dpr, 1 * dpr, [
+          0.58,
+          0.55,
+          0.47,
+          0.7,
+        ]);
+        const hints = scene.inputMode === "touch"
+          ? [
+            "LEFT STICK MOVE",
+            "RIGHT STICK CAMERA",
+            "PINCH TO ZOOM",
+            "TWO FINGERS DRAG Z",
+            "A CHAT  B MENU",
+          ]
+          : [
+            "ESDF MOVE  IJKL LOOK",
+            "R V LEVEL  U N ZOOM",
+            "T CHAT  / COMMAND",
+            "ESC MENU",
+          ];
+        for (let i = 0; i < hints.length; i++) {
+          centerText(hints[i], 157 + i * 25);
+        }
       }
     }
     flush();

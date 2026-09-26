@@ -3,16 +3,30 @@
 ## What this branch keeps
 
 The WebGL experiment gives the demo its floor texture, 16×16 dwarf sprite,
-camera motion, and movement feel. The engine page gives it the VGA bitmap font
-and the Escape menu structure: Open Dwarf, Resume, Settings, Leave Game, and
-UI Scale. The current demo draws these with one small WebGL2 renderer. The
-older Rust engine stays on `webgl-version`.
+camera motion, movement rules, line of sight, edge and ceiling atlases, and
+depth tint. The engine page gives it the VGA bitmap font and the Escape menu
+structure: Open Dwarf, Resume, Settings, Leave Game, and UI Scale. The current
+demo draws these with one small WebGL2 renderer. The older Rust engine stays
+on `webgl-version`.
 
-The world is one fixed 16×16 tile square. There is no world generation, chunk
-loading, persistence, inventory, or collision rule between players. A move has
-whole tile origin and target coordinates, plus a start tick and duration. The
-renderer interpolates between those tiles. The world can still report the
-origin and target tiles occupied during a move.
+The authored world is one 16×16 tile square across z levels 0–7. Unknown XY
+coordinates are solid stone at every level. A seven-step staircase on the
+south edge reaches the top landing; a full-height pillar tests occlusion.
+The view can show five lower levels, with deeper floors turning blue before
+they disappear. There is no world generation, chunk loading, persistence,
+inventory, or collision rule between players. A move has whole tile origin
+and target coordinates, plus a start tick and duration. The renderer
+interpolates the sprite between those tiles. The world reports origin and
+target occupancy during a move.
+
+`/entity` uses a 20-tile, three-axis field of view. Terrain leaving view is
+remembered with a warm tint; unseen terrain is black. Entities fade between
+25% and 75% of a move into or out of visible tiles and do not leave ghosts in
+memory. `/master` shows the full world and permits camera panning while
+keeping at least one full row and column of the authored square visible.
+These view commands change only the local client. R/V changes view level,
+holding U/N lerps zoom, and touch offers pinch zoom and two-finger vertical
+drag for view levels. A brief bitmap HUD shows both values during changes.
 
 ## Why the visitor hosts the world
 

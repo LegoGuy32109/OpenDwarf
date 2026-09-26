@@ -167,7 +167,7 @@ export function startHost(scene, session) {
     joined = true;
     if (mode === "sse") {
       sseConnected = true;
-      addPlayer(scene.world, "admin", { x: 8, y: 7 });
+      addPlayer(scene.world, "admin", { x: 8, y: 7, z: 0 });
       scene.status = "A visitor joined your world";
       publish();
       return;
@@ -176,7 +176,7 @@ export function startHost(scene, session) {
       peer = new RTCPeerConnection({ iceServers: await ice() });
       channel = peer.createDataChannel("world", { ordered: true });
       channel.onopen = () => {
-        addPlayer(scene.world, "admin", { x: 8, y: 7 });
+        addPlayer(scene.world, "admin", { x: 8, y: 7, z: 0 });
         scene.status = "A visitor joined your world";
         publish();
       };

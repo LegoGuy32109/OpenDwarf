@@ -146,26 +146,10 @@ input {
 #chat-input.open {
   pointer-events: auto;
 }
-#chat-open,
-#menu-open {
-  position: absolute;
-  z-index: 5;
-  bottom: calc(var(--safe-bottom) + 12px);
-  padding: 8px 10px;
-  border: 1px solid #5f5a51;
-  background: #292c30;
-  color: #f3e7c9;
-}
-#chat-open {
-  left: calc(var(--safe-left) + 12px);
-}
-#menu-open {
-  right: calc(var(--safe-right) + 12px);
-}
 #admin {
   position: absolute;
   z-index: 7;
-  top: calc(var(--safe-top) + 12px);
+  top: calc(var(--safe-top) + 72px);
   right: calc(var(--safe-right) + 12px);
   width: min(280px, 75vw);
   max-height: 40vh;
@@ -198,10 +182,6 @@ input {
 @media (pointer: coarse) {
   #controls {
     display: block;
-  }
-  #chat-open,
-  #menu-open {
-    display: none;
   }
 }
 @media (orientation: portrait) {

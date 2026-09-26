@@ -4,12 +4,20 @@ import {
   addPlayer,
   advanceTicks,
   createWorld,
+  renderPosition,
   setNickname,
   setTyping,
   startMove,
   submitMessage,
   TICK_MS,
+  WORLD_TOP,
 } from "../shared/world.js";
+import {
+  createVisibility,
+  recomputeVisibility,
+  visibilityPosition,
+} from "../shared/visibility.js";
+import { clampCameraAxis } from "../shared/surface.js";
 import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
 
@@ -26,6 +34,14 @@ const scene = {
   menuPage: "root",
   uiScale: 1,
   zoom: 1,
+  zoomTarget: 1,
+  viewZ: 0,
+  viewMode: "entity",
+  inputMode: "keyboard",
+  hudUntil: 0,
+  touchGesture: false,
+  visibility: createVisibility(),
+  camera: { x: 480, y: 480 },
   chatOpen: false,
   chatDraft: "",
   status: "Local world",
@@ -36,6 +52,8 @@ const scene = {
 };
 /** @type {Set<string>} */
 const held = new Set();
+/** @type {Set<string>} */
+const pressed = new Set();
 /** @type {{x:number,y:number}} */
 let joystick = { x: 0, y: 0 };
 /** @type {{x:number,y:number}} */
@@ -47,6 +65,23 @@ let host = null;
 /** @type {ReturnType<typeof joinWorld>|null} */
 let guest = null;
 const isAdmin = location.pathname === "/admin";
+let lastPlayerZ = 0;
+
+/** @param {number} value @param {number} min @param {number} max */
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+/** @param {number} step */
+function changeLayer(step) {
+  scene.viewZ = clamp(scene.viewZ + step, 0, WORLD_TOP);
+  scene.hudUntil = performance.now() + 500;
+}
+
+/** @param {"entity"|"master"} mode */
+function setViewMode(mode) {
+  scene.viewMode = mode;
+  if (mode === "entity") scene.cameraOffset = { x: 0, y: 0 };
+  notify(`${mode === "master" ? "Master" : "Entity"} view`);
+}
 
 /** @param {string} text */
 function notify(text) {
@@ -102,6 +137,10 @@ function submitChat() {
     }
     return;
   }
+  if (text.toLowerCase() === "/entity" || text.toLowerCase() === "/master") {
+    setViewMode(/** @type {"entity"|"master"} */ (text.slice(1).toLowerCase()));
+    return;
+  }
   if (text.startsWith("/")) {
     notify("Unknown command");
     return;
@@ -115,14 +154,20 @@ function submitChat() {
 function inputDirection() {
   if (joystick.x || joystick.y) return joystick;
   return {
-    x: Number(held.has("KeyF")) - Number(held.has("KeyS")),
-    y: Number(held.has("KeyD")) - Number(held.has("KeyE")),
+    x: Number(held.has("KeyF") || pressed.has("KeyF")) -
+      Number(held.has("KeyS") || pressed.has("KeyS")),
+    y: Number(held.has("KeyD") || pressed.has("KeyD")) -
+      Number(held.has("KeyE") || pressed.has("KeyE")),
   };
 }
 
 function move() {
-  if (scene.chatOpen || scene.menu) return;
+  if (scene.chatOpen || scene.menu) {
+    pressed.clear();
+    return;
+  }
   const direction = inputDirection();
+  pressed.clear();
   if (!direction.x && !direction.y) return;
   const result = startMove(
     scene.world,
@@ -185,20 +230,96 @@ function bindStick(element, update) {
   element.addEventListener("lostpointercapture", release);
 }
 
+function bindTouchGesture() {
+  /** @type {Map<number,{x:number,y:number}>} */
+  const pointers = new Map();
+  /** @type {{mode:"pending"|"pinch"|"layer",distance:number,y:number,zoom:number,z:number}|null} */
+  let gesture = null;
+  let updateQueued = false;
+  const updateGesture = () => {
+    updateQueued = false;
+    if (!gesture || pointers.size !== 2) return;
+    const [a, b] = [...pointers.values()];
+    if (!a || !b) return;
+    const distance = Math.hypot(a.x - b.x, a.y - b.y);
+    const dy = (a.y + b.y) / 2 - gesture.y;
+    const distanceChange = Math.abs(distance - gesture.distance);
+    if (gesture.mode === "pending") {
+      if (distanceChange > 12 && distanceChange > Math.abs(dy) * 0.7) {
+        gesture.mode = "pinch";
+      } else if (Math.abs(dy) > 14 && Math.abs(dy) > distanceChange * 1.2) {
+        gesture.mode = "layer";
+      }
+    }
+    if (gesture.mode === "pinch") {
+      scene.zoomTarget = clamp(
+        gesture.zoom * distance / Math.max(1, gesture.distance),
+        0.25,
+        2,
+      );
+    } else if (gesture.mode === "layer") {
+      const steps = Math.floor(Math.abs(dy) / 48);
+      scene.viewZ = clamp(gesture.z - Math.sign(dy) * steps, 0, WORLD_TOP);
+    }
+  };
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch" || scene.menu) return;
+    event.preventDefault();
+    scene.inputMode = "touch";
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    canvas.setPointerCapture(event.pointerId);
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      if (!a || !b) return;
+      gesture = {
+        mode: "pending",
+        distance: Math.hypot(a.x - b.x, a.y - b.y),
+        y: (a.y + b.y) / 2,
+        zoom: scene.zoomTarget,
+        z: scene.viewZ,
+      };
+      scene.touchGesture = true;
+    }
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "touch" || !pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (!updateQueued) {
+      updateQueued = true;
+      requestAnimationFrame(updateGesture);
+    }
+  });
+  /** @param {PointerEvent} event */
+  const release = (event) => {
+    pointers.delete(event.pointerId);
+    if (pointers.size < 2) {
+      gesture = null;
+      scene.touchGesture = false;
+      scene.hudUntil = 0;
+    }
+  };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener("touchmove", (event) => {
+    if (event.touches.length > 1) event.preventDefault();
+  }, { passive: false });
+}
+
 function bindInput() {
   bindStick($("[data-stick=move]"), (x, y) => {
+    scene.inputMode = "touch";
     joystick = { x, y };
   });
   bindStick($("[data-stick=camera]"), (x, y) => {
+    scene.inputMode = "touch";
     cameraStick = { x, y };
   });
-  $("#chat-button").addEventListener("click", () => openChat());
-  $("#menu-button").addEventListener("click", () => {
-    scene.menu = !scene.menu;
-    scene.menuPage = "root";
+  $("#chat-button").addEventListener("click", () => {
+    scene.inputMode = "touch";
+    openChat();
   });
-  $("#chat-open").addEventListener("click", () => openChat());
-  $("#menu-open").addEventListener("click", () => {
+  $("#menu-button").addEventListener("click", () => {
+    scene.inputMode = "touch";
     scene.menu = !scene.menu;
     scene.menuPage = "root";
   });
@@ -218,86 +339,99 @@ function bindInput() {
   });
   document.addEventListener("keydown", (event) => {
     if (document.activeElement === chatInput) return;
+    scene.inputMode = "keyboard";
     if (event.code === "Escape") {
       event.preventDefault();
-      scene.menu = !scene.menu;
-      scene.menuPage = "root";
-    } else if (event.code === "KeyT" || event.code === "Slash") {
-      event.preventDefault();
-      openChat(event.code === "Slash" ? "/" : "");
-    } else {
-      held.add(event.code);
-      if (
-        ["KeyE", "KeyS", "KeyD", "KeyF", "KeyI", "KeyJ", "KeyK", "KeyL"]
-          .includes(event.code)
-      ) {
-        event.preventDefault();
+      if (!event.repeat) {
+        scene.menu = !scene.menu;
+        scene.menuPage = "root";
       }
+      return;
+    }
+    if (event.code === "KeyT" || event.code === "Slash") {
+      event.preventDefault();
+      if (!event.repeat) openChat(event.code === "Slash" ? "/" : "");
+      return;
+    }
+    held.add(event.code);
+    if (
+      ["KeyE", "KeyS", "KeyD", "KeyF"].includes(event.code) && !event.repeat
+    ) pressed.add(event.code);
+    if (
+      [
+        "KeyE",
+        "KeyS",
+        "KeyD",
+        "KeyF",
+        "KeyI",
+        "KeyJ",
+        "KeyK",
+        "KeyL",
+        "KeyR",
+        "KeyV",
+        "KeyU",
+        "KeyN",
+      ].includes(event.code)
+    ) {
+      event.preventDefault();
+    }
+    if (event.code === "KeyR" && !event.repeat) changeLayer(1);
+    if (event.code === "KeyV" && !event.repeat) changeLayer(-1);
+    if (event.code === "KeyU" || event.code === "KeyN") {
+      scene.hudUntil = performance.now() + 500;
     }
   });
-  document.addEventListener("keyup", (event) => held.delete(event.code));
+  document.addEventListener("keyup", (event) => {
+    held.delete(event.code);
+    if (["KeyR", "KeyV", "KeyU", "KeyN"].includes(event.code)) {
+      scene.hudUntil = performance.now() + 500;
+    }
+  });
   globalThis.addEventListener("blur", () => {
     held.clear();
+    pressed.clear();
     joystick = { x: 0, y: 0 };
     cameraStick = { x: 0, y: 0 };
   });
   canvas.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch") scene.inputMode = "touch";
     if (!scene.menu) return;
+    const panelHeight = Math.min(300, canvas.clientHeight - 20);
+    const y = event.clientY - (canvas.clientHeight - panelHeight) / 2;
     const x = event.clientX - canvas.clientWidth / 2;
-    const y = event.clientY - canvas.clientHeight / 2;
-    if (Math.abs(x) > 160 || Math.abs(y) > 115) {
+    if (
+      Math.abs(x) > Math.min(160, (canvas.clientWidth - 20) / 2) || y < 0 ||
+      y > panelHeight
+    ) {
       scene.menu = false;
       return;
     }
     if (scene.menuPage === "settings") {
-      if (y > 43) scene.menuPage = "root";
-      else if (y > -1 && y < 40 && x < 0) {
-        scene.uiScale = Math.max(1, scene.uiScale - 0.25);
-      } else if (y > -1 && y < 40) {
-        scene.uiScale = Math.min(2, scene.uiScale + 0.25);
+      if (y >= 132 && y < 166) scene.menuPage = "root";
+      else if (y >= 88 && y < 126 && x < 0) {
+        scene.uiScale = clamp(scene.uiScale - 0.25, 1, 2);
+      } else if (y >= 88 && y < 126) {
+        scene.uiScale = clamp(scene.uiScale + 0.25, 1, 2);
       }
       return;
     }
-    if (y > -42 && y < 1) scene.menu = false;
-    else if (y > 1 && y < 43) scene.menuPage = "settings";
-    else if (y > 43 && y < 90) {
+    if (y >= 40 && y < 73) scene.menu = false;
+    else if (y >= 73 && y < 106) scene.menuPage = "settings";
+    else if (y >= 106 && y < 140) {
       guest?.close();
       location.reload();
     }
   });
-  const touches = new Map();
-  let pinchDistance = 0;
-  canvas.addEventListener("pointerdown", (event) => {
-    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    canvas.setPointerCapture(event.pointerId);
-  });
-  canvas.addEventListener("pointermove", (event) => {
-    if (!touches.has(event.pointerId)) return;
-    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (touches.size !== 2) return;
-    const [a, b] = [...touches.values()];
-    const distance = Math.hypot(a.x - b.x, a.y - b.y);
-    if (pinchDistance) {
-      scene.zoom = Math.max(
-        0.5,
-        Math.min(2.5, scene.zoom * distance / pinchDistance),
-      );
-    }
-    pinchDistance = distance;
-  });
-  /** @param {PointerEvent} event */
-  const releaseTouch = (event) => {
-    touches.delete(event.pointerId);
-    pinchDistance = 0;
-  };
-  canvas.addEventListener("pointerup", releaseTouch);
-  canvas.addEventListener("pointercancel", releaseTouch);
+  bindTouchGesture();
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
-    scene.zoom = Math.max(
-      0.5,
-      Math.min(2.5, scene.zoom * (event.deltaY < 0 ? 1.1 : 0.9)),
+    scene.inputMode = "keyboard";
+    scene.zoomTarget = clamp(
+      scene.zoomTarget * (event.deltaY < 0 ? 1.1 : 0.9),
+      0.25,
+      2,
     );
+    scene.hudUntil = performance.now() + 500;
   }, { passive: false });
 }
 
@@ -377,14 +511,54 @@ export async function startApp() {
       move();
       accumulator -= TICK_MS;
     }
+    const local = scene.world.players[scene.localId];
+    if (local) {
+      recomputeVisibility(
+        scene.visibility,
+        visibilityPosition(local, scene.world.tick + accumulator / TICK_MS),
+      );
+      if (local.z !== lastPlayerZ) {
+        lastPlayerZ = local.z;
+        scene.viewZ = clamp(local.z, 0, WORLD_TOP);
+        scene.hudUntil = performance.now() + 500;
+      }
+    }
+    if (
+      !scene.chatOpen && !scene.menu && (held.has("KeyU") || held.has("KeyN"))
+    ) {
+      const zoomDirection = Number(held.has("KeyN")) - Number(held.has("KeyU"));
+      scene.zoomTarget = clamp(
+        scene.zoomTarget * Math.exp(zoomDirection * dt * 0.001),
+        0.25,
+        2,
+      );
+      scene.hudUntil = performance.now() + 500;
+    }
+    scene.zoom += (scene.zoomTarget - scene.zoom) * (1 - Math.exp(-dt * 0.012));
     const cameraX = Number(held.has("KeyL")) - Number(held.has("KeyJ")) +
       cameraStick.x;
     const cameraY = Number(held.has("KeyK")) - Number(held.has("KeyI")) +
       cameraStick.y;
-    scene.cameraOffset.x += cameraX * dt * 0.35;
-    scene.cameraOffset.y += cameraY * dt * 0.35;
-    if (!cameraX) scene.cameraOffset.x *= Math.exp(-dt / 300);
-    if (!cameraY) scene.cameraOffset.y *= Math.exp(-dt / 300);
+    if (scene.viewMode === "master") {
+      scene.camera.x += cameraX * dt * 0.48;
+      scene.camera.y += cameraY * dt * 0.48;
+    } else {
+      scene.cameraOffset.x += cameraX * dt * 0.48;
+      scene.cameraOffset.y += cameraY * dt * 0.48;
+      if (!cameraX) scene.cameraOffset.x *= Math.exp(-dt / 200);
+      if (!cameraY) scene.cameraOffset.y *= Math.exp(-dt / 200);
+      const pos = local
+        ? renderPosition(local, scene.world.tick + accumulator / TICK_MS)
+        : { x: 7, y: 7, z: 0 };
+      const targetX = (pos.x + 0.5) * 64 + scene.cameraOffset.x;
+      const targetY = (pos.y + 0.5) * 64 + scene.cameraOffset.y;
+      const follow = 1 - Math.exp(-dt * 0.01);
+      scene.camera.x += (targetX - scene.camera.x) * follow;
+      scene.camera.y += (targetY - scene.camera.y) * follow;
+    }
+    const zoom = scene.zoom;
+    scene.camera.x = clampCameraAxis(scene.camera.x, canvas.clientWidth, zoom);
+    scene.camera.y = clampCameraAxis(scene.camera.y, canvas.clientHeight, zoom);
     renderer.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };

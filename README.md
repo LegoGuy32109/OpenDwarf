@@ -10,16 +10,20 @@ no client build step or Rust runtime.
 deno task start
 ```
 
-Open `http://localhost:8000/` to start a local 16×16 world. Open
+Open `http://localhost:8000/` to start a local 16×16 world with eight view
+levels, a staircase, and a center pillar. Open
 `http://localhost:8000/admin` in another browser to see active worlds and join
 one. The `/admin` route has no access control in this demo. Only one visitor can
 join a world.
 
-On a keyboard, ESDF moves the player, IJKL moves the camera, `T` opens chat,
-`/` opens a command, and Escape opens the menu. On a touch screen, the left
-stick moves the player and the right stick moves the camera. Pinch or use the
-mouse wheel to zoom. The A button opens the chat bar and the B button opens the
-menu. Use `/nick Josh Hale` to set a name. Names are unique within a world.
+On a keyboard, ESDF moves the player, IJKL moves the camera, R/V changes the
+view level, and holding U/N smoothly zooms out/in. The mouse wheel also zooms.
+`T` opens chat, `/` opens a command, and Escape opens the menu. On a touch
+screen, the left stick moves the player and the right stick moves the camera.
+Pinch to zoom or drag two fingers vertically to change view levels. The A
+button opens the chat bar and the B button opens the menu. Use `/nick Josh
+Hale` to set a name. Names are unique within a world. Use `/master` for an
+unrestricted camera or `/entity` to return to the player's field of view.
 
 ## Code
 
@@ -28,7 +32,7 @@ menu. Use `/nick Josh Hale` to set a name. Names are unique within a world.
   JSDoc types runs in the browser without compilation.
 - `src/server/`: Deno TypeScript routes for static files, presence, ICE
   configuration, and a KV signal mailbox.
-- `public/`: HTML, custom CSS, browser entrypoint, and three sprite textures.
+- `public/`: HTML, custom CSS, browser entrypoint, and texture atlases.
 
 Each visitor owns their world in the browser. Movement begins locally on the
 next 50 ms simulation tick. The admin joins as another player through WebRTC
@@ -37,9 +41,10 @@ It does not run the world. The host sends the small world state every 500 ms to
 correct the joined player's prediction. The admin panel shows connection time
 and recent round trip times for either transport.
 
-The floor tile and player sprite come from the WebGL experiment. The bitmap
-font and the Escape menu labels come from the engine page. The old engine and
-world generation code remain in `webgl-version` for reference. See
+The floor, edges, ceilings, depth tint, visibility, and player sprite come
+from the WebGL experiment. The bitmap font and Escape menu labels come from
+the engine page. The old Rust engine and world generation code remain in
+`webgl-version` for reference. See
 [`docs/architecture.md`](docs/architecture.md) for the design choice and
 limits.
 

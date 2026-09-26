@@ -25,19 +25,19 @@ function deliver(world: ReturnType<typeof createWorld>, packets: Packet[]) {
 
 Deno.test("delayed, reordered and duplicated move intents apply at most once", () => {
   const world = createWorld();
-  addPlayer(world, "admin", { x: 8, y: 8 });
+  addPlayer(world, "admin", { x: 8, y: 7, z: 0 });
   const last = deliver(world, [
     { at: 250, sequence: 1, dx: -1, dy: 0 },
     { at: 100, sequence: 2, dx: 1, dy: 0 },
     { at: 300, sequence: 2, dx: 1, dy: 0 },
   ]);
   assertEquals(last, 2);
-  assertEquals(world.players.admin.move?.target, { x: 9, y: 8 });
+  assertEquals(world.players.admin.move?.target, { x: 9, y: 7, z: 0 });
   assertEquals(occupiedTiles(world.players.admin, 3), [
-    { x: 8, y: 8 },
-    { x: 9, y: 8 },
+    { x: 8, y: 7, z: 0 },
+    { x: 9, y: 7, z: 0 },
   ]);
-  assertEquals(renderPosition(world.players.admin, 5), { x: 8.5, y: 8 });
+  assertEquals(renderPosition(world.players.admin, 5), { x: 8.5, y: 7, z: 0 });
   advanceTicks(world, 10);
   assertEquals(world.players.admin.x, 9);
   assertEquals(world.players.admin.move, null);
@@ -45,21 +45,21 @@ Deno.test("delayed, reordered and duplicated move intents apply at most once", (
 
 Deno.test("lost first request can retry without moving twice", () => {
   const world = createWorld();
-  addPlayer(world, "admin", { x: 8, y: 8 });
+  addPlayer(world, "admin", { x: 8, y: 7, z: 0 });
   const retry = { at: 200, sequence: 1, dx: 0, dy: -1 };
   const last = deliver(world, [retry]);
   advanceTicks(world, 10);
-  assertEquals(world.players.admin.y, 7);
+  assertEquals(world.players.admin.y, 6);
   const duplicate = acceptMoveIntent(world, "admin", retry, last);
   assertEquals(duplicate.reason, "stale input");
-  assertEquals(world.players.admin.y, 7);
+  assertEquals(world.players.admin.y, 6);
 });
 
 Deno.test("host correction cancels a predicted move", () => {
   const client = createWorld();
   const host = createWorld();
-  addPlayer(client, "admin", { x: 14, y: 8 });
-  addPlayer(host, "admin", { x: 15, y: 8 });
+  addPlayer(client, "admin", { x: 14, y: 8, z: 0 });
+  addPlayer(host, "admin", { x: 15, y: 8, z: 0 });
   assertEquals(startMove(client, "admin", 1, 0, 1).ok, true);
   assertEquals(
     acceptMoveIntent(host, "admin", { dx: 1, dy: 0, sequence: 1 }, 0).ok,

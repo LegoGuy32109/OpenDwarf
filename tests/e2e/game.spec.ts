@@ -48,14 +48,14 @@ test("local world renders, moves, names and chats", async ({ page }) => {
   await expect(page).toHaveScreenshot("desktop-menu.png", {
     maxDiffPixelRatio: 0.02,
   });
-  await page.mouse.click(640, 419);
+  await page.mouse.click(640, 334);
   await expect.poll(() =>
     page.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { menuPage: string } } }).__od
         .scene.menuPage
     )
   ).toBe("settings");
-  await page.mouse.click(696, 414);
+  await page.mouse.click(696, 350);
   await expect.poll(() =>
     page.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { uiScale: number } } }).__od
@@ -119,6 +119,115 @@ test("phone controls fit safe area and move", async ({ browser }) => {
   await expect(landscape).toHaveScreenshot("phone-landscape.png", {
     maxDiffPixelRatio: 0.02,
   });
+  await context.close();
+});
+
+test("view commands, layer keys and held zoom work in the rendered world", async ({ page }) => {
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  const scene = () =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: {
+          scene: {
+            viewMode: string;
+            viewZ: number;
+            zoom: number;
+            zoomTarget: number;
+          };
+        };
+      }).__od.scene
+    );
+  await page.keyboard.press("/");
+  await page.locator("#chat-input").fill("/master");
+  await page.locator("#chat-input").press("Enter");
+  await expect.poll(async () => (await scene()).viewMode).toBe("master");
+  for (let i = 0; i < 10; i++) await page.keyboard.press("r");
+  await expect.poll(async () => (await scene()).viewZ).toBe(7);
+  await page.evaluate(() => {
+    (globalThis as unknown as { __od: { scene: { camera: { y: number } } } })
+      .__od.scene.camera.y = 750;
+  });
+  await expect(page).toHaveScreenshot("master-upper-staircase.png", {
+    maxDiffPixelRatio: 0.02,
+  });
+  for (let i = 0; i < 10; i++) await page.keyboard.press("v");
+  await expect.poll(async () => (await scene()).viewZ).toBe(0);
+  const before = (await scene()).zoom;
+  await page.keyboard.down("n");
+  await expect.poll(async () => (await scene()).zoomTarget).toBeGreaterThan(
+    before + 0.1,
+  );
+  await page.keyboard.up("n");
+  const after = await scene();
+  expect(after.zoom).toBeGreaterThan(before);
+  expect(after.zoom).toBeLessThan(after.zoomTarget);
+  await page.keyboard.press("/");
+  await page.locator("#chat-input").fill("/entity");
+  await page.locator("#chat-input").press("Enter");
+  await expect.poll(async () => (await scene()).viewMode).toBe("entity");
+});
+
+test("two-finger drag changes layer and pinch smoothly changes zoom", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 3,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  const cdp = await context.newCDPSession(page);
+  const touch = (
+    type: "touchStart" | "touchMove" | "touchEnd",
+    points: { x: number; y: number; id: number }[],
+  ) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+  await page.evaluate(() => {
+    (globalThis as unknown as { __od: { scene: { viewZ: number } } }).__od.scene
+      .viewZ = 3;
+  });
+  await touch("touchStart", [{ x: 140, y: 300, id: 1 }, {
+    x: 240,
+    y: 300,
+    id: 2,
+  }]);
+  await touch("touchMove", [{ x: 140, y: 400, id: 1 }, {
+    x: 240,
+    y: 400,
+    id: 2,
+  }]);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { viewZ: number; touchGesture: boolean } };
+      }).__od.scene.viewZ
+    )
+  ).toBe(1);
+  await touch("touchEnd", []);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { touchGesture: boolean } } })
+        .__od.scene.touchGesture
+    )
+  ).toBe(false);
+  await touch("touchStart", [{ x: 140, y: 300, id: 3 }, {
+    x: 240,
+    y: 300,
+    id: 4,
+  }]);
+  await touch("touchMove", [{ x: 100, y: 300, id: 3 }, {
+    x: 280,
+    y: 300,
+    id: 4,
+  }]);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { zoomTarget: number } } })
+        .__od.scene.zoomTarget
+    )
+  ).toBeGreaterThan(1.5);
+  await touch("touchEnd", []);
   await context.close();
 });
 
