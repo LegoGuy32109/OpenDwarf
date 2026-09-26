@@ -5,6 +5,7 @@
   "tasks": {
     "dev": "deno run --unstable-kv --allow-net --allow-read --allow-env --watch main.ts",
     "start": "deno run --unstable-kv --allow-net --allow-read --allow-env main.ts",
+    "start:env": "deno run --env-file=.env --unstable-kv --allow-net --allow-read --allow-env main.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",

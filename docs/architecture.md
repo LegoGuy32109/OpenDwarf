@@ -37,16 +37,20 @@ memory game loop. The admin route lists recent visitor heartbeats and offers
 two ways to join: WebRTC data channel or HTTP POST with SSE delivery.
 
 The browser host applies admin move intents in sequence order and sends a
-world snapshot every 500 ms. The admin predicts movement locally and replaces
-its world with host snapshots. This is enough to compare feel and correct
-simple drift. It is not rollback netcode. WebRTC uses direct connectivity when
-ICE can establish it; Xirsys TURN credentials are optional. The SSE route uses
-Deno KV as a mailbox. It is a comparison path, not a latency guarantee.
+world snapshot every 500 ms. The admin predicts movement locally. Snapshots
+acknowledge the latest processed input: the admin keeps an unacknowledged or
+matching local animation, maps the host's animation onto its own tick, and
+eases the sprite after a real correction. This avoids resetting the local
+animation every half second. It is not rollback netcode. WebRTC uses direct
+connectivity when ICE can establish it; Xirsys TURN credentials are optional.
+The SSE route uses Deno KV as a mailbox. It is a comparison path, not a
+latency guarantee.
 
-The admin panel records join time and the last 32 ping round trips. It shows
-their median and 95th percentile. Compare the transports on one network and
-again with a phone on cellular service. Browser tests cover function and
-screenshots; they do not substitute for those device measurements.
+The admin panel records join time, selected ICE candidate types, and the last
+32 ping round trips. It shows their median and 95th percentile. `/admin?relay=1`
+forces a TURN relay for a WebRTC diagnostic. Compare direct and relay paths on
+one network and again with a phone on cellular service. Browser tests cover
+function and screenshots; they do not substitute for those device measurements.
 
 ## Current limits
 
@@ -56,8 +60,9 @@ screenshots; they do not substitute for those device measurements.
   page. A missed close signal leaves presence until the 30 second TTL ends.
 - The KV mailbox is bounded to 32 recent signals. It suits this small demo,
   but it is not a general game message bus.
-- The admin receives state snapshots and can see brief corrections. There is
-  no clock synchronization, input replay, or authoritative server.
+- The admin receives state snapshots and can see brief corrections when the
+  host rejects a predicted move. There is no clock synchronization, input
+  replay, or authoritative server.
 - Offline caching is deferred. A visitor needs the website to load the game.
 
 ## Next experiment

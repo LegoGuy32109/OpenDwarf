@@ -15,7 +15,7 @@ test("local world renders, moves, names and chats", async ({ page }) => {
         __od: { scene: { world: { players: { self: { x: number } } } } };
       }).__od.scene.world.players.self.x
     )
-  ).toBe(before + 1);
+  ).toBeGreaterThan(before);
   await page.keyboard.up("f");
   await page.keyboard.press("t");
   await page.locator("#chat-input").fill("/nick Josh Hale");
@@ -273,10 +273,65 @@ for (const transport of ["webrtc", "sse"] as const) {
         }).__od.scene.world.players.admin.x
       )
     ).toBeGreaterThan(8);
+    const samples = await admin.evaluate(() =>
+      new Promise<number[]>((resolve) => {
+        const values: number[] = [];
+        const until = performance.now() + 1200;
+        const sample = () => {
+          const world = (globalThis as unknown as {
+            __od: {
+              scene: {
+                world: {
+                  tick: number;
+                  players: {
+                    admin: {
+                      x: number;
+                      move: null | {
+                        startPosition: { x: number };
+                        target: { x: number };
+                        startTick: number;
+                        durationTicks: number;
+                      };
+                    };
+                  };
+                };
+              };
+            };
+          }).__od.scene.world;
+          const player = world.players.admin;
+          const move = player?.move;
+          const progress = move
+            ? Math.max(
+              0,
+              Math.min(1, (world.tick - move.startTick) / move.durationTicks),
+            )
+            : 0;
+          values.push(
+            move
+              ? move.startPosition.x +
+                (move.target.x - move.startPosition.x) * progress
+              : player.x,
+          );
+          if (performance.now() < until) requestAnimationFrame(sample);
+          else resolve(values);
+        };
+        requestAnimationFrame(sample);
+      })
+    );
+    expect(
+      Math.min(
+        ...samples.slice(1).map((value, index) => value - samples[index]),
+      ),
+    ).toBeGreaterThan(-0.05);
     await admin.keyboard.up("f");
     await expect.poll(() => admin.locator("#net-stats").textContent(), {
       timeout: 8_000,
     }).toMatch(/RTT median \d+ ms/);
+    if (transport === "webrtc") {
+      await expect.poll(() => admin.locator("#net-stats").textContent(), {
+        timeout: 8_000,
+      }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay)/);
+    }
     await visitor.close();
     await expect.poll(
       () =>

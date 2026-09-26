@@ -75,7 +75,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},chatOpen:boolean,chatDraft:string,status:string}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},renderOffset:{x:number,y:number,z:number},chatOpen:boolean,chatDraft:string,status:string}} Scene */
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -370,6 +370,9 @@ export async function createRenderer(canvas) {
       opacity.set(player.id, visible);
       if (visible <= 0) continue;
       const pos = renderPosition(player, scene.world.tick + alpha);
+      const offset = player.id === scene.localId
+        ? scene.renderOffset
+        : { x: 0, y: 0, z: 0 };
       const uv = player.facingLeft ? [1, 0, -1, 1] : [0, 0, 1, 1];
       const tint = pos.z < scene.viewZ
         ? DEPTH_TINTS[Math.min(scene.viewZ - Math.floor(pos.z), 5)]
@@ -377,8 +380,8 @@ export async function createRenderer(canvas) {
       quad(
         textures.sprite,
         false,
-        pos.x * TILE,
-        pos.y * TILE,
+        (pos.x + offset.x) * TILE,
+        (pos.y + offset.y) * TILE,
         TILE,
         TILE,
         /** @type {[number,number,number,number]} */ (uv),
@@ -391,8 +394,12 @@ export async function createRenderer(canvas) {
       const visible = opacity.get(player.id) ?? 0;
       if (visible <= 0) continue;
       const pos = renderPosition(player, scene.world.tick + alpha);
-      const sx = (pos.x * TILE + TILE / 2 - cameraX) * zoom + width / 2;
-      const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
+      const offset = player.id === scene.localId
+        ? scene.renderOffset
+        : { x: 0, y: 0, z: 0 };
+      const sx = ((pos.x + offset.x) * TILE + TILE / 2 - cameraX) * zoom +
+        width / 2;
+      const sy = ((pos.y + offset.y) * TILE - cameraY) * zoom + height / 2;
       if (player.name) {
         text(
           player.name,

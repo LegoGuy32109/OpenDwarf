@@ -42,13 +42,14 @@ const scene = {
   touchGesture: false,
   visibility: createVisibility(),
   camera: { x: 480, y: 480 },
+  renderOffset: { x: 0, y: 0, z: 0 },
   chatOpen: false,
   chatDraft: "",
   status: "Local world",
   cameraOffset: { x: 0, y: 0 },
   sessionId: "",
   metrics:
-    /** @type {{transport:string,joinMs:number|null,rttMs:number[]}|undefined} */ (undefined),
+    /** @type {{transport:string,joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
 };
 /** @type {Set<string>} */
 const held = new Set();
@@ -450,11 +451,12 @@ function startAdminList() {
     const p95 = samples.length
       ? samples[Math.ceil(samples.length * 0.95) - 1]
       : null;
-    stats.textContent = `${metrics.transport.toUpperCase()} · join ${
-      metrics.joinMs ?? "…"
-    } ms · RTT median ${median ?? "…"} ms · p95 ${
-      p95 ?? "…"
-    } ms (${samples.length} samples)`;
+    stats.textContent =
+      `${metrics.transport.toUpperCase()} · route ${metrics.route} · join ${
+        metrics.joinMs ?? "…"
+      } ms · RTT median ${median ?? "…"} ms · p95 ${
+        p95 ?? "…"
+      } ms (${samples.length} samples)`;
   }, 500);
   const refresh = async () => {
     try {
@@ -535,6 +537,10 @@ export async function startApp() {
       scene.hudUntil = performance.now() + 500;
     }
     scene.zoom += (scene.zoomTarget - scene.zoom) * (1 - Math.exp(-dt * 0.012));
+    const correctionDecay = Math.exp(-dt / 140);
+    scene.renderOffset.x *= correctionDecay;
+    scene.renderOffset.y *= correctionDecay;
+    scene.renderOffset.z *= correctionDecay;
     const cameraX = Number(held.has("KeyL")) - Number(held.has("KeyJ")) +
       cameraStick.x;
     const cameraY = Number(held.has("KeyK")) - Number(held.has("KeyI")) +
@@ -550,8 +556,10 @@ export async function startApp() {
       const pos = local
         ? renderPosition(local, scene.world.tick + accumulator / TICK_MS)
         : { x: 7, y: 7, z: 0 };
-      const targetX = (pos.x + 0.5) * 64 + scene.cameraOffset.x;
-      const targetY = (pos.y + 0.5) * 64 + scene.cameraOffset.y;
+      const targetX = (pos.x + scene.renderOffset.x + 0.5) * 64 +
+        scene.cameraOffset.x;
+      const targetY = (pos.y + scene.renderOffset.y + 0.5) * 64 +
+        scene.cameraOffset.y;
       const follow = 1 - Math.exp(-dt * 0.01);
       scene.camera.x += (targetX - scene.camera.x) * follow;
       scene.camera.y += (targetY - scene.camera.y) * follow;

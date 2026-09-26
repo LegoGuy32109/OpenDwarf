@@ -37,9 +37,18 @@ unrestricted camera or `/entity` to return to the player's field of view.
 Each visitor owns their world in the browser. Movement begins locally on the
 next 50 ms simulation tick. The admin joins as another player through WebRTC
 or HTTP POST plus SSE. Deno KV stores short lived presence and signal messages.
-It does not run the world. The host sends the small world state every 500 ms to
-correct the joined player's prediction. The admin panel shows connection time
-and recent round trip times for either transport.
+It does not run the world. The host sends the small world state every 500 ms
+with the latest processed input sequence. The admin keeps its own matching
+animation and eases genuine corrections. The admin panel shows connection
+time and recent round trip times for either transport.
+
+For a TURN diagnostic, open `/admin?relay=1` and choose WebRTC. That join
+forces relay candidates on both browsers and shows the selected candidate
+types in the admin panel. A working TURN configuration is required. Normal
+WebRTC joins allow a direct route. The Xirsys values belong in the server
+environment; the browser receives temporary ICE credentials. For local testing,
+put `XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` in an ignored `.env`
+file and run `deno task start:env`.
 
 The floor, edges, ceilings, depth tint, visibility, and player sprite come
 from the WebGL experiment. The bitmap font and Escape menu labels come from

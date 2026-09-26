@@ -8,9 +8,11 @@ import {
   submitMessage,
 } from "../shared/world.js";
 import { acceptMoveIntent } from "../shared/protocol.js";
+import { mergeSnapshot } from "../shared/reconcile.js";
+import { renderPosition } from "../shared/world.js";
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,status:string,metrics?:{transport:string,joinMs:number|null,rttMs:number[]}}} Scene */
+/** @typedef {{world:World,localId:string,status:string,renderOffset:{x:number,y:number,z:number},metrics?:{transport:string,joinMs:number|null,rttMs:number[],route:string}}} Scene */
 /** @typedef {{id:string,from:'host'|'admin',kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {'host'|'admin'} recipient @param {string} kind @param {unknown} data @param {'host'|'admin'} from */
@@ -52,6 +54,32 @@ async function ice() {
   return /** @type {RTCIceServer[]} */ (data.iceServers);
 }
 
+/** Report ICE candidate types without exposing addresses. */
+/** @param {RTCPeerConnection} peer */
+async function selectedRoute(peer) {
+  const stats = await peer.getStats();
+  const transport = [...stats.values()].find((stat) =>
+    stat.type === "transport" && "selectedCandidatePairId" in stat
+  );
+  const pairId = transport && "selectedCandidatePairId" in transport
+    ? String(transport.selectedCandidatePairId)
+    : "";
+  const pair = stats.get(pairId);
+  if (
+    !pair || !("localCandidateId" in pair) ||
+    !("remoteCandidateId" in pair)
+  ) return "connecting";
+  const local = stats.get(String(pair.localCandidateId));
+  const remote = stats.get(String(pair.remoteCandidateId));
+  const localType = local && "candidateType" in local
+    ? String(local.candidateType)
+    : "?";
+  const remoteType = remote && "candidateType" in remote
+    ? String(remote.candidateType)
+    : "?";
+  return `${localType}/${remoteType}`;
+}
+
 /** @param {RTCPeerConnection} peer */
 function gathered(peer) {
   if (peer.iceGatheringState === "complete") return Promise.resolve();
@@ -90,7 +118,11 @@ export function startHost(scene, session) {
   const timer = setInterval(heartbeat, 10_000);
 
   function publish() {
-    const state = { type: "state", world: scene.world };
+    const state = {
+      type: "state",
+      world: scene.world,
+      lastAdminSequence,
+    };
     if (channel?.readyState === "open") {
       channel.send(JSON.stringify(state));
     }
@@ -161,8 +193,8 @@ export function startHost(scene, session) {
     }
   }
 
-  /** @param {'webrtc'|'sse'} mode */
-  async function acceptJoin(mode) {
+  /** @param {'webrtc'|'sse'} mode @param {boolean} forceRelay */
+  async function acceptJoin(mode, forceRelay) {
     if (joined) return;
     joined = true;
     if (mode === "sse") {
@@ -173,7 +205,10 @@ export function startHost(scene, session) {
       return;
     }
     try {
-      peer = new RTCPeerConnection({ iceServers: await ice() });
+      peer = new RTCPeerConnection({
+        iceServers: await ice(),
+        iceTransportPolicy: forceRelay ? "relay" : "all",
+      });
       channel = peer.createDataChannel("world", { ordered: true });
       channel.onopen = () => {
         addPlayer(scene.world, "admin", { x: 8, y: 7, z: 0 });
@@ -205,8 +240,12 @@ export function startHost(scene, session) {
 
   const closeInbox = inbox(session, "host", (message) => {
     if (message.kind === "join") {
-      const mode = /** @type {{transport?:string}} */ (message.data)?.transport;
-      void acceptJoin(mode === "sse" ? "sse" : "webrtc");
+      const request =
+        /** @type {{transport?:string,relay?:boolean}} */ (message.data);
+      void acceptJoin(
+        request?.transport === "sse" ? "sse" : "webrtc",
+        request?.relay === true,
+      );
     }
     if (message.kind === "answer" && peer) {
       void peer.setRemoteDescription(
@@ -263,16 +302,48 @@ export function joinWorld(scene, session, mode = "webrtc") {
   /** @type {RTCDataChannel|null} */
   let channel = null;
   let connected = false;
+  let latestLocalSequence = 0;
+  let lastSnapshotTick = -1;
+  const forceRelay = mode === "webrtc" &&
+    new URL(location.href).searchParams.has("relay");
   const startedAt = performance.now();
   /** @type {Map<string,number>} */
   const pings = new Map();
-  scene.metrics = { transport: mode, joinMs: null, rttMs: [] };
+  scene.metrics = {
+    transport: mode,
+    joinMs: null,
+    rttMs: [],
+    route: "connecting",
+  };
   scene.status = "Connecting to visitor…";
 
   /** @param {Record<string,unknown>} value */
   function receiveGame(value) {
     if (value.type === "state") {
-      scene.world = /** @type {World} */ (value.world);
+      const snapshot = /** @type {World} */ (value.world);
+      if (snapshot.tick < lastSnapshotTick) return;
+      lastSnapshotTick = snapshot.tick;
+      if (connected) {
+        const before = scene.world.players.admin
+          ? renderPosition(scene.world.players.admin, scene.world.tick)
+          : null;
+        const { corrected } = mergeSnapshot(
+          scene.world,
+          snapshot,
+          Number(value.lastAdminSequence) || 0,
+          latestLocalSequence,
+        );
+        const after = scene.world.players.admin
+          ? renderPosition(scene.world.players.admin, scene.world.tick)
+          : null;
+        if (corrected && before && after) {
+          scene.renderOffset.x += before.x - after.x;
+          scene.renderOffset.y += before.y - after.y;
+          scene.renderOffset.z += before.z - after.z;
+        }
+      } else {
+        scene.world = snapshot;
+      }
       scene.localId = "admin";
       scene.status = connected ? "Visitor world" : "Connected to visitor";
       if (!connected && scene.metrics) {
@@ -313,7 +384,10 @@ export function joinWorld(scene, session, mode = "webrtc") {
     if (message.kind !== "offer") return;
     void (async () => {
       try {
-        peer = new RTCPeerConnection({ iceServers: await ice() });
+        peer = new RTCPeerConnection({
+          iceServers: await ice(),
+          iceTransportPolicy: forceRelay ? "relay" : "all",
+        });
         peer.ondatachannel = (event) => {
           channel = event.channel;
           channel.onmessage = (incoming) => {
@@ -345,7 +419,10 @@ export function joinWorld(scene, session, mode = "webrtc") {
       }
     })();
   });
-  void signal(session, "host", "join", { transport: mode }, "admin").catch(
+  void signal(session, "host", "join", {
+    transport: mode,
+    relay: forceRelay,
+  }, "admin").catch(
     (error) => {
       scene.status = "Join request failed";
       console.error(error);
@@ -354,6 +431,9 @@ export function joinWorld(scene, session, mode = "webrtc") {
 
   /** @param {Record<string,unknown>} message */
   function send(message) {
+    if (message.type === "move" && typeof message.sequence === "number") {
+      latestLocalSequence = Math.max(latestLocalSequence, message.sequence);
+    }
     if (mode === "sse") {
       void signal(session, "host", "game", message, "admin").catch(
         console.error,
@@ -366,6 +446,11 @@ export function joinWorld(scene, session, mode = "webrtc") {
   }
   const pingTimer = setInterval(() => {
     if (!connected) return;
+    if (peer && scene.metrics) {
+      void selectedRoute(peer).then((route) => {
+        if (scene.metrics) scene.metrics.route = route;
+      }).catch(console.error);
+    }
     const id = crypto.randomUUID();
     pings.set(id, performance.now());
     if (pings.size > 8) pings.delete(pings.keys().next().value ?? "");
