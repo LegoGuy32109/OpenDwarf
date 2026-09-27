@@ -231,116 +231,147 @@ test("two-finger drag changes layer and pinch smoothly changes zoom", async ({ b
   await context.close();
 });
 
-for (const transport of ["webrtc", "sse"] as const) {
-  test(`admin joins over ${transport} and sees movement`, async ({ browser }) => {
-    const visitor = await browser.newPage();
-    const admin = await browser.newPage();
-    await visitor.goto("/?harness=1");
-    await expect(visitor.locator("#loading")).toBeHidden();
-    const session = await visitor.evaluate(() =>
-      (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-        .scene.sessionId
-    );
-    await admin.goto("/admin?harness=1");
-    await expect(admin.locator("#loading")).toBeHidden();
-    const join = admin.locator(
-      `[data-session-id="${session}"][data-transport="${transport}"]`,
-    );
-    await expect(join).toBeVisible();
-    await join.click();
-    await expect.poll(
-      () =>
-        admin.evaluate(() =>
-          (globalThis as unknown as { __od: { scene: { localId: string } } })
-            .__od.scene.localId
-        ),
-      { timeout: 15_000 },
-    ).toBe("admin");
-    await expect.poll(() =>
-      visitor.evaluate(() =>
-        Object.keys(
-          (globalThis as unknown as {
-            __od: { scene: { world: { players: object } } };
-          }).__od.scene.world.players,
-        )
-      )
-    ).toContain("admin");
-    await admin.keyboard.down("f");
-    await expect.poll(() =>
-      visitor.evaluate(() =>
+test("admin joins over WebRTC and sees smooth movement", async ({ browser }) => {
+  const visitor = await browser.newPage();
+  const admin = await browser.newPage();
+  await visitor.goto("/?harness=1");
+  await expect(visitor.locator("#loading")).toBeHidden();
+  const session = await visitor.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+      .scene.sessionId
+  );
+  await admin.goto("/admin?harness=1");
+  await expect(admin.locator("#loading")).toBeHidden();
+  await expect(admin.locator('[data-transport="sse"]')).toHaveCount(0);
+  const join = admin.locator(
+    `[data-session-id="${session}"][data-transport="webrtc"]`,
+  );
+  await expect(join).toBeVisible();
+  await join.click();
+  await expect.poll(
+    () =>
+      admin.evaluate(() =>
+        (globalThis as unknown as { __od: { scene: { localId: string } } })
+          .__od.scene.localId
+      ),
+    { timeout: 15_000 },
+  ).toBe("admin");
+  await expect.poll(() =>
+    visitor.evaluate(() =>
+      Object.keys(
         (globalThis as unknown as {
-          __od: { scene: { world: { players: { admin: { x: number } } } } };
-        }).__od.scene.world.players.admin.x
+          __od: { scene: { world: { players: object } } };
+        }).__od.scene.world.players,
       )
-    ).toBeGreaterThan(8);
-    const samples = await admin.evaluate(() =>
-      new Promise<number[]>((resolve) => {
-        const values: number[] = [];
-        const until = performance.now() + 1200;
-        const sample = () => {
-          const world = (globalThis as unknown as {
-            __od: {
-              scene: {
-                world: {
-                  tick: number;
-                  players: {
-                    admin: {
-                      x: number;
-                      move: null | {
-                        startPosition: { x: number };
-                        target: { x: number };
-                        startTick: number;
-                        durationTicks: number;
-                      };
+    )
+  ).toContain("admin");
+  await admin.keyboard.down("f");
+  await expect.poll(() =>
+    visitor.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { admin: { x: number } } } } };
+      }).__od.scene.world.players.admin.x
+    )
+  ).toBeGreaterThan(8);
+  const samples = await admin.evaluate(() =>
+    new Promise<number[]>((resolve) => {
+      const values: number[] = [];
+      const until = performance.now() + 1200;
+      const sample = () => {
+        const world = (globalThis as unknown as {
+          __od: {
+            scene: {
+              world: {
+                tick: number;
+                players: {
+                  admin: {
+                    x: number;
+                    move: null | {
+                      startPosition: { x: number };
+                      target: { x: number };
+                      startTick: number;
+                      durationTicks: number;
                     };
                   };
                 };
               };
             };
-          }).__od.scene.world;
-          const player = world.players.admin;
-          const move = player?.move;
-          const progress = move
-            ? Math.max(
-              0,
-              Math.min(1, (world.tick - move.startTick) / move.durationTicks),
-            )
-            : 0;
-          values.push(
-            move
-              ? move.startPosition.x +
-                (move.target.x - move.startPosition.x) * progress
-              : player.x,
-          );
-          if (performance.now() < until) requestAnimationFrame(sample);
-          else resolve(values);
-        };
-        requestAnimationFrame(sample);
-      })
-    );
-    expect(
-      Math.min(
-        ...samples.slice(1).map((value, index) => value - samples[index]),
+          };
+        }).__od.scene.world;
+        const player = world.players.admin;
+        const move = player?.move;
+        const progress = move
+          ? Math.max(
+            0,
+            Math.min(1, (world.tick - move.startTick) / move.durationTicks),
+          )
+          : 0;
+        values.push(
+          move
+            ? move.startPosition.x +
+              (move.target.x - move.startPosition.x) * progress
+            : player.x,
+        );
+        if (performance.now() < until) requestAnimationFrame(sample);
+        else resolve(values);
+      };
+      requestAnimationFrame(sample);
+    })
+  );
+  expect(
+    Math.min(
+      ...samples.slice(1).map((value, index) => value - samples[index]),
+    ),
+  ).toBeGreaterThan(-0.05);
+  await admin.keyboard.up("f");
+  await expect.poll(() => admin.locator("#net-stats").textContent(), {
+    timeout: 8_000,
+  }).toMatch(/RTT median \d+ ms/);
+  await expect.poll(() => admin.locator("#net-stats").textContent(), {
+    timeout: 8_000,
+  }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay)/);
+  await visitor.close();
+  await expect.poll(
+    () =>
+      admin.evaluate(() =>
+        (globalThis as unknown as { __od: { scene: { status: string } } })
+          .__od.scene.status
       ),
-    ).toBeGreaterThan(-0.05);
-    await admin.keyboard.up("f");
-    await expect.poll(() => admin.locator("#net-stats").textContent(), {
-      timeout: 8_000,
-    }).toMatch(/RTT median \d+ ms/);
-    if (transport === "webrtc") {
-      await expect.poll(() => admin.locator("#net-stats").textContent(), {
-        timeout: 8_000,
-      }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay)/);
-    }
-    await visitor.close();
-    await expect.poll(
-      () =>
-        admin.evaluate(() =>
-          (globalThis as unknown as { __od: { scene: { status: string } } })
-            .__od.scene.status
-        ),
-      { timeout: 8_000 },
-    ).toBe("Visitor left. World ended.");
-    await admin.close();
-  });
-}
+    { timeout: 8_000 },
+  ).toBe("Visitor left. World ended.");
+  await admin.close();
+});
+
+test("TURN relay join reports a relay candidate", async ({ browser }) => {
+  test.skip(
+    Deno.env.get("OD_TEST_RELAY") !== "1",
+    "requires local TURN credentials",
+  );
+  const visitor = await browser.newPage();
+  const admin = await browser.newPage();
+  await visitor.goto("/?harness=1");
+  await expect(visitor.locator("#loading")).toBeHidden();
+  const session = await visitor.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+      .scene.sessionId
+  );
+  await admin.goto("/admin?harness=1&relay=1");
+  await expect(admin.locator("#loading")).toBeHidden();
+  await admin.locator(`[data-session-id="${session}"]`).click();
+  await expect.poll(
+    () =>
+      admin.evaluate(() =>
+        (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+          .scene.localId
+      ),
+    { timeout: 30_000 },
+  ).toBe("admin");
+  await expect.poll(() => admin.locator("#net-stats").textContent(), {
+    timeout: 15_000,
+  }).toMatch(/route relay\/relay/);
+  await expect.poll(() => admin.locator("#net-stats").textContent(), {
+    timeout: 15_000,
+  }).toMatch(/RTT median \d+ ms/);
+  await visitor.close();
+  await admin.close();
+});

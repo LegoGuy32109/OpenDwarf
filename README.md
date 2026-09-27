@@ -27,7 +27,7 @@ unrestricted camera or `/entity` to return to the player's field of view.
 
 ## Code
 
-- `src/client/`: browser input, WebGL2 rendering, and network transports.
+- `src/client/`: browser input, WebGL2 rendering, and WebRTC networking.
 - `src/shared/`: world rules and move intent validation. Plain JavaScript with
   JSDoc types runs in the browser without compilation.
 - `src/server/`: Deno TypeScript routes for static files, presence, ICE
@@ -35,20 +35,23 @@ unrestricted camera or `/entity` to return to the player's field of view.
 - `public/`: HTML, custom CSS, browser entrypoint, and texture atlases.
 
 Each visitor owns their world in the browser. Movement begins locally on the
-next 50 ms simulation tick. The admin joins as another player through WebRTC
-or HTTP POST plus SSE. Deno KV stores short lived presence and signal messages.
+next 50 ms simulation tick. The admin joins as another player through WebRTC.
+Deno KV stores short lived presence and signaling messages.
 It does not run the world. The host sends the small world state every 500 ms
 with the latest processed input sequence. The admin keeps its own matching
 animation and eases genuine corrections. The admin panel shows connection
-time and recent round trip times for either transport.
+time, selected ICE route, and recent round trip times.
 
-For a TURN diagnostic, open `/admin?relay=1` and choose WebRTC. That join
+For a TURN diagnostic, open `/admin?relay=1` and join a world. That join
 forces relay candidates on both browsers and shows the selected candidate
 types in the admin panel. A working TURN configuration is required. Normal
 WebRTC joins allow a direct route. The Xirsys values belong in the server
 environment; the browser receives temporary ICE credentials. For local testing,
 put `XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` in an ignored `.env`
 file and run `deno task start:env`.
+
+After deployment, follow the [phone connection test](docs/phone-network-test.md)
+to compare direct and TURN routes on Wi-Fi and cellular data.
 
 The floor, edges, ceilings, depth tint, visibility, and player sprite come
 from the WebGL experiment. The bitmap font and Escape menu labels come from
@@ -67,8 +70,8 @@ deno task hooks
 
 `verify` checks formatting, lint, types, and deterministic world tests. The
 Git pre-push hook runs the same task. CI also runs Playwright in Chromium. The
-Playwright tests compare desktop and phone screenshots and exercise both
-connection paths. A system Chromium installation is used locally when present.
+Playwright tests compare desktop and phone screenshots and exercise the
+WebRTC connection. A system Chromium installation is used locally when present.
 
 ## Deploy
 
@@ -76,8 +79,8 @@ The `deploy` section in `deno.json` uses a dynamic Deno Deploy app with
 `main.ts` as its entrypoint. Create the `open-dwarf` app in the selected Deno
 Deploy organization, then provision a Deno KV database and assign it to the
 app. Deno Deploy supplies that database to `Deno.openKv()`. Set
-`XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` if WebRTC should work
-across networks that need TURN. The SSE path still works without TURN.
+`XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` so WebRTC can use TURN
+when a direct connection is unavailable.
 
 Set `opendwarf.joshhale.me` and any extra domains in Deno Deploy and DNS after
 the app is deployed. Domain setup and deployment are manual steps. The code

@@ -12,7 +12,7 @@ import { mergeSnapshot } from "../shared/reconcile.js";
 import { renderPosition } from "../shared/world.js";
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,status:string,renderOffset:{x:number,y:number,z:number},metrics?:{transport:string,joinMs:number|null,rttMs:number[],route:string}}} Scene */
+/** @typedef {{world:World,localId:string,status:string,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string}}} Scene */
 /** @typedef {{id:string,from:'host'|'admin',kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {'host'|'admin'} recipient @param {string} kind @param {unknown} data @param {'host'|'admin'} from */
@@ -105,8 +105,9 @@ export function startHost(scene, session) {
   /** @type {RTCDataChannel|null} */
   let channel = null;
   let joined = false;
-  let sseConnected = false;
   let lastAdminSequence = 0;
+  /** @type {{dx:number,dy:number,sequence:number}[]} */
+  const pendingMoves = [];
   const heartbeat = () => {
     void fetch("/api/presence", {
       method: "POST",
@@ -126,8 +127,21 @@ export function startHost(scene, session) {
     if (channel?.readyState === "open") {
       channel.send(JSON.stringify(state));
     }
-    if (sseConnected) {
-      void signal(session, "admin", "game", state, "host").catch(console.error);
+  }
+
+  function drainMoves() {
+    while (pendingMoves.length) {
+      const intent = pendingMoves[0];
+      const result = acceptMoveIntent(
+        scene.world,
+        "admin",
+        intent,
+        lastAdminSequence,
+      );
+      if (result.reason === "already moving") return;
+      pendingMoves.shift();
+      lastAdminSequence = result.sequence;
+      publish();
     }
   }
 
@@ -139,25 +153,18 @@ export function startHost(scene, session) {
       if (message.type === "ping") {
         const pong = { type: "pong", id: message.id };
         if (channel?.readyState === "open") channel.send(JSON.stringify(pong));
-        if (sseConnected) {
-          void signal(session, "admin", "game", pong, "host").catch(
-            console.error,
-          );
-        }
         return;
       }
       if (message.type === "move") {
-        const result = acceptMoveIntent(
-          scene.world,
-          "admin",
-          {
+        if (pendingMoves.length < 8) {
+          pendingMoves.push({
             dx: Number(message.dx),
             dy: Number(message.dy),
             sequence: Number(message.sequence),
-          },
-          lastAdminSequence,
-        );
-        lastAdminSequence = result.sequence;
+          });
+          drainMoves();
+        }
+        return;
       }
       if (message.type === "typing") {
         setTyping(scene.world, "admin", message.typing === true);
@@ -168,15 +175,6 @@ export function startHost(scene, session) {
       if (message.type === "nick") {
         const result = setNickname(scene.world, "admin", String(message.name));
         channel?.send(JSON.stringify({ type: "nick-result", result }));
-        if (sseConnected) {
-          void signal(
-            session,
-            "admin",
-            "game",
-            { type: "nick-result", result },
-            "host",
-          );
-        }
       }
       publish();
     } catch (error) {
@@ -193,17 +191,12 @@ export function startHost(scene, session) {
     }
   }
 
-  /** @param {'webrtc'|'sse'} mode @param {boolean} forceRelay */
-  async function acceptJoin(mode, forceRelay) {
+  /** @param {boolean} forceRelay */
+  async function acceptJoin(forceRelay) {
     if (joined) return;
     joined = true;
-    if (mode === "sse") {
-      sseConnected = true;
-      addPlayer(scene.world, "admin", { x: 8, y: 7, z: 0 });
-      scene.status = "A visitor joined your world";
-      publish();
-      return;
-    }
+    lastAdminSequence = 0;
+    pendingMoves.length = 0;
     try {
       peer = new RTCPeerConnection({
         iceServers: await ice(),
@@ -240,29 +233,13 @@ export function startHost(scene, session) {
 
   const closeInbox = inbox(session, "host", (message) => {
     if (message.kind === "join") {
-      const request =
-        /** @type {{transport?:string,relay?:boolean}} */ (message.data);
-      void acceptJoin(
-        request?.transport === "sse" ? "sse" : "webrtc",
-        request?.relay === true,
-      );
+      const request = /** @type {{relay?:boolean}} */ (message.data);
+      void acceptJoin(request?.relay === true);
     }
     if (message.kind === "answer" && peer) {
       void peer.setRemoteDescription(
         /** @type {RTCSessionDescriptionInit} */ (message.data),
       );
-    }
-    if (
-      message.kind === "game" && sseConnected && message.data &&
-      typeof message.data === "object"
-    ) {
-      handleAdminMessage(/** @type {Record<string,unknown>} */ (message.data));
-    }
-    if (message.kind === "leave" && sseConnected) {
-      sseConnected = false;
-      joined = false;
-      removePlayer(scene.world, "admin");
-      scene.status = "Visitor left. Local world.";
     }
   });
   const syncTimer = setInterval(publish, 500);
@@ -285,6 +262,7 @@ export function startHost(scene, session) {
   }, { once: true });
   return {
     publish,
+    tick: drainMoves,
     close() {
       clearInterval(timer);
       clearInterval(syncTimer);
@@ -295,8 +273,8 @@ export function startHost(scene, session) {
   };
 }
 
-/** @param {Scene} scene @param {string} session @param {'webrtc'|'sse'} [mode] */
-export function joinWorld(scene, session, mode = "webrtc") {
+/** @param {Scene} scene @param {string} session */
+export function joinWorld(scene, session) {
   /** @type {RTCPeerConnection|null} */
   let peer = null;
   /** @type {RTCDataChannel|null} */
@@ -304,13 +282,11 @@ export function joinWorld(scene, session, mode = "webrtc") {
   let connected = false;
   let latestLocalSequence = 0;
   let lastSnapshotTick = -1;
-  const forceRelay = mode === "webrtc" &&
-    new URL(location.href).searchParams.has("relay");
+  const forceRelay = new URL(location.href).searchParams.has("relay");
   const startedAt = performance.now();
   /** @type {Map<string,number>} */
   const pings = new Map();
   scene.metrics = {
-    transport: mode,
     joinMs: null,
     rttMs: [],
     route: "connecting",
@@ -375,12 +351,6 @@ export function joinWorld(scene, session, mode = "webrtc") {
       connected = false;
       return;
     }
-    if (
-      mode === "sse" && message.kind === "game" && message.data &&
-      typeof message.data === "object"
-    ) {
-      receiveGame(/** @type {Record<string,unknown>} */ (message.data));
-    }
     if (message.kind !== "offer") return;
     void (async () => {
       try {
@@ -420,7 +390,6 @@ export function joinWorld(scene, session, mode = "webrtc") {
     })();
   });
   void signal(session, "host", "join", {
-    transport: mode,
     relay: forceRelay,
   }, "admin").catch(
     (error) => {
@@ -433,12 +402,6 @@ export function joinWorld(scene, session, mode = "webrtc") {
   function send(message) {
     if (message.type === "move" && typeof message.sequence === "number") {
       latestLocalSequence = Math.max(latestLocalSequence, message.sequence);
-    }
-    if (mode === "sse") {
-      void signal(session, "host", "game", message, "admin").catch(
-        console.error,
-      );
-      return true;
     }
     if (channel?.readyState !== "open") return false;
     channel.send(JSON.stringify(message));
@@ -460,7 +423,6 @@ export function joinWorld(scene, session, mode = "webrtc") {
     send,
     close() {
       clearInterval(pingTimer);
-      if (mode === "sse") void signal(session, "host", "leave", {}, "admin");
       closeInbox();
       channel?.close();
       peer?.close();

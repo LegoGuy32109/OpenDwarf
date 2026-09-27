@@ -49,7 +49,7 @@ const scene = {
   cameraOffset: { x: 0, y: 0 },
   sessionId: "",
   metrics:
-    /** @type {{transport:string,joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
+    /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
 };
 /** @type {Set<string>} */
 const held = new Set();
@@ -451,12 +451,11 @@ function startAdminList() {
     const p95 = samples.length
       ? samples[Math.ceil(samples.length * 0.95) - 1]
       : null;
-    stats.textContent =
-      `${metrics.transport.toUpperCase()} · route ${metrics.route} · join ${
-        metrics.joinMs ?? "…"
-      } ms · RTT median ${median ?? "…"} ms · p95 ${
-        p95 ?? "…"
-      } ms (${samples.length} samples)`;
+    stats.textContent = `WebRTC · route ${metrics.route} · join ${
+      metrics.joinMs ?? "…"
+    } ms · RTT median ${median ?? "…"} ms · p95 ${
+      p95 ?? "…"
+    } ms (${samples.length} samples)`;
   }, 500);
   const refresh = async () => {
     try {
@@ -468,19 +467,15 @@ function startAdminList() {
         : "No active visitors";
       for (const item of data.sessions) {
         const li = document.createElement("li");
-        for (const mode of /** @type {const} */ (["webrtc", "sse"])) {
-          const button = document.createElement("button");
-          button.dataset.sessionId = item.id;
-          button.dataset.transport = mode;
-          button.textContent = `Join ${
-            item.id.slice(0, 8)
-          } · ${mode.toUpperCase()}`;
-          button.addEventListener("click", () => {
-            guest?.close();
-            guest = joinWorld(scene, item.id, mode);
-          });
-          li.append(button);
-        }
+        const button = document.createElement("button");
+        button.dataset.sessionId = item.id;
+        button.dataset.transport = "webrtc";
+        button.textContent = `Join ${item.id.slice(0, 8)} · WebRTC`;
+        button.addEventListener("click", () => {
+          guest?.close();
+          guest = joinWorld(scene, item.id);
+        });
+        li.append(button);
         sessions.append(li);
       }
     } catch {
@@ -510,6 +505,7 @@ export async function startApp() {
     accumulator += dt;
     while (accumulator >= TICK_MS) {
       advanceTicks(scene.world);
+      host?.tick();
       move();
       accumulator -= TICK_MS;
     }

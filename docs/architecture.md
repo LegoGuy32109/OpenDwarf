@@ -33,18 +33,20 @@ drag for view levels. A brief bitmap HUD shows both values during changes.
 Each visitor can start moving before a server round trip. The visitor's browser
 owns the world state. Deno Deploy serves code and relays small signaling
 messages through KV, so isolated server instances do not need a shared in
-memory game loop. The admin route lists recent visitor heartbeats and offers
-two ways to join: WebRTC data channel or HTTP POST with SSE delivery.
+memory game loop. The admin route lists recent visitor heartbeats and joins
+through a WebRTC data channel. HTTP POST and SSE carry connection signaling;
+they do not carry game updates.
 
 The browser host applies admin move intents in sequence order and sends a
 world snapshot every 500 ms. The admin predicts movement locally. Snapshots
 acknowledge the latest processed input: the admin keeps an unacknowledged or
 matching local animation, maps the host's animation onto its own tick, and
 eases the sprite after a real correction. This avoids resetting the local
-animation every half second. It is not rollback netcode. WebRTC uses direct
-connectivity when ICE can establish it; Xirsys TURN credentials are optional.
-The SSE route uses Deno KV as a mailbox. It is a comparison path, not a
-latency guarantee.
+animation every half second. If a straight-line intent arrives just before
+the host finishes its current tile, the host queues it for the next tick.
+It is not rollback netcode. WebRTC uses direct
+connectivity when ICE can establish it; Xirsys TURN credentials supply a relay
+when needed. The signaling route uses Deno KV as a mailbox.
 
 The admin panel records join time, selected ICE candidate types, and the last
 32 ping round trips. It shows their median and 95th percentile. `/admin?relay=1`
@@ -67,8 +69,8 @@ function and screenshots; they do not substitute for those device measurements.
 
 ## Next experiment
 
-Test both join buttons from a desktop on the same network, then from a phone
-on cellular service. Record join time, median RTT, 95th percentile RTT, and
-whether a move visibly snaps after correction. Use the same devices and world
-for each path. That evidence can decide if this demo needs WebRTC, whether SSE
-is sufficient, and when a server owned world becomes useful.
+Test a direct join and `/admin?relay=1` from a desktop on the same network,
+then from a phone on cellular service. Record the selected candidate route,
+join time, median RTT, 95th percentile RTT, and whether a move visibly snaps
+after correction. Use the same devices and world for each path. That evidence
+can guide TURN configuration and future server-owned world experiments.
