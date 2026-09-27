@@ -104,6 +104,14 @@ export function startMove(world, id, dx, dy, sequence) {
   const target = resolveMove(origin, dx, dy);
   if (!target) return { ok: false, reason: "blocked" };
   if (
+    Object.values(world.players).some((other) =>
+      other.id !== id &&
+      occupiedTiles(other, world.tick).some((tile) =>
+        tile.x === target.x && tile.y === target.y && tile.z === target.z
+      )
+    )
+  ) return { ok: false, reason: "occupied" };
+  if (
     dx && dy && (!resolveMove(origin, dx, 0) || !resolveMove(origin, 0, dy))
   ) {
     return { ok: false, reason: "blocked corner" };

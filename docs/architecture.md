@@ -13,8 +13,8 @@ The authored world is one 16×16 tile square across z levels 0–7. Unknown XY
 coordinates are solid stone at every level. A seven-step staircase on the
 south edge reaches the top landing; a full-height pillar tests occlusion.
 The view can show five lower levels, with deeper floors turning blue before
-they disappear. There is no world generation, chunk loading, persistence,
-inventory, or collision rule between players. A move has whole tile origin
+they disappear. There is no world generation, chunk loading, persistence, or
+inventory. Players and the corner NPC block each other's destination tiles. A move has whole tile origin
 and target coordinates, plus a start tick and duration. The renderer
 interpolates the sprite between those tiles. The world reports origin and
 target occupancy during a move.
@@ -42,17 +42,28 @@ world snapshot every 500 ms. The admin predicts movement locally. Snapshots
 acknowledge the latest processed input: the admin keeps an unacknowledged or
 matching local animation, maps the host's animation onto its own tick, and
 eases the sprite after a real correction. This avoids resetting the local
-animation every half second. If a straight-line intent arrives just before
+animation every half second. Each browser presents remote player and NPC moves
+through the same 100 ms render buffer. The host applies movement to the world
+as soon as an intent arrives. If a straight-line intent arrives just before
 the host finishes its current tile, the host queues it for the next tick.
 It is not rollback netcode. WebRTC uses direct
 connectivity when ICE can establish it; Xirsys TURN credentials supply a relay
 when needed. The signaling route uses Deno KV as a mailbox.
+
+The admin tab keeps a session token while its tab exists. If its WebRTC
+connection drops, it sends a fresh join request. The host keeps its sprite for
+at most five seconds and preserves its name and tile for a later rejoin while
+the host world remains open. Ping activity also expires a silent connection.
+The corner NPC follows an E, S, W, N loop and
+pauses one second after every two loops. It uses the same move rules as players.
 
 The admin panel records join time, selected ICE candidate types, and the last
 32 ping round trips. It shows their median and 95th percentile. `/admin?relay=1`
 forces a TURN relay for a WebRTC diagnostic. Compare direct and relay paths on
 one network and again with a phone on cellular service. Browser tests cover
 function and screenshots; they do not substitute for those device measurements.
+An opt-in `/phone-test` route accepts a small set of scripted commands through
+Deno KV. Its random code expires 30 minutes after the phone stops polling.
 
 ## Current limits
 
@@ -69,8 +80,8 @@ function and screenshots; they do not substitute for those device measurements.
 
 ## Next experiment
 
-Test a direct join and `/admin?relay=1` from a desktop on the same network,
-then from a phone on cellular service. Record the selected candidate route,
+Test a direct join and forced relay from `/phone-test` on a phone, with a desktop
+hosting the world. Repeat on Wi-Fi and cellular. Record the candidate route,
 join time, median RTT, 95th percentile RTT, and whether a move visibly snaps
 after correction. Use the same devices and world for each path. That evidence
 can guide TURN configuration and future server-owned world experiments.

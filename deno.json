@@ -18,7 +18,7 @@
   "imports": { "@std/assert": "jsr:@std/assert@1.0.19", "@playwright/test": "npm:@playwright/test@1.63.0" },
   "deploy": {
     "org": "legoguy32109",
-    "app": "open-dwarf",
+    "app": "opendwarf",
     "runtime": { "type": "dynamic", "entrypoint": "./main.ts" },
     "exclude": ["tests", "docs", "exports", ".env", ".env.*", ".githooks", ".github"]
   }

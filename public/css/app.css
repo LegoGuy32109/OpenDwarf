@@ -162,6 +162,10 @@ input {
 #admin[hidden] {
   display: none;
 }
+.phone-test #admin {
+  top: calc(var(--safe-top) + 112px);
+  max-height: 30vh;
+}
 #admin h1 {
   margin: 0 0 8px;
   font-size: 14px;
@@ -178,6 +182,33 @@ input {
   background: #333438;
   color: inherit;
   text-align: left;
+}
+#phone-test-panel {
+  position: absolute;
+  z-index: 8;
+  top: calc(var(--safe-top) + 12px);
+  left: calc(var(--safe-left) + 12px);
+  max-width: min(90vw, 360px);
+  padding: 8px 10px;
+  border: 1px solid #706958;
+  background: #242629ec;
+  color: #f3e7c9;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+#phone-test-panel.small {
+  opacity: .45;
+}
+#phone-test-panel.small strong,
+#phone-test-panel.small code,
+#phone-test-panel.small span {
+  display: none;
+}
+#phone-test-panel button {
+  color: inherit;
+  background: #333438;
+  border: 1px solid #706958;
 }
 @media (pointer: coarse) {
   #controls {

@@ -147,8 +147,62 @@ export function createApp(
   return async (request) => {
     const url = new URL(request.url);
     const path = url.pathname;
-    if ((path === "/" || path === "/admin") && request.method === "GET") {
+    if (
+      (path === "/" || path === "/admin" || path === "/phone-test") &&
+      request.method === "GET"
+    ) {
       return file("public/index.html");
+    }
+    const testPath =
+      /^\/api\/phone-test\/([a-f0-9]{32})\/(register|command|result|state)$/
+        .exec(path);
+    if (testPath) {
+      const [, code, action] = testPath;
+      const key = ["phone-test", code];
+      const entry = await kv.get<{
+        command?: { id: string; kind: string; data?: string };
+        result?: unknown;
+        updated: number;
+      }>(key);
+      if (action === "register" && request.method === "POST") {
+        const value = entry.value ?? { updated: Date.now() };
+        await kv.set(key, { ...value, updated: Date.now() }, {
+          expireIn: 30 * 60_000,
+        });
+        return json({ ok: true });
+      }
+      if (!entry.value) return json({ error: "test session missing" }, 404);
+      if (action === "state" && request.method === "GET") {
+        return json(entry.value);
+      }
+      if (action === "command" && request.method === "POST") {
+        const data = await body(request);
+        if (
+          typeof data.kind !== "string" ||
+          !["sample", "join", "relay", "drop"].includes(data.kind) ||
+          (data.data !== undefined && typeof data.data !== "string")
+        ) return json({ error: "invalid test command" }, 400);
+        const command = {
+          id: crypto.randomUUID(),
+          kind: data.kind,
+          data: typeof data.data === "string" ? data.data : undefined,
+        };
+        await kv.set(key, { ...entry.value, command, result: null }, {
+          expireIn: 30 * 60_000,
+        });
+        return json({ command });
+      }
+      if (action === "result" && request.method === "POST") {
+        const data = await body(request);
+        if (data.id !== entry.value.command?.id) {
+          return json({ error: "stale test command" }, 409);
+        }
+        await kv.set(key, { ...entry.value, result: data.result }, {
+          expireIn: 30 * 60_000,
+        });
+        return json({ ok: true });
+      }
+      return json({ error: "invalid test request" }, 405);
     }
     if (path === "/api/presence" && request.method === "POST") {
       const data = await body(request);

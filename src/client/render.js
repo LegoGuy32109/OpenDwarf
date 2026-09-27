@@ -75,7 +75,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},renderOffset:{x:number,y:number,z:number},chatOpen:boolean,chatDraft:string,status:string}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatOpen:boolean,chatDraft:string,status:string}} Scene */
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -355,7 +355,13 @@ export async function createRenderer(canvas) {
       }
     }
     flush();
-    const players = Object.values(scene.world.players);
+    const players = Object.values(scene.world.players).map((player) =>
+      scene.presentation.playerAt(
+        player,
+        scene.world.tick + alpha,
+        player.id === scene.localId,
+      )
+    );
     /** @type {Map<string,number>} */
     const opacity = new Map();
     for (const player of players) {

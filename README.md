@@ -13,8 +13,8 @@ deno task start
 Open `http://localhost:8000/` to start a local 16×16 world with eight view
 levels, a staircase, and a center pillar. Open
 `http://localhost:8000/admin` in another browser to see active worlds and join
-one. The `/admin` route has no access control in this demo. Only one visitor can
-join a world.
+one. A corner NPC loops around four tiles. The `/admin` route has no access
+control in this demo. Only one visitor can join a world.
 
 On a keyboard, ESDF moves the player, IJKL moves the camera, R/V changes the
 view level, and holding U/N smoothly zooms out/in. The mouse wheel also zooms.
@@ -42,6 +42,11 @@ with the latest processed input sequence. The admin keeps its own matching
 animation and eases genuine corrections. The admin panel shows connection
 time, selected ICE route, and recent round trip times.
 
+The admin tab automatically rejoins after a connection drop. The host holds
+its sprite for up to five seconds and keeps its name and tile for a later
+rejoin while the world remains open. Remote player and NPC animations use a
+100 ms render buffer on receiving clients.
+
 For a TURN diagnostic, open `/admin?relay=1` and join a world. That join
 forces relay candidates on both browsers and shows the selected candidate
 types in the admin panel. A working TURN configuration is required. Normal
@@ -51,7 +56,8 @@ put `XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` in an ignored `.env`
 file and run `deno task start:env`.
 
 After deployment, follow the [phone connection test](docs/phone-network-test.md)
-to compare direct and TURN routes on Wi-Fi and cellular data.
+to compare direct and TURN routes on Wi-Fi and cellular data. The opt-in
+`/phone-test` route accepts a small set of remote commands under a random code.
 
 The floor, edges, ceilings, depth tint, visibility, and player sprite come
 from the WebGL experiment. The bitmap font and Escape menu labels come from
@@ -76,11 +82,14 @@ WebRTC connection. A system Chromium installation is used locally when present.
 ## Deploy
 
 The `deploy` section in `deno.json` uses a dynamic Deno Deploy app with
-`main.ts` as its entrypoint. Create the `open-dwarf` app in the selected Deno
-Deploy organization, then provision a Deno KV database and assign it to the
-app. Deno Deploy supplies that database to `Deno.openKv()`. Set
+`main.ts` as its entrypoint. The `opendwarf` app has a Deno KV database
+assigned. Deno Deploy supplies that database to `Deno.openKv()`. Set
 `XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` so WebRTC can use TURN
 when a direct connection is unavailable.
+
+For CLI access to the existing `opendwarf` app, load `DENO_DEPLOY_TOKEN` from
+`~/Projects/work-portal/.env` into the command environment. Do not copy the
+token into this repository.
 
 Set `opendwarf.joshhale.me` and any extra domains in Deno Deploy and DNS after
 the app is deployed. Domain setup and deployment are manual steps. The code

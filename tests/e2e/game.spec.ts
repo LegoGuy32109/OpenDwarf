@@ -75,6 +75,9 @@ test("phone controls fit safe area and move", async ({ browser }) => {
   await page.goto("/?harness=1");
   await expect(page.locator("#loading")).toBeHidden();
   await expect(page.locator("[data-stick=move]")).toBeVisible();
+  await expect(page).toHaveScreenshot("phone-world.png", {
+    maxDiffPixelRatio: 0.02,
+  });
   const box = await page.locator("[data-stick=move]").boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
@@ -88,9 +91,6 @@ test("phone controls fit safe area and move", async ({ browser }) => {
     )
   ).toBeGreaterThan(7);
   await page.mouse.up();
-  await expect(page).toHaveScreenshot("phone-world.png", {
-    maxDiffPixelRatio: 0.02,
-  });
   await page.locator("#chat-button").click();
   await expect(page.locator("#chat-input")).toBeFocused();
   await page.locator("#chat-input").fill("hello phone");
@@ -166,6 +166,38 @@ test("view commands, layer keys and held zoom work in the rendered world", async
   await page.locator("#chat-input").fill("/entity");
   await page.locator("#chat-input").press("Enter");
   await expect.poll(async () => (await scene()).viewMode).toBe("entity");
+});
+
+test("Ctrl+R keeps browser refresh available and leaves the view level", async ({ page }) => {
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  await page.keyboard.press("r");
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { viewZ: number } } }).__od
+        .scene.viewZ
+    )
+  ).toBe(1);
+  await page.evaluate(() => {
+    document.addEventListener("keydown", (event) => {
+      if (event.code === "KeyR" && event.ctrlKey) {
+        (globalThis as unknown as { __ctrlRPrevented: boolean })
+          .__ctrlRPrevented = event.defaultPrevented;
+      }
+    });
+  });
+  await page.keyboard.press("Control+r");
+  expect(
+    await page.evaluate(() =>
+      (globalThis as unknown as { __ctrlRPrevented: boolean }).__ctrlRPrevented
+    ),
+  ).toBe(false);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { viewZ: number } } }).__od
+        .scene.viewZ
+    )
+  ).toBe(1);
 });
 
 test("two-finger drag changes layer and pinch smoothly changes zoom", async ({ browser }) => {
@@ -340,6 +372,95 @@ test("admin joins over WebRTC and sees smooth movement", async ({ browser }) => 
     { timeout: 8_000 },
   ).toBe("Visitor left. World ended.");
   await admin.close();
+});
+
+test("opt-in phone test drops and rejoins the same player", async ({ browser }) => {
+  const host = await browser.newPage();
+  const phone = await browser.newPage();
+  await host.goto("/?harness=1");
+  await expect(host.locator("#loading")).toBeHidden();
+  const session = await host.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+      .scene.sessionId
+  );
+  await phone.goto(`/phone-test?harness=1&session=${session}`);
+  const code = await phone.locator("#phone-test-code").textContent();
+  expect(code).toMatch(/^[a-f0-9]{32}$/);
+  await expect.poll(() =>
+    phone.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+        .scene.localId
+    )
+  ).toBe("admin");
+  await phone.keyboard.press("/");
+  await phone.locator("#chat-input").fill("/nick RejoinTest");
+  await phone.keyboard.press("Enter");
+  await expect.poll(() =>
+    host.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { admin?: { name: string } } } } };
+      }).__od.scene.world.players.admin?.name
+    )
+  ).toBe("RejoinTest");
+  const command = await phone.request.post(`/api/phone-test/${code}/command`, {
+    data: { kind: "drop" },
+  });
+  expect(command.ok()).toBeTruthy();
+  const commandId = (await command.json()).command.id;
+  await expect.poll(async () => {
+    const response = await phone.request.get(`/api/phone-test/${code}/state`);
+    const state = await response.json();
+    return state.command?.id === commandId && state.result?.dropped === true;
+  }).toBe(true);
+  await expect.poll(
+    () =>
+      phone.evaluate(() =>
+        (globalThis as unknown as { __od: { scene: { status: string } } }).__od
+          .scene.status
+      ),
+    { timeout: 20_000 },
+  ).toBe("Visitor world");
+  await expect.poll(() =>
+    host.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { admin?: { name: string } } } } };
+      }).__od.scene.world.players.admin?.name
+    )
+  ).toBe("RejoinTest");
+  const longDrop = await phone.request.post(`/api/phone-test/${code}/command`, {
+    data: { kind: "drop", data: "6500" },
+  });
+  expect(longDrop.ok()).toBeTruthy();
+  await expect.poll(() =>
+    host.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { admin?: { name: string } } } } };
+      }).__od.scene.world.players.admin?.name
+    ), { timeout: 8_000 }).toBeUndefined();
+  await expect.poll(() =>
+    host.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { admin?: { name: string } } } } };
+      }).__od.scene.world.players.admin?.name
+    ), { timeout: 12_000 }).toBe("RejoinTest");
+  await phone.close();
+  await host.close();
+});
+
+test("phone test keeps its code when switching to forced relay", async ({ page }) => {
+  await page.goto("/phone-test?harness=1");
+  const code = await page.locator("#phone-test-code").textContent();
+  expect(code).toMatch(/^[a-f0-9]{32}$/);
+  await expect.poll(async () =>
+    (await page.request.get(`/api/phone-test/${code}/state`)).status()
+  ).toBe(200);
+  const command = await page.request.post(`/api/phone-test/${code}/command`, {
+    data: { kind: "relay", data: "1" },
+  });
+  expect(command.ok()).toBeTruthy();
+  await expect(page).toHaveURL(/relay=1/);
+  await expect(page.locator("#phone-test-code")).toHaveText(code!);
+  await expect.poll(() => page.url()).toContain("relay=1");
 });
 
 test("TURN relay join reports a relay candidate", async ({ browser }) => {

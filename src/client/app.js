@@ -20,6 +20,8 @@ import {
 import { clampCameraAxis } from "../shared/surface.js";
 import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
+import { createCornerNpc } from "../shared/npc.js";
+import { createPresentation } from "./presentation.js";
 
 /** @param {string} selector */
 const $ = (
@@ -43,6 +45,7 @@ const scene = {
   visibility: createVisibility(),
   camera: { x: 480, y: 480 },
   renderOffset: { x: 0, y: 0, z: 0 },
+  presentation: createPresentation(),
   chatOpen: false,
   chatDraft: "",
   status: "Local world",
@@ -65,8 +68,11 @@ let lastTyping = false;
 let host = null;
 /** @type {ReturnType<typeof joinWorld>|null} */
 let guest = null;
-const isAdmin = location.pathname === "/admin";
+const isPhoneTest = location.pathname === "/phone-test";
+const isAdmin = location.pathname === "/admin" || isPhoneTest;
 let lastPlayerZ = 0;
+/** @type {ReturnType<typeof createCornerNpc>|null} */
+let tickNpc = null;
 
 /** @param {number} value @param {number} min @param {number} max */
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -339,6 +345,7 @@ function bindInput() {
     }
   });
   document.addEventListener("keydown", (event) => {
+    if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) return;
     if (document.activeElement === chatInput) return;
     scene.inputMode = "keyboard";
     if (event.code === "Escape") {
@@ -472,8 +479,7 @@ function startAdminList() {
         button.dataset.transport = "webrtc";
         button.textContent = `Join ${item.id.slice(0, 8)} · WebRTC`;
         button.addEventListener("click", () => {
-          guest?.close();
-          guest = joinWorld(scene, item.id);
+          joinSession(item.id);
         });
         li.append(button);
         sessions.append(li);
@@ -486,6 +492,46 @@ function startAdminList() {
   setInterval(() => void refresh(), 5000);
 }
 
+/** @param {string} id */
+function joinSession(id) {
+  guest?.close();
+  scene.presentation.reset();
+  scene.sessionId = id;
+  guest = joinWorld(scene, id);
+}
+
+/** Expose only predefined diagnostics from the opt-in phone test page. */
+export const phoneDiagnostics = {
+  /** @param {string} id */
+  join(id) {
+    if (!isPhoneTest || !/^[a-zA-Z0-9_-]{8,80}$/.test(id)) return false;
+    joinSession(id);
+    return true;
+  },
+  /** @param {number} [holdMs] */
+  drop(holdMs = 0) {
+    if (isPhoneTest) guest?.dropConnection(holdMs);
+  },
+  sample() {
+    return {
+      at: new Date().toISOString(),
+      session: scene.sessionId,
+      status: scene.status,
+      route: scene.metrics?.route ?? "none",
+      joinMs: scene.metrics?.joinMs ?? null,
+      rttMs: scene.metrics?.rttMs ?? [],
+      localId: scene.localId,
+      player: scene.world.players[scene.localId]
+        ? {
+          x: scene.world.players[scene.localId].x,
+          y: scene.world.players[scene.localId].y,
+          z: scene.world.players[scene.localId].z,
+        }
+        : null,
+    };
+  },
+};
+
 export async function startApp() {
   addPlayer(scene.world, "self");
   bindInput();
@@ -494,7 +540,12 @@ export async function startApp() {
   if (isAdmin) startAdminList();
   else {
     scene.sessionId = crypto.randomUUID();
+    tickNpc = createCornerNpc(scene.world);
     host = startHost(scene, scene.sessionId);
+  }
+  if (isPhoneTest) {
+    const selected = new URL(location.href).searchParams.get("session");
+    if (selected) joinSession(selected);
   }
   let last = performance.now();
   let accumulator = 0;
@@ -505,6 +556,7 @@ export async function startApp() {
     accumulator += dt;
     while (accumulator >= TICK_MS) {
       advanceTicks(scene.world);
+      if (tickNpc?.()) host?.publish();
       host?.tick();
       move();
       accumulator -= TICK_MS;

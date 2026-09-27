@@ -49,8 +49,8 @@ Deno.test("a completed local step stays put until the host acknowledges it", () 
 Deno.test("remote move adopts local tick once and ignores repeat snapshots", () => {
   const local = createWorld();
   const snapshot = createWorld();
-  addPlayer(local, "admin", { x: 8, y: 7, z: 0 });
-  addPlayer(snapshot, "admin", { x: 8, y: 7, z: 0 });
+  addPlayer(local, "admin", { x: 10, y: 7, z: 0 });
+  addPlayer(snapshot, "admin", { x: 10, y: 7, z: 0 });
   addPlayer(snapshot, "self", { x: 7, y: 7, z: 0 });
   advanceTicks(local, 100);
   advanceTicks(snapshot, 20);

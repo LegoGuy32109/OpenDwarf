@@ -64,7 +64,12 @@ export function mergeSnapshot(
         continue;
       }
       corrected = true;
-    } else if (sameMove(existing.move, incoming.move)) {
+    } else if (
+      sameMove(existing.move, incoming.move) ||
+      (existing.move && !incoming.move &&
+        sameTile(existing.move.target, incoming) &&
+        local.tick < existing.move.startTick + existing.move.durationTicks)
+    ) {
       players[id] = {
         ...incoming,
         x: existing.x,
