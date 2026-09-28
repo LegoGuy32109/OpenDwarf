@@ -10,7 +10,17 @@ type Sample = {
   routes: Record<string, number>;
   frameMeanMs: number;
   frameMaxMs: number;
-  visualDeltas: { id: string; tiles: number }[];
+  visualDeltas: {
+    id: string;
+    observer: string;
+    target: string;
+    tiles: number;
+    skewMs: number;
+    expected: Position;
+    observed: Position;
+  }[];
+  localPredictionDeltas: { id: string; tiles: number; skewMs: number }[];
+  skippedSkew: number;
   connections: HostStats["connections"];
 };
 type HostStats = {
@@ -28,7 +38,36 @@ type Position = {
   y: number;
   z: number;
   moveSequence: number | null;
+  opacity?: number;
+  tick?: number;
+  motion?: {
+    startPosition: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+    startTick: number;
+    durationTicks: number;
+  } | null;
 };
+
+function alignedPosition(position: Position, skewMs: number): Position {
+  const motion = position.motion;
+  if (!motion || position.tick === undefined) return position;
+  const alpha = Math.max(
+    0,
+    Math.min(
+      1,
+      (position.tick + skewMs / 50 - motion.startTick) / motion.durationTicks,
+    ),
+  );
+  return {
+    ...position,
+    x: motion.startPosition.x +
+      (motion.target.x - motion.startPosition.x) * alpha,
+    y: motion.startPosition.y +
+      (motion.target.y - motion.startPosition.y) * alpha,
+    z: motion.startPosition.z +
+      (motion.target.z - motion.startPosition.z) * alpha,
+  };
+}
 
 const argumentsMap = new Map(Deno.args.map((arg) => {
   const [key, ...value] = arg.replace(/^--/, "").split("=");
@@ -47,7 +86,7 @@ const seed = Number(argumentsMap.get("seed") ?? 1);
 const worldEdge = Number(argumentsMap.get("world") ?? 16);
 const baseUrl = argumentsMap.get("url") ?? "http://127.0.0.1:8000";
 if (
-  !Number.isInteger(count) || count < 1 || count > 100 ||
+  !Number.isSafeInteger(count) || count < 1 ||
   !Number.isInteger(rendered) || rendered < 0 || rendered > 19 ||
   !Number.isFinite(durationSeconds) || durationSeconds <= 0 ||
   !Number.isFinite(delayMs) || delayMs < 0 || delayMs > 500 ||
@@ -78,6 +117,8 @@ const failures: string[] = [];
 const pages: { page: Page; id: string; rendered: boolean }[] = [];
 const chatChecks: { kind: string; latencyMs: number; ok: boolean }[] = [];
 const highSamples = new Map<string, number>();
+const sustainedVisualOutliers: { atMs: number; id: string; tiles: number }[] =
+  [];
 const captureTasks: Promise<void>[] = [];
 const captured: string[] = [];
 
@@ -86,19 +127,52 @@ async function startTrace(page: Page) {
     const trace: Record<string, unknown>[] = [];
     (globalThis as unknown as { __stressTrace: Record<string, unknown>[] })
       .__stressTrace = trace;
+    const opacityAnomalies: {
+      at: number;
+      id: string;
+      from: number;
+      to: number;
+    }[] = [];
+    (globalThis as unknown as {
+      __stressOpacityAnomalies: typeof opacityAnomalies;
+    }).__stressOpacityAnomalies = opacityAnomalies;
+    const previous = new Map<
+      string,
+      { at: number; opacity: number; sight: string }
+    >();
     const frame = () => {
       const game = (globalThis as unknown as {
         __od: {
           scene: { localId: string };
-          visualSample: (id: string) => unknown;
+          visualSample: (
+            id: string,
+          ) => { opacity: number; sight: string } | null;
         };
       }).__od;
-      trace.push({
-        at: Date.now(),
+      const at = Date.now();
+      const current = {
         local: game.visualSample(game.scene.localId),
         host: game.visualSample("self"),
         npc: game.visualSample("npc-corner"),
-      });
+      };
+      for (const [id, value] of Object.entries(current)) {
+        if (!value) continue;
+        const prior = previous.get(id);
+        if (
+          prior && prior.sight === value.sight && at - prior.at < 250 &&
+          Math.abs(value.opacity - prior.opacity) > 0.5 &&
+          opacityAnomalies.length < 100
+        ) {
+          opacityAnomalies.push({
+            at,
+            id,
+            from: prior.opacity,
+            to: value.opacity,
+          });
+        }
+        previous.set(id, { at, opacity: value.opacity, sight: value.sight });
+      }
+      trace.push({ at, ...current });
       if (trace.length > 300) trace.shift();
       requestAnimationFrame(frame);
     };
@@ -168,13 +242,14 @@ async function waitForHarness(page: Page) {
     ), { timeout: 30_000 });
 }
 
-async function sample(host: Page, began: number) {
+async function collectSample(host: Page, began: number) {
   const hostRead = host.evaluate(async () => {
     const game = (globalThis as unknown as {
       __od: {
         hostStats: () => Promise<HostStats>;
         frameStats: () => { meanMs: number; maxMs: number };
         authoritativeSample: (id: string) => Position | null;
+        visualSample: (id: string) => Position | null;
       };
     }).__od;
     const positions = Object.fromEntries(
@@ -187,11 +262,17 @@ async function sample(host: Page, began: number) {
         game.authoritativeSample(id),
       ]),
     ) as Record<string, Position | null>;
+    const visuals = Object.fromEntries(
+      Object.keys(positions).map((id) => [id, game.visualSample(id)]),
+    ) as Record<string, Position | null>;
+    const at = Date.now();
     const stats = await game.hostStats();
     return {
       stats,
       frame: game.frameStats(),
       positions,
+      visuals,
+      at,
     };
   });
   const observerReads = pages.filter((entry) => entry.rendered).map(async (
@@ -205,7 +286,11 @@ async function sample(host: Page, began: number) {
           visualSample: (id: string) => Position | null;
         };
       }).__od;
-      return game.visualSample(game.scene.localId);
+      return {
+        at: Date.now(),
+        local: game.visualSample(game.scene.localId),
+        host: game.visualSample("self"),
+      };
     }),
   }));
   const [hostData, observers] = await Promise.all([
@@ -217,19 +302,75 @@ async function sample(host: Page, began: number) {
     if (!connection.connected) continue;
     routes[connection.route] = (routes[connection.route] ?? 0) + 1;
   }
-  const visualDeltas: { id: string; tiles: number }[] = [];
-  for (const { id, observed } of observers) {
-    const expected = hostData.positions[id];
-    if (!expected || expected.moveSequence === null) continue;
-    if (!observed || observed.moveSequence !== expected.moveSequence) continue;
+  const visualDeltas: Sample["visualDeltas"] = [];
+  const localPredictionDeltas: Sample["localPredictionDeltas"] = [];
+  let skippedSkew = 0;
+  for (const connection of hostData.stats.connections) {
+    const target = connection.playerId;
+    const expected = hostData.positions[target];
+    const observed = hostData.visuals[target];
+    if (
+      !expected || !observed || observed.opacity === 0 ||
+      expected.moveSequence === null ||
+      observed.moveSequence !== expected.moveSequence
+    ) continue;
     visualDeltas.push({
-      id,
+      id: `host:${target}`,
+      observer: "host",
+      target,
+      skewMs: 0,
+      expected,
+      observed,
       tiles: Math.hypot(
         expected.x - observed.x,
         expected.y - observed.y,
         expected.z - observed.z,
       ),
     });
+  }
+  for (const { id, observed } of observers) {
+    const skewMs = observed.at - hostData.at;
+    if (Math.abs(skewMs) > 200) {
+      skippedSkew++;
+      continue;
+    }
+    const hostExpected = hostData.positions.self;
+    if (
+      hostExpected && hostExpected.moveSequence !== null && observed.host &&
+      observed.host.opacity !== 0 &&
+      observed.host.moveSequence === hostExpected.moveSequence
+    ) {
+      const aligned = alignedPosition(hostExpected, skewMs);
+      visualDeltas.push({
+        id: `${id}:self`,
+        observer: id,
+        target: "self",
+        skewMs,
+        expected: aligned,
+        observed: observed.host,
+        tiles: Math.hypot(
+          aligned.x - observed.host.x,
+          aligned.y - observed.host.y,
+          aligned.z - observed.host.z,
+        ),
+      });
+    }
+    const localExpected = hostData.positions[id];
+    if (
+      localExpected && localExpected.moveSequence !== null && observed.local &&
+      observed.local.moveSequence === localExpected.moveSequence
+    ) {
+      const aligned = alignedPosition(localExpected, skewMs);
+      localPredictionDeltas.push({
+        id,
+        skewMs,
+        tiles: Math.hypot(
+          aligned.x - observed.local.x,
+          aligned.y - observed.local.y,
+          aligned.z - observed.local.z,
+        ),
+      });
+    }
   }
   const nowMs = Math.round(performance.now() - began);
   for (const delta of visualDeltas) {
@@ -240,11 +381,16 @@ async function sample(host: Page, began: number) {
     const previous = highSamples.get(delta.id);
     if (
       previous !== undefined && nowMs - previous >= 100 &&
-      nowMs - previous <= 1500 && captureTasks.length < 2
+      nowMs - previous <= 1500
     ) {
-      const observer = pages.find((entry) => entry.id === delta.id);
-      if (observer) {
-        captureTasks.push(captureOutlier(observer.page, delta.id, nowMs));
+      sustainedVisualOutliers.push({ atMs: nowMs, ...delta });
+      if (captureTasks.length < 2) {
+        const observer = delta.observer === "host"
+          ? host
+          : pages.find((entry) => entry.id === delta.observer)?.page;
+        if (observer) {
+          captureTasks.push(captureOutlier(observer, delta.id, nowMs));
+        }
       }
     }
     highSamples.set(delta.id, nowMs);
@@ -269,8 +415,28 @@ async function sample(host: Page, began: number) {
     frameMeanMs: hostData.frame.meanMs,
     frameMaxMs: hostData.frame.maxMs,
     visualDeltas,
+    localPredictionDeltas,
+    skippedSkew,
     connections: hostData.stats.connections,
   });
+}
+
+async function sample(host: Page, began: number) {
+  /** @type {ReturnType<typeof setTimeout>|undefined} */
+  let timer;
+  try {
+    await Promise.race([
+      collectSample(host, began),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("host sample timed out")),
+          15_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function waitForBubble(
@@ -310,6 +476,7 @@ async function waitForBubble(
 async function play(host: Page, until: number, began: number) {
   const directions = ["f", "d", "s", "e"];
   let turn = 0;
+  let nextProgress = began + 60_000;
   while (performance.now() < until) {
     const active = [host, ...pages.map((entry) => entry.page)];
     await Promise.all(
@@ -357,6 +524,17 @@ async function play(host: Page, until: number, began: number) {
       }
     }
     await sample(host, began);
+    if (performance.now() >= nextProgress) {
+      const latest = samples.at(-1);
+      console.log(
+        `Minute ${
+          Math.floor((performance.now() - began) / 60)
+        }: ${pages.length} guests, ${latest?.movingGuests ?? 0} moving, ${
+          latest?.queuedBytes ?? 0
+        } bytes queued`,
+      );
+      nextProgress += 60_000;
+    }
     turn++;
     await sleep(350);
   }
@@ -392,6 +570,8 @@ try {
     }).__od.scene.sessionId
   );
   const began = performance.now();
+  let growingQueue = 0;
+  let priorQueued = 0;
   for (let index = 0; index < count; index++) {
     const page = await browser.newPage();
     const usesWebGL = index < rendered;
@@ -400,15 +580,11 @@ try {
       (error) => failures.push(`guest ${index + 1}: ${error.message}`),
     );
     await page.goto(
-      `${baseUrl}/admin?${conditions}${usesWebGL ? "" : "&synthetic=1"}`,
+      `${baseUrl}/join/${session}?${conditions}${
+        usesWebGL ? "" : "&synthetic=1"
+      }`,
     );
     await waitForHarness(page);
-    await page.evaluate(
-      (id) =>
-        (globalThis as unknown as { __od: { join: (id: string) => void } }).__od
-          .join(id),
-      session,
-    );
     try {
       await page.waitForFunction(() =>
         (globalThis as unknown as {
@@ -421,9 +597,20 @@ try {
       );
       pages.push({ page, id, rendered: usesWebGL });
       if (usesWebGL) await startTrace(page);
+      await sample(host, began);
       if ([1, 5, 10, 20].includes(pages.length)) {
         console.log(`Joined ${pages.length} guests`);
-        await sample(host, began);
+      }
+      const queued = samples.at(-1)?.queuedBytes ?? 0;
+      growingQueue = queued > 1024 * 1024 && queued >= priorQueued
+        ? growingQueue + 1
+        : 0;
+      priorQueued = queued;
+      if (growingQueue >= 3) {
+        failures.push(
+          `host queue did not drain while adding guest ${pages.length}`,
+        );
+        break;
       }
     } catch (error) {
       failures.push(`guest ${index + 1} join failed: ${String(error)}`);
@@ -436,6 +623,23 @@ try {
   await play(host, until, began);
   await sample(host, began);
   await Promise.all(captureTasks);
+  const opacityAnomalies = (await Promise.all(
+    pages.filter((entry) => entry.rendered).map(async (entry) => ({
+      id: entry.id,
+      events: await entry.page.evaluate(() =>
+        (globalThis as unknown as {
+          __stressOpacityAnomalies: {
+            at: number;
+            id: string;
+            from: number;
+            to: number;
+          }[];
+        }).__stressOpacityAnomalies
+      ),
+    })),
+  )).flatMap((entry) =>
+    entry.events.map((event) => ({ observer: entry.id, ...event }))
+  );
   const elapsed = (samples.at(-1)?.atMs ?? 0) / 1000;
   const sent = samples.map((item) => item.bytesSent);
   const rate = samples.slice(1).map((item, index) =>
@@ -446,6 +650,21 @@ try {
     0,
     ...samples.flatMap((item) => item.visualDeltas.map((delta) => delta.tiles)),
   );
+  const localPredictionPairs = samples.reduce(
+    (sum, item) => sum + item.localPredictionDeltas.length,
+    0,
+  );
+  const largestPredictionLead = Math.max(
+    0,
+    ...samples.flatMap((item) =>
+      item.localPredictionDeltas.map((delta) => delta.tiles)
+    ),
+  );
+  const visualPairs = samples.reduce(
+    (sum, item) => sum + item.visualDeltas.length,
+    0,
+  );
+  const skippedSkew = samples.reduce((sum, item) => sum + item.skippedSkew, 0);
   const visualOutliers = samples.flatMap((item) =>
     item.visualDeltas.filter((delta) => delta.tiles > 0.25).map((delta) => ({
       atMs: item.atMs,
@@ -457,7 +676,10 @@ try {
   );
   const movingMinutes = new Set(
     holdSamples.filter((item) => item.movingGuests > 0)
-      .map((item) => Math.floor((item.atMs - (holdBegan - began)) / 60_000)),
+      .map((item) => Math.floor((item.atMs - (holdBegan - began)) / 60_000))
+      .filter((minute) =>
+        minute >= 0 && minute < Math.ceil(durationSeconds / 60)
+      ),
   );
   const expectedMinutes = Math.ceil(durationSeconds / 60);
   if (movingMinutes.size < expectedMinutes) {
@@ -488,7 +710,7 @@ try {
 - URL: \`${baseUrl}\`; session: \`${session}\`
 - Profile: ${count} requested guests, ${pages.length} joined, ${
     Math.min(rendered, pages.length) + 1
-  } WebGL pages including host, ${worldEdge}×${worldEdge} authored area, ${delayMs} ms application delivery delay each way.
+  } WebGL pages including host, direct guest links, ${worldEdge}×${worldEdge} authored area, ${delayMs} ms application delivery delay each way.
 - Jitter: ±${jitterMs} ms; app-message drop: ${
     (loss * 100).toFixed(1)
   }%; seed: ${seed}.
@@ -507,10 +729,15 @@ try {
     Math.min(...peerTotals)
   }–${Math.max(...peerTotals)} bytes.
 - Peak queued bytes: ${Math.max(0, ...samples.map((item) => item.queuedBytes))}.
-- Largest sampled accepted-move visual difference: ${
+- Largest sampled remote-sprite difference from host authority: ${
     worstDelta.toFixed(3)
   } tiles.
+- Local prediction lead: ${localPredictionPairs} comparable samples, maximum ${
+    largestPredictionLead.toFixed(3)
+  } tiles. This is reported separately from remote visual sync.
+- Comparable accepted-move visual pairs: ${visualPairs}; ${skippedSkew} pairs skipped for over 200 ms sample-time skew. Host moves are aligned to observer time.
 - Accepted-move samples above 0.25 tile: ${visualOutliers.length} (review adjacent timestamps for persistence over 100 ms).
+- Repeated accepted-move outlier candidates over 100 ms apart: ${sustainedVisualOutliers.length}; rejected-move corrections excluded.
 - Failures: ${failures.length ? failures.join("; ") : "none observed"}.
 - Chat checks: ${
     chatChecks.filter((check) => check.ok).length
@@ -520,6 +747,7 @@ try {
       ? captured.map((path) => `\`${path}\``).join(", ")
       : "none triggered"
   }.
+- Opacity jumps without a sight change: ${opacityAnomalies.length} (sampled local, host, and NPC sprites).
 
 This same-machine run estimates WebRTC data-channel payload, not external uplink.
 The delay is applied at game-message delivery, not to ICE or physical packets.
@@ -543,6 +771,8 @@ Samples and page errors: \`${output}/samples.json\`.
         failures,
         chatChecks,
         captured,
+        sustainedVisualOutliers,
+        opacityAnomalies,
       },
       null,
       2,
@@ -551,8 +781,22 @@ Samples and page errors: \`${output}/samples.json\`.
   await Deno.writeTextFile(`${output}/report.md`, report);
   console.log(report);
   console.log(`Raw report: ${output}/report.md`);
+} catch (error) {
+  const reason = String(error);
+  failures.push(`fatal: ${reason}`);
+  await Deno.writeTextFile(
+    `${output}/fatal.md`,
+    `# Interrupted group stress run\n\nRevision: \`${gitRevision}\`\n\nJoined guests: ${pages.length}/${count}\n\nReason: ${reason}\n\nRecent samples: \`${output}/partial.json\`\n`,
+  );
+  await Deno.writeTextFile(
+    `${output}/partial.json`,
+    JSON.stringify({ samples, failures, chatChecks }, null, 2),
+  );
+  throw error;
 } finally {
-  await browser?.close();
+  try {
+    await browser?.close();
+  } catch { /* The browser may already have crashed. */ }
   if (server) {
     server.kill("SIGTERM");
     await server.status;

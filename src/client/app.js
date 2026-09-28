@@ -57,6 +57,8 @@ const scene = {
   sessionId: "",
   metrics:
     /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
+  telemetry:
+    /** @type {((kind:"summary"|"connection"|"error",fields?:Record<string,unknown>)=>void)|undefined} */ (undefined),
 };
 /** @type {Set<string>} */
 const held = new Set();
@@ -717,6 +719,7 @@ export async function startApp() {
         keepalive: true,
       }).catch(() => {});
     };
+    scene.telemetry = report;
     let lastConnection = "";
     setInterval(() => {
       const status = isAdmin
@@ -766,9 +769,10 @@ export async function startApp() {
   }
   /** @param {number} now */
   const frame = (now) => {
-    const dt = Math.min(100, now - last);
+    const elapsed = now - last;
+    const dt = Math.min(250, elapsed);
     last = now;
-    frameMs.push(dt);
+    frameMs.push(elapsed);
     if (frameMs.length > 300) frameMs.shift();
     accumulator += dt;
     while (accumulator >= TICK_MS) {
@@ -919,12 +923,19 @@ export async function startApp() {
       /** @param {string} id */
       authoritativeSample: (id) => {
         const player = scene.world.players[id];
+        const tick = scene.world.tick + accumulator / TICK_MS;
         return player
           ? {
-            ...renderPosition(
-              player,
-              scene.world.tick + accumulator / TICK_MS,
-            ),
+            ...renderPosition(player, tick),
+            tick,
+            motion: player.move
+              ? {
+                startPosition: player.move.startPosition,
+                target: player.move.target,
+                startTick: player.move.startTick,
+                durationTicks: player.move.durationTicks,
+              }
+              : null,
             moveSequence: player.move?.sequence ?? null,
             typing: player.typing,
             hasMessage: Boolean(player.message),

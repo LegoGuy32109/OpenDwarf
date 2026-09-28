@@ -48,7 +48,7 @@ function deliver(receive) {
 }
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string}}} Scene */
+/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -140,6 +140,9 @@ export function startHost(scene, session) {
   const peers = new Map();
   let joinFailures = 0;
   let spawnOrdinal = 0;
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let publishTimer = null;
+  let lastPublish = 0;
   const heartbeat = () => {
     void fetch("/api/presence", {
       method: "POST",
@@ -150,8 +153,18 @@ export function startHost(scene, session) {
   heartbeat();
   const heartbeatTimer = setInterval(heartbeat, 10_000);
 
-  function publish() {
+  function flushPublish() {
+    publishTimer = null;
+    lastPublish = performance.now();
     for (const connection of peers.values()) connection.publish();
+  }
+
+  function publish() {
+    if (publishTimer) return;
+    publishTimer = setTimeout(
+      flushPublish,
+      Math.max(0, 100 - (performance.now() - lastPublish)),
+    );
   }
 
   function tick() {
@@ -349,6 +362,9 @@ export function startHost(scene, session) {
             nextPeer.connectionState === "disconnected"
           ) {
             if (nextPeer.connectionState === "failed") joinFailures++;
+            if (nextPeer.connectionState === "failed") {
+              scene.telemetry?.("error", { status: "peer-failed" });
+            }
             scene.status = "Visitor reconnecting...";
             if (departureTimer) clearTimeout(departureTimer);
             departureTimer = setTimeout(() => {
@@ -375,6 +391,7 @@ export function startHost(scene, session) {
       } catch (error) {
         if (activeAttempt !== attempt) return;
         joinFailures++;
+        scene.telemetry?.("error", { status: "join-failed" });
         depart();
         scene.status = "Join failed";
         console.error(error);
@@ -536,6 +553,7 @@ export function startHost(scene, session) {
       };
     },
     close() {
+      if (publishTimer) clearTimeout(publishTimer);
       clearInterval(heartbeatTimer);
       clearInterval(watchdog);
       clearInterval(syncTimer);
@@ -605,6 +623,7 @@ export function joinWorld(scene, session) {
       attempt,
     }, playerId).catch((error) => {
       scene.status = "Join request failed; retrying…";
+      scene.telemetry?.("error", { status: "signal-failed" });
       console.error(error);
     });
   }
@@ -612,6 +631,7 @@ export function joinWorld(scene, session) {
   function scheduleRetry() {
     if (closed || retryTimer) return;
     scene.status = "Visitor disconnected; retrying…";
+    scene.telemetry?.("connection", { status: "reconnecting" });
     retryTimer = setTimeout(
       requestJoin,
       Math.max(700, retryNotBefore - performance.now()),
@@ -662,6 +682,7 @@ export function joinWorld(scene, session) {
       if (!connected && scene.metrics) {
         scene.metrics.joinMs = Math.round(performance.now() - attemptStarted);
       }
+      if (!connected) scene.telemetry?.("connection", { status: "connected" });
       connected = true;
     }
     if (value.type === "pong" && typeof value.id === "string") {

@@ -1,5 +1,20 @@
 import { expect, test } from "@playwright/test";
 
+test("the host can show the join QR again after starting play", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#loading")).toBeHidden();
+  await expect(page.locator("#join-panel")).toBeVisible();
+  await expect.poll(() =>
+    page.locator("#join-code").evaluate((image: HTMLImageElement) =>
+      image.complete && image.naturalWidth > 0
+    )
+  ).toBe(true);
+  await page.locator("#join-close").click();
+  await expect(page.locator("#join-panel")).toBeHidden();
+  await page.keyboard.press("q");
+  await expect(page.locator("#join-panel")).toBeVisible();
+});
+
 test("a phone link joins the expanded authored world directly", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();

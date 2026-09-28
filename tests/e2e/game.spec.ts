@@ -19,6 +19,16 @@ test("Escape closes the chat bar without opening the game menu", async ({ page }
   expect(ui).toEqual({ menu: false, chatOpen: false, chatDraft: "" });
 });
 
+test("F3 toggles live host diagnostics", async ({ page }) => {
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  await page.keyboard.press("F3");
+  await expect(page.locator("#diagnostics")).toBeVisible();
+  await expect(page.locator("#diagnostics")).toContainText("Join failures");
+  await page.keyboard.press("F3");
+  await expect(page.locator("#diagnostics")).toBeHidden();
+});
+
 test("local world renders, moves, names and chats", async ({ page }) => {
   await page.goto("/?harness=1");
   await expect(page.locator("#loading")).toBeHidden();
