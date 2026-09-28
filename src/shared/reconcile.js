@@ -16,6 +16,13 @@ function sameMove(a, b) {
     a.target.z === b.target.z;
 }
 
+/** @param {Player['viewMotion']} a @param {Player['viewMotion']} b */
+function sameViewMotion(a, b) {
+  return !!a && !!b && a.entering === b.entering &&
+    a.sequence === b.sequence &&
+    sameTile(a.from, b.from) && sameTile(a.to, b.to);
+}
+
 /** Translate a host animation to the local simulation tick without changing its progress. */
 /** @param {Player} player @param {number} hostTick @param {number} localTick */
 function atLocalTick(player, hostTick, localTick) {
@@ -25,7 +32,13 @@ function atLocalTick(player, hostTick, localTick) {
       startTick: localTick - (hostTick - player.move.startTick),
     }
     : null;
-  return { ...player, move };
+  const viewMotion = player.viewMotion
+    ? {
+      ...player.viewMotion,
+      startTick: localTick - (hostTick - player.viewMotion.startTick),
+    }
+    : undefined;
+  return { ...player, move, viewMotion };
 }
 
 /** Keep matching local animation, but accept the host's position when prediction diverges. */
@@ -74,6 +87,11 @@ export function mergeSnapshot(
         continue;
       }
       corrected = true;
+    } else if (
+      sameViewMotion(existing.viewMotion, incoming.viewMotion)
+    ) {
+      players[id] = { ...incoming, viewMotion: existing.viewMotion };
+      continue;
     } else if (
       sameMove(existing.move, incoming.move) ||
       (existing.move && !incoming.move &&

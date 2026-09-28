@@ -1,6 +1,7 @@
 // @ts-check
 
 import { renderPosition } from "../shared/world.js";
+import { viewMotionPosition } from "../shared/view.js";
 
 /** @typedef {import('../shared/world.js').Player} Player */
 /** @typedef {import('../shared/world.js').Tile} Tile */
@@ -12,7 +13,9 @@ export function createPresentation() {
 
   /** @param {Player} player @param {number} tick @param {boolean} local */
   function positionAt(player, tick, local) {
-    const target = renderPosition(player, tick);
+    const target = player.viewMotion
+      ? viewMotionPosition(player.viewMotion, tick)
+      : renderPosition(player, tick);
     if (local) return target;
     let entry = entries.get(player.id);
     if (!entry || tick < entry.tick) {

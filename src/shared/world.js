@@ -8,7 +8,8 @@ export const MOVE_TICKS = 10;
 
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
-/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number}} Player */
+/** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
+/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,viewMotion?:ViewMotion}} Player */
 /** @typedef {{tick:number,players:Record<string,Player>,terrain:number[]}} World */
 
 /** @param {number} x @param {number} y @param {number} z */

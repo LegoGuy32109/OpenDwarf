@@ -34,6 +34,9 @@ no movement or world-editing powers. The host browser still owns the full
 world, so this is a view protocol, not a security boundary. Same-level rays
 check every grid cell touched at a corner, making sight reciprocal between
 stationary positions. Different-height sight retains the earlier ray rule.
+When an entity crosses a same-level sight boundary, the host sends a short
+visual path inside the visible tile. The guest animates position and opacity
+without receiving the hidden movement endpoint.
 R/V changes view level,
 holding U/N lerps zoom, and touch offers pinch zoom and two-finger vertical
 drag for view levels. A brief bitmap HUD shows both values during changes.

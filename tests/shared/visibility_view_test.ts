@@ -11,7 +11,11 @@ import {
   hasLineOfSight,
   tileKey,
 } from "../../src/shared/visibility.js";
-import { entityView } from "../../src/shared/view.js";
+import {
+  entityView,
+  viewMotionOpacity,
+  viewMotionPosition,
+} from "../../src/shared/view.js";
 
 Deno.test("same-level sight is reciprocal and every legal next tile is visible", () => {
   const world = createAuthoredWorld();
@@ -77,14 +81,14 @@ Deno.test("guest snapshot excludes hidden entities and undiscovered terrain", ()
 
 Deno.test("a crossing entity never sends a hidden move endpoint", () => {
   const world = createAuthoredWorld();
-  addPlayer(world, "viewer", { x: 7, y: 8, z: 0 });
-  const crossing = addPlayer(world, "crossing", { x: 6, y: 8, z: 0 });
+  addPlayer(world, "viewer", { x: 6, y: 6, z: 0 });
+  const crossing = addPlayer(world, "crossing", { x: 9, y: 7, z: 0 });
   const sight = createVisibility();
   const remembered = world.terrain.map(() => 0);
   crossing.move = {
-    origin: { x: 6, y: 8, z: 0 },
+    origin: { x: 9, y: 7, z: 0 },
     target: { x: 9, y: 8, z: 0 },
-    startPosition: { x: 6, y: 8, z: 0 },
+    startPosition: { x: 9, y: 7, z: 0 },
     startTick: 0,
     durationTicks: 10,
     sequence: 1,
@@ -92,24 +96,37 @@ Deno.test("a crossing entity never sends a hidden move endpoint", () => {
   world.tick = 2;
   const departing = entityView(world, "viewer", sight, remembered);
   assertEquals(departing.world.players.crossing?.move, null);
-  assertEquals(departing.world.players.crossing?.x, 6);
-  assert(!JSON.stringify(departing.world.players.crossing).includes('"x":9'));
+  assertEquals(departing.world.players.crossing?.y, 7);
+  assert(!JSON.stringify(departing.world.players.crossing).includes('"y":8'));
+  const exitMotion = departing.world.players.crossing?.viewMotion;
+  assert(exitMotion);
+  assertEquals(viewMotionOpacity(exitMotion, 2), 1);
+  assert(viewMotionOpacity(exitMotion, 5) > 0);
+  assert(viewMotionOpacity(exitMotion, 5) < 1);
+  assert(viewMotionPosition(exitMotion, 5).y > 7);
+  assert(viewMotionPosition(exitMotion, 5).y < 7.5);
 
-  world.tick = 6;
+  world.tick = 8;
   const hidden = entityView(world, "viewer", sight, remembered);
   assertEquals(hidden.world.players.crossing, undefined);
 
   crossing.move = {
     ...crossing.move,
     origin: { x: 9, y: 8, z: 0 },
-    target: { x: 6, y: 8, z: 0 },
+    target: { x: 9, y: 7, z: 0 },
     startPosition: { x: 9, y: 8, z: 0 },
   };
   world.tick = 6;
   const arriving = entityView(world, "viewer", sight, remembered);
   assertEquals(arriving.world.players.crossing?.move, null);
-  assertEquals(arriving.world.players.crossing?.x, 6);
-  assert(!JSON.stringify(arriving.world.players.crossing).includes('"x":9'));
+  assertEquals(arriving.world.players.crossing?.y, 7);
+  assert(!JSON.stringify(arriving.world.players.crossing).includes('"y":8'));
+  const entryMotion = arriving.world.players.crossing?.viewMotion;
+  assert(entryMotion);
+  assert(viewMotionOpacity(entryMotion, 6) > 0);
+  assert(viewMotionOpacity(entryMotion, 6) < 1);
+  assert(viewMotionPosition(entryMotion, 6).y > 7);
+  assert(viewMotionPosition(entryMotion, 6).y < 7.5);
 });
 
 Deno.test("remembered terrain stays stale until seen again, including after master travel", () => {

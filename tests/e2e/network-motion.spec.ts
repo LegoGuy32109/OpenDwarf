@@ -382,6 +382,137 @@ test("a guest can circle the pillar without leaving a remote sprite behind", asy
   await Promise.all([host.close(), guest.close()]);
 });
 
+test("a guest sees the host move and fade behind the pillar", async ({ browser }) => {
+  const host = await browser.newPage();
+  const guest = await browser.newPage();
+  await host.goto("/?harness=1");
+  await expect(host.locator("#loading")).toBeHidden();
+  const session = await host.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+      .scene.sessionId
+  );
+  await guest.goto("/admin?harness=1");
+  await expect(guest.locator("#loading")).toBeHidden();
+  await guest.locator(`[data-session-id="${session}"]`).click();
+  await expect.poll(() =>
+    guest.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { localId: string } } })
+        .__od.scene.localId
+    )
+  ).toMatch(/^peer-/);
+  // Keep the host and guest on opposite sides of the pillar's sight edge.
+  const playerTile = (id: string) =>
+    host.evaluate((playerId) => {
+      const player = (globalThis as unknown as {
+        __od: {
+          scene: {
+            world: {
+              players: Record<string, { x: number; y: number; move: unknown }>;
+            };
+          };
+        };
+      }).__od.scene.world.players[playerId];
+      return { x: player.x, y: player.y, moving: !!player.move };
+    }, id);
+  const step = async (
+    page: Page,
+    id: string,
+    key: string,
+    x: number,
+    y: number,
+  ) => {
+    await page.keyboard.press(key);
+    await expect.poll(() => playerTile(id)).toMatchObject({ x, y });
+    await expect.poll(async () => !(await playerTile(id)).moving).toBe(true);
+  };
+  await step(host, "self", "e", 7, 6);
+  await step(host, "self", "f", 8, 6);
+  await step(host, "self", "f", 9, 6);
+  await step(host, "self", "d", 9, 7);
+  const id = await guest.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+      .scene.localId
+  );
+  await step(guest, id, "s", 7, 7);
+  await step(guest, id, "s", 6, 7);
+  await step(guest, id, "e", 6, 6);
+  await expect.poll(() =>
+    guest.evaluate(() =>
+      Boolean(
+        (globalThis as unknown as {
+          __od: { scene: { world: { players: Record<string, unknown> } } };
+        }).__od.scene.world.players.self,
+      )
+    )
+  ).toBe(true);
+
+  const samples = () =>
+    guest.evaluate(() =>
+      new Promise<Array<{ y: number; opacity: number }>>((resolve) => {
+        const game = (globalThis as unknown as {
+          __od: {
+            scene: {
+              world: {
+                tick: number;
+                players: Record<string, {
+                  viewMotion?: {
+                    startTick: number;
+                    durationTicks: number;
+                    entering: boolean;
+                  };
+                }>;
+              };
+            };
+            visualPosition: (id: string) => Position | null;
+          };
+        }).__od;
+        const collected: Array<{ y: number; opacity: number }> = [];
+        const until = performance.now() + 850;
+        const sample = () => {
+          const player = game.scene.world.players.self;
+          const position = game.visualPosition("self");
+          if (player?.viewMotion && position) {
+            const motion = player.viewMotion;
+            const progress = (position.tick - motion.startTick) /
+              motion.durationTicks;
+            const blend = Math.max(0, Math.min(1, (progress - 0.25) / 0.5));
+            collected.push({
+              y: position.y,
+              opacity: motion.entering ? blend : 1 - blend,
+            });
+          }
+          if (performance.now() < until) requestAnimationFrame(sample);
+          else resolve(collected);
+        };
+        requestAnimationFrame(sample);
+      })
+    );
+  const leaving = samples();
+  await host.keyboard.press("d");
+  const trace = await leaving;
+  expect(trace.length).toBeGreaterThan(4);
+  expect(Math.max(...trace.map((point) => point.y))).toBeGreaterThan(7.1);
+  expect(trace.some((point) => point.opacity > 0.1 && point.opacity < 0.9))
+    .toBe(true);
+  expect(trace.every((point) => point.y < 7.5)).toBe(true);
+  await expect.poll(() => playerTile("self")).toMatchObject({
+    x: 9,
+    y: 8,
+    moving: false,
+  });
+  const entering = samples();
+  await host.keyboard.press("e");
+  const returnTrace = await entering;
+  expect(returnTrace.length).toBeGreaterThan(4);
+  expect(
+    returnTrace.some((point) => point.opacity > 0.1 && point.opacity < 0.9),
+  )
+    .toBe(true);
+  expect(Math.min(...returnTrace.map((point) => point.y))).toBeLessThan(7.4);
+  expect(returnTrace.every((point) => point.y < 7.5)).toBe(true);
+  await Promise.all([host.close(), guest.close()]);
+});
+
 test("guest master mode receives full terrain and entity mode restores only discovered terrain", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();

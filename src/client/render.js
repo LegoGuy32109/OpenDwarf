@@ -2,6 +2,7 @@
 
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
+import { viewMotionOpacity } from "../shared/view.js";
 import {
   ceilingMask,
   DEPTH_TINTS,
@@ -377,6 +378,8 @@ export async function createRenderer(canvas) {
     for (const { player, pos } of players) {
       let visible = scene.viewMode === "master"
         ? 1
+        : player.viewMotion
+        ? viewMotionOpacity(player.viewMotion, scene.world.tick + alpha)
         : entityOpacity(player, scene.world.tick + alpha, (x, y, z) =>
           tileVisibility(scene.visibility, x, y, z) === "visible");
       if (

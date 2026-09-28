@@ -10,6 +10,53 @@ import {
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./visibility.js').Visibility} Visibility */
 
+/** Animate only the visible half of a move across a sight boundary. */
+/** @param {import('./world.js').Player} player @param {boolean} entering */
+function boundaryPlayer(player, entering) {
+  const move = player.move;
+  if (!move) return player;
+  const anchor = entering ? move.target : move.origin;
+  const other = entering ? move.origin : move.target;
+  const edge = {
+    x: anchor.x + Math.sign(other.x - anchor.x) * 0.49,
+    y: anchor.y + Math.sign(other.y - anchor.y) * 0.49,
+    z: anchor.z,
+  };
+  return {
+    ...player,
+    ...anchor,
+    move: null,
+    viewMotion: {
+      from: entering ? edge : anchor,
+      to: entering ? anchor : edge,
+      startTick: move.startTick,
+      durationTicks: move.durationTicks,
+      sequence: move.sequence,
+      entering,
+    },
+  };
+}
+
+/** @param {import('./world.js').ViewMotion} motion @param {number} tick */
+export function viewMotionOpacity(motion, tick) {
+  const progress = (tick - motion.startTick) / motion.durationTicks;
+  const blend = Math.max(0, Math.min(1, (progress - 0.25) / 0.5));
+  return motion.entering ? blend : 1 - blend;
+}
+
+/** @param {import('./world.js').ViewMotion} motion @param {number} tick */
+export function viewMotionPosition(motion, tick) {
+  const progress = (tick - motion.startTick) / motion.durationTicks;
+  const blend = motion.entering
+    ? Math.max(0, Math.min(1, (progress - 0.25) / 0.75))
+    : Math.max(0, Math.min(1, progress / 0.75));
+  return {
+    x: motion.from.x + (motion.to.x - motion.from.x) * blend,
+    y: motion.from.y + (motion.to.y - motion.from.y) * blend,
+    z: motion.from.z + (motion.to.z - motion.from.z) * blend,
+  };
+}
+
 /** @param {World} world @param {string} viewerId @param {Visibility} sight @param {number[]} rememberedTerrain */
 export function entityView(world, viewerId, sight, rememberedTerrain) {
   const viewer = world.players[viewerId];
@@ -60,7 +107,17 @@ export function entityView(world, viewerId, sight, rememberedTerrain) {
       continue;
     }
     const progress = (world.tick - move.startTick) / move.durationTicks;
-    if (originSeen && progress < 0.5) {
+    if (
+      move.origin.z === move.target.z && originSeen && !targetSeen &&
+      progress < 0.75
+    ) {
+      players[id] = boundaryPlayer(player, false);
+    } else if (
+      move.origin.z === move.target.z && targetSeen && !originSeen &&
+      progress >= 0.25
+    ) {
+      players[id] = boundaryPlayer(player, true);
+    } else if (originSeen && progress < 0.5) {
       players[id] = { ...player, ...move.origin, move: null };
     } else if (targetSeen && progress >= 0.5) {
       players[id] = { ...player, ...move.target, move: null };

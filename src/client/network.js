@@ -363,7 +363,35 @@ export function startHost(scene, session) {
       if (
         mode === "entity" && position &&
         sight.sample !== tileKey(position.x, position.y, position.z)
-      ) publishToPeer();
+      ) {
+        publishToPeer();
+        return;
+      }
+      if (mode !== "entity") return;
+      for (const other of Object.values(scene.world.players)) {
+        if (other.id === playerId || !other.move) continue;
+        const move = other.move;
+        if (move.origin.z !== move.target.z) continue;
+        const entered = scene.world.tick === move.startTick +
+            Math.ceil(move.durationTicks * 0.25);
+        const left = scene.world.tick === move.startTick +
+            Math.ceil(move.durationTicks * 0.75);
+        if (!entered && !left) continue;
+        const originSeen = sight.visible.has(tileKey(
+          move.origin.x,
+          move.origin.y,
+          move.origin.z,
+        ));
+        const targetSeen = sight.visible.has(tileKey(
+          move.target.x,
+          move.target.y,
+          move.target.z,
+        ));
+        if (originSeen !== targetSeen) {
+          publishToPeer();
+          return;
+        }
+      }
     }
 
     return {
