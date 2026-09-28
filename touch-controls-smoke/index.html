@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#17191c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Open Dwarf · Touch Controls Smoke</title>
     <style>
       :root {
@@ -71,15 +73,67 @@
         --ui-safe-bottom: max(30px, var(--safe-bottom));
         --ui-safe-left: max(18px, var(--safe-left));
       }
-      .center-label {
+      .playtest {
         position: absolute;
+        z-index: 4;
         top: 50%; left: 50%;
-        color: #777d84;
-        font-size: 11px;
-        letter-spacing: .14em;
+        display: grid;
+        justify-items: center;
+        gap: 10px;
         transform: translate(-50%, -50%);
-        white-space: nowrap;
       }
+      .tile-board {
+        position: relative;
+        display: grid;
+        width: clamp(126px, 20vw, 164px);
+        aspect-ratio: 1;
+        grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+        border: 1px solid #4a5057;
+        background: rgba(27, 30, 34, .78);
+      }
+      .tile { border: 1px solid rgba(76, 82, 90, .42); }
+      .tile.is-target { background: rgba(220, 143, 54, .32); box-shadow: inset 0 0 0 2px #d28b39; }
+      .dwarf {
+        position: absolute;
+        z-index: 2;
+        left: 50%; top: 50%;
+        width: 28px; height: 36px;
+        transform: translate(-50%, -48%);
+      }
+      .dwarf .hood { position: absolute; left: 5px; top: 0; width: 19px; height: 19px; border: 2px solid #aeb4bb; border-radius: 9px 9px 6px 6px; background: #686f77; }
+      .dwarf .face { position: absolute; left: 11px; top: 10px; width: 9px; height: 8px; border-radius: 50%; background: #d0c5b2; }
+      .dwarf .beard { position: absolute; left: 9px; top: 15px; width: 13px; height: 12px; border-radius: 3px 3px 8px 8px; background: #b8b9b5; }
+      .dwarf .body { position: absolute; left: 6px; top: 23px; width: 17px; height: 12px; border: 1px solid #8e959c; border-radius: 4px 4px 2px 2px; background: #555d65; }
+      .move-arrow { position: absolute; z-index: 3; left: 50%; top: 50%; width: 31px; height: 2px; background: #e0e3e6; transform-origin: 0 50%; opacity: 0; }
+      .move-arrow::after { position: absolute; right: -1px; top: -4px; width: 8px; height: 8px; content: ""; border-top: 2px solid #e0e3e6; border-right: 2px solid #e0e3e6; transform: rotate(45deg); }
+      .playtest.has-move .move-arrow { opacity: .95; }
+      .status { display: grid; justify-items: center; gap: 5px; color: #bfc4ca; font-size: 10px; letter-spacing: .08em; text-align: center; }
+      .status-value { color: #eceef0; font-size: 12px; }
+      .mode-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid #484e55; background: #22262a; }
+      .mode-switch button { min-width: 83px; padding: 5px 8px; border: 0; color: #9299a1; background: transparent; font-size: 9px; letter-spacing: .08em; touch-action: manipulation; }
+      .mode-switch button[aria-pressed="true"] { color: #202327; background: #c5c8cb; }
+      .debug-note { position: absolute; top: calc(100% + 8px); width: max-content; max-width: 80vw; color: #858b92; font-size: 9px; text-align: center; }
+      .fullscreen-toggle {
+        position: absolute;
+        z-index: 9;
+        top: calc(var(--ui-safe-top) + 5px);
+        right: calc(var(--ui-safe-right) + 8px);
+        display: grid;
+        width: 42px;
+        height: 42px;
+        padding: 0;
+        place-items: center;
+        border: 1px solid #5a6067;
+        border-radius: 50%;
+        color: #d5d8db;
+        background: #25292d;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        font-size: 21px;
+        line-height: 1;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .fullscreen-toggle:active { background: #3a3f45; }
       .stick {
         position: absolute;
         z-index: 5;
@@ -95,28 +149,54 @@
       .stick-hit {
         position: relative;
         display: grid;
-        width: clamp(112px, 25vw, 164px);
+        width: clamp(148px, 30vw, 210px);
         aspect-ratio: 1;
         padding: 0;
         place-items: center;
         border: 1px solid #484d53;
         border-radius: 50%;
         background: #292c30;
-        box-shadow: inset 0 0 0 12px #25282c, 0 8px 22px rgba(0, 0, 0, .24);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, .24);
         touch-action: none;
         -webkit-tap-highlight-color: transparent;
       }
-      .stick-ring { position: absolute; inset: 20%; border: 1px solid #4a4f55; border-radius: 50%; }
-      .stick-knob {
+      .octant-guides {
         position: absolute;
-        width: 34%; aspect-ratio: 1;
-        border: 1px solid #7a8087;
+        inset: 1px;
         border-radius: 50%;
-        background: #747a81;
-        box-shadow: inset 0 1px 2px rgba(255, 255, 255, .16), 0 3px 8px rgba(0, 0, 0, .38);
+        background: repeating-conic-gradient(from 22.5deg, transparent 0deg 44.4deg, rgba(145, 152, 160, .48) 44.4deg 45deg);
         pointer-events: none;
       }
-      .stick-hit.is-active .stick-knob { background: #a1a6ac; border-color: #c2c6ca; }
+      .stick-deadzone {
+        position: absolute;
+        z-index: 1;
+        width: max(40px, 24%);
+        aspect-ratio: 1;
+        border: 1px dashed #a0a6ad;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+      .stick-knob {
+        position: absolute;
+        z-index: 2;
+        width: 24%; aspect-ratio: 1;
+        border: 2px solid #f4f5f6;
+        border-radius: 50%;
+        background: transparent;
+        box-shadow: 0 0 5px rgba(255, 255, 255, .38);
+        pointer-events: none;
+      }
+      .stick-knob::before, .stick-knob::after {
+        position: absolute;
+        left: 50%; top: 50%;
+        width: 10px; height: 2px;
+        content: "";
+        border-radius: 1px;
+        background: #e34d52;
+        transform: translate(-50%, -50%);
+      }
+      .stick-knob::after { transform: translate(-50%, -50%) rotate(90deg); }
+      .stick-hit.is-active .stick-knob { border-color: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, .58); }
       .actions {
         position: absolute;
         right: 0;
@@ -127,7 +207,7 @@
       }
       .action {
         display: grid;
-        width: clamp(40px, 9vw, 48px);
+        width: clamp(44px, 10vw, 54px);
         aspect-ratio: 1;
         padding: 0;
         place-items: center;
@@ -139,23 +219,13 @@
         font-family: ui-sans-serif, system-ui, sans-serif;
         font-size: 16px;
         font-weight: 700;
-        touch-action: pinch-zoom;
+        touch-action: manipulation;
         -webkit-tap-highlight-color: transparent;
       }
       .action-b { background: #aeb2b6; }
       .action.is-active { background: #e0e2e4; transform: translateY(3px); box-shadow: 0 0 0 #111315, 0 0 0 2px #7b8187; }
-      .status {
-        position: absolute;
-        z-index: 5;
-        bottom: calc(var(--ui-safe-bottom) + 12px);
-        left: 50%;
-        color: #92979d;
-        font-size: 9px;
-        letter-spacing: .08em;
-        text-align: center;
-        white-space: nowrap;
-        transform: translateX(-50%);
-      }
+      .fullscreen-toggle.in-fullscreen { font-size: 25px; }
+      .demo:fullscreen { width: 100vw; height: 100vh; background: #17191c; }
       .orientation-portrait { display: inline; }
       .orientation-landscape { display: none; }
       @media (orientation: portrait) {
@@ -168,7 +238,7 @@
         .stick { bottom: calc(var(--ui-safe-bottom) + clamp(54px, 10vh, 94px)); }
         .stick.move { left: calc(var(--ui-safe-left) + 12px); }
         .stick.camera { right: calc(var(--ui-safe-right) + 12px); }
-        .stick-hit { width: clamp(104px, 28vw, 146px); }
+        .stick-hit { width: clamp(132px, 36vw, 190px); }
       }
       @media (orientation: landscape) {
         .preview-insets {
@@ -180,57 +250,135 @@
         .orientation-portrait { display: none; }
         .orientation-landscape { display: inline; }
         .stick { bottom: calc(var(--ui-safe-bottom) + 14px); gap: 5px; }
-        .stick-hit { width: clamp(104px, 20vh, 150px); }
+        .stick-hit { width: clamp(148px, 30vh, 220px); }
         .control-name { font-size: 8px; }
         .action { width: clamp(38px, 8vh, 46px); }
-        .status { bottom: calc(var(--ui-safe-bottom) + 10px); }
       }
       @media (max-height: 420px) and (orientation: landscape) {
-        .stick-hit { width: min(28vh, 104px); }
-        .status { display: none; }
+        .stick-hit { width: min(34vh, 160px); }
+        .playtest { gap: 6px; }
+        .tile-board { width: clamp(94px, 22vh, 132px); }
+        .dwarf { transform: translate(-50%, -48%) scale(.82); }
+        .status { gap: 3px; font-size: 8px; }
+        .status-value { font-size: 10px; }
+        .mode-switch button { min-width: 72px; padding: 4px 5px; font-size: 8px; }
       }
     </style>
   </head>
   <body>
     <main class="demo preview-insets" id="demo" aria-label="Open Dwarf touch controls smoke">
       <section class="screen" aria-label="Game viewport">
-        <span class="center-label">GAME VIEWPORT</span>
+        <div class="playtest" id="playtest" aria-live="polite">
+          <div class="tile-board" aria-label="Adjacent tile input preview">
+            <span class="tile" data-tile="NW"></span><span class="tile" data-tile="N"></span><span class="tile" data-tile="NE"></span>
+            <span class="tile" data-tile="W"></span><span class="tile" data-tile="CENTER"></span><span class="tile" data-tile="E"></span>
+            <span class="tile" data-tile="SW"></span><span class="tile" data-tile="S"></span><span class="tile" data-tile="SE"></span>
+            <div class="dwarf" aria-label="Dwarf player"><i class="hood"></i><i class="face"></i><i class="beard"></i><i class="body"></i></div>
+            <span class="move-arrow" id="move-arrow"></span>
+          </div>
+          <div class="status">
+            <span>MOVE · ESDF <span class="status-value" id="move-value">CENTER</span></span>
+            <span><span id="right-status-label">CAMERA · IJKL</span> <span class="status-value" id="right-value">CENTER</span></span>
+          </div>
+          <div class="mode-switch" role="group" aria-label="IJKL input context">
+            <button type="button" data-mode="camera" aria-pressed="true">CAMERA</button>
+            <button type="button" data-mode="manipulate" aria-pressed="false">MANIPULATE</button>
+          </div>
+          <div class="debug-note" id="debug-note"></div>
+        </div>
       </section>
       <div class="safe-content" aria-hidden="true"></div>
       <div class="safe-boundary" aria-hidden="true"></div>
+      <button class="fullscreen-toggle" id="fullscreen-toggle" type="button" aria-label="Enter fullscreen" title="Enter fullscreen">⛶</button>
       <section class="stick move" aria-label="Move controller, ESDF">
         <span class="control-name">MOVE <b>ESDF</b></span>
         <button class="stick-hit" type="button" data-control="move" aria-label="Move controller">
-          <span class="stick-ring"></span><span class="stick-knob"></span>
+          <span class="octant-guides" aria-hidden="true"></span><span class="stick-deadzone" aria-hidden="true"></span><span class="stick-knob"></span>
         </button>
       </section>
       <section class="stick camera" aria-label="Camera controller, IJKL">
-        <span class="control-name">CAMERA <b>IJKL</b></span>
+        <span class="control-name"><span id="right-control-name">CAMERA</span> <b>IJKL</b></span>
         <button class="stick-hit" type="button" data-control="camera" aria-label="Camera controller">
-          <span class="stick-ring"></span><span class="stick-knob"></span>
+          <span class="octant-guides" aria-hidden="true"></span><span class="stick-deadzone" aria-hidden="true"></span><span class="stick-knob"></span>
         </button>
         <span class="actions" aria-label="Action buttons">
           <button class="action action-a" type="button" data-control="A" aria-label="Action A">A</button>
           <button class="action action-b" type="button" data-control="B" aria-label="Action B">B</button>
         </span>
       </section>
-      <output class="status" id="status" aria-live="polite"><span class="orientation-portrait">PORTRAIT</span><span class="orientation-landscape">LANDSCAPE</span> · DRAG STICKS · PINCH VIEW TO ZOOM</output>
     </main>
     <script>
-      const status = document.querySelector("#status");
+      const demo = document.querySelector("#demo");
+      const fullscreenButton = document.querySelector("#fullscreen-toggle");
       const active = new Map();
       const stickPointers = new Map();
       const directions = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
+      const angleByDirection = { E: 0, SE: 45, S: 90, SW: 135, W: 180, NW: 225, N: 270, NE: 315 };
+      const DEADZONE_MIN_PX = 20;
+      const DEADZONE_DIAMETER_RATIO = 0.12;
+      let rightMode = "camera";
 
       function refresh() {
         document.querySelectorAll("[data-control]").forEach((el) => {
           const down = [...active.values()].some((item) => item.control === el.dataset.control);
           el.classList.toggle("is-active", down);
         });
-        const held = [...new Set([...active.values()].map((item) => item.label))];
-        const orientation = matchMedia("(orientation: portrait)").matches ? "PORTRAIT" : "LANDSCAPE";
-        status.textContent = held.length ? `HELD · ${held.join(" + ")}` : `${orientation} · DRAG STICKS · PINCH VIEW TO ZOOM`;
+        const moveDirection = document.querySelector('[data-control="move"]').dataset.direction || "CENTER";
+        const rightDirection = document.querySelector('[data-control="camera"]').dataset.direction || "CENTER";
+        const hasMove = moveDirection !== "CENTER";
+        document.querySelector("#playtest").classList.toggle("has-move", hasMove);
+        document.querySelector("#move-arrow").style.transform = `rotate(${angleByDirection[moveDirection] || 0}deg)`;
+        document.querySelectorAll(".tile").forEach((tile) => tile.classList.toggle("is-target", rightDirection !== "CENTER" && tile.dataset.tile === rightDirection));
+        document.querySelector("#move-value").textContent = moveDirection;
+        document.querySelector("#right-status-label").textContent = `${rightMode.toUpperCase()} · IJKL`;
+        document.querySelector("#right-value").textContent = rightDirection;
+        updateFullscreenState();
       }
+
+      document.querySelectorAll("[data-mode]").forEach((button) => {
+        button.addEventListener("click", () => {
+          rightMode = button.dataset.mode;
+          document.querySelectorAll("[data-mode]").forEach((option) => option.setAttribute("aria-pressed", String(option === button)));
+          document.querySelector("#right-control-name").textContent = rightMode.toUpperCase();
+          refresh();
+        });
+      });
+
+      function updateFullscreenState() {
+        const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const fullscreen = fullscreenElement === demo;
+        fullscreenButton.textContent = fullscreen ? "×" : "⛶";
+        fullscreenButton.setAttribute("aria-label", fullscreen ? "Exit fullscreen" : "Enter fullscreen");
+        fullscreenButton.title = fullscreen ? "Exit fullscreen" : "Enter fullscreen";
+        fullscreenButton.classList.toggle("in-fullscreen", fullscreen);
+      }
+
+      async function toggleFullscreen() {
+        const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+        const note = document.querySelector("#debug-note");
+        if (fullscreenElement) {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen;
+          if (exit) await exit.call(document);
+          return;
+        }
+
+        const request = demo.requestFullscreen || demo.webkitRequestFullscreen;
+        const enabled = document.fullscreenEnabled !== false && document.webkitFullscreenEnabled !== false;
+        if (!request || !enabled) {
+          note.textContent = "Fullscreen API unavailable. Add to Home Screen to hide Safari controls.";
+          return;
+        }
+        try {
+          await request.call(demo);
+          note.textContent = "";
+        } catch {
+          note.textContent = "Fullscreen was rejected. Add to Home Screen to hide Safari controls.";
+        }
+      }
+
+      fullscreenButton.addEventListener("click", toggleFullscreen);
+      document.addEventListener("fullscreenchange", updateFullscreenState);
+      document.addEventListener("webkitfullscreenchange", updateFullscreenState);
 
       function moveStick(el, event) {
         const rect = el.getBoundingClientRect();
@@ -243,7 +391,8 @@
         const y = dy * scale;
         el.querySelector(":scope > .stick-knob").style.transform = `translate(${x}px, ${y}px)`;
         const angle = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-        const direction = length < 12 ? "CENTER" : directions[Math.round(angle / 45) % 8];
+        const deadzone = Math.max(DEADZONE_MIN_PX, rect.width * DEADZONE_DIAMETER_RATIO);
+        const direction = length < deadzone ? "CENTER" : directions[Math.round(angle / 45) % 8];
         const item = active.get(event.pointerId);
         el.dataset.direction = direction;
         if (item) item.label = `${item.control === "move" ? "MOVE" : "CAMERA"} ${direction}`;
@@ -294,6 +443,7 @@
         refresh();
       });
       window.addEventListener("contextmenu", (event) => event.preventDefault());
+      updateFullscreenState();
     </script>
   </body>
 </html>
