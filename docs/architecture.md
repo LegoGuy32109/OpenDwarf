@@ -37,20 +37,23 @@ memory game loop. The admin route lists recent visitor heartbeats and joins
 through a WebRTC data channel. HTTP POST and SSE carry connection signaling;
 they do not carry game updates.
 
-The browser host applies admin move intents in sequence order and sends a
-world snapshot every 500 ms. The admin predicts movement locally. Snapshots
-acknowledge the latest processed input: the admin keeps an unacknowledged or
+The browser host applies each joining player's move intents in sequence order
+and sends a world snapshot every 500 ms. Joining players predict movement
+locally. Each snapshot acknowledges that recipient's latest processed input.
+The joining player keeps an unacknowledged or
 matching local animation, maps the host's animation onto its own tick, and
 eases the sprite after a real correction. This avoids resetting the local
 animation every half second. Each browser presents remote player and NPC moves
-through the same 100 ms render buffer. The host applies movement to the world
+through the same ordered render queue. The host applies movement to the world
 as soon as an intent arrives. If a straight-line intent arrives just before
 the host finishes its current tile, the host queues it for the next tick.
-It is not rollback netcode. WebRTC uses direct
+The game engine runs at 20 ticks per second and renders between ticks. The
+ordered queue preserves each remote tile transition when updates arrive close
+together. It is not rollback netcode. WebRTC uses direct
 connectivity when ICE can establish it; Xirsys TURN credentials supply a relay
 when needed. The signaling route uses Deno KV as a mailbox.
 
-The admin tab keeps a session token while its tab exists. If its WebRTC
+Each joining tab keeps a session token while its tab exists. If its WebRTC
 connection drops, it sends a fresh join request. The host keeps its sprite for
 at most five seconds and preserves its name and tile for a later rejoin while
 the host world remains open. Ping activity also expires a silent connection.
@@ -69,11 +72,12 @@ Deno KV. Its random code expires 30 minutes after the phone stops polling.
 
 - `/admin` and its APIs have no authentication. Anyone who knows the route can
   list and join active worlds in this stage.
-- A world has one visitor and one admin. It ends when the visitor closes the
-  page. A missed close signal leaves presence until the 30 second TTL ends.
+- A world has one browser host and accepts up to eight distinct joining tabs.
+  It ends when the host closes the page. A missed close signal leaves presence
+  until the 30 second TTL ends.
 - The KV mailbox is bounded to 32 recent signals. It suits this small demo,
   but it is not a general game message bus.
-- The admin receives state snapshots and can see brief corrections when the
+- Joining players receive state snapshots and can see brief corrections when the
   host rejects a predicted move. There is no clock synchronization, input
   replay, or authoritative server.
 - Offline caching is deferred. A visitor needs the website to load the game.

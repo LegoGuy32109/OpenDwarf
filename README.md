@@ -14,7 +14,7 @@ Open `http://localhost:8000/` to start a local 16×16 world with eight view
 levels, a staircase, and a center pillar. Open
 `http://localhost:8000/admin` in another browser to see active worlds and join
 one. A corner NPC loops around four tiles. The `/admin` route has no access
-control in this demo. Only one visitor can join a world.
+control in this demo. A host world accepts up to eight distinct joining tabs.
 
 On a keyboard, ESDF moves the player, IJKL moves the camera, R/V changes the
 view level, and holding U/N smoothly zooms out/in. The mouse wheel also zooms.
@@ -38,17 +38,17 @@ unrestricted camera or `/entity` to return to the player's field of view.
 - `public/`: HTML, custom CSS, browser entrypoint, and texture atlases.
 
 Each visitor owns their world in the browser. Movement begins locally on the
-next 50 ms simulation tick. The admin joins as another player through WebRTC.
+next 50 ms simulation tick. Joining tabs connect as players through WebRTC.
 Deno KV stores short lived presence and signaling messages.
 It does not run the world. The host sends the small world state every 500 ms
-with the latest processed input sequence. The admin keeps its own matching
-animation and eases genuine corrections. The admin panel shows connection
-time, selected ICE route, and recent round trip times.
+with each recipient's latest processed input sequence. Each joining tab keeps
+its own matching animation and eases genuine corrections. The admin panel shows
+connection time, selected ICE route, and recent round trip times.
 
-The admin tab automatically rejoins after a connection drop. The host holds
+Each joining tab automatically rejoins after a connection drop. The host holds
 its sprite for up to five seconds and keeps its name and tile for a later
-rejoin while the world remains open. Remote player and NPC animations use a
-100 ms render buffer on receiving clients.
+rejoin while the world remains open. Remote player and NPC animations queue
+their moves in order, starting two simulation ticks after the first move arrives.
 
 For a TURN diagnostic, open `/admin?relay=1` and join a world. That join
 forces relay candidates on both browsers and shows the selected candidate
@@ -80,7 +80,10 @@ deno task hooks
 `verify` checks formatting, lint, types, and deterministic world tests. The
 Git pre-push hook runs the same task. CI also runs Playwright in Chromium. The
 Playwright tests compare desktop and phone screenshots and exercise the
-WebRTC connection. A system Chromium installation is used locally when present.
+WebRTC connection. Run `deno task e2e --grep 'host and two joining tabs'` to
+check one host, two joining tabs, and each tab's view of remote movement on this
+machine. The shared tests also replay delayed and reordered snapshots with a
+fixed schedule. A system Chromium installation is used locally when present.
 
 ## Deploy
 

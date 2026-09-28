@@ -1,14 +1,12 @@
 // @ts-check
 
-import { renderPosition } from "../shared/world.js";
-
 /** @typedef {import('../shared/world.js').Player} Player */
 /** @typedef {import('../shared/world.js').Move} Move */
 /** @typedef {import('../shared/world.js').Tile} Tile */
 
 /** Delay every remote entity's visual move by two simulation ticks. */
 export function createPresentation() {
-  /** @type {Map<string,{key:string,move:Move|null,settled:Tile}>} */
+  /** @type {Map<string,{key:string,move:Move|null,next:Move[],settled:Tile}>} */
   const entries = new Map();
 
   /** @param {Player} player @param {number} tick @param {boolean} local */
@@ -19,19 +17,38 @@ export function createPresentation() {
       entry = {
         key: "",
         move: null,
-        settled: { x: player.x, y: player.y, z: player.z },
+        next: [],
+        settled: player.move?.startPosition ?? {
+          x: player.x,
+          y: player.y,
+          z: player.z,
+        },
       };
       entries.set(player.id, entry);
     }
     const incoming = player.move;
     const key = incoming ? `${incoming.sequence}:${incoming.startTick}` : "";
     if (incoming && key !== entry.key) {
-      const startTick = tick + 2;
-      const startPosition = entry.move
-        ? renderPosition({ ...player, move: entry.move }, startTick)
-        : entry.settled;
       entry.key = key;
-      entry.move = { ...incoming, startPosition, startTick };
+      entry.next.push(incoming);
+    }
+    let completedAt = null;
+    if (entry.move && tick >= entry.move.startTick + entry.move.durationTicks) {
+      completedAt = entry.move.startTick + entry.move.durationTicks;
+      entry.settled = entry.move.target;
+      entry.move = null;
+    }
+    if (!entry.move && entry.next.length) {
+      const next = entry.next.shift();
+      if (next) {
+        entry.move = {
+          ...next,
+          startPosition: entry.settled,
+          startTick: completedAt === null
+            ? tick + 2
+            : Math.max(tick, completedAt),
+        };
+      }
     }
     const move = entry.move;
     if (move && tick < move.startTick + move.durationTicks) {
@@ -39,10 +56,7 @@ export function createPresentation() {
       const tile = progress >= 0.75 ? move.target : move.origin;
       return { ...player, ...tile, move };
     }
-    if (move) {
-      entry.settled = move.target;
-      entry.move = null;
-    } else if (!incoming) {
+    if (!move && !incoming) {
       entry.settled = { x: player.x, y: player.y, z: player.z };
     }
     return { ...player, ...entry.settled, move: null };

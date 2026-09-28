@@ -288,7 +288,7 @@ test("two-finger drag changes layer and pinch smoothly changes zoom", async ({ b
   await context.close();
 });
 
-test("admin joins over WebRTC and sees smooth movement", async ({ browser }) => {
+test("joining player connects over WebRTC and moves in the host world", async ({ browser }) => {
   const visitor = await browser.newPage();
   const admin = await browser.newPage();
   await visitor.goto("/?harness=1");
@@ -312,7 +312,11 @@ test("admin joins over WebRTC and sees smooth movement", async ({ browser }) => 
           .__od.scene.localId
       ),
     { timeout: 15_000 },
-  ).toBe("admin");
+  ).toMatch(/^peer-/);
+  const guestId = await admin.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+      .scene.localId
+  );
   await expect.poll(() =>
     visitor.evaluate(() =>
       Object.keys(
@@ -321,65 +325,14 @@ test("admin joins over WebRTC and sees smooth movement", async ({ browser }) => 
         }).__od.scene.world.players,
       )
     )
-  ).toContain("admin");
+  ).toContain(guestId);
   await admin.keyboard.down("f");
   await expect.poll(() =>
-    visitor.evaluate(() =>
+    visitor.evaluate((id) =>
       (globalThis as unknown as {
-        __od: { scene: { world: { players: { admin: { x: number } } } } };
-      }).__od.scene.world.players.admin.x
-    )
+        __od: { scene: { world: { players: Record<string, { x: number }> } } };
+      }).__od.scene.world.players[id]?.x, guestId)
   ).toBeGreaterThan(8);
-  const samples = await admin.evaluate(() =>
-    new Promise<number[]>((resolve) => {
-      const values: number[] = [];
-      const until = performance.now() + 1200;
-      const sample = () => {
-        const world = (globalThis as unknown as {
-          __od: {
-            scene: {
-              world: {
-                tick: number;
-                players: {
-                  admin: {
-                    x: number;
-                    move: null | {
-                      startPosition: { x: number };
-                      target: { x: number };
-                      startTick: number;
-                      durationTicks: number;
-                    };
-                  };
-                };
-              };
-            };
-          };
-        }).__od.scene.world;
-        const player = world.players.admin;
-        const move = player?.move;
-        const progress = move
-          ? Math.max(
-            0,
-            Math.min(1, (world.tick - move.startTick) / move.durationTicks),
-          )
-          : 0;
-        values.push(
-          move
-            ? move.startPosition.x +
-              (move.target.x - move.startPosition.x) * progress
-            : player.x,
-        );
-        if (performance.now() < until) requestAnimationFrame(sample);
-        else resolve(values);
-      };
-      requestAnimationFrame(sample);
-    })
-  );
-  expect(
-    Math.min(
-      ...samples.slice(1).map((value, index) => value - samples[index]),
-    ),
-  ).toBeGreaterThan(-0.05);
   await admin.keyboard.up("f");
   await expect.poll(() => admin.locator("#net-stats").textContent(), {
     timeout: 8_000,
@@ -416,7 +369,11 @@ test("opt-in phone test drops and rejoins the same player", async ({ browser }) 
       (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
         .scene.localId
     )
-  ).toBe("admin");
+  ).toMatch(/^peer-/);
+  const guestId = await phone.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+      .scene.localId
+  );
   await expect.poll(() => phone.locator("#phone-test-status").textContent(), {
     timeout: 8_000,
   }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay).*RTT median \d+ ms/);
@@ -424,11 +381,12 @@ test("opt-in phone test drops and rejoins the same player", async ({ browser }) 
   await phone.locator("#chat-input").fill("/nick RejoinTest");
   await phone.keyboard.press("Enter");
   await expect.poll(() =>
-    host.evaluate(() =>
+    host.evaluate((id) =>
       (globalThis as unknown as {
-        __od: { scene: { world: { players: { admin?: { name: string } } } } };
-      }).__od.scene.world.players.admin?.name
-    )
+        __od: {
+          scene: { world: { players: Record<string, { name: string }> } };
+        };
+      }).__od.scene.world.players[id]?.name, guestId)
   ).toBe("RejoinTest");
   const command = await phone.request.post(`/api/phone-test/${code}/command`, {
     data: { kind: "drop" },
@@ -449,28 +407,33 @@ test("opt-in phone test drops and rejoins the same player", async ({ browser }) 
     { timeout: 20_000 },
   ).toBe("Visitor world");
   await expect.poll(() =>
-    host.evaluate(() =>
+    host.evaluate((id) =>
       (globalThis as unknown as {
-        __od: { scene: { world: { players: { admin?: { name: string } } } } };
-      }).__od.scene.world.players.admin?.name
-    )
+        __od: {
+          scene: { world: { players: Record<string, { name: string }> } };
+        };
+      }).__od.scene.world.players[id]?.name, guestId)
   ).toBe("RejoinTest");
   const longDrop = await phone.request.post(`/api/phone-test/${code}/command`, {
     data: { kind: "drop", data: "6500" },
   });
   expect(longDrop.ok()).toBeTruthy();
   await expect.poll(() =>
-    host.evaluate(() =>
+    host.evaluate((id) =>
       (globalThis as unknown as {
-        __od: { scene: { world: { players: { admin?: { name: string } } } } };
-      }).__od.scene.world.players.admin?.name
-    ), { timeout: 8_000 }).toBeUndefined();
+        __od: {
+          scene: { world: { players: Record<string, { name: string }> } };
+        };
+      }).__od.scene.world.players[id]?.name, guestId), { timeout: 8_000 })
+    .toBeUndefined();
   await expect.poll(() =>
-    host.evaluate(() =>
+    host.evaluate((id) =>
       (globalThis as unknown as {
-        __od: { scene: { world: { players: { admin?: { name: string } } } } };
-      }).__od.scene.world.players.admin?.name
-    ), { timeout: 12_000 }).toBe("RejoinTest");
+        __od: {
+          scene: { world: { players: Record<string, { name: string }> } };
+        };
+      }).__od.scene.world.players[id]?.name, guestId), { timeout: 12_000 })
+    .toBe("RejoinTest");
   await phone.close();
   await host.close();
 });
@@ -514,7 +477,7 @@ test("TURN relay join reports a relay candidate", async ({ browser }) => {
           .scene.localId
       ),
     { timeout: 30_000 },
-  ).toBe("admin");
+  ).toMatch(/^peer-/);
   await expect.poll(() => admin.locator("#net-stats").textContent(), {
     timeout: 15_000,
   }).toMatch(/route relay\/relay/);

@@ -101,7 +101,7 @@ function typing() {
   if (next === lastTyping) return;
   lastTyping = next;
   setTyping(scene.world, scene.localId, next);
-  if (scene.localId === "admin") guest?.send({ type: "typing", typing: next });
+  if (isAdmin) guest?.send({ type: "typing", typing: next });
   else host?.publish();
 }
 
@@ -132,7 +132,7 @@ function submitChat() {
   if (!text) return;
   if (text.toLowerCase().startsWith("/nick ")) {
     const name = text.slice(6);
-    if (scene.localId === "admin") guest?.send({ type: "nick", name });
+    if (isAdmin) guest?.send({ type: "nick", name });
     else {
       const result = setNickname(scene.world, scene.localId, name);
       notify(
@@ -153,7 +153,7 @@ function submitChat() {
     return;
   }
   submitMessage(scene.world, scene.localId, text);
-  if (scene.localId === "admin") guest?.send({ type: "message", text });
+  if (isAdmin) guest?.send({ type: "message", text });
   else host?.publish();
 }
 
@@ -184,7 +184,7 @@ function move() {
     ++sequence,
   );
   if (result.ok) {
-    if (scene.localId === "admin") {
+    if (isAdmin) {
       guest?.send({ type: "move", dx: direction.x, dy: direction.y, sequence });
     } else host?.publish();
   }
@@ -662,6 +662,18 @@ export async function startApp() {
       /** @param {number} dx @param {number} dy */
       startMove: (dx, dy) =>
         startMove(scene.world, scene.localId, dx, dy, ++sequence),
+      /** @param {string} id */
+      visualPosition: (id) => {
+        const player = scene.world.players[id];
+        if (!player) return null;
+        const tick = scene.world.tick + accumulator / TICK_MS;
+        const presented = scene.presentation.playerAt(
+          player,
+          tick,
+          id === scene.localId,
+        );
+        return { tick, ...renderPosition(presented, tick) };
+      },
     };
   }
 }

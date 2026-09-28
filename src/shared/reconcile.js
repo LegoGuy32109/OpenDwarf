@@ -29,12 +29,13 @@ function atLocalTick(player, hostTick, localTick) {
 }
 
 /** Keep a client's own confirmed animation and any input the host has not seen yet. */
-/** @param {World} local @param {World} snapshot @param {number} acknowledgedSequence @param {number} latestLocalSequence */
+/** @param {World} local @param {World} snapshot @param {number} acknowledgedSequence @param {number} latestLocalSequence @param {string} localId */
 export function mergeSnapshot(
   local,
   snapshot,
   acknowledgedSequence,
   latestLocalSequence,
+  localId,
 ) {
   /** @type {Record<string,Player>} */
   const players = {};
@@ -45,7 +46,7 @@ export function mergeSnapshot(
       players[id] = atLocalTick(incoming, snapshot.tick, local.tick);
       continue;
     }
-    if (id === "admin") {
+    if (id === localId) {
       const pending = latestLocalSequence > acknowledgedSequence;
       const matching = sameMove(existing.move, incoming.move) ||
         (!existing.move && !incoming.move && sameTile(existing, incoming)) ||

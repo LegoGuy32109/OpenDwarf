@@ -9,7 +9,7 @@ const CONTENT_TYPES: Record<string, string> = {
 const SESSION_TTL_MS = 30_000;
 type Signal = {
   id: string;
-  from: "host" | "admin";
+  from: string;
   kind: string;
   data: unknown;
 };
@@ -234,8 +234,9 @@ export function createApp(
       return json({ sessions });
     }
     if (path === "/api/ice" && request.method === "GET") return iceServers();
-    const signalPath = /^\/api\/signal\/([a-zA-Z0-9_-]{8,80})\/(host|admin)$/
-      .exec(path);
+    const signalPath =
+      /^\/api\/signal\/([a-zA-Z0-9_-]{8,80})\/(host|peer-[a-f0-9-]{36})$/
+        .exec(path);
     if (signalPath && request.method === "GET") {
       return signalStream(kv, signalPath[1], signalPath[2]);
     }
@@ -243,7 +244,10 @@ export function createApp(
       const data = await body(request);
       if (
         typeof data.kind !== "string" || typeof data.id !== "string" ||
-        (data.from !== "host" && data.from !== "admin")
+        typeof data.from !== "string" ||
+        (signalPath[2] === "host"
+          ? !/^peer-[a-f0-9-]{36}$/.test(data.from)
+          : data.from !== "host")
       ) {
         return json({ error: "invalid signal" }, 400);
       }

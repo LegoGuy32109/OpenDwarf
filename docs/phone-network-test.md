@@ -52,8 +52,9 @@ ms simulation tick. A joining player's browser predicts its move while the host
 validates the intent and sends snapshots. Watch for a correction after a
 rejected move or a delayed snapshot. The Deno instance serves files, presence,
 ICE credentials, and signaling through KV. It does not simulate the world. The
-current demo has one host and one joining player, so this test does not measure
-a dedicated remote world server or a larger peer group.
+phone test compares one joining player with a browser host. The local browser
+test also checks a host with two joining tabs. Neither test measures a
+dedicated remote world server.
 
 If joining is slow or fails, inspect the ICE route and TURN setup first. If
 movement feels slow despite a fast local response, compare p95 RTT with the
