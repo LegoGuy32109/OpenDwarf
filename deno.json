@@ -1,5 +1,5 @@
 {
-  "lint": { "plugins": ["./lint/plugin.ts"] },
+  "lint": { "plugins": ["./lint/plugin.ts"], "exclude": ["_fresh/"] },
   "compilerOptions": { "lib": ["deno.ns", "dom", "dom.iterable"], "checkJs": true, "noImplicitAny": true },
   "fmt": { "include": ["main.ts", "src/", "public/js/", "public/css/", "lint/", "tests/", "scripts/"] },
   "tasks": {

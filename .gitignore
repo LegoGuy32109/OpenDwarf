@@ -4,6 +4,7 @@
 .deno/
 node_modules/
 exports/
+_fresh/
 game_engine/
 game_library/
 vendor/

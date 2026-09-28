@@ -69,7 +69,12 @@ export async function startPhoneTest(diagnostics) {
       const state = await response.json();
       if (status) {
         const sample = diagnostics.sample();
-        status.textContent = `${sample.status} · ${sample.route}`;
+        const rtt = [...sample.rttMs].sort((a, b) => a - b);
+        const median = rtt.length ? rtt[Math.floor(rtt.length / 2)] : "…";
+        const p95 = rtt.length ? rtt[Math.ceil(rtt.length * 0.95) - 1] : "…";
+        status.textContent = `${sample.status} · route ${sample.route} · join ${
+          sample.joinMs ?? "…"
+        } ms · RTT median ${median} ms · p95 ${p95} ms`;
       }
       const command = state.command;
       if (command && command.id !== lastCommand) {

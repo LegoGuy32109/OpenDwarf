@@ -20,6 +20,9 @@ On a keyboard, ESDF moves the player, IJKL moves the camera, R/V changes the
 view level, and holding U/N smoothly zooms out/in. The mouse wheel also zooms.
 `T` opens chat, `/` opens a command, and Escape opens the menu. On a touch
 screen, the left stick moves the player and the right stick moves the camera.
+Both sticks have a visible center deadzone and eight direction guides. The
+fullscreen button uses the browser API when available; on Safari, adding the
+page to the Home Screen can hide browser controls.
 Pinch to zoom or drag two fingers vertically to change view levels. The A
 button opens the chat bar and the B button opens the menu. Use `/nick Josh
 Hale` to set a name. Names are unique within a world. Use `/master` for an

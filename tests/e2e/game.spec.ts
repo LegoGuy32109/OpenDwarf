@@ -82,7 +82,28 @@ test("phone controls fit safe area and move", async ({ browser }) => {
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await page.mouse.down();
+  await expect(page.locator("[data-stick=move]")).toHaveAttribute(
+    "data-direction",
+    "center",
+  );
+  await page.mouse.move(box!.x + box!.width / 2 + 10, box!.y + box!.height / 2);
+  await expect(page.locator("[data-stick=move]")).toHaveAttribute(
+    "data-direction",
+    "center",
+  );
+  await page.mouse.move(
+    box!.x + box!.width * 0.75,
+    box!.y + box!.height * 0.25,
+  );
+  await expect(page.locator("[data-stick=move]")).toHaveAttribute(
+    "data-direction",
+    "1,-1",
+  );
   await page.mouse.move(box!.x + box!.width * 0.8, box!.y + box!.height / 2);
+  await expect(page.locator("[data-stick=move]")).toHaveAttribute(
+    "data-direction",
+    "1,0",
+  );
   await expect.poll(() =>
     page.evaluate(() =>
       (globalThis as unknown as {
@@ -91,6 +112,10 @@ test("phone controls fit safe area and move", async ({ browser }) => {
     )
   ).toBeGreaterThan(7);
   await page.mouse.up();
+  await expect(page.locator("[data-stick=move]")).toHaveAttribute(
+    "data-direction",
+    "center",
+  );
   await page.locator("#chat-button").click();
   await expect(page.locator("#chat-input")).toBeFocused();
   await page.locator("#chat-input").fill("hello phone");
@@ -392,6 +417,9 @@ test("opt-in phone test drops and rejoins the same player", async ({ browser }) 
         .scene.localId
     )
   ).toBe("admin");
+  await expect.poll(() => phone.locator("#phone-test-status").textContent(), {
+    timeout: 8_000,
+  }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay).*RTT median \d+ ms/);
   await phone.keyboard.press("/");
   await phone.locator("#chat-input").fill("/nick RejoinTest");
   await phone.keyboard.press("Enter");

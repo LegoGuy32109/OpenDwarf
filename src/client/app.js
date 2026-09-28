@@ -198,20 +198,29 @@ function bindStick(element, update) {
   /** @param {PointerEvent} event */
   const change = (event) => {
     const box = element.getBoundingClientRect();
-    const max = box.width * 0.3;
-    const x = Math.max(
-      -1,
-      Math.min(1, (event.clientX - box.left - box.width / 2) / max),
-    );
-    const y = Math.max(
-      -1,
-      Math.min(1, (event.clientY - box.top - box.height / 2) / max),
-    );
-    knob.style.transform = `translate(${x * max}px, ${y * max}px)`;
-    update(
-      Math.abs(x) > 0.3 ? Math.sign(x) : 0,
-      Math.abs(y) > 0.3 ? Math.sign(y) : 0,
-    );
+    const dx = event.clientX - box.left - box.width / 2;
+    const dy = event.clientY - box.top - box.height / 2;
+    const length = Math.hypot(dx, dy);
+    const reach = box.width * 0.3;
+    const scale = Math.min(1, reach / Math.max(1, length));
+    knob.style.transform = `translate(${dx * scale}px, ${dy * scale}px)`;
+    const deadzone = Math.max(20, box.width * 0.12);
+    const octant = length < deadzone
+      ? null
+      : Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
+    const directions = [
+      [1, 0],
+      [1, 1],
+      [0, 1],
+      [-1, 1],
+      [-1, 0],
+      [-1, -1],
+      [0, -1],
+      [1, -1],
+    ];
+    const [x, y] = octant === null ? [0, 0] : directions[(octant + 8) % 8];
+    element.dataset.direction = x || y ? `${x},${y}` : "center";
+    update(x, y);
   };
   element.addEventListener("pointerdown", (raw) => {
     const event = /** @type {PointerEvent} */ (raw);
@@ -226,10 +235,13 @@ function bindStick(element, update) {
     const event = /** @type {PointerEvent} */ (raw);
     if (event.pointerId === pointer) change(event);
   });
-  const release = () => {
+  /** @param {PointerEvent} event */
+  const release = (event) => {
+    if (event.pointerId !== pointer) return;
     pointer = -1;
     knob.style.transform = "";
     element.classList.remove("is-active");
+    element.dataset.direction = "center";
     update(0, 0);
   };
   element.addEventListener("pointerup", release);
@@ -313,6 +325,30 @@ function bindTouchGesture() {
 }
 
 function bindInput() {
+  const fullscreenButton = $("#fullscreen-toggle");
+  const displayStatus = $("#display-status");
+  const updateFullscreen = () => {
+    const fullscreen = document.fullscreenElement === $("#game");
+    fullscreenButton.textContent = fullscreen ? "×" : "⛶";
+    fullscreenButton.setAttribute(
+      "aria-label",
+      fullscreen ? "Exit fullscreen" : "Enter fullscreen",
+    );
+    fullscreenButton.title = fullscreen
+      ? "Exit fullscreen"
+      : "Enter fullscreen";
+  };
+  fullscreenButton.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await $("#game").requestFullscreen();
+      displayStatus.textContent = "";
+    } catch {
+      displayStatus.textContent =
+        "Fullscreen unavailable. Add this page to your Home Screen.";
+    }
+  });
+  document.addEventListener("fullscreenchange", updateFullscreen);
   bindStick($("[data-stick=move]"), (x, y) => {
     scene.inputMode = "touch";
     joystick = { x, y };
