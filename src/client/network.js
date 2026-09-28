@@ -206,6 +206,15 @@ export function startHost(scene, session) {
         drainMoves();
         return;
       }
+      if (message.type === "cancel") {
+        const sequence = Number(message.sequence);
+        if (Number.isSafeInteger(sequence) && sequence >= lastSequence) {
+          pendingMoves.length = 0;
+          lastSequence = sequence;
+          publish();
+        }
+        return;
+      }
       if (message.type === "typing") {
         setTyping(scene.world, playerId, message.typing === true);
       }

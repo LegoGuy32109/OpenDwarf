@@ -1,6 +1,6 @@
 // @ts-check
 
-import { renderPosition, Z_LEVELS_BELOW } from "../shared/world.js";
+import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import {
   ceilingMask,
@@ -355,16 +355,17 @@ export async function createRenderer(canvas) {
       }
     }
     flush();
-    const players = Object.values(scene.world.players).map((player) =>
-      scene.presentation.playerAt(
+    const players = Object.values(scene.world.players).map((player) => ({
+      player,
+      pos: scene.presentation.positionAt(
         player,
         scene.world.tick + alpha,
         player.id === scene.localId,
-      )
-    );
+      ),
+    }));
     /** @type {Map<string,number>} */
     const opacity = new Map();
-    for (const player of players) {
+    for (const { player, pos } of players) {
       let visible = scene.viewMode === "master"
         ? 1
         : entityOpacity(player, scene.world.tick + alpha, (x, y, z) =>
@@ -375,7 +376,6 @@ export async function createRenderer(canvas) {
       ) visible = 0;
       opacity.set(player.id, visible);
       if (visible <= 0) continue;
-      const pos = renderPosition(player, scene.world.tick + alpha);
       const offset = player.id === scene.localId
         ? scene.renderOffset
         : { x: 0, y: 0, z: 0 };
@@ -396,10 +396,9 @@ export async function createRenderer(canvas) {
     }
     flush();
     const scale = Math.max(1, Math.round(dpr * 1.5 * scene.uiScale));
-    for (const player of players) {
+    for (const { player, pos } of players) {
       const visible = opacity.get(player.id) ?? 0;
       if (visible <= 0) continue;
-      const pos = renderPosition(player, scene.world.tick + alpha);
       const offset = player.id === scene.localId
         ? scene.renderOffset
         : { x: 0, y: 0, z: 0 };

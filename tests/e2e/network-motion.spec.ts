@@ -263,3 +263,121 @@ test("held and reversed guest movement converges in host and two joining tabs", 
   expect(final[1]?.y).not.toBe(initial[1]?.y);
   await Promise.all([host.close(), first.close(), second.close()]);
 });
+
+test("a guest can circle the pillar without leaving a remote sprite behind", async ({ browser }) => {
+  const host = await browser.newPage();
+  const guest = await browser.newPage();
+  await host.goto("/?harness=1");
+  await expect(host.locator("#loading")).toBeHidden();
+  const session = await host.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+      .scene.sessionId
+  );
+  await guest.goto("/admin?harness=1");
+  await expect(guest.locator("#loading")).toBeHidden();
+  await guest.locator(`[data-session-id="${session}"]`).click();
+  await expect.poll(() =>
+    guest.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { localId: string } } })
+        .__od.scene.localId
+    )
+  ).toMatch(/^peer-/);
+  const id = await guest.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+      .scene.localId
+  );
+  const tile = async (page: Page) =>
+    await page.evaluate((id) => {
+      const player = (globalThis as unknown as {
+        __od: {
+          scene: {
+            world: {
+              players: Record<string, { x: number; y: number; move: unknown }>;
+            };
+          };
+        };
+      }).__od.scene.world.players[id];
+      return player
+        ? { x: player.x, y: player.y, moving: !!player.move }
+        : null;
+    }, id);
+  await expect.poll(() => tile(host)).toMatchObject({ x: 8, y: 7 });
+  for (
+    const [key, x, y] of [
+      ["f", 9, 7],
+      ["d", 9, 8],
+      ["d", 9, 9],
+      ["s", 8, 9],
+    ] as [string, number, number][]
+  ) {
+    await guest.keyboard.press(key);
+    await expect.poll(() => tile(host), { timeout: 3000 }).toMatchObject({
+      x,
+      y,
+    });
+    await expect.poll(async () => !(await tile(host))?.moving).toBe(true);
+  }
+  await guest.keyboard.press("e");
+  await guest.waitForTimeout(600);
+  expect(await tile(host)).toMatchObject({ x: 8, y: 9, moving: false });
+  expect(await tile(guest)).toMatchObject({ x: 8, y: 9, moving: false });
+  const visualGap = await host.evaluate((id) => {
+    const game = (globalThis as unknown as {
+      __od: {
+        scene: {
+          world: {
+            tick: number;
+            players: Record<string, {
+              x: number;
+              y: number;
+              z: number;
+              move: {
+                startPosition: { x: number; y: number; z: number };
+                target: { x: number; y: number; z: number };
+                startTick: number;
+                durationTicks: number;
+              } | null;
+            }>;
+          };
+        };
+        visualPosition: (id: string) => Position | null;
+      };
+    }).__od;
+    const visual = game.visualPosition(id);
+    const player = game.scene.world.players[id];
+    if (!visual || !player) return Infinity;
+    const move = player.move;
+    const progress = move
+      ? Math.max(
+        0,
+        Math.min(1, (visual.tick - move.startTick) / move.durationTicks),
+      )
+      : 0;
+    const position = move
+      ? {
+        x: move.startPosition.x +
+          (move.target.x - move.startPosition.x) * progress,
+        y: move.startPosition.y +
+          (move.target.y - move.startPosition.y) * progress,
+        z: move.startPosition.z +
+          (move.target.z - move.startPosition.z) * progress,
+      }
+      : player;
+    return Math.hypot(
+      visual.x - position.x,
+      visual.y - position.y,
+      visual.z - position.z,
+    );
+  }, id);
+  expect(visualGap).toBeLessThanOrEqual(0.751);
+  await expect.poll(async () => {
+    const [authoritative, predicted] = await Promise.all([
+      tile(host),
+      tile(guest),
+    ]);
+    return !authoritative?.moving && !predicted?.moving &&
+      authoritative?.x === predicted?.x &&
+      authoritative?.y === predicted?.y;
+  }, { timeout: 5000 }).toBe(true);
+  await Promise.all([host.close(), guest.close()]);
+});

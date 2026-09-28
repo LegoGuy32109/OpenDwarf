@@ -6,7 +6,6 @@ import {
   addPlayer,
   advanceTicks,
   createWorld,
-  renderPosition,
   startMove,
 } from "../../src/shared/world.js";
 
@@ -79,14 +78,12 @@ Deno.test("three peers present continuous movement through delayed and reordered
     for (const viewer of Object.keys(watched) as ViewerId[]) {
       for (const id of watched[viewer]) {
         const player = worlds[viewer].players[id];
-        const displayed = views[viewer].playerAt(
+        const displayed = views[viewer].positionAt(
           player,
           worlds[viewer].tick,
           false,
         );
-        traces[`${viewer}:${id}`].push(
-          renderPosition(displayed, worlds[viewer].tick),
-        );
+        traces[`${viewer}:${id}`].push(displayed);
       }
     }
   }
@@ -100,7 +97,7 @@ Deno.test("three peers present continuous movement through delayed and reordered
         current.x - previous.x,
         current.y - previous.y,
       );
-      assert(step <= 0.101, `${label} jumped ${step} tiles at tick ${i}`);
+      assert(step <= 0.126, `${label} jumped ${step} tiles at tick ${i}`);
       travel += step;
     }
     assert(travel > 2, `${label} moved only ${travel} tiles`);

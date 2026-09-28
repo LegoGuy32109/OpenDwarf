@@ -63,6 +63,8 @@ let joystick = { x: 0, y: 0 };
 /** @type {{x:number,y:number}} */
 let cameraStick = { x: 0, y: 0 };
 let sequence = 0;
+let lastInputDirection = { x: 0, y: 0 };
+let inputBlocked = false;
 let lastTyping = false;
 /** @type {ReturnType<typeof startHost>|null} */
 let host = null;
@@ -169,13 +171,23 @@ function inputDirection() {
 }
 
 function move() {
-  if (scene.chatOpen || scene.menu) {
-    pressed.clear();
+  const direction = scene.chatOpen || scene.menu
+    ? { x: 0, y: 0 }
+    : inputDirection();
+  pressed.clear();
+  if (
+    isAdmin &&
+    (direction.x !== lastInputDirection.x ||
+      direction.y !== lastInputDirection.y)
+  ) {
+    guest?.send({ type: "cancel", sequence });
+    inputBlocked = false;
+  }
+  lastInputDirection = direction;
+  if (!direction.x && !direction.y) {
+    inputBlocked = false;
     return;
   }
-  const direction = inputDirection();
-  pressed.clear();
-  if (!direction.x && !direction.y) return;
   const result = startMove(
     scene.world,
     scene.localId,
@@ -184,10 +196,14 @@ function move() {
     sequence + 1,
   );
   if (result.ok) {
+    inputBlocked = false;
     sequence++;
     if (isAdmin) {
       guest?.send({ type: "move", dx: direction.x, dy: direction.y, sequence });
     } else host?.publish();
+  } else if (isAdmin && result.reason !== "already moving" && !inputBlocked) {
+    guest?.send({ type: "cancel", sequence });
+    inputBlocked = true;
   }
 }
 
@@ -668,12 +684,12 @@ export async function startApp() {
         const player = scene.world.players[id];
         if (!player) return null;
         const tick = scene.world.tick + accumulator / TICK_MS;
-        const presented = scene.presentation.playerAt(
+        const pos = scene.presentation.positionAt(
           player,
           tick,
           id === scene.localId,
         );
-        return { tick, ...renderPosition(presented, tick) };
+        return { tick, ...pos };
       },
     };
   }
