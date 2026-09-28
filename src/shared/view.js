@@ -1,11 +1,12 @@
 // @ts-check
 
-import { terrainIndex, WORLD_EDGE, WORLD_TOP } from "./world.js";
+import { terrainIndex, WORLD_TOP } from "./world.js";
 import {
   recomputeVisibility,
   tileKey,
   visibilityPosition,
 } from "./visibility.js";
+import { packVisibility } from "./visibility-wire.js";
 
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./visibility.js').Visibility} Visibility */
@@ -66,10 +67,10 @@ export function entityView(world, viewerId, sight, rememberedTerrain) {
   for (const key of sight.visible) {
     const [x, y, z] = key.split(",").map(Number);
     if (
-      x >= 0 && x < WORLD_EDGE && y >= 0 && y < WORLD_EDGE &&
+      x >= 0 && x < world.edge && y >= 0 && y < world.edge &&
       z >= 0 && z <= WORLD_TOP
     ) {
-      const index = terrainIndex(x, y, z);
+      const index = terrainIndex(x, y, z, world.edge);
       rememberedTerrain[index] = world.terrain[index];
     }
   }
@@ -126,13 +127,11 @@ export function entityView(world, viewerId, sight, rememberedTerrain) {
   return {
     world: {
       tick: world.tick,
+      edge: world.edge,
+      chunks: world.chunks,
       terrain: [...rememberedTerrain],
       players,
     },
-    visibility: {
-      visible: [...sight.visible],
-      memory: [...sight.memory],
-      sample: sight.sample,
-    },
+    visibility: packVisibility(sight, world.edge),
   };
 }

@@ -1,6 +1,7 @@
 // @ts-check
 
 export const WORLD_EDGE = 16;
+export const EXPANDED_WORLD_EDGE = 32;
 export const WORLD_TOP = 7;
 export const Z_LEVELS_BELOW = 5;
 export const TICK_MS = 50;
@@ -10,28 +11,39 @@ export const MOVE_TICKS = 10;
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
 /** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,viewMotion?:ViewMotion}} Player */
-/** @typedef {{tick:number,players:Record<string,Player>,terrain:number[]}} World */
+/** @typedef {{tick:number,edge:number,chunks:string[],players:Record<string,Player>,terrain:number[]}} World */
 
-/** @param {number} x @param {number} y @param {number} z */
-export function terrainIndex(x, y, z) {
-  return z * WORLD_EDGE * WORLD_EDGE + y * WORLD_EDGE + x;
+/** @param {number} x @param {number} y @param {number} z @param {number} [edge] */
+export function terrainIndex(x, y, z, edge = WORLD_EDGE) {
+  return z * edge * edge + y * edge + x;
 }
 
 /** Unknown terrain blocks local prediction until the host reveals it. */
 /** @param {World} world @param {number} x @param {number} y @param {number} z */
 export function isSolid(world, x, y, z) {
-  if (x < 0 || x >= WORLD_EDGE || y < 0 || y >= WORLD_EDGE) return true;
+  if (x < 0 || x >= world.edge || y < 0 || y >= world.edge) return true;
   if (z < 0) return true;
   if (z > WORLD_TOP) return false;
-  return world.terrain[terrainIndex(x, y, z)] !== 1;
+  return world.terrain[terrainIndex(x, y, z, world.edge)] !== 1;
 }
 
-/** @returns {World} */
-export function createWorld() {
+/** @param {number} [edge] @returns {World} */
+export function createWorld(edge = WORLD_EDGE) {
+  if (edge !== WORLD_EDGE && edge !== EXPANDED_WORLD_EDGE) {
+    throw new RangeError("unsupported authored area size");
+  }
   return {
     tick: 0,
+    edge,
+    chunks: Array.from(
+      { length: (edge / WORLD_EDGE) ** 2 },
+      (_, index) =>
+        `${index % (edge / WORLD_EDGE)},${
+          Math.floor(index / (edge / WORLD_EDGE))
+        }`,
+    ),
     players: {},
-    terrain: Array((WORLD_TOP + 1) * WORLD_EDGE * WORLD_EDGE).fill(0),
+    terrain: Array((WORLD_TOP + 1) * edge * edge).fill(0),
   };
 }
 

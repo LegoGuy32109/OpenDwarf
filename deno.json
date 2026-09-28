@@ -9,13 +9,18 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "check": "deno check --unstable-kv main.ts playwright.config.ts src/server/*.ts src/shared/*.js src/client/*.js public/js/*.js tests/lint/*.ts tests/shared/*.ts tests/e2e/*.ts tests/client/*.ts tests/server/*.ts",
-    "test": "deno test --unstable-kv --allow-read --allow-net --allow-env tests/lint tests/shared",
+    "check": "deno check --unstable-kv main.ts playwright.config.ts scripts/*.ts src/server/*.ts src/shared/*.js src/client/*.js public/js/*.js tests/lint/*.ts tests/shared/*.ts tests/e2e/*.ts tests/client/*.ts tests/server/*.ts",
+    "test": "deno test --unstable-kv --allow-read --allow-net --allow-env tests/lint tests/shared tests/client tests/server",
     "e2e": "deno run -A npm:playwright@1.63.0 test",
+    "stress": "deno run -A scripts/stress.ts",
     "verify": "deno task fmt:check && deno task lint && deno task check && deno task test",
     "hooks": "git config core.hooksPath .githooks"
   },
-  "imports": { "@std/assert": "jsr:@std/assert@1.0.19", "@playwright/test": "npm:@playwright/test@1.63.0" },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1.0.19",
+    "@playwright/test": "npm:@playwright/test@1.63.0",
+    "qrcode-svg": "npm:qrcode-svg@1.1.0"
+  },
   "deploy": {
     "org": "legoguy32109",
     "app": "opendwarf",

@@ -1,5 +1,24 @@
 import { expect, test } from "@playwright/test";
 
+test("Escape closes the chat bar without opening the game menu", async ({ page }) => {
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  await page.keyboard.press("t");
+  await page.locator("#chat-input").fill("draft");
+  await page.locator("#chat-input").press("Escape");
+  const ui = await page.evaluate(() => {
+    const scene = (globalThis as unknown as {
+      __od: { scene: { menu: boolean; chatOpen: boolean; chatDraft: string } };
+    }).__od.scene;
+    return {
+      menu: scene.menu,
+      chatOpen: scene.chatOpen,
+      chatDraft: scene.chatDraft,
+    };
+  });
+  expect(ui).toEqual({ menu: false, chatOpen: false, chatDraft: "" });
+});
+
 test("local world renders, moves, names and chats", async ({ page }) => {
   await page.goto("/?harness=1");
   await expect(page.locator("#loading")).toBeHidden();

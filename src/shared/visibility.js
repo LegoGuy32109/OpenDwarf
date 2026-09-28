@@ -1,6 +1,6 @@
 // @ts-check
 
-import { isSolid, WORLD_EDGE, WORLD_TOP } from "./world.js";
+import { isSolid, WORLD_TOP } from "./world.js";
 
 export const FOV_RADIUS = 20;
 
@@ -108,8 +108,8 @@ export function recomputeVisibility(world, state, position) {
   const radiusSquared = FOV_RADIUS * FOV_RADIUS;
   // One stone tile beyond XY bounds is the farthest exterior surface visible.
   for (let z = -1; z <= WORLD_TOP + 1; z++) {
-    for (let y = -1; y <= WORLD_EDGE; y++) {
-      for (let x = -1; x <= WORLD_EDGE; x++) {
+    for (let y = -1; y <= world.edge; y++) {
+      for (let x = -1; x <= world.edge; x++) {
         const dx = x - position.x;
         const dy = y - position.y;
         const dz = z - position.z;

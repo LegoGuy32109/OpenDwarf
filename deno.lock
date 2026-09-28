@@ -4,7 +4,8 @@
     "jsr:@std/assert@1.0.19": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@playwright/test@1.63.0": "1.63.0",
-    "npm:playwright@1.63.0": "1.63.0"
+    "npm:playwright@1.63.0": "1.63.0",
+    "npm:qrcode-svg@1.1.0": "1.1.0"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -35,12 +36,17 @@
         "playwright-core"
       ],
       "bin": true
+    },
+    "qrcode-svg@1.1.0": {
+      "integrity": "sha512-XyQCIXux1zEIA3NPb0AeR8UMYvXZzWEhgdBgBjH9gO7M48H9uoHzviNz8pXw3UzrAcxRRRn9gxHewAVK7bn9qw==",
+      "bin": true
     }
   },
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1.0.19",
-      "npm:@playwright/test@1.63.0"
+      "npm:@playwright/test@1.63.0",
+      "npm:qrcode-svg@1.1.0"
     ]
   }
 }

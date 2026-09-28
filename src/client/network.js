@@ -3,6 +3,7 @@
 import {
   addPlayer,
   createWorld,
+  isSolid,
   removePlayer,
   setNickname,
   setTyping,
@@ -17,6 +18,34 @@ import {
   visibilityPosition,
 } from "../shared/visibility.js";
 import { entityView } from "../shared/view.js";
+import { unpackVisibility } from "../shared/visibility-wire.js";
+import { createSnapshotSender } from "./snapshot-sender.js";
+
+// Test-only game-message delivery conditions; ICE and physical packets are unchanged.
+const harnessParams = new URL(location.href).searchParams;
+const harnessDelay = harnessParams.has("harness")
+  ? Math.max(0, Math.min(500, Number(harnessParams.get("delay")) || 0))
+  : 0;
+const harnessJitter = harnessParams.has("harness")
+  ? Math.max(0, Math.min(200, Number(harnessParams.get("jitter")) || 0))
+  : 0;
+const harnessLoss = harnessParams.has("harness")
+  ? Math.max(0, Math.min(0.2, Number(harnessParams.get("loss")) || 0))
+  : 0;
+let randomState = (Number(harnessParams.get("seed")) || 1) >>> 0;
+function random() {
+  randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
+  return randomState / 0x100000000;
+}
+
+/** @param {()=>void} receive */
+function deliver(receive) {
+  if (harnessLoss && random() < harnessLoss) return;
+  const delay = harnessDelay +
+    (harnessJitter ? (random() * 2 - 1) * harnessJitter : 0);
+  if (delay > 0) setTimeout(receive, delay);
+  else receive();
+}
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string}}} Scene */
@@ -109,6 +138,8 @@ function gathered(peer) {
 export function startHost(scene, session) {
   /** @type {Map<string,ReturnType<typeof createPeer>>} */
   const peers = new Map();
+  let joinFailures = 0;
+  let spawnOrdinal = 0;
   const heartbeat = () => {
     void fetch("/api/presence", {
       method: "POST",
@@ -128,14 +159,20 @@ export function startHost(scene, session) {
   }
 
   function spawn() {
-    for (let x = 8; x < 16; x++) {
-      if (
-        !Object.values(scene.world.players).some((player) =>
-          player.x === x && player.y === 7 && player.z === 0
-        )
-      ) return { x, y: 7, z: 0 };
+    if (scene.world.edge === 16 && spawnOrdinal < 8) {
+      const position = { x: 8 + spawnOrdinal, y: 7, z: 0 };
+      spawnOrdinal++;
+      return position;
     }
-    return { x: 7, y: 6, z: 0 };
+    const positions = [];
+    for (let y = 3; y <= 11; y++) {
+      for (let x = 3; x <= 12; x++) {
+        if (!isSolid(scene.world, x, y, 0)) positions.push({ x, y, z: 0 });
+      }
+    }
+    const position = positions[spawnOrdinal % positions.length];
+    spawnOrdinal++;
+    return position ?? { x: 7, y: 6, z: 0 };
   }
 
   /** @param {string} playerId */
@@ -144,7 +181,10 @@ export function startHost(scene, session) {
     let peer = null;
     /** @type {RTCDataChannel|null} */
     let channel = null;
+    /** @type {ReturnType<typeof createSnapshotSender>|null} */
+    let snapshotSender = null;
     let joined = false;
+    let departedAt = 0;
     let visitorToken = "";
     let activeAttempt = "";
     let lastSeen = performance.now();
@@ -161,17 +201,7 @@ export function startHost(scene, session) {
     let mode = "entity";
 
     function publishToPeer() {
-      if (channel?.readyState !== "open") return;
-      const view = mode === "master"
-        ? { world: scene.world, visibility: null }
-        : entityView(scene.world, playerId, sight, rememberedTerrain);
-      channel.send(JSON.stringify({
-        type: "state",
-        ...view,
-        mode,
-        playerId,
-        acknowledgedSequence: lastSequence,
-      }));
+      snapshotSender?.publish();
     }
 
     function depart() {
@@ -180,6 +210,7 @@ export function startHost(scene, session) {
       rememberedPlayer = scene.world.players[playerId] ?? rememberedPlayer;
       removePlayer(scene.world, playerId);
       joined = false;
+      departedAt = performance.now();
       scene.status = "A visitor left your world";
       publish();
     }
@@ -261,6 +292,7 @@ export function startHost(scene, session) {
       }
       if (departureTimer) clearTimeout(departureTimer);
       departureTimer = null;
+      snapshotSender?.close();
       peer?.close();
       channel?.close();
       visitorToken = token;
@@ -277,8 +309,21 @@ export function startHost(scene, session) {
         });
         peer = nextPeer;
         channel = nextPeer.createDataChannel("world", { ordered: true });
+        snapshotSender = createSnapshotSender(channel, () => {
+          const view = mode === "master"
+            ? { world: scene.world, visibility: null }
+            : entityView(scene.world, playerId, sight, rememberedTerrain);
+          return {
+            type: "state",
+            ...view,
+            mode,
+            playerId,
+            acknowledgedSequence: lastSequence,
+          };
+        });
         channel.onopen = () => {
           if (peer !== nextPeer || !joined) return;
+          departedAt = 0;
           lastSeen = performance.now();
           if (rememberedPlayer && !scene.world.players[playerId]) {
             scene.world.players[playerId] = rememberedPlayer;
@@ -287,14 +332,15 @@ export function startHost(scene, session) {
           scene.status = "A visitor joined your world";
           publish();
         };
-        channel.onmessage = (event) => {
-          if (peer !== nextPeer || !joined) return;
-          try {
-            handleMessage(JSON.parse(event.data));
-          } catch (error) {
-            console.error(error);
-          }
-        };
+        channel.onmessage = (event) =>
+          deliver(() => {
+            if (peer !== nextPeer || !joined) return;
+            try {
+              handleMessage(JSON.parse(event.data));
+            } catch (error) {
+              console.error(error);
+            }
+          });
         nextPeer.onconnectionstatechange = () => {
           if (peer !== nextPeer || !joined) return;
           if (
@@ -302,6 +348,7 @@ export function startHost(scene, session) {
             nextPeer.connectionState === "closed" ||
             nextPeer.connectionState === "disconnected"
           ) {
+            if (nextPeer.connectionState === "failed") joinFailures++;
             scene.status = "Visitor reconnecting...";
             if (departureTimer) clearTimeout(departureTimer);
             departureTimer = setTimeout(() => {
@@ -327,6 +374,7 @@ export function startHost(scene, session) {
         }
       } catch (error) {
         if (activeAttempt !== attempt) return;
+        joinFailures++;
         depart();
         scene.status = "Join failed";
         console.error(error);
@@ -350,6 +398,7 @@ export function startHost(scene, session) {
 
     function close() {
       if (departureTimer) clearTimeout(departureTimer);
+      snapshotSender?.close();
       channel?.close();
       peer?.close();
     }
@@ -400,7 +449,25 @@ export function startHost(scene, session) {
       publish: publishToPeer,
       tick: tickPeer,
       expireIfSilent,
+      expired: () =>
+        !joined && departedAt > 0 &&
+        performance.now() - departedAt >= 60_000,
       close,
+      async diagnostics() {
+        const stats = peer ? await peer.getStats() : null;
+        const dataChannel = stats
+          ? [...stats.values()].find((stat) => stat.type === "data-channel")
+          : null;
+        return {
+          playerId,
+          connected: peer?.connectionState === "connected",
+          route: peer ? await selectedRoute(peer) : "none",
+          bytesSent: dataChannel && "bytesSent" in dataChannel
+            ? Number(dataChannel.bytesSent)
+            : 0,
+          bufferedAmount: channel?.bufferedAmount ?? 0,
+        };
+      },
     };
   }
 
@@ -413,7 +480,6 @@ export function startHost(scene, session) {
       if (!/^peer-[a-f0-9-]{36}$/.test(playerId)) return;
       let connection = peers.get(playerId);
       if (!connection) {
-        if (peers.size >= 8) return;
         connection = createPeer(playerId);
         peers.set(playerId, connection);
       }
@@ -428,7 +494,13 @@ export function startHost(scene, session) {
   });
   const syncTimer = setInterval(publish, 500);
   const watchdog = setInterval(() => {
-    for (const connection of peers.values()) connection.expireIfSilent();
+    for (const [playerId, connection] of peers) {
+      connection.expireIfSilent();
+      if (connection.expired()) {
+        connection.close();
+        peers.delete(playerId);
+      }
+    }
   }, 500);
   globalThis.addEventListener("pagehide", () => {
     for (const playerId of peers.keys()) {
@@ -452,6 +524,17 @@ export function startHost(scene, session) {
   return {
     publish,
     tick,
+    async diagnostics() {
+      const connections = await Promise.all(
+        [...peers.values()].map((connection) => connection.diagnostics()),
+      );
+      return {
+        at: performance.now(),
+        players: Object.keys(scene.world.players).length,
+        joinFailures,
+        connections,
+      };
+    },
     close() {
       clearInterval(heartbeatTimer);
       clearInterval(watchdog);
@@ -568,15 +651,11 @@ export function joinWorld(scene, session) {
         scene.renderOffset = { x: 0, y: 0, z: 0 };
       }
       scene.viewMode = incomingMode;
-      const sight =
-        /** @type {{visible?:string[],memory?:string[],sample?:string}|null} */ (value
-          .visibility);
       scene.visibility = incomingMode === "entity"
-        ? {
-          visible: new Set(sight?.visible ?? []),
-          memory: new Set(sight?.memory ?? []),
-          sample: sight?.sample ?? "",
-        }
+        ? unpackVisibility(
+          /** @type {import('../shared/visibility-wire.js').WireVisibility} */ (value
+            .visibility),
+        )
         : createVisibility();
       scene.localId = playerId;
       scene.status = connected ? "Visitor world" : "Connected to visitor";
@@ -629,14 +708,15 @@ export function joinWorld(scene, session) {
         peer = nextPeer;
         nextPeer.ondatachannel = (event) => {
           channel = event.channel;
-          channel.onmessage = (incoming) => {
-            if (peer !== nextPeer) return;
-            try {
-              receiveGame(JSON.parse(incoming.data));
-            } catch (error) {
-              console.error(error);
-            }
-          };
+          channel.onmessage = (incoming) =>
+            deliver(() => {
+              if (peer !== nextPeer) return;
+              try {
+                receiveGame(JSON.parse(incoming.data));
+              } catch (error) {
+                console.error(error);
+              }
+            });
         };
         nextPeer.onconnectionstatechange = () => {
           if (peer !== nextPeer) return;

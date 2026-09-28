@@ -1,4 +1,5 @@
 /// <reference lib="deno.unstable" />
+import QRCode from "qrcode-svg";
 const ROOT = new URL("../../", import.meta.url);
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -148,10 +149,29 @@ export function createApp(
     const url = new URL(request.url);
     const path = url.pathname;
     if (
-      (path === "/" || path === "/admin" || path === "/phone-test") &&
+      (path === "/" || path === "/admin" || path === "/phone-test" ||
+        /^\/join\/[a-zA-Z0-9_-]{8,80}$/.test(path)) &&
       request.method === "GET"
     ) {
       return file("public/index.html");
+    }
+    const qrPath = /^\/api\/qr\/([a-zA-Z0-9_-]{8,80})$/.exec(path);
+    if (qrPath && request.method === "GET") {
+      const link = new URL(`/join/${qrPath[1]}`, request.url).href;
+      const svg = new QRCode({
+        content: link,
+        width: 384,
+        height: 384,
+        ecl: "M",
+        join: true,
+      }).svg();
+      return new Response(svg, {
+        headers: {
+          "content-type": "image/svg+xml; charset=utf-8",
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
     }
     const testPath =
       /^\/api\/phone-test\/([a-f0-9]{32})\/(register|command|result|state)$/
@@ -234,6 +254,52 @@ export function createApp(
       return json({ sessions });
     }
     if (path === "/api/ice" && request.method === "GET") return iceServers();
+    if (path === "/api/telemetry" && request.method === "POST") {
+      if (Number(request.headers.get("content-length") ?? 0) > 4096) {
+        return json({ error: "telemetry too large" }, 413);
+      }
+      const data = await body(request);
+      const kind = data.kind;
+      if (
+        typeof kind !== "string" ||
+        !["summary", "connection", "error"].includes(kind) ||
+        typeof data.session !== "string" ||
+        !/^[a-zA-Z0-9_-]{8,80}$/.test(data.session)
+      ) return json({ error: "invalid telemetry" }, 400);
+      const number = (value: unknown) =>
+        typeof value === "number" && Number.isFinite(value)
+          ? Math.round(value * 100) / 100
+          : null;
+      const safe = {
+        event: "open-dwarf-client",
+        at: new Date().toISOString(),
+        kind,
+        session: data.session,
+        participant: typeof data.participant === "string" &&
+            /^(self|peer-[a-f0-9-]{36})$/.test(data.participant)
+          ? data.participant
+          : "unknown",
+        role: data.role === "host" ? "host" : "guest",
+        test: data.test === true,
+        route: typeof data.route === "string" &&
+            /^(host|srflx|relay|prflx|\?|none|connecting)(\/(host|srflx|relay|prflx|\?))?$/
+              .test(data.route)
+          ? data.route
+          : "unknown",
+        status: typeof data.status === "string" &&
+            /^[a-z-]{1,32}$/.test(data.status)
+          ? data.status
+          : "unknown",
+        players: number(data.players),
+        frameMeanMs: number(data.frameMeanMs),
+        frameMaxMs: number(data.frameMaxMs),
+        rttMs: number(data.rttMs),
+        bytesSent: number(data.bytesSent),
+        queuedBytes: number(data.queuedBytes),
+      };
+      console.log(JSON.stringify(safe));
+      return json({ ok: true });
+    }
     const signalPath =
       /^\/api\/signal\/([a-zA-Z0-9_-]{8,80})\/(host|peer-[a-f0-9-]{36})$/
         .exec(path);

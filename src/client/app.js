@@ -14,10 +14,14 @@ import {
 } from "../shared/world.js";
 import {
   createVisibility,
+  entityOpacity,
   recomputeVisibility,
+  tileVisibility,
   visibilityPosition,
 } from "../shared/visibility.js";
-import { clampCameraAxis } from "../shared/surface.js";
+import { clampCameraAxis, playerOccluded } from "../shared/surface.js";
+import { viewMotionOpacity } from "../shared/view.js";
+import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
 import { createCornerNpc } from "../shared/npc.js";
@@ -71,7 +75,10 @@ let host = null;
 /** @type {ReturnType<typeof joinWorld>|null} */
 let guest = null;
 const isPhoneTest = location.pathname === "/phone-test";
-const isAdmin = location.pathname === "/admin" || isPhoneTest;
+const joinRoute = /^\/join\/([a-zA-Z0-9_-]{8,80})$/.exec(location.pathname);
+const isAdmin = location.pathname === "/admin" || isPhoneTest || !!joinRoute;
+const isSynthetic = new URL(location.href).searchParams.has("synthetic") &&
+  new URL(location.href).searchParams.has("harness");
 let lastPlayerZ = 0;
 /** @type {ReturnType<typeof createCornerNpc>|null} */
 let tickNpc = null;
@@ -394,16 +401,28 @@ function bindInput() {
   chatInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
+      event.stopPropagation();
       submitChat();
     }
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       closeChat();
     }
   });
   document.addEventListener("keydown", (event) => {
     if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) return;
     if (document.activeElement === chatInput) return;
+    if (event.code === "F3" && !isAdmin && !event.repeat) {
+      event.preventDefault();
+      $("#diagnostics").hidden = !$("#diagnostics").hidden;
+      return;
+    }
+    if (event.code === "KeyQ" && !isAdmin && !event.repeat) {
+      event.preventDefault();
+      $("#join-panel").hidden = !$("#join-panel").hidden;
+      return;
+    }
     scene.inputMode = "keyboard";
     if (event.code === "Escape") {
       event.preventDefault();
@@ -592,28 +611,165 @@ export const phoneDiagnostics = {
 export async function startApp() {
   if (!isAdmin) {
     scene.world = (await import("../shared/authored-terrain.js"))
-      .createAuthoredWorld();
+      .createAuthoredWorld(
+        new URL(location.href).searchParams.get("world") === "32" ? 32 : 16,
+      );
   }
   addPlayer(scene.world, "self");
   bindInput();
-  const renderer = await createRenderer(canvas);
+  const renderer = isSynthetic ? null : await createRenderer(canvas);
   $("#loading").hidden = true;
-  if (isAdmin) startAdminList();
+  if (isAdmin && !joinRoute) startAdminList();
   else {
-    scene.sessionId = crypto.randomUUID();
-    tickNpc = createCornerNpc(scene.world);
-    host = startHost(scene, scene.sessionId);
+    if (!isAdmin) {
+      scene.sessionId = crypto.randomUUID();
+      tickNpc = createCornerNpc(scene.world);
+      host = startHost(scene, scene.sessionId);
+      const hostTools = $("#host-tools");
+      const joinPanel = $("#join-panel");
+      const link = `${location.origin}/join/${scene.sessionId}`;
+      const anchor = /** @type {HTMLAnchorElement} */ ($("#join-link"));
+      const code = /** @type {HTMLImageElement} */ ($("#join-code"));
+      anchor.href = link;
+      anchor.textContent = link;
+      code.src = `/api/qr/${scene.sessionId}`;
+      hostTools.hidden = new URL(location.href).searchParams.has("harness");
+      joinPanel.hidden = hostTools.hidden;
+      $("#join-toggle").addEventListener("click", () => {
+        joinPanel.hidden = !joinPanel.hidden;
+      });
+      $("#join-close").addEventListener("click", () => {
+        joinPanel.hidden = true;
+      });
+      setInterval(() => {
+        const count = Object.keys(scene.world.players).filter((id) =>
+          id !== "npc-corner"
+        ).length;
+        $("#player-count").textContent = `${count} player${
+          count === 1 ? "" : "s"
+        }`;
+      }, 1000);
+    }
   }
   if (isPhoneTest) {
     const selected = new URL(location.href).searchParams.get("session");
     if (selected) joinSession(selected);
   }
+  if (joinRoute) joinSession(joinRoute[1]);
+  if (!isAdmin) {
+    let previousBytes = 0;
+    let previousTime = performance.now();
+    setInterval(() => {
+      const panel = $("#diagnostics");
+      if (panel.hidden || !host) return;
+      void host.diagnostics().then((stats) => {
+        const now = performance.now();
+        const bytes = stats.connections.reduce(
+          (sum, connection) => sum + connection.bytesSent,
+          0,
+        );
+        const upload = Math.max(0, bytes - previousBytes) * 1000 /
+          Math.max(1, now - previousTime);
+        previousBytes = bytes;
+        previousTime = now;
+        const queued = stats.connections.reduce(
+          (sum, connection) => sum + connection.bufferedAmount,
+          0,
+        );
+        const frameMean = frameMs.length
+          ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
+          : 0;
+        panel.textContent =
+          `HOST  F3 close\nFPS ${
+            frameMean ? (1000 / frameMean).toFixed(0) : "…"
+          }` +
+          `  peers ${
+            stats.connections.filter((connection) => connection.connected)
+              .length
+          }` +
+          `\nPayload ${Math.round(upload / 1024)} KiB/s  queued ${
+            Math.round(queued / 1024)
+          } KiB` +
+          `\nJoin failures ${stats.joinFailures}`;
+      }).catch(() => {});
+    }, 1000);
+  }
   let last = performance.now();
   let accumulator = 0;
+  /** @type {number[]} */
+  const frameMs = [];
+  if (new URL(location.href).searchParams.get("telemetry") === "1") {
+    const test = new URL(location.href).searchParams.get("test") === "1";
+    /** @param {"summary"|"connection"|"error"} kind @param {Record<string,unknown>} fields */
+    const report = (kind, fields = {}) => {
+      if (!scene.sessionId) return;
+      void fetch("/api/telemetry", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind,
+          session: scene.sessionId,
+          participant: scene.localId,
+          role: isAdmin ? "guest" : "host",
+          test,
+          ...fields,
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+    let lastConnection = "";
+    setInterval(() => {
+      const status = isAdmin
+        ? /retry|disconnect|failed/i.test(scene.status)
+          ? "reconnecting"
+          : scene.localId.startsWith("peer-")
+          ? "connected"
+          : "connecting"
+        : "hosting";
+      if (status !== lastConnection) {
+        lastConnection = status;
+        report("connection", { status, route: scene.metrics?.route ?? "none" });
+      }
+      const orderedRtt = [...(scene.metrics?.rttMs ?? [])].sort((a, b) =>
+        a - b
+      );
+      void (async () => {
+        const stats = await host?.diagnostics();
+        report("summary", {
+          status,
+          route: scene.metrics?.route ?? "none",
+          players: Object.keys(scene.world.players).length,
+          frameMeanMs: frameMs.length
+            ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
+            : 0,
+          frameMaxMs: Math.max(0, ...frameMs),
+          rttMs: orderedRtt[Math.floor(orderedRtt.length / 2)] ?? null,
+          bytesSent: stats?.connections.reduce(
+            (sum, connection) => sum + connection.bytesSent,
+            0,
+          ) ?? 0,
+          queuedBytes: stats?.connections.reduce(
+            (sum, connection) => sum + connection.bufferedAmount,
+            0,
+          ) ?? 0,
+        });
+      })().catch(() => report("error", { status: "metrics-failed" }));
+    }, 10_000);
+    globalThis.addEventListener(
+      "error",
+      () => report("error", { status: "script-error" }),
+    );
+    globalThis.addEventListener(
+      "unhandledrejection",
+      () => report("error", { status: "unhandled-rejection" }),
+    );
+  }
   /** @param {number} now */
   const frame = (now) => {
     const dt = Math.min(100, now - last);
     last = now;
+    frameMs.push(dt);
+    if (frameMs.length > 300) frameMs.shift();
     accumulator += dt;
     while (accumulator >= TICK_MS) {
       advanceTicks(scene.world);
@@ -677,9 +833,19 @@ export async function startApp() {
       scene.camera.y += (targetY - scene.camera.y) * follow;
     }
     const zoom = scene.zoom;
-    scene.camera.x = clampCameraAxis(scene.camera.x, canvas.clientWidth, zoom);
-    scene.camera.y = clampCameraAxis(scene.camera.y, canvas.clientHeight, zoom);
-    renderer.render(scene, accumulator / TICK_MS);
+    scene.camera.x = clampCameraAxis(
+      scene.camera.x,
+      canvas.clientWidth,
+      zoom,
+      scene.world.edge,
+    );
+    scene.camera.y = clampCameraAxis(
+      scene.camera.y,
+      canvas.clientHeight,
+      zoom,
+      scene.world.edge,
+    );
+    renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
@@ -687,6 +853,17 @@ export async function startApp() {
     /** @type {{__od?:unknown}} */ (globalThis).__od = {
       scene,
       openChat,
+      join: joinSession,
+      /** @param {Record<string,unknown>} message */
+      send: (message) => guest?.send(message) ?? false,
+      hostStats: () => host?.diagnostics() ?? null,
+      frameStats: () => ({
+        samples: frameMs.length,
+        meanMs: frameMs.length
+          ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
+          : 0,
+        maxMs: Math.max(0, ...frameMs),
+      }),
       /** @param {number} dx @param {number} dy */
       startMove: (dx, dy) =>
         startMove(scene.world, scene.localId, dx, dy, ++sequence),
@@ -701,6 +878,58 @@ export async function startApp() {
           id === scene.localId,
         );
         return { tick, ...pos };
+      },
+      /** @param {string} id */
+      visualSample: (id) => {
+        const player = scene.world.players[id];
+        if (!player) return null;
+        const tick = scene.world.tick + accumulator / TICK_MS;
+        const position = scene.presentation.positionAt(
+          player,
+          tick,
+          id === scene.localId,
+        );
+        let opacity = scene.viewMode === "master"
+          ? 1
+          : player.viewMotion
+          ? viewMotionOpacity(player.viewMotion, tick)
+          : entityOpacity(player, tick, (x, y, z) =>
+            tileVisibility(scene.visibility, x, y, z) === "visible");
+        if (
+          playerOccluded(scene.world, player, scene.viewZ) ||
+          player.z < scene.viewZ - Z_LEVELS_BELOW
+        ) opacity = 0;
+        return {
+          tick,
+          ...position,
+          opacity,
+          typing: player.typing,
+          hasMessage: Boolean(player.message),
+          moveSequence: player.move?.sequence ?? null,
+          sight: scene.visibility.sample,
+        };
+      },
+      /** @param {string} id */
+      authoritativePosition: (id) => {
+        const player = scene.world.players[id];
+        return player
+          ? renderPosition(player, scene.world.tick + accumulator / TICK_MS)
+          : null;
+      },
+      /** @param {string} id */
+      authoritativeSample: (id) => {
+        const player = scene.world.players[id];
+        return player
+          ? {
+            ...renderPosition(
+              player,
+              scene.world.tick + accumulator / TICK_MS,
+            ),
+            moveSequence: player.move?.sequence ?? null,
+            typing: player.typing,
+            hasMessage: Boolean(player.message),
+          }
+          : null;
       },
     };
   }

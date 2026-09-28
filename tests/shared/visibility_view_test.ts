@@ -16,6 +16,7 @@ import {
   viewMotionOpacity,
   viewMotionPosition,
 } from "../../src/shared/view.js";
+import { unpackVisibility } from "../../src/shared/visibility-wire.js";
 
 Deno.test("same-level sight is reciprocal and every legal next tile is visible", () => {
   const world = createAuthoredWorld();
@@ -149,7 +150,7 @@ Deno.test("remembered terrain stays stale until seen again, including after mast
   world.terrain[oldTile] = 2;
   const afterReturn = entityView(world, "viewer", sight, remembered);
   assertEquals(afterReturn.world.terrain[oldTile], 1);
-  assert(afterReturn.visibility.memory.includes(tileKey(6, 8, 0)));
+  assert(unpackVisibility(afterReturn.visibility).memory.has(tileKey(6, 8, 0)));
   viewer.x = 7;
   const afterSeeingAgain = entityView(world, "viewer", sight, remembered);
   assertEquals(afterSeeingAgain.world.terrain[oldTile], 2);

@@ -75,9 +75,9 @@ export function playerOccluded(world, player, viewZ) {
 }
 
 /** Keep one full column and row visible, or center when the chunk fits. */
-/** @param {number} desired @param {number} viewportPx @param {number} zoom */
-export function clampCameraAxis(desired, viewportPx, zoom) {
-  const chunkPx = WORLD_EDGE * 64;
+/** @param {number} desired @param {number} viewportPx @param {number} zoom @param {number} [edge] */
+export function clampCameraAxis(desired, viewportPx, zoom, edge = WORLD_EDGE) {
+  const chunkPx = edge * 64;
   const visiblePx = viewportPx / zoom;
   if (visiblePx >= chunkPx) return chunkPx / 2;
   const half = visiblePx / 2;

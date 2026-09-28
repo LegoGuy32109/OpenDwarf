@@ -45,6 +45,18 @@ Deno.test("one authored chunk has eight reachable levels and solid unknown XY", 
   assertEquals(startMove(world, "self", -1, 0, 51).ok, false);
 });
 
+Deno.test("expanded authored area has four fixed chunks and solid outer stone", () => {
+  const world = createAuthoredWorld(32);
+  assertEquals(world.edge, 32);
+  assertEquals(world.chunks, ["0,0", "1,0", "0,1", "1,1"]);
+  assertEquals(world.terrain.length, 32 * 32 * 8);
+  assertEquals(isSolid(world, 20, 7, 0), false);
+  assertEquals(isSolid(world, 20, 20, 0), false);
+  assertEquals(isSolid(world, 23, 23, 0), true);
+  assertEquals(isSolid(world, 32, 20, 0), true);
+  assertEquals(clampCameraAxis(3000, 400, 1, 32), 2184);
+});
+
 Deno.test("pillar blocks a ray, terrain is remembered, entities fade", () => {
   const world = createAuthoredWorld();
   assertEquals(
