@@ -9,23 +9,29 @@ export const MOVE_TICKS = 10;
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number}} Player */
-/** @typedef {{tick:number,players:Record<string,Player>}} World */
+/** @typedef {{tick:number,players:Record<string,Player>,terrain:number[]}} World */
 
 /** @param {number} x @param {number} y @param {number} z */
-export function isSolid(x, y, z) {
+export function terrainIndex(x, y, z) {
+  return z * WORLD_EDGE * WORLD_EDGE + y * WORLD_EDGE + x;
+}
+
+/** Unknown terrain blocks local prediction until the host reveals it. */
+/** @param {World} world @param {number} x @param {number} y @param {number} z */
+export function isSolid(world, x, y, z) {
   if (x < 0 || x >= WORLD_EDGE || y < 0 || y >= WORLD_EDGE) return true;
   if (z < 0) return true;
   if (z > WORLD_TOP) return false;
-  if (x === 8 && y === 8) return true;
-  // Seven one-tile risers reach player level 7; the landing shares its floor.
-  if (y === 13 && x >= 2 && x <= 8) return z <= x - 2;
-  if (x >= 9 && x <= 12 && (y === 13 || y === 14)) return z <= 6;
-  return false;
+  return world.terrain[terrainIndex(x, y, z)] !== 1;
 }
 
 /** @returns {World} */
 export function createWorld() {
-  return { tick: 0, players: {} };
+  return {
+    tick: 0,
+    players: {},
+    terrain: Array((WORLD_TOP + 1) * WORLD_EDGE * WORLD_EDGE).fill(0),
+  };
 }
 
 /** @param {World} world @param {string} id @param {Tile} [spawn] */
@@ -74,19 +80,24 @@ export function setNickname(world, id, requested) {
   return { ok: true, name };
 }
 
-/** @param {Tile} origin @param {number} dx @param {number} dy */
-function resolveMove(origin, dx, dy) {
+/** @param {World} world @param {Tile} origin @param {number} dx @param {number} dy */
+function resolveMove(world, origin, dx, dy) {
   const x = origin.x + dx;
   const y = origin.y + dy;
   const z = origin.z;
-  if (!isSolid(x, y, z) && isSolid(x, y, z - 1)) return { x, y, z };
+  if (!isSolid(world, x, y, z) && isSolid(world, x, y, z - 1)) {
+    return { x, y, z };
+  }
   if (
-    isSolid(x, y, z) && !isSolid(x, y, z + 1) &&
-    !isSolid(origin.x, origin.y, z + 1)
+    isSolid(world, x, y, z) && !isSolid(world, x, y, z + 1) &&
+    !isSolid(world, origin.x, origin.y, z + 1)
   ) {
     return { x, y, z: z + 1 };
   }
-  if (!isSolid(x, y, z) && !isSolid(x, y, z - 1) && isSolid(x, y, z - 2)) {
+  if (
+    !isSolid(world, x, y, z) && !isSolid(world, x, y, z - 1) &&
+    isSolid(world, x, y, z - 2)
+  ) {
     return { x, y, z: z - 1 };
   }
   return null;
@@ -101,7 +112,12 @@ export function startMove(world, id, dx, dy, sequence) {
     Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)
   ) return { ok: false, reason: "invalid direction" };
   const origin = { x: player.x, y: player.y, z: player.z };
-  const target = resolveMove(origin, dx, dy);
+  if (
+    dx && dy &&
+    (isSolid(world, origin.x + dx, origin.y, origin.z) ||
+      isSolid(world, origin.x, origin.y + dy, origin.z))
+  ) return { ok: false, reason: "blocked corner" };
+  const target = resolveMove(world, origin, dx, dy);
   if (!target) return { ok: false, reason: "blocked" };
   if (
     Object.values(world.players).some((other) =>
@@ -112,7 +128,8 @@ export function startMove(world, id, dx, dy, sequence) {
     )
   ) return { ok: false, reason: "occupied" };
   if (
-    dx && dy && (!resolveMove(origin, dx, 0) || !resolveMove(origin, 0, dy))
+    dx && dy &&
+    (!resolveMove(world, origin, dx, 0) || !resolveMove(world, origin, 0, dy))
   ) {
     return { ok: false, reason: "blocked corner" };
   }

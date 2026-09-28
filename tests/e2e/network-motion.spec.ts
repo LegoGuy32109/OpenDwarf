@@ -381,3 +381,71 @@ test("a guest can circle the pillar without leaving a remote sprite behind", asy
   }, { timeout: 5000 }).toBe(true);
   await Promise.all([host.close(), guest.close()]);
 });
+
+test("guest master mode receives full terrain and entity mode restores only discovered terrain", async ({ browser }) => {
+  const host = await browser.newPage();
+  const guest = await browser.newPage();
+  await host.goto("/?harness=1");
+  await expect(host.locator("#loading")).toBeHidden();
+  const session = await host.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+      .scene.sessionId
+  );
+  await guest.goto("/admin?harness=1");
+  await expect(guest.locator("#loading")).toBeHidden();
+  await guest.locator(`[data-session-id="${session}"]`).click();
+  await expect.poll(() =>
+    guest.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+        .scene.localId
+    )
+  ).toMatch(/^peer-/);
+  const state = async () =>
+    await guest.evaluate(() => {
+      const scene = (globalThis as unknown as {
+        __od: {
+          scene: {
+            viewMode: string;
+            world: {
+              terrain: number[];
+              players: Record<string, { y: number }>;
+            };
+            localId: string;
+            visibility: { visible: Set<string> };
+          };
+        };
+      }).__od.scene;
+      return {
+        mode: scene.viewMode,
+        terrain: [...scene.world.terrain],
+        visible: [...scene.visibility.visible],
+        y: scene.world.players[scene.localId]?.y,
+      };
+    });
+  const before = await state();
+  expect(before.terrain).toContain(0);
+  const command = async (value: string) => {
+    await guest.keyboard.press("/");
+    await guest.locator("#chat-input").fill(value);
+    await guest.locator("#chat-input").press("Enter");
+  };
+  await command("/master");
+  await expect.poll(async () => (await state()).mode).toBe("master");
+  expect((await state()).terrain.every((tile) => tile !== 0)).toBe(true);
+  await guest.keyboard.down("e");
+  await expect.poll(async () => (await state()).y).toBeLessThan(before.y ?? 7);
+  await guest.keyboard.up("e");
+  await command("/entity");
+  await expect.poll(async () => (await state()).mode).toBe("entity");
+  const after = await state();
+  expect(after.terrain).toContain(0);
+  const visible = new Set(after.visible);
+  for (let index = 0; index < after.terrain.length; index++) {
+    if (before.terrain[index] !== 0 || after.terrain[index] === 0) continue;
+    const z = Math.floor(index / 256);
+    const y = Math.floor(index % 256 / 16);
+    const x = index % 16;
+    expect(visible.has(`${x},${y},${z}`)).toBe(true);
+  }
+  await Promise.all([host.close(), guest.close()]);
+});

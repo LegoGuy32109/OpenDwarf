@@ -2,6 +2,7 @@
 
 import {
   addPlayer,
+  createWorld,
   removePlayer,
   setNickname,
   setTyping,
@@ -10,9 +11,15 @@ import {
 import { acceptMoveIntent } from "../shared/protocol.js";
 import { mergeSnapshot } from "../shared/reconcile.js";
 import { renderPosition } from "../shared/world.js";
+import {
+  createVisibility,
+  tileKey,
+  visibilityPosition,
+} from "../shared/visibility.js";
+import { entityView } from "../shared/view.js";
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,status:string,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string}}} Scene */
+/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string}}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -148,12 +155,20 @@ export function startHost(scene, session) {
     let rememberedPlayer = null;
     /** @type {{dx:number,dy:number,sequence:number}[]} */
     const pendingMoves = [];
+    const sight = createVisibility();
+    const rememberedTerrain = scene.world.terrain.map(() => 0);
+    /** @type {"entity"|"master"} */
+    let mode = "entity";
 
     function publishToPeer() {
       if (channel?.readyState !== "open") return;
+      const view = mode === "master"
+        ? { world: scene.world, visibility: null }
+        : entityView(scene.world, playerId, sight, rememberedTerrain);
       channel.send(JSON.stringify({
         type: "state",
-        world: scene.world,
+        ...view,
+        mode,
         playerId,
         acknowledgedSequence: lastSequence,
       }));
@@ -212,6 +227,13 @@ export function startHost(scene, session) {
           pendingMoves.length = 0;
           lastSequence = sequence;
           publish();
+        }
+        return;
+      }
+      if (message.type === "mode") {
+        if (message.mode === "entity" || message.mode === "master") {
+          mode = message.mode;
+          publishToPeer();
         }
         return;
       }
@@ -332,11 +354,23 @@ export function startHost(scene, session) {
       peer?.close();
     }
 
+    function tickPeer() {
+      drainMoves();
+      const player = scene.world.players[playerId];
+      const position = player
+        ? visibilityPosition(player, scene.world.tick)
+        : null;
+      if (
+        mode === "entity" && position &&
+        sight.sample !== tileKey(position.x, position.y, position.z)
+      ) publishToPeer();
+    }
+
     return {
       acceptJoin,
       acceptAnswer,
       publish: publishToPeer,
-      tick: drainMoves,
+      tick: tickPeer,
       expireIfSilent,
       close,
     };
@@ -479,7 +513,9 @@ export function joinWorld(scene, session) {
       const snapshot = /** @type {World} */ (value.world);
       if (snapshot.tick < lastSnapshotTick) return;
       lastSnapshotTick = snapshot.tick;
-      if (connected) {
+      const incomingMode = value.mode === "master" ? "master" : "entity";
+      const modeChanged = scene.viewMode !== incomingMode;
+      if (connected && !modeChanged) {
         const before = scene.world.players[playerId]
           ? renderPosition(scene.world.players[playerId], scene.world.tick)
           : null;
@@ -500,7 +536,20 @@ export function joinWorld(scene, session) {
         }
       } else {
         scene.world = snapshot;
+        scene.presentation.reset();
+        scene.renderOffset = { x: 0, y: 0, z: 0 };
       }
+      scene.viewMode = incomingMode;
+      const sight =
+        /** @type {{visible?:string[],memory?:string[],sample?:string}|null} */ (value
+          .visibility);
+      scene.visibility = incomingMode === "entity"
+        ? {
+          visible: new Set(sight?.visible ?? []),
+          memory: new Set(sight?.memory ?? []),
+          sample: sight?.sample ?? "",
+        }
+        : createVisibility();
       scene.localId = playerId;
       scene.status = connected ? "Visitor world" : "Connected to visitor";
       if (!connected && scene.metrics) {
@@ -528,7 +577,7 @@ export function joinWorld(scene, session) {
 
   const closeInbox = inbox(session, playerId, (message) => {
     if (message.kind === "leave") {
-      scene.world = { tick: 0, players: {} };
+      scene.world = createWorld();
       scene.status = "Visitor left. World ended.";
       connected = false;
       return;
@@ -624,6 +673,10 @@ export function joinWorld(scene, session) {
   }, 2000);
   return {
     send,
+    /** @param {"entity"|"master"} mode */
+    setMode(mode) {
+      return send({ type: "mode", mode });
+    },
     /** @param {number} [holdMs] */
     dropConnection(holdMs = 0) {
       retryNotBefore = performance.now() +

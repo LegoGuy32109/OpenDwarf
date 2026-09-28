@@ -1,0 +1,139 @@
+import { assert, assertEquals } from "@std/assert";
+import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
+import {
+  addPlayer,
+  isSolid,
+  startMove,
+  terrainIndex,
+} from "../../src/shared/world.js";
+import {
+  createVisibility,
+  hasLineOfSight,
+  tileKey,
+} from "../../src/shared/visibility.js";
+import { entityView } from "../../src/shared/view.js";
+
+Deno.test("same-level sight is reciprocal and every legal next tile is visible", () => {
+  const world = createAuthoredWorld();
+  const walkable = [];
+  for (let z = 0; z <= 7; z++) {
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        if (!isSolid(world, x, y, z) && isSolid(world, x, y, z - 1)) {
+          walkable.push({ x, y, z });
+        }
+      }
+    }
+  }
+  for (let i = 0; i < walkable.length; i++) {
+    for (let j = i + 1; j < walkable.length; j++) {
+      const from = walkable[i];
+      const to = walkable[j];
+      if (from.z !== to.z) continue;
+      assertEquals(
+        hasLineOfSight(world, from, to),
+        hasLineOfSight(world, to, from),
+        `sight differs between ${JSON.stringify(from)} and ${
+          JSON.stringify(to)
+        }`,
+      );
+    }
+  }
+  for (const from of walkable) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const trial = createAuthoredWorld();
+        addPlayer(trial, "self", from);
+        const result = startMove(trial, "self", dx, dy, 1);
+        if (result.ok && result.move && result.move.target.z === from.z) {
+          assert(
+            hasLineOfSight(world, from, result.move.target),
+            `legal next tile is hidden: ${JSON.stringify(from)} to ${
+              JSON.stringify(result.move.target)
+            }`,
+          );
+        }
+      }
+    }
+  }
+});
+
+Deno.test("guest snapshot excludes hidden entities and undiscovered terrain", () => {
+  const world = createAuthoredWorld();
+  addPlayer(world, "viewer", { x: 7, y: 8, z: 0 });
+  addPlayer(world, "hidden", { x: 9, y: 8, z: 0 }).name = "secret";
+  addPlayer(world, "seen", { x: 6, y: 8, z: 0 });
+  const sight = createVisibility();
+  const remembered = world.terrain.map(() => 0);
+  const snapshot = entityView(world, "viewer", sight, remembered);
+  assertEquals(snapshot.world.players.hidden, undefined);
+  assert(snapshot.world.players.viewer);
+  assert(snapshot.world.players.seen);
+  assertEquals(snapshot.world.terrain[terrainIndex(9, 8, 0)], 0);
+  assertEquals(snapshot.world.terrain[terrainIndex(6, 8, 0)], 1);
+  assert(!JSON.stringify(snapshot).includes("secret"));
+});
+
+Deno.test("a crossing entity never sends a hidden move endpoint", () => {
+  const world = createAuthoredWorld();
+  addPlayer(world, "viewer", { x: 7, y: 8, z: 0 });
+  const crossing = addPlayer(world, "crossing", { x: 6, y: 8, z: 0 });
+  const sight = createVisibility();
+  const remembered = world.terrain.map(() => 0);
+  crossing.move = {
+    origin: { x: 6, y: 8, z: 0 },
+    target: { x: 9, y: 8, z: 0 },
+    startPosition: { x: 6, y: 8, z: 0 },
+    startTick: 0,
+    durationTicks: 10,
+    sequence: 1,
+  };
+  world.tick = 2;
+  const departing = entityView(world, "viewer", sight, remembered);
+  assertEquals(departing.world.players.crossing?.move, null);
+  assertEquals(departing.world.players.crossing?.x, 6);
+  assert(!JSON.stringify(departing.world.players.crossing).includes('"x":9'));
+
+  world.tick = 6;
+  const hidden = entityView(world, "viewer", sight, remembered);
+  assertEquals(hidden.world.players.crossing, undefined);
+
+  crossing.move = {
+    ...crossing.move,
+    origin: { x: 9, y: 8, z: 0 },
+    target: { x: 6, y: 8, z: 0 },
+    startPosition: { x: 9, y: 8, z: 0 },
+  };
+  world.tick = 6;
+  const arriving = entityView(world, "viewer", sight, remembered);
+  assertEquals(arriving.world.players.crossing?.move, null);
+  assertEquals(arriving.world.players.crossing?.x, 6);
+  assert(!JSON.stringify(arriving.world.players.crossing).includes('"x":9'));
+});
+
+Deno.test("remembered terrain stays stale until seen again, including after master travel", () => {
+  const world = createAuthoredWorld();
+  const viewer = addPlayer(world, "viewer", { x: 7, y: 8, z: 0 });
+  const sight = createVisibility();
+  const remembered = world.terrain.map(() => 0);
+  entityView(world, "viewer", sight, remembered);
+  const knownBeforeMaster = new Set(sight.visible);
+  const rememberedBeforeMaster = [...remembered];
+  viewer.x = 9;
+  viewer.y = 8;
+  // Master mode sends the full world but does not call entityView.
+  viewer.x = 10;
+  viewer.y = 8;
+  assertEquals([...remembered], rememberedBeforeMaster);
+  assertEquals([...sight.visible], [...knownBeforeMaster]);
+  const oldTile = terrainIndex(6, 8, 0);
+  assertEquals(remembered[oldTile], 1);
+  world.terrain[oldTile] = 2;
+  const afterReturn = entityView(world, "viewer", sight, remembered);
+  assertEquals(afterReturn.world.terrain[oldTile], 1);
+  assert(afterReturn.visibility.memory.includes(tileKey(6, 8, 0)));
+  viewer.x = 7;
+  const afterSeeingAgain = entityView(world, "viewer", sight, remembered);
+  assertEquals(afterSeeingAgain.world.terrain[oldTile], 2);
+});

@@ -1,8 +1,8 @@
+import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { assert, assertEquals } from "@std/assert";
 import {
   addPlayer,
   advanceTicks,
-  createWorld,
   isSolid,
   startMove,
 } from "../../src/shared/world.js";
@@ -21,11 +21,11 @@ import {
 } from "../../src/shared/surface.js";
 
 Deno.test("one authored chunk has eight reachable levels and solid unknown XY", () => {
-  assert(isSolid(-1, 7, 0));
-  assert(isSolid(16, 7, 7));
-  assert(isSolid(7, 7, -1));
-  assertEquals(isSolid(7, 7, 8), false);
-  const world = createWorld();
+  const world = createAuthoredWorld();
+  assert(isSolid(world, -1, 7, 0));
+  assert(isSolid(world, 16, 7, 7));
+  assert(isSolid(world, 7, 7, -1));
+  assertEquals(isSolid(world, 7, 7, 8), false);
   const player = addPlayer(world, "self", { x: 1, y: 13, z: 0 });
   for (let x = 2; x <= 9; x++) {
     const result = startMove(world, "self", 1, 0, x);
@@ -46,16 +46,16 @@ Deno.test("one authored chunk has eight reachable levels and solid unknown XY", 
 });
 
 Deno.test("pillar blocks a ray, terrain is remembered, entities fade", () => {
+  const world = createAuthoredWorld();
   assertEquals(
-    hasLineOfSight({ x: 7, y: 8, z: 0 }, { x: 9, y: 8, z: 0 }),
+    hasLineOfSight(world, { x: 7, y: 8, z: 0 }, { x: 9, y: 8, z: 0 }),
     false,
   );
   const visibility = createVisibility();
-  recomputeVisibility(visibility, { x: 7, y: 8, z: 0 });
+  recomputeVisibility(world, visibility, { x: 7, y: 8, z: 0 });
   assertEquals(tileVisibility(visibility, 6, 8, 0), "visible");
-  recomputeVisibility(visibility, { x: 9, y: 8, z: 0 });
+  recomputeVisibility(world, visibility, { x: 9, y: 8, z: 0 });
   assertEquals(tileVisibility(visibility, 6, 8, 0), "remembered");
-  const world = createWorld();
   const player = addPlayer(world, "other", { x: 7, y: 7, z: 0 });
   assertEquals(startMove(world, "other", 1, 0, 1).ok, true);
   const seen = (x: number) => x === 7;
@@ -66,16 +66,16 @@ Deno.test("pillar blocks a ray, terrain is remembered, entities fade", () => {
 });
 
 Deno.test("lower floors turn blue then disappear beyond five levels", () => {
+  const world = createAuthoredWorld();
   const visibility = createVisibility();
-  assertEquals(surfaceAt(2, 13, 5, "master", visibility)?.depth, 5);
-  assertEquals(surfaceAt(2, 13, 6, "master", visibility), null);
+  assertEquals(surfaceAt(world, 2, 13, 5, "master", visibility)?.depth, 5);
+  assertEquals(surfaceAt(world, 2, 13, 6, "master", visibility), null);
   assertEquals(DEPTH_TINTS[5], [0.2, 0.2, 0.4]);
-  const world = createWorld();
   const player = addPlayer(world, "self", { x: 8, y: 7, z: 0 });
-  assertEquals(playerOccluded(player, 1), false);
+  assertEquals(playerOccluded(world, player, 1), false);
   player.x = 8;
   player.y = 8;
-  assertEquals(playerOccluded(player, 1), true);
+  assertEquals(playerOccluded(world, player, 1), true);
 });
 
 Deno.test("camera keeps a full chunk row or column in view", () => {

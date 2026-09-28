@@ -5,6 +5,7 @@ import { tileVisibility } from "./visibility.js";
 
 /** @typedef {import('./visibility.js').Visibility} Visibility */
 /** @typedef {import('./world.js').Player} Player */
+/** @typedef {import('./world.js').World} World */
 
 export const DEPTH_TINTS = [
   [1, 1, 1],
@@ -21,11 +22,11 @@ export function shadowMaskToAtlasId(mask) {
     ((mask & 4) >> 2) | (mask & 8 ? 2 : 0);
 }
 
-/** @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
-export function surfaceAt(x, y, viewZ, mode, visibility) {
+/** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
+export function surfaceAt(world, x, y, viewZ, mode, visibility) {
   for (let depth = 0; depth <= Z_LEVELS_BELOW; depth++) {
     const z = viewZ - depth;
-    if (!isSolid(x, y, z)) continue;
+    if (!isSolid(world, x, y, z)) continue;
     const seen = mode === "master"
       ? "visible"
       : tileVisibility(visibility, x, y, z);
@@ -34,26 +35,26 @@ export function surfaceAt(x, y, viewZ, mode, visibility) {
   return null;
 }
 
-/** @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
-export function ceilingMask(x, y, viewZ, mode, visibility) {
+/** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
+export function ceilingMask(world, x, y, viewZ, mode, visibility) {
   let mask = 0;
   for (const [dx, dy, bit] of [[0, 0, 1], [1, 0, 2], [0, 1, 4], [1, 1, 8]]) {
     const tx = x + dx;
     const ty = y + dy;
-    const surface = surfaceAt(tx, ty, viewZ, mode, visibility);
+    const surface = surfaceAt(world, tx, ty, viewZ, mode, visibility);
     if (!surface || (mode === "entity" && surface.depth !== 0)) continue;
     const upper = mode === "master"
       ? "visible"
       : tileVisibility(visibility, tx, ty, viewZ + 1);
-    if (upper !== "unseen" && isSolid(tx, ty, viewZ + 1)) mask |= bit;
+    if (upper !== "unseen" && isSolid(world, tx, ty, viewZ + 1)) mask |= bit;
   }
   return mask;
 }
 
-/** @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
-export function elevationMask(x, y, viewZ, mode, visibility) {
+/** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
+export function elevationMask(world, x, y, viewZ, mode, visibility) {
   const depths = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([dx, dy]) =>
-    surfaceAt(x + dx, y + dy, viewZ, mode, visibility)?.depth ?? 127
+    surfaceAt(world, x + dx, y + dy, viewZ, mode, visibility)?.depth ?? 127
   );
   const highest = Math.min(...depths);
   if (highest === 127) return 0;
@@ -62,13 +63,13 @@ export function elevationMask(x, y, viewZ, mode, visibility) {
   return mask === 15 ? 0 : mask;
 }
 
-/** @param {Player} player @param {number} viewZ */
-export function playerOccluded(player, viewZ) {
+/** @param {World} world @param {Player} player @param {number} viewZ */
+export function playerOccluded(world, player, viewZ) {
   if (player.z === viewZ) return false;
   const low = player.z < viewZ ? player.z + 1 : viewZ + 1;
   const high = player.z < viewZ ? viewZ : player.z;
   for (let z = low; z <= high; z++) {
-    if (isSolid(player.x, player.y, z)) return true;
+    if (isSolid(world, player.x, player.y, z)) return true;
   }
   return false;
 }

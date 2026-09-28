@@ -1,16 +1,12 @@
+import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { assert, assertEquals } from "@std/assert";
 import { createPresentation } from "../../src/client/presentation.js";
 import { createCornerNpc } from "../../src/shared/npc.js";
 import { mergeSnapshot } from "../../src/shared/reconcile.js";
-import {
-  addPlayer,
-  advanceTicks,
-  createWorld,
-  startMove,
-} from "../../src/shared/world.js";
+import { addPlayer, advanceTicks, startMove } from "../../src/shared/world.js";
 
 Deno.test("three peers present continuous movement through delayed and reordered snapshots", () => {
-  const host = createWorld();
+  const host = createAuthoredWorld();
   addPlayer(host, "self", { x: 7, y: 7, z: 0 });
   addPlayer(host, "peer-a", { x: 8, y: 7, z: 0 });
   addPlayer(host, "peer-b", { x: 9, y: 7, z: 0 });

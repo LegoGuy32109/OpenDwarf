@@ -1,9 +1,9 @@
+import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { assertEquals } from "@std/assert";
 import { acceptMoveIntent } from "../../src/shared/protocol.js";
 import {
   addPlayer,
   advanceTicks,
-  createWorld,
   occupiedTiles,
   renderPosition,
   setNickname,
@@ -14,7 +14,10 @@ import {
 
 type Packet = { at: number; sequence: number; dx: number; dy: number };
 
-function deliver(world: ReturnType<typeof createWorld>, packets: Packet[]) {
+function deliver(
+  world: ReturnType<typeof createAuthoredWorld>,
+  packets: Packet[],
+) {
   let lastSequence = 0;
   for (const packet of [...packets].sort((a, b) => a.at - b.at)) {
     const result = acceptMoveIntent(world, "admin", packet, lastSequence);
@@ -24,7 +27,7 @@ function deliver(world: ReturnType<typeof createWorld>, packets: Packet[]) {
 }
 
 Deno.test("delayed, reordered and duplicated move intents apply at most once", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   addPlayer(world, "admin", { x: 8, y: 7, z: 0 });
   const last = deliver(world, [
     { at: 250, sequence: 1, dx: -1, dy: 0 },
@@ -44,7 +47,7 @@ Deno.test("delayed, reordered and duplicated move intents apply at most once", (
 });
 
 Deno.test("lost first request can retry without moving twice", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   addPlayer(world, "admin", { x: 8, y: 7, z: 0 });
   const retry = { at: 200, sequence: 1, dx: 0, dy: -1 };
   const last = deliver(world, [retry]);
@@ -56,8 +59,8 @@ Deno.test("lost first request can retry without moving twice", () => {
 });
 
 Deno.test("host correction cancels a predicted move", () => {
-  const client = createWorld();
-  const host = createWorld();
+  const client = createAuthoredWorld();
+  const host = createAuthoredWorld();
   addPlayer(client, "admin", { x: 14, y: 8, z: 0 });
   addPlayer(host, "admin", { x: 15, y: 8, z: 0 });
   assertEquals(startMove(client, "admin", 1, 0, 1).ok, true);
@@ -71,7 +74,7 @@ Deno.test("host correction cancels a predicted move", () => {
 });
 
 Deno.test("name claims and typing state belong to one world", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   addPlayer(world, "self");
   addPlayer(world, "admin");
   assertEquals(setNickname(world, "self", "Josh Hale").ok, true);

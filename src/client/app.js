@@ -38,7 +38,7 @@ const scene = {
   zoom: 1,
   zoomTarget: 1,
   viewZ: 0,
-  viewMode: "entity",
+  viewMode: /** @type {"entity"|"master"} */ ("entity"),
   inputMode: "keyboard",
   hudUntil: 0,
   touchGesture: false,
@@ -87,6 +87,10 @@ function changeLayer(step) {
 
 /** @param {"entity"|"master"} mode */
 function setViewMode(mode) {
+  if (isAdmin) {
+    if (guest?.setMode(mode)) notify(`Switching to ${mode} view…`);
+    return;
+  }
   scene.viewMode = mode;
   if (mode === "entity") scene.cameraOffset = { x: 0, y: 0 };
   notify(`${mode === "master" ? "Master" : "Entity"} view`);
@@ -586,6 +590,10 @@ export const phoneDiagnostics = {
 };
 
 export async function startApp() {
+  if (!isAdmin) {
+    scene.world = (await import("../shared/authored-terrain.js"))
+      .createAuthoredWorld();
+  }
   addPlayer(scene.world, "self");
   bindInput();
   const renderer = await createRenderer(canvas);
@@ -616,10 +624,13 @@ export async function startApp() {
     }
     const local = scene.world.players[scene.localId];
     if (local) {
-      recomputeVisibility(
-        scene.visibility,
-        visibilityPosition(local, scene.world.tick + accumulator / TICK_MS),
-      );
+      if (!isAdmin && scene.viewMode === "entity") {
+        recomputeVisibility(
+          scene.world,
+          scene.visibility,
+          visibilityPosition(local, scene.world.tick + accumulator / TICK_MS),
+        );
+      }
       if (local.z !== lastPlayerZ) {
         lastPlayerZ = local.z;
         scene.viewZ = clamp(local.z, 0, WORLD_TOP);

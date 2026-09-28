@@ -1,15 +1,15 @@
+import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import { createPresentation } from "../../src/client/presentation.js";
 import {
   addPlayer,
   advanceTicks,
-  createWorld,
   renderPosition,
   startMove,
 } from "../../src/shared/world.js";
 
 Deno.test("remote player and NPC follow their current simulation positions", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   addPlayer(world, "admin", { x: 2, y: 4, z: 0 });
   addPlayer(world, "npc-corner", { x: 2, y: 2, z: 0 });
   const visual = createPresentation();
@@ -27,7 +27,7 @@ Deno.test("remote player and NPC follow their current simulation positions", () 
 });
 
 Deno.test("back-to-back remote moves remain smooth and close to authority", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   addPlayer(world, "npc-corner", { x: 2, y: 2, z: 0 });
   const visual = createPresentation();
   assert(startMove(world, "npc-corner", 1, 0, 1).ok);
@@ -51,7 +51,7 @@ Deno.test("back-to-back remote moves remain smooth and close to authority", () =
 });
 
 Deno.test("an interrupted path cannot build a visual move backlog", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   const player = addPlayer(world, "npc-corner", { x: 2, y: 2, z: 0 });
   const visual = createPresentation();
   visual.positionAt(player, 0, false);
@@ -76,7 +76,7 @@ Deno.test("an interrupted path cannot build a visual move backlog", () => {
 });
 
 Deno.test("newer remote positions replace unfinished visual paths", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   const player = addPlayer(world, "peer", { x: 2, y: 2, z: 0 });
   const visual = createPresentation();
   visual.positionAt(player, 0, false);

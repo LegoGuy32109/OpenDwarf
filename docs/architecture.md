@@ -24,7 +24,17 @@ remembered with a warm tint; unseen terrain is black. Entities fade between
 25% and 75% of a move into or out of visible tiles and do not leave ghosts in
 memory. `/master` shows the full world and permits camera panning while
 keeping at least one full row and column of the authored square visible.
-These view commands change only the local client. R/V changes view level,
+The browser host computes each joining player's sight and sends only currently
+visible entities and discovered terrain in `/entity`. Terrain remembered from
+earlier sight keeps its last observed state. `/master` requests a full snapshot
+from the host; any player can use it. Returning to `/entity` drops master-only
+data and adds only tiles in the player's current sight to entity memory.
+Master travel does not reveal the path in entity memory. These commands grant
+no movement or world-editing powers. The host browser still owns the full
+world, so this is a view protocol, not a security boundary. Same-level rays
+check every grid cell touched at a corner, making sight reciprocal between
+stationary positions. Different-height sight retains the earlier ray rule.
+R/V changes view level,
 holding U/N lerps zoom, and touch offers pinch zoom and two-finger vertical
 drag for view levels. A brief bitmap HUD shows both values during changes.
 
@@ -38,25 +48,28 @@ through a WebRTC data channel. HTTP POST and SSE carry connection signaling;
 they do not carry game updates.
 
 The browser host applies each joining player's move intents in sequence order
-and sends a world snapshot every 500 ms. Joining players predict movement
-locally. Each snapshot acknowledges that recipient's latest processed input.
+and sends a recipient-specific snapshot every 500 ms, and sooner when that
+recipient crosses a sight tile. Joining players predict movement locally.
+Each snapshot acknowledges that recipient's latest processed input.
 The joining player keeps an unacknowledged or
 matching local animation, maps the host's animation onto its own tick, and
 eases the sprite after a real correction. This avoids resetting the local
 animation every half second. Each browser presents remote player and NPC moves
-through the same ordered render queue. The host applies movement to the world
+near their latest authoritative position, smoothing short visual corrections.
+The host applies movement to the world
 as soon as an intent arrives. If a straight-line intent arrives just before
 the host finishes its current tile, the host queues it for the next tick.
 The game engine runs at 20 ticks per second and renders between ticks. The
-ordered queue preserves each remote tile transition when updates arrive close
-together. It is not rollback netcode. WebRTC uses direct
+renderer does not queue old remote paths when updates arrive close together.
+It is not rollback netcode. WebRTC uses direct
 connectivity when ICE can establish it; Xirsys TURN credentials supply a relay
 when needed. The signaling route uses Deno KV as a mailbox.
 
 Each joining tab keeps a session token while its tab exists. If its WebRTC
 connection drops, it sends a fresh join request. The host keeps its sprite for
-at most five seconds and preserves its name and tile for a later rejoin while
-the host world remains open. Ping activity also expires a silent connection.
+at most five seconds and preserves its name, tile, view mode, and entity terrain
+memory for a later rejoin while the host world remains open. Ping activity also
+expires a silent connection.
 The corner NPC follows an E, S, W, N loop and
 pauses one second after every two loops. It uses the same move rules as players.
 
@@ -77,9 +90,11 @@ Deno KV. Its random code expires 30 minutes after the phone stops polling.
   until the 30 second TTL ends.
 - The KV mailbox is bounded to 32 recent signals. It suits this small demo,
   but it is not a general game message bus.
-- Joining players receive state snapshots and can see brief corrections when the
-  host rejects a predicted move. There is no clock synchronization, input
-  replay, or authoritative server.
+- Joining players receive filtered state snapshots in `/entity` and can see
+  brief corrections when the host rejects a predicted move. There is no clock
+  synchronization, input replay, or authoritative server.
+- Terrain memory and view mode live in the browser host; closing that world
+  discards them. Guest packet filtering is not an anti-cheat boundary.
 - Offline caching is deferred. A visitor needs the website to load the game.
 
 ## Next experiment

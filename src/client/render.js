@@ -221,7 +221,14 @@ export async function createRenderer(canvas) {
       if (!surfaces.has(key)) {
         surfaces.set(
           key,
-          surfaceAt(x, y, scene.viewZ, scene.viewMode, scene.visibility),
+          surfaceAt(
+            scene.world,
+            x,
+            y,
+            scene.viewZ,
+            scene.viewMode,
+            scene.visibility,
+          ),
         );
       }
       return surfaces.get(key) ?? null;
@@ -253,6 +260,7 @@ export async function createRenderer(canvas) {
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
         const mask = elevationMask(
+          scene.world,
           x,
           y,
           scene.viewZ,
@@ -334,6 +342,7 @@ export async function createRenderer(canvas) {
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
         const mask = ceilingMask(
+          scene.world,
           x,
           y,
           scene.viewZ,
@@ -371,7 +380,7 @@ export async function createRenderer(canvas) {
         : entityOpacity(player, scene.world.tick + alpha, (x, y, z) =>
           tileVisibility(scene.visibility, x, y, z) === "visible");
       if (
-        playerOccluded(player, scene.viewZ) ||
+        playerOccluded(scene.world, player, scene.viewZ) ||
         player.z < scene.viewZ - Z_LEVELS_BELOW
       ) visible = 0;
       opacity.set(player.id, visible);

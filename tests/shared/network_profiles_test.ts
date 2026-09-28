@@ -1,16 +1,12 @@
+import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { assert, assertEquals } from "@std/assert";
 import { createCornerNpc } from "../../src/shared/npc.js";
 import { acceptMoveIntent } from "../../src/shared/protocol.js";
-import {
-  addPlayer,
-  advanceTicks,
-  createWorld,
-  startMove,
-} from "../../src/shared/world.js";
+import { addPlayer, advanceTicks, startMove } from "../../src/shared/world.js";
 
 for (const rtt of [20, 50, 100, 200]) {
   Deno.test(`ordered movement survives ${rtt} ms RTT, jitter and a lost first send`, () => {
-    const world = createWorld();
+    const world = createAuthoredWorld();
     addPlayer(world, "admin", { x: 2, y: 7, z: 0 });
     const oneWayTicks = Math.max(1, Math.ceil(rtt / 100));
     const events: { tick: number; sequence: number }[] = [];
@@ -47,7 +43,7 @@ for (const rtt of [20, 50, 100, 200]) {
 }
 
 Deno.test("corner NPC uses player collision and pauses after two loops", () => {
-  const world = createWorld();
+  const world = createAuthoredWorld();
   const tickNpc = createCornerNpc(world);
   const npc = world.players["npc-corner"];
   assert(tickNpc());

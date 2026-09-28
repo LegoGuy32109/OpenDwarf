@@ -92,5 +92,6 @@ export function mergeSnapshot(
     players[id] = atLocalTick(incoming, snapshot.tick, local.tick);
   }
   local.players = players;
+  local.terrain = snapshot.terrain;
   return { corrected };
 }
