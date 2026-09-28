@@ -528,7 +528,7 @@ async function play(host: Page, until: number, began: number) {
       const latest = samples.at(-1);
       console.log(
         `Minute ${
-          Math.floor((performance.now() - began) / 60)
+          Math.floor((performance.now() - began) / 60_000)
         }: ${pages.length} guests, ${latest?.movingGuests ?? 0} moving, ${
           latest?.queuedBytes ?? 0
         } bytes queued`,
@@ -700,6 +700,14 @@ try {
     );
     return values.at(-1) ?? 0;
   });
+  const frameMeans = samples.map((item) => item.frameMeanMs).sort((a, b) =>
+    a - b
+  );
+  const frameP95 = frameMeans[Math.floor(frameMeans.length * 0.95)] ?? 0;
+  const chatLatencies = chatChecks.filter((check) => check.ok).map((check) =>
+    check.latencyMs
+  ).sort((a, b) => a - b);
+  const chatP95 = chatLatencies[Math.floor(chatLatencies.length * 0.95)] ?? 0;
   const date = startedAt.toISOString().slice(0, 10);
   const report = `# Group stress run: ${date}
 
@@ -729,6 +737,11 @@ try {
     Math.min(...peerTotals)
   }–${Math.max(...peerTotals)} bytes.
 - Peak queued bytes: ${Math.max(0, ...samples.map((item) => item.queuedBytes))}.
+- Host rolling mean frame time: median ${
+    (frameMeans[Math.floor(frameMeans.length / 2)] ?? 0).toFixed(1)
+  } ms, p95 ${frameP95.toFixed(1)} ms; longest recorded single frame ${
+    Math.max(0, ...samples.map((item) => item.frameMaxMs)).toFixed(1)
+  } ms.
 - Largest sampled remote-sprite difference from host authority: ${
     worstDelta.toFixed(3)
   } tiles.
@@ -741,7 +754,7 @@ try {
 - Failures: ${failures.length ? failures.join("; ") : "none observed"}.
 - Chat checks: ${
     chatChecks.filter((check) => check.ok).length
-  }/${chatChecks.length} passed; see raw event timings.
+  }/${chatChecks.length} passed; p95 observed bubble latency ${chatP95} ms. See raw event timings.
 - Visual clips: ${
     captured.length
       ? captured.map((path) => `\`${path}\``).join(", ")
