@@ -128,9 +128,10 @@ For CLI access to the existing `opendwarf` app, load `DENO_DEPLOY_TOKEN` from
 `~/Projects/work-portal/.env` into the command environment. Do not copy the
 token into this repository.
 
-Set `opendwarf.joshhale.me` and any extra domains in Deno Deploy and DNS after
-the app is deployed. Domain setup and deployment are manual steps. The code does
-not register domains or publish a deployment.
+The `client-first-deno` branch is linked to the `opendwarf` app. Pushing the
+branch triggers a Deno Deploy build; verify the served client files and CI after
+the push. `opendwarf.joshhale.me` is already configured. Add any extra domains
+in Deno Deploy and DNS manually; the code does not register domains.
 
 See the [Deno Deploy KV guide](https://docs.deno.com/deploy/reference/deno_kv/)
 and [build configuration](https://docs.deno.com/deploy/reference/builds/).

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 
 type Sample = {
   atMs: number;
+  wallAtMs: number;
   players: number;
   movingGuests: number;
   bytesSent: number;
@@ -397,6 +398,7 @@ async function collectSample(host: Page, began: number) {
   }
   samples.push({
     atMs: nowMs,
+    wallAtMs: Date.now(),
     players: hostData.stats.players,
     movingGuests: Object.entries(hostData.positions).filter(([id, player]) =>
       id.startsWith("peer-") && player !== null && player.moveSequence !== null
@@ -619,6 +621,7 @@ try {
     }
   }
   const holdBegan = performance.now();
+  const holdBeganWall = Date.now();
   const until = holdBegan + durationSeconds * 1000;
   await play(host, until, began);
   await sample(host, began);
@@ -641,10 +644,27 @@ try {
     entry.events.map((event) => ({ observer: entry.id, ...event }))
   );
   const elapsed = (samples.at(-1)?.atMs ?? 0) / 1000;
-  const sent = samples.map((item) => item.bytesSent);
-  const rate = samples.slice(1).map((item, index) =>
-    Math.max(0, item.bytesSent - samples[index].bytesSent) * 1000 /
-    Math.max(1, item.atMs - samples[index].atMs)
+  /** @param {Sample} before @param {Sample} after */
+  const bytesBetween = (before: Sample, after: Sample) => {
+    const old = new Map(before.connections.map((connection) => [
+      connection.playerId,
+      connection.bytesSent,
+    ]));
+    return after.connections.reduce((sum, connection) => {
+      const prior = old.get(connection.playerId) ?? 0;
+      return sum +
+        (connection.bytesSent >= prior
+          ? connection.bytesSent - prior
+          : connection.bytesSent);
+    }, 0);
+  };
+  const intervalBytes = samples.slice(1).map((item, index) =>
+    bytesBetween(samples[index], item)
+  );
+  const totalSent = (samples[0]?.bytesSent ?? 0) +
+    intervalBytes.reduce((sum, value) => sum + value, 0);
+  const rate = intervalBytes.map((value, index) =>
+    value * 1000 / Math.max(1, samples[index + 1].atMs - samples[index].atMs)
   );
   const worstDelta = Math.max(
     0,
@@ -674,6 +694,16 @@ try {
   const holdSamples = samples.filter((item) =>
     item.atMs >= Math.round(holdBegan - began)
   );
+  const wallHoldSeconds = (Date.now() - holdBeganWall) / 1000;
+  const maxWallGapMs = Math.max(
+    0,
+    ...samples.slice(1).map((item, index) =>
+      item.wallAtMs - samples[index].wallAtMs
+    ),
+  );
+  if (wallHoldSeconds > durationSeconds + 30) {
+    failures.push(`wall-clock interruption: ${wallHoldSeconds.toFixed(1)} s`);
+  }
   const movingMinutes = new Set(
     holdSamples.filter((item) => item.movingGuests > 0)
       .map((item) => Math.floor((item.atMs - (holdBegan - began)) / 60_000))
@@ -689,17 +719,38 @@ try {
       } hold minutes`,
     );
   }
-  const holdRates = holdSamples.slice(1).map((item, index) =>
-    Math.max(0, item.bytesSent - holdSamples[index].bytesSent) * 1000 /
-    Math.max(1, item.atMs - holdSamples[index].atMs)
+  const holdIntervalBytes = holdSamples.slice(1).map((item, index) =>
+    bytesBetween(holdSamples[index], item)
+  );
+  const holdRates = holdIntervalBytes.map((value, index) =>
+    value * 1000 /
+    Math.max(1, holdSamples[index + 1].atMs - holdSamples[index].atMs)
   );
   const peerTotals = pages.map((visitor) => {
-    const values = samples.map((item) =>
-      item.connections.find((connection) => connection.playerId === visitor.id)
-        ?.bytesSent ?? 0
-    );
-    return values.at(-1) ?? 0;
+    const first = samples[0]?.connections.find((connection) =>
+      connection.playerId === visitor.id
+    )?.bytesSent ?? 0;
+    const later = samples.slice(1).reduce((sum, item, index) => {
+      const current = item.connections.find((connection) =>
+        connection.playerId === visitor.id
+      )?.bytesSent ?? 0;
+      const prior = samples[index].connections.find((connection) =>
+        connection.playerId === visitor.id
+      )?.bytesSent ?? 0;
+      return sum + (current >= prior ? current - prior : current);
+    }, 0);
+    return first + later;
   });
+  const counterResets = samples.slice(1).reduce((sum, item, index) => {
+    const previous = new Map(samples[index].connections.map((connection) => [
+      connection.playerId,
+      connection.bytesSent,
+    ]));
+    return sum +
+      item.connections.filter((connection) =>
+        connection.bytesSent < (previous.get(connection.playerId) ?? 0)
+      ).length;
+  }, 0);
   const frameMeans = samples.map((item) => item.frameMeanMs).sort((a, b) =>
     a - b
   );
@@ -724,15 +775,19 @@ try {
   }%; seed: ${seed}.
 - Duration after ramp: ${durationSeconds} s; total elapsed: ${
     elapsed.toFixed(1)
-  } s.
+  } s of simulation time; wall-clock hold ${wallHoldSeconds.toFixed(1)} s.
+- Largest gap between wall-clock samples: ${maxWallGapMs} ms; data-channel counter resets: ${counterResets}.
 - Hold minutes with accepted guest movement: ${movingMinutes.size}/${expectedMinutes}.
-- Host payload bytes sent: ${sent.at(-1) ?? 0} total; average ${
-    (rate.reduce((sum, value) => sum + value, 0) / Math.max(1, rate.length))
-      .toFixed(0)
+- Host payload bytes sent: ${totalSent} total across data-channel resets; average ${
+    (totalSent * 1000 / Math.max(1, elapsed * 1000)).toFixed(0)
   } B/s, peak ${Math.max(0, ...rate).toFixed(0)} B/s.
 - Hold-only payload rate: average ${
-    (holdRates.reduce((sum, value) => sum + value, 0) /
-      Math.max(1, holdRates.length)).toFixed(0)
+    (holdIntervalBytes.reduce((sum, value) => sum + value, 0) * 1000 /
+      Math.max(
+        1,
+        (holdSamples.at(-1)?.atMs ?? 0) -
+          (holdSamples[0]?.atMs ?? 0),
+      )).toFixed(0)
   } B/s, peak ${Math.max(0, ...holdRates).toFixed(0)} B/s; per-peer sent ${
     Math.min(...peerTotals)
   }–${Math.max(...peerTotals)} bytes.

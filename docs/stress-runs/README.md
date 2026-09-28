@@ -23,8 +23,21 @@ For a deployed run, opt in with `?telemetry=1`; the stress runner adds that
 parameter and `test=1`. Deno Deploy logs JSON entries with
 `"event":"open-dwarf-client"`, session ID, anonymous participant ID, ICE route,
 frame and queue measurements, and categorized errors. They omit chat text and
-drafts. Review the app's Logs page or stream them with
-`deno deploy logs --org legoguy32109 --app opendwarf --start <UTC timestamp>`.
+drafts. Review the app's Logs page or capture a bounded log window with:
+
+```sh
+(cd /tmp && deno run --env-file=/home/josh/Projects/work-portal/.env \
+  --no-config --no-lock -A jsr:@deno/deploy logs \
+  --org legoguy32109 --app opendwarf \
+  --start "2026-09-28T23:00:00Z" --end "2026-09-28T23:15:00Z" \
+  --once --json --non-interactive)
+```
+
+The direct CLI invocation avoids a duplicate-argument error from the `deno
+deploy` wrapper in local Deno 2.9.6. Running from `/tmp` keeps the CLI's
+context selection and dependencies out of this project's config and lockfile.
+Use the session ID and `test`
+marker to separate stress traffic from device reports.
 See
 [Deno's log reference](https://docs.deno.com/deploy/reference/observability/)
 for dashboard filters and the
