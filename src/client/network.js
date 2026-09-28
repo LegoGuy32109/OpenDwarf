@@ -196,14 +196,14 @@ export function startHost(scene, session) {
         return;
       }
       if (message.type === "move") {
-        if (pendingMoves.length < 8) {
-          pendingMoves.push({
-            dx: Number(message.dx),
-            dy: Number(message.dy),
-            sequence: Number(message.sequence),
-          });
-          drainMoves();
-        }
+        // Only the latest direction is useful while a previous step is finishing.
+        // A queued step must not run after the visitor has turned elsewhere.
+        pendingMoves.splice(0, pendingMoves.length, {
+          dx: Number(message.dx),
+          dy: Number(message.dy),
+          sequence: Number(message.sequence),
+        });
+        drainMoves();
         return;
       }
       if (message.type === "typing") {

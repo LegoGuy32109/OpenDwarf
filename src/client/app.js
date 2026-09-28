@@ -181,9 +181,10 @@ function move() {
     scene.localId,
     direction.x,
     direction.y,
-    ++sequence,
+    sequence + 1,
   );
   if (result.ok) {
+    sequence++;
     if (isAdmin) {
       guest?.send({ type: "move", dx: direction.x, dy: direction.y, sequence });
     } else host?.publish();

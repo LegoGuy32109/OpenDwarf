@@ -28,7 +28,7 @@ function atLocalTick(player, hostTick, localTick) {
   return { ...player, move };
 }
 
-/** Keep a client's own confirmed animation and any input the host has not seen yet. */
+/** Keep matching local animation, but accept the host's position when prediction diverges. */
 /** @param {World} local @param {World} snapshot @param {number} acknowledgedSequence @param {number} latestLocalSequence @param {string} localId */
 export function mergeSnapshot(
   local,
@@ -47,14 +47,23 @@ export function mergeSnapshot(
       continue;
     }
     if (id === localId) {
-      const pending = latestLocalSequence > acknowledgedSequence;
       const matching = sameMove(existing.move, incoming.move) ||
         (!existing.move && !incoming.move && sameTile(existing, incoming)) ||
         (existing.move && !incoming.move &&
           sameTile(existing.move.target, incoming)) ||
         (!existing.move && incoming.move &&
           sameTile(existing, incoming.move.target));
-      if (pending || matching) {
+      const onePending = latestLocalSequence === acknowledgedSequence + 1;
+      const hostTarget = incoming.move?.target ?? incoming;
+      const predictedOrigin = existing.move?.origin ?? existing;
+      const pendingFollowsHost = onePending &&
+        existing.move?.sequence === latestLocalSequence &&
+        sameTile(predictedOrigin, hostTarget);
+      const completedPendingStep = onePending && !existing.move &&
+        !incoming.move && existing.z === incoming.z &&
+        Math.abs(existing.x - incoming.x) <= 1 &&
+        Math.abs(existing.y - incoming.y) <= 1;
+      if (matching || pendingFollowsHost || completedPendingStep) {
         players[id] = {
           ...incoming,
           x: existing.x,

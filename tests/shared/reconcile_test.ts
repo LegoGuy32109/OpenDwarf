@@ -75,3 +75,25 @@ Deno.test("rejected movement produces an authoritative correction", () => {
   assertEquals(local.players.admin.move, null);
   assertEquals(local.players.admin.x, 8);
 });
+
+Deno.test("a pending move cannot hide a different host path", () => {
+  const local = createWorld();
+  const snapshot = createWorld();
+  addPlayer(local, "admin", { x: 7, y: 7, z: 0 });
+  addPlayer(snapshot, "admin", { x: 7, y: 7, z: 0 });
+  assertEquals(startMove(local, "admin", 1, 0, 5).ok, true);
+  assertEquals(startMove(snapshot, "admin", 0, 1, 4).ok, true);
+  const result = mergeSnapshot(local, snapshot, 4, 5, "admin");
+  assertEquals(result.corrected, true);
+  assertEquals(local.players.admin.move?.target, { x: 7, y: 8, z: 0 });
+});
+
+Deno.test("more than one unacknowledged step cannot drift away from the host", () => {
+  const local = createWorld();
+  const snapshot = createWorld();
+  addPlayer(local, "admin", { x: 10, y: 7, z: 0 });
+  addPlayer(snapshot, "admin", { x: 8, y: 7, z: 0 });
+  const result = mergeSnapshot(local, snapshot, 2, 5, "admin");
+  assertEquals(result.corrected, true);
+  assertEquals(local.players.admin.x, 8);
+});

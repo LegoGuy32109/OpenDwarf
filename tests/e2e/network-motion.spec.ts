@@ -160,3 +160,106 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
   ).toBeGreaterThan(before);
   await Promise.all([host.close(), first.close()]);
 });
+
+test("held and reversed guest movement converges in host and two joining tabs", async ({ browser }) => {
+  const host = await browser.newPage();
+  const first = await browser.newPage();
+  const second = await browser.newPage();
+  await host.goto("/?harness=1");
+  await expect(host.locator("#loading")).toBeHidden();
+  const session = await host.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
+      .scene.sessionId
+  );
+  for (const guest of [first, second]) {
+    await guest.goto("/admin?harness=1");
+    await expect(guest.locator("#loading")).toBeHidden();
+    await guest.locator(`[data-session-id="${session}"]`).click();
+    await expect.poll(() =>
+      guest.evaluate(() =>
+        (globalThis as unknown as { __od: { scene: { localId: string } } })
+          .__od.scene.localId
+      )
+    ).toMatch(/^peer-/);
+  }
+  const firstId = await first.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+      .scene.localId
+  );
+  const secondId = await second.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
+      .scene.localId
+  );
+  const positions = async (page: Page) =>
+    await page.evaluate(({ firstId, secondId }) => {
+      const players = (globalThis as unknown as {
+        __od: {
+          scene: {
+            world: {
+              players: Record<
+                string,
+                { x: number; y: number; z: number; move: unknown }
+              >;
+            };
+          };
+        };
+      }).__od.scene.world.players;
+      return [firstId, secondId].map((id) => {
+        const player = players[id];
+        return player
+          ? { x: player.x, y: player.y, z: player.z, moving: !!player.move }
+          : null;
+      });
+    }, { firstId, secondId });
+  await expect.poll(async () => (await positions(host)).every(Boolean)).toBe(
+    true,
+  );
+  const initial = await positions(host);
+  await first.keyboard.down("e");
+  await second.keyboard.down("e");
+  let largestSeparation = 0;
+  for (let sample = 0; sample < 20; sample++) {
+    await first.waitForTimeout(110);
+    const [authoritative, local] = await Promise.all([
+      positions(host),
+      positions(first),
+    ]);
+    if (authoritative[0] && local[0]) {
+      largestSeparation = Math.max(
+        largestSeparation,
+        Math.hypot(
+          authoritative[0].x - local[0].x,
+          authoritative[0].y - local[0].y,
+          authoritative[0].z - local[0].z,
+        ),
+      );
+    }
+  }
+  await first.keyboard.up("e");
+  await first.keyboard.down("d");
+  await first.waitForTimeout(650);
+  await first.keyboard.up("d");
+  await second.keyboard.up("e");
+  expect(largestSeparation).toBeLessThanOrEqual(1.5);
+  await expect.poll(async () => {
+    const [authoritative, local, observer] = await Promise.all([
+      positions(host),
+      positions(first),
+      positions(second),
+    ]);
+    return authoritative.every((position, index) =>
+      position && !position.moving &&
+      local[index] && !local[index]?.moving &&
+      observer[index] && !observer[index]?.moving &&
+      position.x === local[index]?.x && position.y === local[index]?.y &&
+      position.z === local[index]?.z &&
+      position.x === observer[index]?.x &&
+      position.y === observer[index]?.y &&
+      position.z === observer[index]?.z
+    );
+  }, { timeout: 8000 }).toBe(true);
+  const final = await positions(host);
+  expect(final[0]?.y).not.toBe(initial[0]?.y);
+  expect(final[1]?.y).not.toBe(initial[1]?.y);
+  await Promise.all([host.close(), first.close(), second.close()]);
+});
