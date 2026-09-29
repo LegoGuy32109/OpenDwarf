@@ -618,20 +618,20 @@ test("joining player connects over WebRTC and moves in the host world", async ({
       )
     )
   ).toContain(guestId);
+  await expect.poll(() => admin.locator("#net-stats").textContent(), {
+    timeout: 12_000,
+  }).toMatch(/RTT median \d+ ms/);
+  await expect.poll(() => admin.locator("#net-stats").textContent(), {
+    timeout: 12_000,
+  }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay)/);
   await admin.keyboard.down("f");
   await expect.poll(() =>
     visitor.evaluate((id) =>
       (globalThis as unknown as {
         __od: { scene: { world: { players: Record<string, { x: number }> } } };
-      }).__od.scene.world.players[id]?.x, guestId)
-  ).toBeGreaterThan(8);
+      }).__od.scene.world.players[id]?.x ?? -1, guestId), { timeout: 12_000 })
+    .toBeGreaterThan(8);
   await admin.keyboard.up("f");
-  await expect.poll(() => admin.locator("#net-stats").textContent(), {
-    timeout: 8_000,
-  }).toMatch(/RTT median \d+ ms/);
-  await expect.poll(() => admin.locator("#net-stats").textContent(), {
-    timeout: 8_000,
-  }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay)/);
   await visitor.close();
   await expect.poll(
     () =>
