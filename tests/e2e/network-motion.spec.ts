@@ -157,13 +157,19 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
     (globalThis as unknown as {
       __od: { scene: { world: { players: Record<string, { y: number }> } } };
     }).__od.scene.world.players[id].y, firstId);
-  await first.keyboard.press("d");
-  await expect.poll(() =>
-    host.evaluate((id) =>
-      (globalThis as unknown as {
-        __od: { scene: { world: { players: Record<string, { y: number }> } } };
-      }).__od.scene.world.players[id].y, firstId)
-  ).toBeGreaterThan(before);
+  await first.keyboard.down("d");
+  try {
+    await expect.poll(() =>
+      host.evaluate((id) =>
+        (globalThis as unknown as {
+          __od: {
+            scene: { world: { players: Record<string, { y: number }> } };
+          };
+        }).__od.scene.world.players[id].y, firstId)
+    ).toBeGreaterThan(before + 0.12);
+  } finally {
+    await first.keyboard.up("d");
+  }
   await Promise.all([host.close(), first.close()]);
 });
 
