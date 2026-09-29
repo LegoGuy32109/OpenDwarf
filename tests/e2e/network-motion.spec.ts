@@ -458,7 +458,9 @@ test("a guest sees the host move and fade behind the pillar", async ({ browser }
   await driveTo(host, host, "self", "d", "y", 8);
   const points = await trace;
   expect(points.length).toBeGreaterThan(0);
-  expect(Math.max(...points.map((point) => point.y))).toBeGreaterThan(7.1);
+  // The host can omit the sprite at the next sight update before the guest's
+  // delayed presentation has replayed the whole visible part of this move.
+  expect(Math.max(...points.map((point) => point.y))).toBeGreaterThan(7.02);
   expect(points.some((point) => point.opacity > 0.05 && point.opacity < 0.95))
     .toBe(true);
   await expect.poll(() =>
