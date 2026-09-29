@@ -74,6 +74,7 @@ input {
   color: #e0e3e6;
   font-size: 11px;
   text-align: right;
+  white-space: pre-line;
   pointer-events: none;
 }
 #display-status:empty {

@@ -1,5 +1,231 @@
 import { expect, test } from "@playwright/test";
 
+test("standard gamepad moves the player and handles buttons", async ({ page }) => {
+  await page.addInitScript(() => {
+    const pad = {
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false })),
+      connected: true,
+      id: "Test Switch controller",
+      index: 0,
+      mapping: "standard",
+    };
+    Object.defineProperty(navigator, "getGamepads", {
+      value: () => [pad],
+    });
+    (globalThis as unknown as { __testPad: typeof pad }).__testPad = pad;
+  });
+  await page.goto("/?harness=1&gamepad-debug=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  await expect(page.locator("#display-status")).toContainText(
+    "Test Switch controller",
+  );
+  await page.locator("#world").click();
+  await page.evaluate(() => {
+    (globalThis as unknown as { __testPad: { axes: number[] } }).__testPad
+      .axes[0] = 1;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { x: number } } } } };
+      }).__od.scene.world.players.self.x
+    )
+  ).toBeGreaterThan(7);
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { axes: number[]; buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.axes[0] = 0;
+    pad.axes[2] = 1;
+    pad.buttons[7].pressed = true;
+  });
+  await expect.poll(() =>
+    page.evaluate(() => {
+      const scene = (globalThis as unknown as {
+        __od: {
+          scene: { cameraOffset: { x: number }; zoomTarget: number };
+        };
+      }).__od.scene;
+      return scene.cameraOffset.x > 0 && scene.zoomTarget > 1;
+    })
+  ).toBe(true);
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { axes: number[]; buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.axes[2] = 0;
+    pad.buttons[7].pressed = false;
+    pad.buttons[5].pressed = true;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { viewZ: number } } }).__od
+        .scene.viewZ
+    )
+  ).toBe(1);
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.buttons[5].pressed = false;
+    pad.buttons[1].pressed = true;
+  });
+  await expect(page.locator("#display-status")).toContainText("Buttons: 1");
+  await expect(page.locator("#chat-input")).not.toBeFocused();
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.buttons[1].pressed = false;
+    pad.buttons[0].pressed = true;
+  });
+  await expect(page.locator("#display-status")).toContainText("Buttons: 0");
+  expect(
+    await page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { menu: boolean } } }).__od
+        .scene.menu
+    ),
+  ).toBe(false);
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.buttons[0].pressed = false;
+    pad.buttons[3].pressed = true;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { menu: boolean } } }).__od
+        .scene.menu
+    )
+  ).toBe(true);
+});
+
+test("attached Afterglow layout uses its D-pad and shoulder buttons", async ({ page }) => {
+  await page.addInitScript(() => {
+    const pad = {
+      axes: [0, 0, 0, 0, 0, 0],
+      buttons: Array.from({ length: 14 }, () => ({ pressed: false })),
+      connected: true,
+      id: "Performance Designed Products Afterglow Wireless Deluxe Controller",
+      index: 0,
+      mapping: "",
+    };
+    Object.defineProperty(navigator, "getGamepads", {
+      value: () => [pad],
+    });
+    (globalThis as unknown as { __testPad: typeof pad }).__testPad = pad;
+  });
+  await page.goto("/?harness=1&gamepad-debug=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  await page.locator("#world").click();
+  await page.evaluate(() => {
+    (globalThis as unknown as { __testPad: { axes: number[] } }).__testPad
+      .axes[4] = 1;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { x: number } } } } };
+      }).__od.scene.world.players.self.x
+    )
+  ).toBeGreaterThan(7);
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { axes: number[]; buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.axes[4] = 0;
+    pad.buttons[5].pressed = true;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { viewZ: number } } }).__od
+        .scene.viewZ
+    )
+  ).toBe(1);
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.buttons[5].pressed = false;
+    pad.buttons[7].pressed = true;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { zoomTarget: number } } })
+        .__od.scene.zoomTarget
+    )
+  ).toBeGreaterThan(1);
+  const zoomedIn = await page.evaluate(() =>
+    (globalThis as unknown as { __od: { scene: { zoomTarget: number } } })
+      .__od.scene.zoomTarget
+  );
+  await page.evaluate(() => {
+    const pad = (globalThis as unknown as {
+      __testPad: { buttons: { pressed: boolean }[] };
+    }).__testPad;
+    pad.buttons[7].pressed = false;
+    pad.buttons[6].pressed = true;
+    pad.buttons[4].pressed = true;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { viewZ: number } } }).__od
+        .scene.viewZ
+    )
+  ).toBe(0);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as { __od: { scene: { zoomTarget: number } } })
+        .__od.scene.zoomTarget
+    )
+  ).toBeLessThan(zoomedIn);
+});
+
+test("active wireless pad replaces idle USB charging pad", async ({ page }) => {
+  await page.addInitScript(() => {
+    const usb = {
+      axes: [0, 0, 0, 0, 0, 0],
+      buttons: Array.from({ length: 14 }, () => ({ pressed: false })),
+      connected: true,
+      id: "Afterglow Wireless Deluxe Controller (Vendor: 0e6f Product: 0186)",
+      index: 0,
+      mapping: "",
+    };
+    const wireless = {
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false })),
+      connected: true,
+      id: "Wireless controller",
+      index: 1,
+      mapping: "standard",
+    };
+    Object.defineProperty(navigator, "getGamepads", {
+      value: () => [usb, wireless],
+    });
+    (globalThis as unknown as { __wirelessPad: typeof wireless })
+      .__wirelessPad = wireless;
+  });
+  await page.goto("/?harness=1&gamepad-debug=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  await page.locator("#world").click();
+  await page.evaluate(() => {
+    (globalThis as unknown as { __wirelessPad: { axes: number[] } })
+      .__wirelessPad.axes[0] = 1;
+  });
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: { self: { x: number } } } } };
+      }).__od.scene.world.players.self.x
+    )
+  ).toBeGreaterThan(7);
+  await expect(page.locator("#display-status")).toContainText(
+    "Wireless controller",
+  );
+});
+
 test("Escape closes the chat bar without opening the game menu", async ({ page }) => {
   await page.goto("/?harness=1");
   await expect(page.locator("#loading")).toBeHidden();

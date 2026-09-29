@@ -26,10 +26,18 @@ On the host, F3 toggles a small FPS, payload upload, queue, and join-failure
 panel. `T` opens chat, `/` opens a command, and Escape opens the menu. On a
 touch screen, the left stick moves the player and the right stick moves the
 camera. Both sticks have a visible center deadzone and eight direction guides.
+With a gamepad connected to the device, press a button while the page is
+focused. The left stick or D-pad moves, and the right stick moves the camera.
+Buttons 4/5 change the view level, 6/7 zoom, and 3 opens the menu. Button 1 has
+no chat action. The browser can report a standard layout or the raw layout of
+the Afterglow Wireless Deluxe Controller. The Afterglow Wireless
+Deluxe Controller's USB connection charges it but does not send input. Pair
+that model over Bluetooth to play.
+
 The fullscreen button uses the browser API when available; on Safari, adding the
 page to the Home Screen can hide browser controls. Pinch to zoom or drag two
-fingers vertically to change view levels. The A button opens the chat bar and
-the B button opens the menu. Use `/nick Josh
+fingers vertically to change view levels. The on-screen A button opens the chat
+bar, and the on-screen B button opens the menu. Use `/nick Josh
 Hale` to set a name. Names are
 unique within a world. Any player can use `/master` for an unrestricted camera
 and the complete world view, then `/entity` to return to the player's field of

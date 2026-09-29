@@ -514,7 +514,14 @@ export async function createRenderer(canvas) {
           0.47,
           0.7,
         ]);
-        const hints = scene.inputMode === "touch"
+        const hints = scene.inputMode === "gamepad"
+          ? [
+            "LEFT STICK MOVE",
+            "RIGHT STICK CAMERA",
+            "4 5 LEVEL  6 7 ZOOM",
+            "3 MENU",
+          ]
+          : scene.inputMode === "touch"
           ? [
             "LEFT STICK MOVE",
             "RIGHT STICK CAMERA",

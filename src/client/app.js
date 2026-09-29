@@ -33,6 +33,9 @@ const $ = (
 ) => /** @type {HTMLElement} */ (document.querySelector(selector));
 const canvas = /** @type {HTMLCanvasElement} */ ($("#world"));
 const chatInput = /** @type {HTMLInputElement} */ ($("#chat-input"));
+const gamepadDebug = new URL(location.href).searchParams.has("gamepad-debug");
+const gamepadEnabled = !new URL(location.href).searchParams.has("harness") ||
+  gamepadDebug;
 const scene = {
   world: createWorld(),
   localId: "self",
@@ -68,6 +71,15 @@ const pressed = new Set();
 let joystick = { x: 0, y: 0 };
 /** @type {{x:number,y:number}} */
 let cameraStick = { x: 0, y: 0 };
+/** @type {{x:number,y:number}} */
+let gamepadDirection = { x: 0, y: 0 };
+/** @type {{x:number,y:number}} */
+let gamepadCamera = { x: 0, y: 0 };
+let gamepadZoom = 0;
+let gamepadIndex = -1;
+let unsupportedGamepadId = "";
+/** @type {Set<number>} */
+let gamepadButtons = new Set();
 let sequence = 0;
 let lastInputDirection = { x: 0, y: 0 };
 let inputBlocked = false;
@@ -175,12 +187,126 @@ function submitChat() {
 /** @returns {{x:number,y:number}} */
 function inputDirection() {
   if (joystick.x || joystick.y) return joystick;
+  if (gamepadDirection.x || gamepadDirection.y) return gamepadDirection;
   return {
     x: Number(held.has("KeyF") || pressed.has("KeyF")) -
       Number(held.has("KeyS") || pressed.has("KeyS")),
     y: Number(held.has("KeyD") || pressed.has("KeyD")) -
       Number(held.has("KeyE") || pressed.has("KeyE")),
   };
+}
+
+/** @param {number} x @param {number} y @param {number} deadzone */
+function stickDirection(x, y, deadzone) {
+  if (Math.hypot(x, y) < deadzone) return { x: 0, y: 0 };
+  const octant = Math.round(Math.atan2(y, x) / (Math.PI / 4));
+  const directions = [
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [-1, 1],
+    [-1, 0],
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+  ];
+  const [dx, dy] = directions[(octant + 8) % 8];
+  return { x: dx, y: dy };
+}
+
+function pollGamepad() {
+  if (!gamepadEnabled) return;
+  const pads = navigator.getGamepads?.() ?? [];
+  const supported = (/** @type {Gamepad|null} */ pad) =>
+    pad?.connected && (pad.mapping === "standard" ||
+      /Afterglow Wireless Deluxe Controller|0e6f.*0186/i.test(pad.id));
+  const active = [...pads].find((candidate) =>
+    candidate && supported(candidate) &&
+    (candidate.buttons.some((button) => button.pressed) ||
+      candidate.axes.some((axis) => Math.abs(axis) > 0.3))
+  );
+  const pad = active ??
+    (supported(pads[gamepadIndex]) ? pads[gamepadIndex] : null) ??
+    [...pads].find(supported);
+  if (gamepadDebug) {
+    const inspected = active ?? pad ??
+      [...pads].find((candidate) => candidate?.connected);
+    $("#display-status").textContent = inspected
+      ? `${inspected.id}\nMapping: ${inspected.mapping || "raw"}\nAxes: ${
+        inspected.axes.map((axis) => axis.toFixed(2)).join(", ")
+      }\nButtons: ${
+        inspected.buttons.flatMap((button, index) =>
+          button.pressed ? [index] : []
+        ).join(", ") || "none"
+      }\nPage focus: ${document.hasFocus()}`
+      : `No controller reported by browser\nPage focus: ${document.hasFocus()}\nPress A or the D-pad`;
+  }
+  if (!pad) {
+    const unknown = [...pads].find((candidate) => candidate?.connected);
+    if (gamepadIndex !== -1) {
+      notify("Controller disconnected");
+      if (scene.inputMode === "gamepad") scene.inputMode = "keyboard";
+    } else if (unknown && unknown.id !== unsupportedGamepadId) {
+      unsupportedGamepadId = unknown.id;
+      notify(`Controller layout unavailable: ${unknown.id}`);
+    }
+    if (!unknown) unsupportedGamepadId = "";
+    gamepadIndex = -1;
+    gamepadDirection = { x: 0, y: 0 };
+    gamepadCamera = { x: 0, y: 0 };
+    gamepadZoom = 0;
+    gamepadButtons.clear();
+    return;
+  }
+  unsupportedGamepadId = "";
+  const standard = pad.mapping === "standard";
+  if (gamepadIndex !== pad.index) {
+    gamepadIndex = pad.index;
+    notify(`Controller connected: ${pad.id}`);
+  }
+  const buttons = new Set(
+    pad.buttons.flatMap((button, index) => button.pressed ? [index] : []),
+  );
+  /** @param {number} index */
+  const newlyPressed = (index) =>
+    buttons.has(index) && !gamepadButtons.has(index);
+  const previousDirection = gamepadDirection;
+  gamepadDirection = stickDirection(pad.axes[0] ?? 0, pad.axes[1] ?? 0, 0.3);
+  const dpadX = standard
+    ? Number(buttons.has(15)) - Number(buttons.has(14))
+    : Math.abs(pad.axes[4] ?? 0) > 0.5
+    ? Math.sign(pad.axes[4])
+    : 0;
+  const dpadY = standard
+    ? Number(buttons.has(13)) - Number(buttons.has(12))
+    : Math.abs(pad.axes[5] ?? 0) > 0.5
+    ? Math.sign(pad.axes[5])
+    : 0;
+  if (dpadX || dpadY) {
+    gamepadDirection = { x: dpadX, y: dpadY };
+  }
+  const cameraX = pad.axes[2] ?? 0;
+  const cameraY = pad.axes[3] ?? 0;
+  gamepadCamera = Math.hypot(cameraX, cameraY) < 0.18
+    ? { x: 0, y: 0 }
+    : { x: cameraX, y: cameraY };
+  gamepadZoom = Number(buttons.has(7)) - Number(buttons.has(6));
+  if (
+    gamepadDirection.x !== previousDirection.x ||
+    gamepadDirection.y !== previousDirection.y ||
+    gamepadCamera.x || gamepadCamera.y ||
+    buttons.size
+  ) scene.inputMode = "gamepad";
+  if (newlyPressed(3)) {
+    if (scene.chatOpen) closeChat();
+    scene.menu = !scene.menu;
+    scene.menuPage = "root";
+  }
+  if (!scene.chatOpen && !scene.menu) {
+    if (newlyPressed(4)) changeLayer(-1);
+    if (newlyPressed(5)) changeLayer(1);
+  }
+  gamepadButtons = buttons;
 }
 
 function move() {
@@ -478,6 +604,9 @@ function bindInput() {
     pressed.clear();
     joystick = { x: 0, y: 0 };
     cameraStick = { x: 0, y: 0 };
+    gamepadDirection = { x: 0, y: 0 };
+    gamepadCamera = { x: 0, y: 0 };
+    gamepadZoom = 0;
   });
   canvas.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "touch") scene.inputMode = "touch";
@@ -774,6 +903,7 @@ export async function startApp() {
     last = now;
     frameMs.push(elapsed);
     if (frameMs.length > 300) frameMs.shift();
+    pollGamepad();
     accumulator += dt;
     while (accumulator >= TICK_MS) {
       advanceTicks(scene.world);
@@ -797,26 +927,30 @@ export async function startApp() {
         scene.hudUntil = performance.now() + 500;
       }
     }
-    if (
-      !scene.chatOpen && !scene.menu && (held.has("KeyU") || held.has("KeyN"))
-    ) {
-      const zoomDirection = Number(held.has("KeyN")) - Number(held.has("KeyU"));
-      scene.zoomTarget = clamp(
-        scene.zoomTarget * Math.exp(zoomDirection * dt * 0.001),
-        0.25,
-        2,
-      );
-      scene.hudUntil = performance.now() + 500;
+    if (!scene.chatOpen && !scene.menu) {
+      const zoomDirection = Number(held.has("KeyN")) -
+        Number(held.has("KeyU")) + gamepadZoom;
+      if (zoomDirection) {
+        scene.zoomTarget = clamp(
+          scene.zoomTarget * Math.exp(zoomDirection * dt * 0.001),
+          0.25,
+          2,
+        );
+        scene.hudUntil = performance.now() + 500;
+      }
     }
     scene.zoom += (scene.zoomTarget - scene.zoom) * (1 - Math.exp(-dt * 0.012));
     const correctionDecay = Math.exp(-dt / 140);
     scene.renderOffset.x *= correctionDecay;
     scene.renderOffset.y *= correctionDecay;
     scene.renderOffset.z *= correctionDecay;
+    const controllerCamera = scene.chatOpen || scene.menu
+      ? { x: 0, y: 0 }
+      : gamepadCamera;
     const cameraX = Number(held.has("KeyL")) - Number(held.has("KeyJ")) +
-      cameraStick.x;
+      cameraStick.x + controllerCamera.x;
     const cameraY = Number(held.has("KeyK")) - Number(held.has("KeyI")) +
-      cameraStick.y;
+      cameraStick.y + controllerCamera.y;
     if (scene.viewMode === "master") {
       scene.camera.x += cameraX * dt * 0.48;
       scene.camera.y += cameraY * dt * 0.48;
