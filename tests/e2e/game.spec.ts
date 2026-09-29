@@ -44,10 +44,11 @@ test("standard gamepad moves the player and handles buttons", async ({ page }) =
     page.evaluate(() => {
       const scene = (globalThis as unknown as {
         __od: {
-          scene: { cameraOffset: { x: number }; zoomTarget: number };
+          scene: { aim: { x: number; y: number }; zoomTarget: number };
         };
       }).__od.scene;
-      return scene.cameraOffset.x > 0 && scene.zoomTarget > 1;
+      return scene.aim.x === 1 && scene.aim.y === 0 &&
+        scene.zoomTarget > 1;
     })
   ).toBe(true);
   await page.evaluate(() => {
@@ -446,6 +447,33 @@ test("view commands, layer keys and held zoom work in the rendered world", async
   await page.locator("#chat-input").fill("/entity");
   await page.locator("#chat-input").press("Enter");
   await expect.poll(async () => (await scene()).viewMode).toBe("entity");
+});
+
+test("entity look selects an octant without panning the camera", async ({ page }) => {
+  await page.goto("/?harness=1");
+  await expect(page.locator("#loading")).toBeHidden();
+  const scene = () =>
+    page.evaluate(() => {
+      const { aim, camera } = (globalThis as unknown as {
+        __od: {
+          scene: {
+            aim: { x: number; y: number };
+            camera: { x: number; y: number };
+          };
+        };
+      }).__od.scene;
+      return { aim: { ...aim }, camera: { ...camera } };
+    });
+  await page.keyboard.down("i");
+  await page.keyboard.down("l");
+  await expect.poll(async () => (await scene()).aim).toEqual({ x: 1, y: -1 });
+  const before = (await scene()).camera;
+  await page.waitForTimeout(200);
+  const after = (await scene()).camera;
+  expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(1);
+  await page.keyboard.up("i");
+  await page.keyboard.up("l");
+  await expect.poll(async () => (await scene()).aim).toEqual({ x: 1, y: -1 });
 });
 
 test("Ctrl+R keeps browser refresh available and leaves the view level", async ({ page }) => {

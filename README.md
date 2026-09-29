@@ -20,14 +20,19 @@ no fixed cap for stress testing; the practical limit is still being measured.
 The host's QR code opens `/join/<session>` so a phone joins that world directly.
 Press Q on the host or use the QR button to show the code again.
 
-On a keyboard, ESDF moves the player, IJKL moves the camera, R/V changes the
-view level, and holding U/N smoothly zooms out/in. The mouse wheel also zooms.
+On a keyboard, ESDF moves the player. In entity view, IJKL points an orange
+square at one of the eight neighboring tiles. R/V selects the view level; the
+square appears at the player's level or one level above or below. In master
+view, IJKL pans the camera. Holding U/N smoothly zooms out/in. The mouse wheel
+also zooms.
 On the host, F3 toggles a small FPS, payload upload, queue, and join-failure
 panel. `T` opens chat, `/` opens a command, and Escape opens the menu. On a
-touch screen, the left stick moves the player and the right stick moves the
-camera. Both sticks have a visible center deadzone and eight direction guides.
+touch screen, the left stick moves the player and the right stick points at a
+neighbor in entity view or pans in master view. Both sticks have a visible
+center deadzone and eight direction guides.
 With a gamepad connected to the device, press a button while the page is
-focused. The left stick or D-pad moves, and the right stick moves the camera.
+focused. The left stick or D-pad moves, and the right stick points at a neighbor
+in entity view or pans in master view.
 Buttons 4/5 change the view level, 6/7 zoom, and 3 opens the menu. Button 1 has
 no chat action. The browser can report a standard layout or the raw layout of
 the Afterglow Wireless Deluxe Controller. The Afterglow Wireless

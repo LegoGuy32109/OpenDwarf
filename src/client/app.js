@@ -56,7 +56,7 @@ const scene = {
   chatOpen: false,
   chatDraft: "",
   status: "Local world",
-  cameraOffset: { x: 0, y: 0 },
+  aim: { x: 0, y: 1 },
   sessionId: "",
   metrics:
     /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
@@ -113,7 +113,6 @@ function setViewMode(mode) {
     return;
   }
   scene.viewMode = mode;
-  if (mode === "entity") scene.cameraOffset = { x: 0, y: 0 };
   notify(`${mode === "master" ? "Master" : "Entity"} view`);
 }
 
@@ -955,17 +954,14 @@ export async function startApp() {
       scene.camera.x += cameraX * dt * 0.48;
       scene.camera.y += cameraY * dt * 0.48;
     } else {
-      scene.cameraOffset.x += cameraX * dt * 0.48;
-      scene.cameraOffset.y += cameraY * dt * 0.48;
-      if (!cameraX) scene.cameraOffset.x *= Math.exp(-dt / 200);
-      if (!cameraY) scene.cameraOffset.y *= Math.exp(-dt / 200);
+      if (cameraX || cameraY) {
+        scene.aim = stickDirection(cameraX, cameraY, 0.18);
+      }
       const pos = local
         ? renderPosition(local, scene.world.tick + accumulator / TICK_MS)
         : { x: 7, y: 7, z: 0 };
-      const targetX = (pos.x + scene.renderOffset.x + 0.5) * 64 +
-        scene.cameraOffset.x;
-      const targetY = (pos.y + scene.renderOffset.y + 0.5) * 64 +
-        scene.cameraOffset.y;
+      const targetX = (pos.x + scene.renderOffset.x + 0.5) * 64;
+      const targetY = (pos.y + scene.renderOffset.y + 0.5) * 64;
       const follow = 1 - Math.exp(-dt * 0.01);
       scene.camera.x += (targetX - scene.camera.x) * follow;
       scene.camera.y += (targetY - scene.camera.y) * follow;

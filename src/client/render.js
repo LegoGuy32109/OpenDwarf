@@ -1,6 +1,7 @@
 // @ts-check
 
 import { Z_LEVELS_BELOW } from "../shared/world.js";
+import { adjacentTarget } from "../shared/target.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import {
@@ -76,7 +77,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatOpen:boolean,chatDraft:string,status:string}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatOpen:boolean,chatDraft:string,status:string}} Scene */
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -365,6 +366,54 @@ export async function createRenderer(canvas) {
       }
     }
     flush();
+    const localPlayer = scene.world.players[scene.localId];
+    if (scene.viewMode === "entity" && localPlayer) {
+      const target = adjacentTarget(
+        localPlayer,
+        scene.aim,
+        scene.viewZ,
+        scene.world.edge,
+      );
+      if (target) {
+        const px = target.x * TILE;
+        const py = target.y * TILE;
+        const orange = /** @type {[number,number,number,number]} */ ([
+          1,
+          0.38,
+          0.04,
+          0.95,
+        ]);
+        quad(textures.white, false, px, py, TILE, TILE, [0, 0, 1, 1], [
+          1,
+          0.38,
+          0.04,
+          0.18,
+        ]);
+        quad(textures.white, false, px, py, TILE, 3, [0, 0, 1, 1], orange);
+        quad(
+          textures.white,
+          false,
+          px,
+          py + TILE - 3,
+          TILE,
+          3,
+          [0, 0, 1, 1],
+          orange,
+        );
+        quad(textures.white, false, px, py, 3, TILE, [0, 0, 1, 1], orange);
+        quad(
+          textures.white,
+          false,
+          px + TILE - 3,
+          py,
+          3,
+          TILE,
+          [0, 0, 1, 1],
+          orange,
+        );
+        flush();
+      }
+    }
     const players = Object.values(scene.world.players).map((player) => ({
       player,
       pos: scene.presentation.positionAt(
