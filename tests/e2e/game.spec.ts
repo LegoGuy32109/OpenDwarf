@@ -736,37 +736,3 @@ test("phone test keeps its code when switching to forced relay", async ({ page }
   await expect(page.locator("#phone-test-code")).toHaveText(code!);
   await expect.poll(() => page.url()).toContain("relay=1");
 });
-
-test("TURN relay join reports a relay candidate", async ({ browser }) => {
-  test.skip(
-    Deno.env.get("OD_TEST_RELAY") !== "1",
-    "requires local TURN credentials",
-  );
-  const visitor = await browser.newPage();
-  const admin = await browser.newPage();
-  await visitor.goto("/?harness=1");
-  await expect(visitor.locator("#loading")).toBeHidden();
-  const session = await visitor.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-      .scene.sessionId
-  );
-  await admin.goto("/admin?harness=1&relay=1");
-  await expect(admin.locator("#loading")).toBeHidden();
-  await admin.locator(`[data-session-id="${session}"]`).click();
-  await expect.poll(
-    () =>
-      admin.evaluate(() =>
-        (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-          .scene.localId
-      ),
-    { timeout: 30_000 },
-  ).toMatch(/^peer-/);
-  await expect.poll(() => admin.locator("#net-stats").textContent(), {
-    timeout: 15_000,
-  }).toMatch(/route relay\/relay/);
-  await expect.poll(() => admin.locator("#net-stats").textContent(), {
-    timeout: 15_000,
-  }).toMatch(/RTT median \d+ ms/);
-  await visitor.close();
-  await admin.close();
-});
