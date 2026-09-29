@@ -21,7 +21,12 @@ export function createPresentation() {
     clockBase = Math.min(clockBase, now - tick * TICK_MS);
     const list = samples.get(player.id) ?? [];
     if (list.length && tick <= list[list.length - 1].tick) return;
-    list.push({ tick, position: renderPosition(player, tick) });
+    list.push({
+      tick,
+      position: player.move
+        ? renderPosition(player, tick)
+        : { x: player.x, y: player.y, z: player.z },
+    });
     if (list.length > 12) list.shift();
     samples.set(player.id, list);
   }

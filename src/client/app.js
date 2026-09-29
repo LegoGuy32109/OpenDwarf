@@ -61,7 +61,7 @@ const scene = {
   chatOpen: false,
   chatDraft: "",
   status: "Local world",
-  aim: { x: 0, y: 1 },
+  aim: { x: 0, y: 0 },
   sessionId: "",
   metrics:
     /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
@@ -959,9 +959,7 @@ export async function startApp() {
       scene.camera.x += cameraX * dt * 0.48;
       scene.camera.y += cameraY * dt * 0.48;
     } else {
-      if (cameraX || cameraY) {
-        scene.aim = stickDirection(cameraX, cameraY, 0.18);
-      }
+      scene.aim = stickDirection(cameraX, cameraY, 0.18);
       const pos = local
         ? renderPosition(local, scene.world.tick + accumulator / TICK_MS)
         : { x: 7, y: 7, z: 0 };

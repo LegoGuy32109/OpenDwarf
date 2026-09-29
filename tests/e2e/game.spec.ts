@@ -61,6 +61,13 @@ test("standard gamepad moves the player and handles buttons", async ({ page }) =
   });
   await expect.poll(() =>
     page.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { aim: { x: number; y: number } } };
+      }).__od.scene.aim
+    )
+  ).toEqual({ x: 0, y: 0 });
+  await expect.poll(() =>
+    page.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { viewZ: number } } }).__od
         .scene.viewZ
     )
@@ -464,6 +471,7 @@ test("entity look selects an octant without panning the camera", async ({ page }
       }).__od.scene;
       return { aim: { ...aim }, camera: { ...camera } };
     });
+  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: 0 });
   await page.keyboard.down("i");
   await page.keyboard.down("l");
   await expect.poll(async () => (await scene()).aim).toEqual({ x: 1, y: -1 });
@@ -474,7 +482,7 @@ test("entity look selects an octant without panning the camera", async ({ page }
   await page.keyboard.up("l");
   await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: -1 });
   await page.keyboard.up("i");
-  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: -1 });
+  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: 0 });
 });
 
 test("Ctrl+R keeps browser refresh available and leaves the view level", async ({ page }) => {

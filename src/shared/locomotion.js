@@ -128,16 +128,21 @@ function tryClimb(world, player, dx, dy) {
   if (!clear(world, player, player.x, player.y, player.z + 1)) {
     return false;
   }
-  return beginStep(world, player, x, y, player.z + 1);
+  return supported(world, x, y, player.z + 1) &&
+    beginStep(world, player, x, y, player.z + 1);
 }
 
-/** @param {World} world @param {Player} player @param {number} x @param {number} y @param {number} dx @param {number} dy */
-function tryDescend(world, player, x, y, dx, dy) {
+/** @param {World} world @param {Player} player @param {number} x @param {number} y */
+function tryDescend(world, player, x, y) {
   if (player.z <= 0 || supported(world, x, y, player.z)) return false;
   if (!supported(world, x, y, player.z - 1)) return false;
-  const targetX = landingAxis(player, player.x, Math.sign(dx));
-  const targetY = landingAxis(player, player.y, Math.sign(dy));
-  return beginStep(world, player, targetX, targetY, player.z - 1);
+  const crossedX = centerTile(x) - centerTile(player.x);
+  const crossedY = centerTile(y) - centerTile(player.y);
+  if (!crossedX && !crossedY) return false;
+  const targetX = landingAxis(player, player.x, crossedX || 0);
+  const targetY = landingAxis(player, player.y, crossedY || 0);
+  return supported(world, targetX, targetY, player.z - 1) &&
+    beginStep(world, player, targetX, targetY, player.z - 1);
 }
 
 /** Move an entity once at the shared simulation tick. */
@@ -171,7 +176,7 @@ export function moveEntity(world, id, dx, dy) {
     const y = player.y + remainingY;
     if (clear(world, player, x, y, player.z)) {
       if (!supported(world, x, y, player.z)) {
-        if (tryDescend(world, player, x, y, remainingX, remainingY)) {
+        if (tryDescend(world, player, x, y)) {
           return true;
         }
       } else {

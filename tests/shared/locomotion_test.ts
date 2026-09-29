@@ -9,6 +9,7 @@ import {
   addPlayer,
   advanceTicks,
   createWorld,
+  renderPosition,
   terrainIndex,
 } from "../../src/shared/world.js";
 
@@ -157,4 +158,51 @@ Deno.test("an occupied diagonal landing blocks both directions", () => {
   assertEquals(climber.move, null);
   assert(climber.x < 7.251 && climber.y < 7.251);
   assertAlmostEquals(climber.x, climber.y);
+});
+
+Deno.test("stopping diagonal travel does not reverse the rendered path", () => {
+  const world = createAuthoredWorld();
+  const player = enableLocomotion(addPlayer(world, "self", {
+    x: 5,
+    y: 5,
+    z: 0,
+  }));
+  for (let i = 0; i < 4; i++) {
+    advanceTicks(world);
+    moveEntity(world, "self", 1, 1);
+  }
+  for (let i = 0; i < 6; i++) {
+    const prior = renderPosition(player, world.tick + 0.99);
+    advanceTicks(world);
+    moveEntity(world, "self", 0, 0);
+    const next = renderPosition(player, world.tick + 0.01);
+    assert(next.x >= prior.x - 0.002);
+    assert(next.y >= prior.y - 0.002);
+  }
+});
+
+Deno.test("diagonal descent lands over the crossed edge's support", () => {
+  const world = createWorld();
+  world.terrain.fill(1);
+  world.terrain[terrainIndex(7, 7, 1)] = 2;
+  world.terrain[terrainIndex(8, 7, 0)] = 2;
+  const player = enableLocomotion(addPlayer(world, "self", {
+    x: 7.4,
+    y: 7,
+    z: 2,
+  }));
+  for (let i = 0; i < 8 && !player.move; i++) {
+    advanceTicks(world);
+    moveEntity(world, "self", 1, 1);
+  }
+  assert(player.move);
+  assertEquals(player.move.target.z, 1);
+  assertAlmostEquals(player.move.target.x, 7.751);
+  assertAlmostEquals(player.move.target.y, player.move.origin.y);
+  advanceTicks(world, 6);
+  assertEquals(player.z, 1);
+  assertEquals(player.move, null);
+  advanceTicks(world);
+  moveEntity(world, "self", 0, 0);
+  assertEquals(player.move, null);
 });

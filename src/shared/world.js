@@ -215,8 +215,8 @@ export function renderPosition(player, renderTick) {
   if (!player.move) {
     const alpha = player.free ? renderTick - Math.floor(renderTick) : 0;
     return {
-      x: player.x + (player.x - (player.previousX ?? player.x)) * alpha,
-      y: player.y + (player.y - (player.previousY ?? player.y)) * alpha,
+      x: (player.previousX ?? player.x) * (1 - alpha) + player.x * alpha,
+      y: (player.previousY ?? player.y) * (1 - alpha) + player.y * alpha,
       z: player.z,
     };
   }
