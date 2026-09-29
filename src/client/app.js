@@ -26,6 +26,7 @@ import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
 import { createCornerNpc } from "../shared/npc.js";
 import { createPresentation } from "./presentation.js";
+import { chatView } from "../shared/chat.js";
 import {
   centerTile,
   enableLocomotion,
@@ -58,6 +59,7 @@ const scene = {
   camera: { x: 480, y: 480 },
   renderOffset: { x: 0, y: 0, z: 0 },
   presentation: createPresentation(),
+  chatFeed: /** @type {import('../shared/chat.js').DisplayChatRecord[]} */ ([]),
   chatOpen: false,
   chatDraft: "",
   status: "Local world",
@@ -70,6 +72,8 @@ const scene = {
 };
 /** @type {Set<string>} */
 const held = new Set();
+/** @type {Map<string,import('../shared/chat.js').ChatBand>} */
+const localChatBands = new Map();
 /** @type {Set<string>} */
 const pressed = new Set();
 /** @type {{x:number,y:number}} */
@@ -982,6 +986,9 @@ export async function startApp() {
         zoom,
         scene.world.edge,
       );
+    }
+    if (!isAdmin) {
+      scene.chatFeed = chatView(scene.world, scene.localId, localChatBands);
     }
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);

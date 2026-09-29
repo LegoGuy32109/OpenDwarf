@@ -158,42 +158,7 @@ export function tileVisibility(state, x, y, z) {
 /** @param {Player} player @param {number} tick @param {(x:number,y:number,z:number)=>boolean} visible @param {{x:number,y:number,z:number}} [position] */
 export function entityOpacity(player, tick, visible, position = player) {
   if (player.free) {
-    const x = centerTile(position.x);
-    const y = centerTile(position.y);
-    if (!visible(x, y, player.z)) return 0;
-    let opacity = 1;
-    for (
-      const [axis, speed, tx, ty] of [
-        [position.x, player.vx ?? 0, 1, 0],
-        [position.y, player.vy ?? 0, 0, 1],
-      ]
-    ) {
-      if (Math.abs(speed) < 0.05) continue;
-      const direction = Math.sign(speed);
-      const nextX = x + tx * direction;
-      const nextY = y + ty * direction;
-      const lastX = x - tx * direction;
-      const lastY = y - ty * direction;
-      const boundary = (tx ? x : y) + direction * 0.5;
-      if (!visible(nextX, nextY, player.z)) {
-        opacity = Math.min(
-          opacity,
-          Math.max(0, Math.min(1, (boundary - axis) * direction * 2)),
-        );
-      } else if (!visible(lastX, lastY, player.z)) {
-        opacity = Math.min(
-          opacity,
-          Math.max(
-            0,
-            Math.min(
-              1,
-              (axis - ((tx ? x : y) - direction * 0.5)) * direction * 2,
-            ),
-          ),
-        );
-      }
-    }
-    return opacity;
+    return boundaryOpacity({ ...position, z: player.z }, visible);
   }
   const move = player.move;
   if (!move) return visible(player.x, player.y, player.z) ? 1 : 0;
@@ -203,4 +168,59 @@ export function entityOpacity(player, tick, visible, position = player) {
   const progress = (tick - move.startTick) / move.durationTicks;
   const blend = Math.max(0, Math.min(1, (progress - 0.25) / 0.5));
   return originSeen ? 1 - blend : blend;
+}
+
+/** @param {{x:number,y:number,z:number}} position @param {(x:number,y:number,z:number)=>boolean} visible */
+export function boundaryOpacity(position, visible) {
+  const cx = centerTile(position.x);
+  const cy = centerTile(position.y);
+  const z = Math.round(position.z);
+  if (!visible(cx, cy, z)) return 0;
+  let closest = Infinity;
+  for (let y = cy - 1; y <= cy + 1; y++) {
+    for (let x = cx - 1; x <= cx + 1; x++) {
+      if (!visible(x, y, z)) continue;
+      const left = x - 0.5;
+      const right = x + 0.5;
+      const top = y - 0.5;
+      const bottom = y + 0.5;
+      if (!visible(x - 1, y, z)) {
+        closest = Math.min(
+          closest,
+          Math.hypot(
+            position.x - left,
+            position.y - Math.max(top, Math.min(bottom, position.y)),
+          ),
+        );
+      }
+      if (!visible(x + 1, y, z)) {
+        closest = Math.min(
+          closest,
+          Math.hypot(
+            position.x - right,
+            position.y - Math.max(top, Math.min(bottom, position.y)),
+          ),
+        );
+      }
+      if (!visible(x, y - 1, z)) {
+        closest = Math.min(
+          closest,
+          Math.hypot(
+            position.x - Math.max(left, Math.min(right, position.x)),
+            position.y - top,
+          ),
+        );
+      }
+      if (!visible(x, y + 1, z)) {
+        closest = Math.min(
+          closest,
+          Math.hypot(
+            position.x - Math.max(left, Math.min(right, position.x)),
+            position.y - bottom,
+          ),
+        );
+      }
+    }
+  }
+  return Math.max(0, Math.min(1, closest * 2));
 }

@@ -23,7 +23,10 @@ committed step with reserved origin and landing footprints. The renderer
 interpolates elevation during the step. See [movement design](movement-design.md).
 
 `/entity` uses a 20-tile, three-axis field of view. Terrain leaving view is
-remembered with a warm tint; unseen terrain is black. Entities fade near sight boundaries and do not leave ghosts in memory. `/master` shows the full world and permits camera panning while keeping
+remembered with a warm tint; unseen terrain is black. Remote entities fade by
+their center's distance to the closest visible edge, and the fade persists
+when they stop. A sight change blends over 150 ms; the guest can briefly retain
+the last visible sprite position while it fades out. `/master` shows the full world and permits camera panning while keeping
 at least one full row and column of the authored square visible. The browser
 host computes each joining player's sight and sends only currently visible
 entities and discovered terrain in `/entity`. Terrain remembered from earlier
@@ -34,8 +37,12 @@ does not reveal the path in entity memory. These commands grant no movement or
 world-editing powers. The host browser still owns the full world, so this is a
 view protocol, not a security boundary. Same-level rays check every grid cell
 touched at a corner, making sight reciprocal between stationary positions.
-Different-height sight retains the earlier ray rule. The host sends only entities whose center tile is visible. The guest fades
-remote sprites near the edge of visible terrain. Visibility and memory use fixed-size bit masks in network
+Different-height sight retains the earlier ray rule. The host sends only entities whose center tile is visible. Chat has its own recipient-specific feed:
+message text reaches a player within five horizontal blocks and four levels;
+from five to twelve horizontal blocks the feed carries only a `:0` talking
+indicator. Typing shows `...` only within five blocks. Bubbles can be heard
+through walls and outside sight without exposing the speaker's sprite or name.
+Visibility and memory use fixed-size bit masks in network
 snapshots. The host skips superseded snapshots while a guest's data channel is
 backed up, then sends the current state when that channel drains. R/V changes
 view level, holding U/N lerps zoom, and touch offers pinch zoom and two-finger

@@ -41,6 +41,19 @@ appear on the same tile.
 A player's view limited by current sight and remembered terrain. Entities
 that leave sight do not remain as remembered ghosts.
 
+**Sight boundary**:
+The edge between currently visible and hidden terrain in entity view. A visible
+entity can appear partly transparent near this edge.
+
+**Chat hearing range**:
+The area within five horizontal blocks and four z levels of a client's entity
+where another entity's active message text can be read, regardless of sight.
+The wider talking range may show only a talking indicator.
+
+**Talking indicator**:
+A `:0` bubble attached to a speaker whose active message is too far away to
+read but close enough to notice. Sight does not control the indicator.
+
 **Master view**:
 An unrestricted view of the world used to inspect development. Every player
 can choose it in the current demo.

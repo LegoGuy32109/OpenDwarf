@@ -7,10 +7,21 @@ import {
   terrainIndex,
 } from "../../src/shared/world.js";
 import {
+  boundaryOpacity,
   createVisibility,
   hasLineOfSight,
   tileKey,
 } from "../../src/shared/visibility.js";
+
+Deno.test("stationary entity keeps spatial opacity near sight corner", () => {
+  const seen = new Set(["0,0,0", "1,0,0", "0,1,0"]);
+  const visible = (x: number, y: number, z: number) =>
+    seen.has(`${x},${y},${z}`);
+  assertEquals(boundaryOpacity({ x: 0, y: 0, z: 0 }, visible), 1);
+  assertEquals(boundaryOpacity({ x: 1.25, y: 0, z: 0 }, visible), 0.5);
+  assert(boundaryOpacity({ x: 1.4, y: 0.4, z: 0 }, visible) < 0.3);
+  assertEquals(boundaryOpacity({ x: 1.51, y: 0, z: 0 }, visible), 0);
+});
 import {
   entityView,
   viewMotionOpacity,

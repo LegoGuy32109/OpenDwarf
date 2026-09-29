@@ -2,6 +2,7 @@
 
 import { renderPosition, TICK_MS } from "../shared/world.js";
 import { viewMotionPosition } from "../shared/view.js";
+import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 
 /** @typedef {import('../shared/world.js').Player} Player */
 /** @typedef {import('../shared/world.js').Tile} Tile */
@@ -12,6 +13,8 @@ export function createPresentation() {
   const entries = new Map();
   /** @type {Map<string,{tick:number,position:Tile}[]>} */
   const samples = new Map();
+  /** @type {Map<string,{player:Player,position:Tile,opacity:number,from:number,to:number,started:number,sample:string,lastSeen:number}>} */
+  const sight = new Map();
   let clockBase = Infinity;
 
   /** @param {Player} player @param {number} tick */
@@ -124,12 +127,88 @@ export function createPresentation() {
     return entry.position;
   }
 
+  /** @param {Player[]} players @param {string} localId @param {"entity"|"master"} mode @param {import('../shared/visibility.js').Visibility} visibility @param {number} tick @param {number} [now] */
+  function sightEntries(
+    players,
+    localId,
+    mode,
+    visibility,
+    tick,
+    now = performance.now(),
+  ) {
+    if (mode === "master") sight.clear();
+    /** @type {{player:Player,pos:Tile,opacity:number}[]} */
+    const result = [];
+    const present = new Set();
+    for (const player of players) {
+      present.add(player.id);
+      const pos = positionAt(player, tick, player.id === localId);
+      if (mode === "master" || player.id === localId || !player.free) {
+        result.push({ player, pos, opacity: 1 });
+        continue;
+      }
+      const target = entityOpacity(
+        player,
+        tick,
+        (x, y, z) => tileVisibility(visibility, x, y, z) === "visible",
+        pos,
+      );
+      const old = sight.get(player.id);
+      const current = old
+        ? old.from +
+          (old.to - old.from) * Math.min(1, (now - old.started) / 150)
+        : 0;
+      const changed = !old || old.sample !== visibility.sample ||
+        old.to === 0 && target > 0;
+      const entry = {
+        player,
+        position: target > 0 ? pos : old?.position ?? pos,
+        opacity: changed ? current : target,
+        from: changed ? current : target,
+        to: target,
+        started: changed ? now : old?.started ?? now,
+        sample: visibility.sample,
+        lastSeen: now,
+      };
+      if (old && !changed && old.from !== old.to) {
+        entry.opacity = current;
+        entry.from = old.from;
+        entry.started = old.started;
+      }
+      sight.set(player.id, entry);
+      result.push({ player, pos: entry.position, opacity: entry.opacity });
+    }
+    if (mode === "entity") {
+      for (const [id, entry] of sight) {
+        if (present.has(id)) continue;
+        if (entry.to !== 0) {
+          entry.from = entry.opacity;
+          entry.to = 0;
+          entry.started = now;
+        }
+        entry.opacity = entry.from *
+          Math.max(0, 1 - (now - entry.started) / 150);
+        if (entry.opacity <= 0 || now - entry.lastSeen > 150) sight.delete(id);
+        else {
+          result.push({
+            player: entry.player,
+            pos: entry.position,
+            opacity: entry.opacity,
+          });
+        }
+      }
+    }
+    return result;
+  }
+
   return {
     positionAt,
+    sightEntries,
     observe,
     reset() {
       entries.clear();
       samples.clear();
+      sight.clear();
       clockBase = Infinity;
     },
   };

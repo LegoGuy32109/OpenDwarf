@@ -7,6 +7,51 @@ import {
   renderPosition,
   startMove,
 } from "../../src/shared/world.js";
+import { createVisibility } from "../../src/shared/visibility.js";
+import { enableLocomotion } from "../../src/shared/locomotion.js";
+
+Deno.test("sight transition fades a removed player at the last visible position", () => {
+  const world = createAuthoredWorld();
+  const local = addPlayer(world, "local", { x: 1, y: 1, z: 0 });
+  const remote = addPlayer(world, "remote", { x: 2.25, y: 1, z: 0 });
+  enableLocomotion(remote);
+  const sight = createVisibility();
+  sight.visible.add("2,1,0");
+  sight.sample = "1,1,0";
+  const visual = createPresentation();
+  const initial = visual.sightEntries(
+    [local, remote],
+    "local",
+    "entity",
+    sight,
+    0,
+    100,
+  );
+  assertEquals(initial[0].opacity, 1);
+  assertEquals(initial[1].opacity, 0);
+  const shown = visual.sightEntries(
+    [local, remote],
+    "local",
+    "entity",
+    sight,
+    0,
+    250,
+  );
+  assertAlmostEquals(shown[1].opacity, 0.5);
+  const leaving = visual.sightEntries(
+    [local],
+    "local",
+    "entity",
+    sight,
+    0,
+    300,
+  );
+  assertEquals(leaving.length, 2);
+  assertAlmostEquals(leaving[1].pos.x, shown[1].pos.x);
+  assert(leaving[1].opacity > 0);
+  const gone = visual.sightEntries([local], "local", "entity", sight, 0, 451);
+  assertEquals(gone.length, 1);
+});
 
 Deno.test("remote player and NPC follow their current simulation positions", () => {
   const world = createAuthoredWorld();

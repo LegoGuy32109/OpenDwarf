@@ -68,7 +68,12 @@ masks on the wire. When a WebRTC channel backs up, the host coalesces unsent
 snapshots and sends the newest state after the channel drains. Entity view
 contains currently visible players and NPCs plus last observed terrain;
 undiscovered terrain is unknown. Master view contains the full world. Each
-snapshot acknowledges that recipient's latest processed input sequence. Each joining tab predicts its own position, and the host sends movement positions
+joining tab also receives chat by distance from its character: message text
+within five horizontal blocks and four levels, a `:0` talking indicator from
+five through twelve blocks, and no bubble beyond that range. Typing appears as
+`...` within five blocks. Speech passes through walls and sight boundaries.
+Each snapshot acknowledges that recipient's latest processed input sequence.
+Each joining tab predicts its own position, and the host sends movement positions
 about every 100 ms for smooth remote interpolation. Meaningful corrections ease
 back toward the host position. The
 admin panel shows connection time, selected ICE route, and recent round trip

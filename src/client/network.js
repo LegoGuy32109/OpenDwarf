@@ -21,6 +21,7 @@ import { entityView } from "../shared/view.js";
 import { unpackVisibility } from "../shared/visibility-wire.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
 import { enableLocomotion, moveEntity } from "../shared/locomotion.js";
+import { chatView, receiveChat, withoutChat } from "../shared/chat.js";
 
 // Test-only game-message delivery conditions; ICE and physical packets are unchanged.
 const harnessParams = new URL(location.href).searchParams;
@@ -49,7 +50,7 @@ function deliver(receive) {
 }
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -211,6 +212,8 @@ export function startHost(scene, session) {
     /** @type {{dx:number,dy:number,sequence:number}[]} */
     const pendingMoves = [];
     const sight = createVisibility();
+    /** @type {Map<string,import('../shared/chat.js').ChatBand>} */
+    const chatBands = new Map();
     const rememberedTerrain = scene.world.terrain.map(() => 0);
     /** @type {"entity"|"master"} */
     let mode = "entity";
@@ -348,6 +351,8 @@ export function startHost(scene, session) {
           return {
             type: "state",
             ...view,
+            world: { ...view.world, players: withoutChat(view.world.players) },
+            chat: chatView(scene.world, playerId, chatBands),
             mode,
             playerId,
             acknowledgedSequence: lastSequence,
@@ -496,7 +501,8 @@ export function startHost(scene, session) {
         channel.send(JSON.stringify({
           type: "motion",
           tick: scene.world.tick,
-          players: view,
+          players: withoutChat(view),
+          chat: chatView(scene.world, playerId, chatBands),
           acknowledgedSequence: lastSequence,
         }));
       },
@@ -549,7 +555,8 @@ export function startHost(scene, session) {
   const motionTimer = setInterval(() => {
     if (
       !Object.values(scene.world.players).some((player) =>
-        player.move || Math.hypot(player.vx ?? 0, player.vy ?? 0) > 0.05
+        player.move || Math.hypot(player.vx ?? 0, player.vy ?? 0) > 0.05 ||
+        player.typing || Boolean(player.message)
       )
     ) return;
     for (const connection of peers.values()) connection.motion();
@@ -630,6 +637,7 @@ export function joinWorld(scene, session) {
   let latestLocalSequence = 0;
   let lastSnapshotTick = -1;
   let lastMotionTick = -1;
+  let lastChatTick = -1;
   const forceRelay = new URL(location.href).searchParams.has("relay");
   let lastPong = performance.now();
   let retryNotBefore = 0;
@@ -655,6 +663,8 @@ export function joinWorld(scene, session) {
     latestLocalSequence = 0;
     lastSnapshotTick = -1;
     lastMotionTick = -1;
+    lastChatTick = -1;
+    scene.chatFeed = [];
     attempt = crypto.randomUUID();
     attemptStarted = performance.now();
     lastPong = attemptStarted;
@@ -691,6 +701,15 @@ export function joinWorld(scene, session) {
       const tick = Number(value.tick);
       if (Number.isSafeInteger(tick) && tick > lastMotionTick) {
         lastMotionTick = tick;
+        if (tick > lastChatTick) {
+          scene.chatFeed = receiveChat(
+            scene.chatFeed,
+            /** @type {import('../shared/chat.js').ChatRecord[]} */ (value
+              .chat ?? []),
+            tick,
+          );
+          lastChatTick = tick;
+        }
         const players = /** @type {World['players']} */ (value.players);
         const local = scene.world.players[playerId];
         if (players && typeof players === "object") {
@@ -710,6 +729,15 @@ export function joinWorld(scene, session) {
       const snapshot = /** @type {World} */ (value.world);
       if (snapshot.tick < lastSnapshotTick) return;
       lastSnapshotTick = snapshot.tick;
+      if (snapshot.tick > lastChatTick) {
+        scene.chatFeed = receiveChat(
+          scene.chatFeed,
+          /** @type {import('../shared/chat.js').ChatRecord[]} */ (value.chat ??
+            []),
+          snapshot.tick,
+        );
+        lastChatTick = snapshot.tick;
+      }
       const incomingMode = value.mode === "master" ? "master" : "entity";
       const modeChanged = scene.viewMode !== incomingMode;
       if (connected && !modeChanged) {
@@ -786,6 +814,7 @@ export function joinWorld(scene, session) {
   const closeInbox = inbox(session, playerId, (message) => {
     if (message.kind === "leave") {
       scene.world = createWorld();
+      scene.chatFeed = [];
       scene.status = "Visitor left. World ended.";
       connected = false;
       return;

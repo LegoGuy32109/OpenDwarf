@@ -63,6 +63,8 @@ be tuned after controller and phone playtesting.
   motion needs timed updates and enough samples to interpolate across that
   delay. Measure motion and host upload on a phone and in the group stress run
   before fixing the update rate.
+- Sight-edge opacity and distance-based chat bubbles are specified in
+  [the sight-boundary design](sight-boundary-design.md).
 
 ## Deliberately deferred
 

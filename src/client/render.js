@@ -77,7 +77,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:string,inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatOpen:boolean,chatDraft:string,status:string}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],chatOpen:boolean,chatDraft:string,status:string}} Scene */
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -414,23 +414,28 @@ export async function createRenderer(canvas) {
         flush();
       }
     }
-    const players = Object.values(scene.world.players).map((player) => ({
-      player,
-      pos: scene.presentation.positionAt(
-        player,
-        scene.world.tick + alpha,
-        player.id === scene.localId,
-      ),
-    }));
+    const players = scene.presentation.sightEntries(
+      Object.values(scene.world.players),
+      scene.localId,
+      scene.viewMode,
+      scene.visibility,
+      scene.world.tick + alpha,
+    );
     /** @type {Map<string,number>} */
     const opacity = new Map();
-    for (const { player, pos } of players) {
-      let visible = scene.viewMode === "master"
+    for (const { player, pos, opacity: sightOpacity } of players) {
+      let visible = player.id === scene.localId || scene.viewMode === "master"
         ? 1
         : player.viewMotion
         ? viewMotionOpacity(player.viewMotion, scene.world.tick + alpha)
-        : entityOpacity(player, scene.world.tick + alpha, (x, y, z) =>
-          tileVisibility(scene.visibility, x, y, z) === "visible", pos);
+        : player.free
+        ? sightOpacity
+        : entityOpacity(
+          player,
+          scene.world.tick + alpha,
+          (x, y, z) => tileVisibility(scene.visibility, x, y, z) === "visible",
+          pos,
+        );
       if (
         playerOccluded(scene.world, player, scene.viewZ) ||
         player.z < scene.viewZ - Z_LEVELS_BELOW
@@ -475,29 +480,125 @@ export async function createRenderer(canvas) {
           [0.95, 0.9, 0.78, visible],
         );
       }
-      const bubble = player.message || (player.typing ? "[...]" : "");
-      if (bubble) {
-        const bubbleWidth = Math.min(
-          width - 20 * dpr,
-          (bubble.length * 8 + 16) * scale,
-        );
-        const bx = Math.max(
+    }
+    const local = scene.world.players[scene.localId];
+    const chat = scene.chatFeed.filter((record) =>
+      record.expiresAt === undefined || performance.now() < record.expiresAt
+    );
+    if (local && !chat.some((record) => record.id === local.id)) {
+      if (local.message && scene.world.tick < local.messageUntil) {
+        chat.push({
+          id: local.id,
+          x: local.x,
+          y: local.y,
+          z: local.z,
+          text: local.message,
+        });
+      } else if (local.typing) {
+        chat.push({
+          id: local.id,
+          x: local.x,
+          y: local.y,
+          z: local.z,
+          typing: true,
+        });
+      }
+    }
+    /** @type {Map<string,import('../shared/world.js').Tile>} */
+    const positions = new Map();
+    for (const entry of players) positions.set(entry.player.id, entry.pos);
+    const listener = local ?? { x: 0, y: 0, z: scene.viewZ };
+    const candidates = chat.map((record) => {
+      const pos = positions.get(record.id) ?? record;
+      const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
+      const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
+      const level = record.z - listener.z;
+      const content = record.text ?? (record.talking ? ":0" : "...");
+      const direction = sx < 0
+        ? "<"
+        : sx > width
+        ? ">"
+        : sy < 0
+        ? "^"
+        : sy > height
+        ? "v"
+        : "";
+      const label = `${direction}${direction ? " " : ""}${
+        level ? `  ${Math.abs(level)} ` : ""
+      }${content}`;
+      const maxChars = Math.max(
+        2,
+        Math.floor((width - 32 * dpr) / (8 * scale)) - 2,
+      );
+      const value = label.slice(0, maxChars);
+      const w = Math.min(width - 16 * dpr, (value.length * 8 + 16) * scale);
+      const rawX = sx - w / 2;
+      const rawY = sy - 28 * scale;
+      const x = Math.max(8 * dpr, Math.min(width - w - 8 * dpr, rawX));
+      const y = Math.max(8 * dpr, Math.min(height - 22 * scale, rawY));
+      return {
+        record,
+        value,
+        x,
+        y,
+        w,
+        direction,
+        level,
+        distance: Math.hypot(record.x - listener.x, record.y - listener.y),
+      };
+    }).sort((a, b) =>
+      a.distance - b.distance || a.record.id.localeCompare(b.record.id)
+    );
+    /** @type {(typeof candidates)[]} */
+    const groups = [];
+    for (const candidate of candidates) {
+      const group = groups.find((items) =>
+        items.some((item) =>
+          candidate.direction
+            ? item.direction === candidate.direction
+            : !item.direction && candidate.x < item.x + item.w &&
+              candidate.x + candidate.w > item.x &&
+              candidate.y < item.y + 20 * scale &&
+              candidate.y + 20 * scale > item.y
+        )
+      );
+      if (group) group.push(candidate);
+      else groups.push([candidate]);
+    }
+    for (const group of groups) {
+      for (const [index, candidate] of group.slice(0, 3).entries()) {
+        const y = Math.max(
           8 * dpr,
-          Math.min(width - bubbleWidth - 8 * dpr, sx - bubbleWidth / 2),
+          Math.min(height - 22 * scale, candidate.y + index * 22 * scale),
         );
-        const by = Math.max(8 * dpr, sy - 28 * scale);
-        rect(bx, by, bubbleWidth, 20 * scale, [
-          0.06,
-          0.06,
-          0.06,
-          0.85 * visible,
-        ]);
-        text(bubble, bx + 8 * scale, by + 2 * scale, scale, [
-          0.95,
-          0.9,
-          0.78,
-          visible,
-        ]);
+        rect(candidate.x, y, candidate.w, 20 * scale, [0.06, 0.06, 0.06, 0.85]);
+        text(candidate.value, candidate.x + 8 * scale, y + 2 * scale, scale);
+        if (candidate.level) {
+          const arrowX = candidate.x + (candidate.direction ? 24 : 8) * scale;
+          const arrowY = y + 5 * scale;
+          const gold =
+            /** @type {[number,number,number,number]} */ ([1, 0.78, 0.37, 1]);
+          rect(arrowX + 2 * scale, arrowY + 2 * scale, scale, 8 * scale, gold);
+          for (let n = 0; n < 3; n++) {
+            rect(
+              arrowX + n * 2 * scale,
+              arrowY + (candidate.level > 0 ? n * 2 : 6 - n * 2) * scale,
+              2 * scale,
+              2 * scale,
+              gold,
+            );
+          }
+        }
+      }
+      if (group.length > 3) {
+        const item = group[0];
+        text(
+          `+${group.length - 3}`,
+          item.x,
+          Math.min(height - 18 * scale, item.y + 66 * scale),
+          scale,
+          [1, 0.58, 0.2, 1],
+        );
       }
     }
     const status = scene.status.slice(0, 75);
