@@ -1,6 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
 
-type Position = { tick: number; x: number; y: number; z: number };
+type Position = {
+  tick: number;
+  x: number;
+  y: number;
+  z: number;
+  time?: number;
+};
 
 async function visualTrace(page: Page, ids: string[], durationMs: number) {
   return await page.evaluate(
@@ -16,7 +22,9 @@ async function visualTrace(page: Page, ids: string[], durationMs: number) {
         const sample = () => {
           for (const id of ids) {
             const position = game.visualPosition(id);
-            if (position) traces[id].push(position);
+            if (position) {
+              traces[id].push({ ...position, time: performance.now() });
+            }
           }
           if (performance.now() < until) requestAnimationFrame(sample);
           else resolve(traces);
@@ -42,16 +50,14 @@ function expectContinuous(
       current.y - previous.y,
       current.z - previous.z,
     );
-    const ticks = Math.max(1, current.tick - previous.tick);
+    const elapsed = Math.max(1, (current.time ?? 0) - (previous.time ?? 0));
     expect(
       distance,
       `${label} jumped from ${JSON.stringify(previous)} to ${
         JSON.stringify(current)
       }`,
     )
-      .toBeLessThanOrEqual(
-        ticks * 0.21,
-      );
+      .toBeLessThanOrEqual(elapsed * 0.0045 + 0.02);
     travel += distance;
   }
   expect(travel, `${label} did not move`).toBeGreaterThan(minTravel);

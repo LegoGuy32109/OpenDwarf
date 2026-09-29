@@ -64,7 +64,13 @@ export function mergeSnapshot(
         const sameElevation = existing.z === incoming.z ||
           (existing.move && incoming.move &&
             existing.move.target.z === incoming.move.target.z);
-        if (gap < 0.4 && sameElevation) {
+        const bothIdle = !existing.move && !incoming.move &&
+          Math.hypot(existing.vx ?? 0, existing.vy ?? 0) < 0.015 &&
+          Math.hypot(incoming.vx ?? 0, incoming.vy ?? 0) < 0.015;
+        if (bothIdle && (gap > 0.000001 || existing.z !== incoming.z)) {
+          corrected = true;
+          players[id] = incoming;
+        } else if (gap < 0.4 && sameElevation) {
           players[id] = {
             ...incoming,
             x: existing.x,

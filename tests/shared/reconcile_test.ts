@@ -1,6 +1,7 @@
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { assertEquals } from "@std/assert";
 import { mergeSnapshot } from "../../src/shared/reconcile.js";
+import { enableLocomotion } from "../../src/shared/locomotion.js";
 import {
   addPlayer,
   advanceTicks,
@@ -96,4 +97,13 @@ Deno.test("more than one unacknowledged step cannot drift away from the host", (
   const result = mergeSnapshot(local, snapshot, 2, 5, "admin");
   assertEquals(result.corrected, true);
   assertEquals(local.players.admin.x, 8);
+});
+
+Deno.test("a stopped predicted player settles to the host's exact position", () => {
+  const local = createAuthoredWorld();
+  const snapshot = createAuthoredWorld();
+  enableLocomotion(addPlayer(local, "admin", { x: 8.2, y: 7, z: 0 }));
+  enableLocomotion(addPlayer(snapshot, "admin", { x: 8.1, y: 7, z: 0 }));
+  assertEquals(mergeSnapshot(local, snapshot, 2, 2, "admin").corrected, true);
+  assertEquals(local.players.admin.x, 8.1);
 });
