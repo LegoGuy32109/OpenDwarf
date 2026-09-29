@@ -20,7 +20,9 @@ no fixed cap for stress testing; the practical limit is still being measured.
 The host's QR code opens `/join/<session>` so a phone joins that world directly.
 Press Q on the host or use the QR button to show the code again.
 
-On a keyboard, ESDF moves the player. In entity view, IJKL points an orange
+On a keyboard, ESDF moves the player continuously in eight directions. Keyboard
+diagonals and the left stick share the same full walking speed; release a direction
+to stop between tile centers. In entity view, IJKL points an orange
 square at one of the eight neighboring tiles. R/V selects the view level; the
 square appears at the player's level or one level above or below. In master
 view, IJKL pans the camera. Holding U/N smoothly zooms out/in. The mouse wheel
@@ -66,16 +68,17 @@ masks on the wire. When a WebRTC channel backs up, the host coalesces unsent
 snapshots and sends the newest state after the channel drains. Entity view
 contains currently visible players and NPCs plus last observed terrain;
 undiscovered terrain is unknown. Master view contains the full world. Each
-snapshot acknowledges that recipient's latest processed input sequence. Each
-joining tab keeps its own matching animation and eases genuine corrections. The
+snapshot acknowledges that recipient's latest processed input sequence. Each joining tab predicts its own position, and the host sends movement positions
+about every 100 ms for smooth remote interpolation. Meaningful corrections ease
+back toward the host position. The
 admin panel shows connection time, selected ICE route, and recent round trip
 times.
 
 Each joining tab automatically rejoins after a connection drop. The host holds
 its sprite for up to five seconds and keeps its name and tile for a later rejoin
 while the world remains open. View mode and discovered terrain also survive that
-rejoin. Remote player and NPC sprites follow recent host positions with short
-visual smoothing, without building a queue of stale moves.
+rejoin. Remote player and NPC sprites interpolate recent host positions with a 150 ms
+presentation delay.
 
 For a TURN diagnostic, open `/admin?relay=1` and join a world. That join forces
 relay candidates on both browsers and shows the selected candidate types in the

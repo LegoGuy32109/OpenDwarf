@@ -80,6 +80,19 @@ whether it becomes a move.
 A move between whole tiles with a start tick and duration. Clients use it to
 draw continuous sprite movement.
 
+**Elevation step**:
+A committed move between neighboring z levels while crossing a one-level
+terrain height change. It can go up or down.
+_Avoid_: Climb, when both directions are meant.
+
+**Forced descent**:
+A downward elevation step caused by loss of support rather than movement input.
+It may repeat until the entity reaches supported ground.
+
+**Entity footprint**:
+The horizontal area an entity occupies for collision and terrain overlap. One
+footprint can overlap several tiles at once.
+
 **Presentation smoothing**:
 Client-side easing of a remote sprite toward its latest authoritative
 position. It does not change world state.

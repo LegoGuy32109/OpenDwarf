@@ -26,6 +26,11 @@ import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
 import { createCornerNpc } from "../shared/npc.js";
 import { createPresentation } from "./presentation.js";
+import {
+  centerTile,
+  enableLocomotion,
+  moveEntity,
+} from "../shared/locomotion.js";
 
 /** @param {string} selector */
 const $ = (
@@ -82,7 +87,7 @@ let unsupportedGamepadId = "";
 let gamepadButtons = new Set();
 let sequence = 0;
 let lastInputDirection = { x: 0, y: 0 };
-let inputBlocked = false;
+let lastInputSent = -100;
 let lastTyping = false;
 /** @type {ReturnType<typeof startHost>|null} */
 let host = null;
@@ -313,35 +318,30 @@ function move() {
     ? { x: 0, y: 0 }
     : inputDirection();
   pressed.clear();
-  if (
-    isAdmin &&
-    (direction.x !== lastInputDirection.x ||
-      direction.y !== lastInputDirection.y)
-  ) {
-    guest?.send({ type: "cancel", sequence });
-    inputBlocked = false;
-  }
+  const changed = direction.x !== lastInputDirection.x ||
+    direction.y !== lastInputDirection.y;
   lastInputDirection = direction;
-  if (!direction.x && !direction.y) {
-    inputBlocked = false;
-    return;
+  if (isAdmin && (changed || scene.world.tick - lastInputSent >= 4)) {
+    if (changed) sequence++;
+    guest?.send({ type: "input", dx: direction.x, dy: direction.y, sequence });
+    lastInputSent = scene.world.tick;
   }
-  const result = startMove(
+  const player = scene.world.players[scene.localId];
+  const before = player
+    ? { x: centerTile(player.x), y: centerTile(player.y), z: player.z }
+    : null;
+  const moved = moveEntity(
     scene.world,
     scene.localId,
     direction.x,
     direction.y,
-    sequence + 1,
   );
-  if (result.ok) {
-    inputBlocked = false;
-    sequence++;
-    if (isAdmin) {
-      guest?.send({ type: "move", dx: direction.x, dy: direction.y, sequence });
-    } else host?.publish();
-  } else if (isAdmin && result.reason !== "already moving" && !inputBlocked) {
-    guest?.send({ type: "cancel", sequence });
-    inputBlocked = true;
+  if (
+    !isAdmin && moved && player &&
+    (player.move || before?.x !== centerTile(player.x) ||
+      before.y !== centerTile(player.y) || before.z !== player.z)
+  ) {
+    host?.publish();
   }
 }
 
@@ -745,7 +745,7 @@ export async function startApp() {
         new URL(location.href).searchParams.get("world") === "32" ? 32 : 16,
       );
   }
-  addPlayer(scene.world, "self");
+  enableLocomotion(addPlayer(scene.world, "self"));
   bindInput();
   const renderer = isSynthetic ? null : await createRenderer(canvas);
   $("#loading").hidden = true;
@@ -906,9 +906,14 @@ export async function startApp() {
     accumulator += dt;
     while (accumulator >= TICK_MS) {
       advanceTicks(scene.world);
-      if (tickNpc?.()) host?.publish();
+      tickNpc?.();
       host?.tick();
       move();
+      if (!isAdmin) {
+        for (const player of Object.values(scene.world.players)) {
+          scene.presentation.observe(player, scene.world.tick);
+        }
+      }
       accumulator -= TICK_MS;
     }
     const local = scene.world.players[scene.localId];
@@ -962,23 +967,24 @@ export async function startApp() {
         : { x: 7, y: 7, z: 0 };
       const targetX = (pos.x + scene.renderOffset.x + 0.5) * 64;
       const targetY = (pos.y + scene.renderOffset.y + 0.5) * 64;
-      const follow = 1 - Math.exp(-dt * 0.01);
-      scene.camera.x += (targetX - scene.camera.x) * follow;
-      scene.camera.y += (targetY - scene.camera.y) * follow;
+      scene.camera.x = targetX;
+      scene.camera.y = targetY;
     }
-    const zoom = scene.zoom;
-    scene.camera.x = clampCameraAxis(
-      scene.camera.x,
-      canvas.clientWidth,
-      zoom,
-      scene.world.edge,
-    );
-    scene.camera.y = clampCameraAxis(
-      scene.camera.y,
-      canvas.clientHeight,
-      zoom,
-      scene.world.edge,
-    );
+    if (scene.viewMode === "master") {
+      const zoom = scene.zoom;
+      scene.camera.x = clampCameraAxis(
+        scene.camera.x,
+        canvas.clientWidth,
+        zoom,
+        scene.world.edge,
+      );
+      scene.camera.y = clampCameraAxis(
+        scene.camera.y,
+        canvas.clientHeight,
+        zoom,
+        scene.world.edge,
+      );
+    }
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };
@@ -1028,7 +1034,7 @@ export async function startApp() {
           : player.viewMotion
           ? viewMotionOpacity(player.viewMotion, tick)
           : entityOpacity(player, tick, (x, y, z) =>
-            tileVisibility(scene.visibility, x, y, z) === "visible");
+            tileVisibility(scene.visibility, x, y, z) === "visible", position);
         if (
           playerOccluded(scene.world, player, scene.viewZ) ||
           player.z < scene.viewZ - Z_LEVELS_BELOW

@@ -10,7 +10,7 @@ export const MOVE_TICKS = 10;
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
-/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,viewMotion?:ViewMotion}} Player */
+/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number}} Player */
 /** @typedef {{tick:number,edge:number,chunks:string[],players:Record<string,Player>,terrain:number[]}} World */
 
 /** @param {number} x @param {number} y @param {number} z @param {number} [edge] */
@@ -184,6 +184,10 @@ export function advanceTicks(world, count = 1) {
   for (let i = 0; i < count; i++) {
     world.tick++;
     for (const player of Object.values(world.players)) {
+      if (player.free) {
+        player.previousX = player.x;
+        player.previousY = player.y;
+      }
       const move = player.move;
       if (move) {
         const progress = (world.tick - move.startTick) / move.durationTicks;
@@ -192,7 +196,12 @@ export function advanceTicks(world, count = 1) {
           player.y = move.target.y;
           player.z = move.target.z;
         }
-        if (progress >= 1) player.move = null;
+        if (progress >= 1) {
+          player.x = move.target.x;
+          player.y = move.target.y;
+          player.z = move.target.z;
+          player.move = null;
+        }
       }
       if (player.message && world.tick >= player.messageUntil) {
         player.message = "";
@@ -203,7 +212,14 @@ export function advanceTicks(world, count = 1) {
 
 /** @param {Player} player @param {number} renderTick */
 export function renderPosition(player, renderTick) {
-  if (!player.move) return { x: player.x, y: player.y, z: player.z };
+  if (!player.move) {
+    const alpha = player.free ? renderTick - Math.floor(renderTick) : 0;
+    return {
+      x: player.x + (player.x - (player.previousX ?? player.x)) * alpha,
+      y: player.y + (player.y - (player.previousY ?? player.y)) * alpha,
+      z: player.z,
+    };
+  }
   const move = player.move;
   const alpha = Math.max(
     0,

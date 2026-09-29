@@ -16,16 +16,14 @@ chunks load at join; there is no distance-based loading. Unknown XY coordinates
 are solid stone at every level. A seven-step staircase on the south edge reaches
 the top landing; a full-height pillar tests occlusion. The view can show five
 lower levels, with deeper floors turning blue before they disappear. There is no
-world generation, chunk loading, persistence, or inventory. Players and the
-corner NPC block each other's destination tiles. A move has whole tile origin
-and target coordinates, plus a start tick and duration. The renderer
-interpolates the sprite between those tiles. The world reports origin and target
-occupancy during a move.
+world generation, chunk loading, persistence, or inventory. Players and the corner NPC use continuous x/y centers and half-tile square
+footprints. They stop between tiles, slide along flat walls, and block one
+another when footprints overlap. A one-level climb or descent is a short
+committed step with reserved origin and landing footprints. The renderer
+interpolates elevation during the step. See [movement design](movement-design.md).
 
 `/entity` uses a 20-tile, three-axis field of view. Terrain leaving view is
-remembered with a warm tint; unseen terrain is black. Entities fade between 25%
-and 75% of a move into or out of visible tiles and do not leave ghosts in
-memory. `/master` shows the full world and permits camera panning while keeping
+remembered with a warm tint; unseen terrain is black. Entities fade near sight boundaries and do not leave ghosts in memory. `/master` shows the full world and permits camera panning while keeping
 at least one full row and column of the authored square visible. The browser
 host computes each joining player's sight and sends only currently visible
 entities and discovered terrain in `/entity`. Terrain remembered from earlier
@@ -36,10 +34,8 @@ does not reveal the path in entity memory. These commands grant no movement or
 world-editing powers. The host browser still owns the full world, so this is a
 view protocol, not a security boundary. Same-level rays check every grid cell
 touched at a corner, making sight reciprocal between stationary positions.
-Different-height sight retains the earlier ray rule. When an entity crosses a
-same-level sight boundary, the host sends a short visual path inside the visible
-tile. The guest animates position and opacity without receiving the hidden
-movement endpoint. Visibility and memory use fixed-size bit masks in network
+Different-height sight retains the earlier ray rule. The host sends only entities whose center tile is visible. The guest fades
+remote sprites near the edge of visible terrain. Visibility and memory use fixed-size bit masks in network
 snapshots. The host skips superseded snapshots while a guest's data channel is
 backed up, then sends the current state when that channel drains. R/V changes
 view level, holding U/N lerps zoom, and touch offers pinch zoom and two-finger
@@ -57,19 +53,14 @@ carry game updates. The host displays a session-specific QR code for
 `/join/<session>`. The Deno server generates its SVG with one server-side
 dependency; guest browser code still has no build step.
 
-The browser host applies each joining player's move intents in sequence order
-and sends a recipient-specific snapshot every 500 ms, and sooner when that
-recipient crosses a sight tile. Joining players predict movement locally. Each
-snapshot acknowledges that recipient's latest processed input. The joining
-player keeps an unacknowledged or matching local animation, maps the host's
-animation onto its own tick, and eases the sprite after a real correction. This
-avoids resetting the local animation every half second. Each browser presents
-remote player and NPC moves near their latest authoritative position, smoothing
-short visual corrections. The host applies movement to the world as soon as an
-intent arrives. If a straight-line intent arrives just before the host finishes
-its current tile, the host queues it for the next tick. The game engine runs at
-20 ticks per second and renders between ticks. The renderer does not queue old
-remote paths when updates arrive close together. It is not rollback netcode.
+The browser host applies each joining player's eight-direction input on its
+20 Hz simulation tick. The joining browser predicts its own movement immediately.
+The host sends recipient-specific full snapshots every 500 ms and compact
+position updates about every 100 ms while entities move. Both browsers present
+remote players about 150 ms behind the latest authoritative tick, interpolating
+between received positions. Full snapshots acknowledge processed input and
+correct meaningful local prediction errors. The renderer does not queue old
+remote paths. This is not rollback netcode.
 WebRTC uses direct connectivity when ICE can establish it; Xirsys TURN
 credentials supply a relay when needed. The signaling route uses Deno KV as a
 mailbox.

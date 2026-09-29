@@ -55,6 +55,34 @@ export function mergeSnapshot(
   let corrected = false;
   for (const [id, incoming] of Object.entries(snapshot.players)) {
     const existing = local.players[id];
+    if (incoming.free) {
+      if (id === localId && existing?.free) {
+        const gap = Math.hypot(
+          existing.x - incoming.x,
+          existing.y - incoming.y,
+        );
+        const sameElevation = existing.z === incoming.z ||
+          (existing.move && incoming.move &&
+            existing.move.target.z === incoming.move.target.z);
+        if (gap < 0.4 && sameElevation) {
+          players[id] = {
+            ...incoming,
+            x: existing.x,
+            y: existing.y,
+            z: existing.z,
+            move: existing.move,
+            vx: existing.vx,
+            vy: existing.vy,
+            previousX: existing.previousX,
+            previousY: existing.previousY,
+          };
+        } else {
+          corrected = true;
+          players[id] = incoming;
+        }
+      } else players[id] = incoming;
+      continue;
+    }
     if (!existing) {
       players[id] = atLocalTick(incoming, snapshot.tick, local.tick);
       continue;

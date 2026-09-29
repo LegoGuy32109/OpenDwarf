@@ -430,7 +430,7 @@ export async function createRenderer(canvas) {
         : player.viewMotion
         ? viewMotionOpacity(player.viewMotion, scene.world.tick + alpha)
         : entityOpacity(player, scene.world.tick + alpha, (x, y, z) =>
-          tileVisibility(scene.visibility, x, y, z) === "visible");
+          tileVisibility(scene.visibility, x, y, z) === "visible", pos);
       if (
         playerOccluded(scene.world, player, scene.viewZ) ||
         player.z < scene.viewZ - Z_LEVELS_BELOW

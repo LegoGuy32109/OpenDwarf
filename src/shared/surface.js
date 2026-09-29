@@ -2,6 +2,7 @@
 
 import { isSolid, WORLD_EDGE, Z_LEVELS_BELOW } from "./world.js";
 import { tileVisibility } from "./visibility.js";
+import { centerTile } from "./locomotion.js";
 
 /** @typedef {import('./visibility.js').Visibility} Visibility */
 /** @typedef {import('./world.js').Player} Player */
@@ -69,7 +70,9 @@ export function playerOccluded(world, player, viewZ) {
   const low = player.z < viewZ ? player.z + 1 : viewZ + 1;
   const high = player.z < viewZ ? viewZ : player.z;
   for (let z = low; z <= high; z++) {
-    if (isSolid(world, player.x, player.y, z)) return true;
+    if (isSolid(world, centerTile(player.x), centerTile(player.y), z)) {
+      return true;
+    }
   }
   return false;
 }

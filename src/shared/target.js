@@ -1,5 +1,7 @@
 // @ts-check
 
+import { centerTile } from "./locomotion.js";
+
 /** @typedef {import('./world.js').Player} Player */
 
 /** Return the adjacent tile selected for an entity action. */
@@ -11,8 +13,8 @@ export function adjacentTarget(player, aim, z, edge) {
     Math.abs(aim.x) > 1 || Math.abs(aim.y) > 1 ||
     (!aim.x && !aim.y)
   ) return null;
-  const x = player.x + aim.x;
-  const y = player.y + aim.y;
+  const x = centerTile(player.x) + aim.x;
+  const y = centerTile(player.y) + aim.y;
   if (x < 0 || x >= edge || y < 0 || y >= edge) return null;
   return { x, y, z };
 }

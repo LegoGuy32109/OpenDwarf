@@ -1,6 +1,7 @@
 // @ts-check
 
 import { terrainIndex, WORLD_TOP } from "./world.js";
+import { centerTile } from "./locomotion.js";
 import {
   recomputeVisibility,
   tileKey,
@@ -79,6 +80,16 @@ export function entityView(world, viewerId, sight, rememberedTerrain) {
   for (const [id, player] of Object.entries(world.players)) {
     if (id === viewerId) {
       players[id] = player;
+      continue;
+    }
+    if (player.free) {
+      if (
+        sight.visible.has(tileKey(
+          centerTile(player.x),
+          centerTile(player.y),
+          player.z,
+        ))
+      ) players[id] = player;
       continue;
     }
     const move = player.move;

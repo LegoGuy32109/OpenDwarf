@@ -20,6 +20,7 @@ import {
 import { entityView } from "../shared/view.js";
 import { unpackVisibility } from "../shared/visibility-wire.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
+import { enableLocomotion, moveEntity } from "../shared/locomotion.js";
 
 // Test-only game-message delivery conditions; ICE and physical packets are unchanged.
 const harnessParams = new URL(location.href).searchParams;
@@ -202,6 +203,7 @@ export function startHost(scene, session) {
     let activeAttempt = "";
     let lastSeen = performance.now();
     let lastSequence = 0;
+    let direction = { x: 0, y: 0 };
     /** @type {ReturnType<typeof setTimeout>|null} */
     let departureTimer = null;
     /** @type {import('../shared/world.js').Player|null} */
@@ -222,6 +224,7 @@ export function startHost(scene, session) {
       departureTimer = null;
       rememberedPlayer = scene.world.players[playerId] ?? rememberedPlayer;
       removePlayer(scene.world, playerId);
+      direction = { x: 0, y: 0 };
       joined = false;
       departedAt = performance.now();
       scene.status = "A visitor left your world";
@@ -251,6 +254,21 @@ export function startHost(scene, session) {
       if (message.type === "ping") {
         if (channel?.readyState === "open") {
           channel.send(JSON.stringify({ type: "pong", id: message.id }));
+        }
+        return;
+      }
+      if (message.type === "input") {
+        const dx = Number(message.dx);
+        const dy = Number(message.dy);
+        const incomingSequence = Number(message.sequence);
+        if (
+          Number.isSafeInteger(incomingSequence) &&
+          incomingSequence >= lastSequence &&
+          Number.isInteger(dx) && Number.isInteger(dy) &&
+          Math.abs(dx) <= 1 && Math.abs(dy) <= 1
+        ) {
+          lastSequence = incomingSequence;
+          direction = { x: dx, y: dy };
         }
         return;
       }
@@ -312,6 +330,7 @@ export function startHost(scene, session) {
       activeAttempt = attempt;
       joined = true;
       lastSequence = 0;
+      direction = { x: 0, y: 0 };
       pendingMoves.length = 0;
       try {
         const iceServers = await ice();
@@ -340,7 +359,7 @@ export function startHost(scene, session) {
           lastSeen = performance.now();
           if (rememberedPlayer && !scene.world.players[playerId]) {
             scene.world.players[playerId] = rememberedPlayer;
-          } else addPlayer(scene.world, playerId, spawn());
+          } else enableLocomotion(addPlayer(scene.world, playerId, spawn()));
           rememberedPlayer = null;
           scene.status = "A visitor joined your world";
           publish();
@@ -422,6 +441,7 @@ export function startHost(scene, session) {
 
     function tickPeer() {
       drainMoves();
+      moveEntity(scene.world, playerId, direction.x, direction.y);
       const player = scene.world.players[playerId];
       const position = player
         ? visibilityPosition(player, scene.world.tick)
@@ -464,6 +484,22 @@ export function startHost(scene, session) {
       acceptJoin,
       acceptAnswer,
       publish: publishToPeer,
+      motion() {
+        if (
+          !joined || channel?.readyState !== "open" ||
+          channel.bufferedAmount > 16 * 1024
+        ) return;
+        const view = mode === "master"
+          ? scene.world.players
+          : entityView(scene.world, playerId, sight, rememberedTerrain).world
+            .players;
+        channel.send(JSON.stringify({
+          type: "motion",
+          tick: scene.world.tick,
+          players: view,
+          acknowledgedSequence: lastSequence,
+        }));
+      },
       tick: tickPeer,
       expireIfSilent,
       expired: () =>
@@ -510,6 +546,14 @@ export function startHost(scene, session) {
     }
   });
   const syncTimer = setInterval(publish, 500);
+  const motionTimer = setInterval(() => {
+    if (
+      !Object.values(scene.world.players).some((player) =>
+        player.move || Math.hypot(player.vx ?? 0, player.vy ?? 0) > 0.05
+      )
+    ) return;
+    for (const connection of peers.values()) connection.motion();
+  }, 100);
   const watchdog = setInterval(() => {
     for (const [playerId, connection] of peers) {
       connection.expireIfSilent();
@@ -557,6 +601,7 @@ export function startHost(scene, session) {
       clearInterval(heartbeatTimer);
       clearInterval(watchdog);
       clearInterval(syncTimer);
+      clearInterval(motionTimer);
       closeInbox();
       for (const connection of peers.values()) connection.close();
     },
@@ -584,6 +629,7 @@ export function joinWorld(scene, session) {
   sessionStorage.setItem(playerIdKey, playerId);
   let latestLocalSequence = 0;
   let lastSnapshotTick = -1;
+  let lastMotionTick = -1;
   const forceRelay = new URL(location.href).searchParams.has("relay");
   let lastPong = performance.now();
   let retryNotBefore = 0;
@@ -608,6 +654,7 @@ export function joinWorld(scene, session) {
     connected = false;
     latestLocalSequence = 0;
     lastSnapshotTick = -1;
+    lastMotionTick = -1;
     attempt = crypto.randomUUID();
     attemptStarted = performance.now();
     lastPong = attemptStarted;
@@ -640,6 +687,25 @@ export function joinWorld(scene, session) {
 
   /** @param {Record<string,unknown>} value */
   function receiveGame(value) {
+    if (value.type === "motion" && connected) {
+      const tick = Number(value.tick);
+      if (Number.isSafeInteger(tick) && tick > lastMotionTick) {
+        lastMotionTick = tick;
+        const players = /** @type {World['players']} */ (value.players);
+        const local = scene.world.players[playerId];
+        if (players && typeof players === "object") {
+          for (const player of Object.values(players)) {
+            if (player.id !== playerId) {
+              scene.presentation.observe(player, tick);
+            }
+          }
+          scene.world.players = {
+            ...players,
+            ...(local ? { [playerId]: local } : {}),
+          };
+        }
+      }
+    }
     if (value.type === "state") {
       const snapshot = /** @type {World} */ (value.world);
       if (snapshot.tick < lastSnapshotTick) return;
@@ -661,14 +727,28 @@ export function joinWorld(scene, session) {
           ? renderPosition(scene.world.players[playerId], scene.world.tick)
           : null;
         if (corrected && before && after) {
-          scene.renderOffset.x += before.x - after.x;
-          scene.renderOffset.y += before.y - after.y;
-          scene.renderOffset.z += before.z - after.z;
+          const gap = Math.hypot(
+            before.x - after.x,
+            before.y - after.y,
+            before.z - after.z,
+          );
+          scene.renderOffset = gap < 0.5
+            ? {
+              x: scene.renderOffset.x + before.x - after.x,
+              y: scene.renderOffset.y + before.y - after.y,
+              z: scene.renderOffset.z + before.z - after.z,
+            }
+            : { x: 0, y: 0, z: 0 };
         }
       } else {
         scene.world = snapshot;
         scene.presentation.reset();
         scene.renderOffset = { x: 0, y: 0, z: 0 };
+      }
+      for (const player of Object.values(snapshot.players)) {
+        if (player.id !== playerId) {
+          scene.presentation.observe(player, snapshot.tick);
+        }
       }
       scene.viewMode = incomingMode;
       scene.visibility = incomingMode === "entity"
@@ -779,7 +859,10 @@ export function joinWorld(scene, session) {
   /** @param {Record<string,unknown>} message */
   function send(message) {
     if (channel?.readyState !== "open") return false;
-    if (message.type === "move" && typeof message.sequence === "number") {
+    if (
+      (message.type === "move" || message.type === "input") &&
+      typeof message.sequence === "number"
+    ) {
       latestLocalSequence = Math.max(latestLocalSequence, message.sequence);
     }
     channel.send(JSON.stringify(message));

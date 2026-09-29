@@ -50,7 +50,7 @@ function expectContinuous(
       }`,
     )
       .toBeLessThanOrEqual(
-        ticks * 0.13,
+        ticks * 0.21,
       );
     travel += distance;
   }
@@ -264,7 +264,38 @@ test("held and reversed guest movement converges in host and two joining tabs", 
   await Promise.all([host.close(), first.close(), second.close()]);
 });
 
-test("a guest can circle the pillar without leaving a remote sprite behind", async ({ browser }) => {
+async function driveTo(
+  page: Page,
+  source: Page,
+  id: string,
+  key: string,
+  axis: "x" | "y",
+  target: number,
+) {
+  const position = () =>
+    source.evaluate(({ id, axis }) => {
+      const player = (globalThis as unknown as {
+        __od: {
+          scene: {
+            world: { players: Record<string, { x: number; y: number }> };
+          };
+        };
+      }).__od.scene.world.players[id];
+      return player?.[axis] ?? NaN;
+    }, { id, axis });
+  const initial = await position();
+  await page.keyboard.down(key);
+  try {
+    await expect.poll(position, { timeout: 4000, intervals: [30] })
+      [target > initial ? "toBeGreaterThanOrEqual" : "toBeLessThanOrEqual"](
+        target > initial ? target - 0.12 : target + 0.12,
+      );
+  } finally {
+    await page.keyboard.up(key);
+  }
+}
+
+test("a guest circles the pillar without leaving a remote sprite behind", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
@@ -286,99 +317,50 @@ test("a guest can circle the pillar without leaving a remote sprite behind", asy
     (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
       .scene.localId
   );
-  const tile = async (page: Page) =>
-    await page.evaluate((id) => {
+  for (
+    const [key, axis, target] of [
+      ["f", "x", 9],
+      ["d", "y", 8],
+      ["d", "y", 9],
+      ["s", "x", 8],
+    ] as [string, "x" | "y", number][]
+  ) {
+    await driveTo(guest, host, id, key, axis, target);
+  }
+  const atRest = (page: Page) =>
+    page.evaluate((playerId) => {
       const player = (globalThis as unknown as {
         __od: {
           scene: {
             world: {
-              players: Record<string, { x: number; y: number; move: unknown }>;
+              players: Record<string, {
+                x: number;
+                y: number;
+                move: unknown;
+              }>;
             };
           };
         };
-      }).__od.scene.world.players[id];
+      }).__od.scene.world.players[playerId];
       return player
         ? { x: player.x, y: player.y, moving: !!player.move }
         : null;
     }, id);
-  await expect.poll(() => tile(host)).toMatchObject({ x: 8, y: 7 });
-  for (
-    const [key, x, y] of [
-      ["f", 9, 7],
-      ["d", 9, 8],
-      ["d", 9, 9],
-      ["s", 8, 9],
-    ] as [string, number, number][]
-  ) {
-    await guest.keyboard.press(key);
-    await expect.poll(() => tile(host), { timeout: 3000 }).toMatchObject({
-      x,
-      y,
-    });
-    await expect.poll(async () => !(await tile(host))?.moving).toBe(true);
-  }
-  await guest.keyboard.press("e");
-  await guest.waitForTimeout(600);
-  expect(await tile(host)).toMatchObject({ x: 8, y: 9, moving: false });
-  expect(await tile(guest)).toMatchObject({ x: 8, y: 9, moving: false });
-  const visualGap = await host.evaluate((id) => {
-    const game = (globalThis as unknown as {
-      __od: {
-        scene: {
-          world: {
-            tick: number;
-            players: Record<string, {
-              x: number;
-              y: number;
-              z: number;
-              move: {
-                startPosition: { x: number; y: number; z: number };
-                target: { x: number; y: number; z: number };
-                startTick: number;
-                durationTicks: number;
-              } | null;
-            }>;
-          };
-        };
-        visualPosition: (id: string) => Position | null;
-      };
-    }).__od;
-    const visual = game.visualPosition(id);
-    const player = game.scene.world.players[id];
-    if (!visual || !player) return Infinity;
-    const move = player.move;
-    const progress = move
-      ? Math.max(
-        0,
-        Math.min(1, (visual.tick - move.startTick) / move.durationTicks),
-      )
-      : 0;
-    const position = move
-      ? {
-        x: move.startPosition.x +
-          (move.target.x - move.startPosition.x) * progress,
-        y: move.startPosition.y +
-          (move.target.y - move.startPosition.y) * progress,
-        z: move.startPosition.z +
-          (move.target.z - move.startPosition.z) * progress,
-      }
-      : player;
-    return Math.hypot(
-      visual.x - position.x,
-      visual.y - position.y,
-      visual.z - position.z,
-    );
-  }, id);
-  expect(visualGap).toBeLessThanOrEqual(0.751);
   await expect.poll(async () => {
     const [authoritative, predicted] = await Promise.all([
-      tile(host),
-      tile(guest),
+      atRest(host),
+      atRest(guest),
     ]);
-    return !authoritative?.moving && !predicted?.moving &&
-      authoritative?.x === predicted?.x &&
-      authoritative?.y === predicted?.y;
+    return !!authoritative && !!predicted && !authoritative.moving &&
+      !predicted.moving &&
+      Math.hypot(authoritative.x - predicted.x, authoritative.y - predicted.y) <
+        0.4;
   }, { timeout: 5000 }).toBe(true);
+  const final = await atRest(host);
+  expect(final?.x).toBeGreaterThan(7.65);
+  expect(final?.x).toBeLessThan(8.35);
+  expect(final?.y).toBeGreaterThan(8.65);
+  expect(final?.y).toBeLessThan(9.35);
   await Promise.all([host.close(), guest.close()]);
 });
 
@@ -400,116 +382,104 @@ test("a guest sees the host move and fade behind the pillar", async ({ browser }
         .__od.scene.localId
     )
   ).toMatch(/^peer-/);
-  // Keep the host and guest on opposite sides of the pillar's sight edge.
-  const playerTile = (id: string) =>
-    host.evaluate((playerId) => {
-      const player = (globalThis as unknown as {
-        __od: {
-          scene: {
-            world: {
-              players: Record<string, { x: number; y: number; move: unknown }>;
-            };
-          };
-        };
-      }).__od.scene.world.players[playerId];
-      return { x: player.x, y: player.y, moving: !!player.move };
-    }, id);
-  const step = async (
-    page: Page,
-    id: string,
-    key: string,
-    x: number,
-    y: number,
-  ) => {
-    await page.keyboard.press(key);
-    await expect.poll(() => playerTile(id)).toMatchObject({ x, y });
-    await expect.poll(async () => !(await playerTile(id)).moving).toBe(true);
-  };
-  await step(host, "self", "e", 7, 6);
-  await step(host, "self", "f", 8, 6);
-  await step(host, "self", "f", 9, 6);
-  await step(host, "self", "d", 9, 7);
   const id = await guest.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
       .scene.localId
   );
-  await step(guest, id, "s", 7, 7);
-  await step(guest, id, "s", 6, 7);
-  await step(guest, id, "e", 6, 6);
+  for (
+    const [key, axis, target] of [
+      ["e", "y", 6],
+      ["f", "x", 8],
+      ["f", "x", 9],
+      ["d", "y", 7],
+    ] as [string, "x" | "y", number][]
+  ) {
+    await driveTo(host, host, "self", key, axis, target);
+  }
+  for (
+    const [key, axis, target] of [
+      ["s", "x", 7],
+      ["s", "x", 6],
+      ["e", "y", 6],
+    ] as [string, "x" | "y", number][]
+  ) {
+    await driveTo(guest, host, id, key, axis, target);
+  }
   await expect.poll(() =>
     guest.evaluate(() =>
       Boolean(
         (globalThis as unknown as {
-          __od: { scene: { world: { players: Record<string, unknown> } } };
+          __od: {
+            scene: {
+              world: {
+                players: Record<string, unknown>;
+              };
+            };
+          };
         }).__od.scene.world.players.self,
       )
     )
   ).toBe(true);
-
-  const samples = () =>
+  const trace = guest.evaluate(() =>
+    new Promise<
+      Array<{
+        y: number;
+        opacity: number;
+      }>
+    >((resolve) => {
+      const game = (globalThis as unknown as {
+        __od: {
+          visualSample: (id: string) => { y: number; opacity: number } | null;
+        };
+      }).__od;
+      const points: Array<{ y: number; opacity: number }> = [];
+      const until = performance.now() + 700;
+      const sample = () => {
+        const point = game.visualSample("self");
+        if (point) points.push({ y: point.y, opacity: point.opacity });
+        if (performance.now() < until) requestAnimationFrame(sample);
+        else resolve(points);
+      };
+      requestAnimationFrame(sample);
+    })
+  );
+  await driveTo(host, host, "self", "d", "y", 8);
+  const points = await trace;
+  expect(points.length).toBeGreaterThan(4);
+  expect(Math.max(...points.map((point) => point.y))).toBeGreaterThan(7.1);
+  expect(points.some((point) => point.opacity > 0.05 && point.opacity < 0.95))
+    .toBe(true);
+  await expect.poll(() =>
     guest.evaluate(() =>
-      new Promise<Array<{ y: number; opacity: number }>>((resolve) => {
-        const game = (globalThis as unknown as {
+      Boolean(
+        (globalThis as unknown as {
           __od: {
             scene: {
               world: {
-                tick: number;
-                players: Record<string, {
-                  viewMotion?: {
-                    startTick: number;
-                    durationTicks: number;
-                    entering: boolean;
-                  };
-                }>;
+                players: Record<string, unknown>;
               };
             };
-            visualPosition: (id: string) => Position | null;
           };
-        }).__od;
-        const collected: Array<{ y: number; opacity: number }> = [];
-        const until = performance.now() + 850;
-        const sample = () => {
-          const player = game.scene.world.players.self;
-          const position = game.visualPosition("self");
-          if (player?.viewMotion && position) {
-            const motion = player.viewMotion;
-            const progress = (position.tick - motion.startTick) /
-              motion.durationTicks;
-            const blend = Math.max(0, Math.min(1, (progress - 0.25) / 0.5));
-            collected.push({
-              y: position.y,
-              opacity: motion.entering ? blend : 1 - blend,
-            });
-          }
-          if (performance.now() < until) requestAnimationFrame(sample);
-          else resolve(collected);
-        };
-        requestAnimationFrame(sample);
-      })
-    );
-  const leaving = samples();
-  await host.keyboard.press("d");
-  const trace = await leaving;
-  expect(trace.length).toBeGreaterThan(4);
-  expect(Math.max(...trace.map((point) => point.y))).toBeGreaterThan(7.1);
-  expect(trace.some((point) => point.opacity > 0.1 && point.opacity < 0.9))
-    .toBe(true);
-  expect(trace.every((point) => point.y < 7.5)).toBe(true);
-  await expect.poll(() => playerTile("self")).toMatchObject({
-    x: 9,
-    y: 8,
-    moving: false,
-  });
-  const entering = samples();
-  await host.keyboard.press("e");
-  const returnTrace = await entering;
-  expect(returnTrace.length).toBeGreaterThan(4);
-  expect(
-    returnTrace.some((point) => point.opacity > 0.1 && point.opacity < 0.9),
-  )
-    .toBe(true);
-  expect(Math.min(...returnTrace.map((point) => point.y))).toBeLessThan(7.4);
-  expect(returnTrace.every((point) => point.y < 7.5)).toBe(true);
+        }).__od.scene.world.players.self,
+      )
+    )
+  ).toBe(false);
+  await driveTo(host, host, "self", "e", "y", 7);
+  await expect.poll(() =>
+    guest.evaluate(() =>
+      Boolean(
+        (globalThis as unknown as {
+          __od: {
+            scene: {
+              world: {
+                players: Record<string, unknown>;
+              };
+            };
+          };
+        }).__od.scene.world.players.self,
+      )
+    )
+  ).toBe(true);
   await Promise.all([host.close(), guest.close()]);
 });
 

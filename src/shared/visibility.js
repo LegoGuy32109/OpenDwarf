@@ -1,6 +1,7 @@
 // @ts-check
 
 import { isSolid, WORLD_TOP } from "./world.js";
+import { centerTile } from "./locomotion.js";
 
 export const FOV_RADIUS = 20;
 
@@ -21,6 +22,13 @@ export function createVisibility() {
 
 /** @param {Player} player @param {number} tick */
 export function visibilityPosition(player, tick) {
+  if (player.free) {
+    return {
+      x: centerTile(player.x),
+      y: centerTile(player.y),
+      z: player.z,
+    };
+  }
   const move = player.move;
   if (move && (tick - move.startTick) / move.durationTicks >= 0.25) {
     return move.target;
@@ -147,8 +155,46 @@ export function tileVisibility(state, x, y, z) {
 }
 
 /** Fade other entities through the overlap interval of their occupied tiles. */
-/** @param {Player} player @param {number} tick @param {(x:number,y:number,z:number)=>boolean} visible */
-export function entityOpacity(player, tick, visible) {
+/** @param {Player} player @param {number} tick @param {(x:number,y:number,z:number)=>boolean} visible @param {{x:number,y:number,z:number}} [position] */
+export function entityOpacity(player, tick, visible, position = player) {
+  if (player.free) {
+    const x = centerTile(position.x);
+    const y = centerTile(position.y);
+    if (!visible(x, y, player.z)) return 0;
+    let opacity = 1;
+    for (
+      const [axis, speed, tx, ty] of [
+        [position.x, player.vx ?? 0, 1, 0],
+        [position.y, player.vy ?? 0, 0, 1],
+      ]
+    ) {
+      if (Math.abs(speed) < 0.05) continue;
+      const direction = Math.sign(speed);
+      const nextX = x + tx * direction;
+      const nextY = y + ty * direction;
+      const lastX = x - tx * direction;
+      const lastY = y - ty * direction;
+      const boundary = (tx ? x : y) + direction * 0.5;
+      if (!visible(nextX, nextY, player.z)) {
+        opacity = Math.min(
+          opacity,
+          Math.max(0, Math.min(1, (boundary - axis) * direction * 2)),
+        );
+      } else if (!visible(lastX, lastY, player.z)) {
+        opacity = Math.min(
+          opacity,
+          Math.max(
+            0,
+            Math.min(
+              1,
+              (axis - ((tx ? x : y) - direction * 0.5)) * direction * 2,
+            ),
+          ),
+        );
+      }
+    }
+    return opacity;
+  }
   const move = player.move;
   if (!move) return visible(player.x, player.y, player.z) ? 1 : 0;
   const originSeen = visible(move.origin.x, move.origin.y, move.origin.z);
