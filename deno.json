@@ -1,7 +1,21 @@
 {
   "lint": { "plugins": ["./lint/plugin.ts"], "exclude": ["_fresh/"] },
-  "compilerOptions": { "lib": ["deno.ns", "dom", "dom.iterable"], "checkJs": true, "noImplicitAny": true },
-  "fmt": { "include": ["main.ts", "src/", "public/js/", "public/css/", "lint/", "tests/", "scripts/"] },
+  "compilerOptions": {
+    "lib": ["deno.ns", "dom", "dom.iterable"],
+    "checkJs": true,
+    "noImplicitAny": true
+  },
+  "fmt": {
+    "include": [
+      "main.ts",
+      "src/",
+      "public/js/",
+      "public/css/",
+      "lint/",
+      "tests/",
+      "scripts/"
+    ]
+  },
   "tasks": {
     "dev": "deno run --unstable-kv --allow-net --allow-read --allow-env --watch main.ts",
     "start": "deno run --unstable-kv --allow-net --allow-read --allow-env main.ts",
@@ -13,6 +27,7 @@
     "test": "deno test --unstable-kv --allow-read --allow-net --allow-env tests/lint tests/shared tests/client tests/server",
     "e2e": "deno run -A npm:playwright@1.63.0 test",
     "stress": "deno run -A scripts/stress.ts",
+    "capture:sync": "deno run -A scripts/capture-visual-sync.ts",
     "verify": "deno task fmt:check && deno task lint && deno task check && deno task test",
     "hooks": "git config core.hooksPath .githooks"
   },
@@ -25,6 +40,14 @@
     "org": "legoguy32109",
     "app": "opendwarf",
     "runtime": { "type": "dynamic", "entrypoint": "./main.ts" },
-    "exclude": ["tests", "docs", "exports", ".env", ".env.*", ".githooks", ".github"]
+    "exclude": [
+      "tests",
+      "docs",
+      "exports",
+      ".env",
+      ".env.*",
+      ".githooks",
+      ".github"
+    ]
   }
 }

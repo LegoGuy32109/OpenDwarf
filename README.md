@@ -116,6 +116,15 @@ Deploy. The runner enables it and marks its events as test traffic. For a second
 application-delivery profile, add `--jitter=20 --loss=0.01`. The drop applies to
 delivered game messages, not physical WebRTC packets.
 
+`deno task capture:sync` records a five-second visual comparison from the host
+and the 20th peer against the deployed site. All 20 peers use WebRTC, while the
+host and 20th peer render WebGL. The script places players on separate walkable
+cells, uses `/master` and the same zoom on both views, and records randomized
+movement. It writes individual and side-by-side MP4 files plus a movement
+manifest under ignored `exports/visual-sync/`. Pass
+`--url=http://127.0.0.1:8000` for a server already running locally or
+`--delay=<milliseconds>` to change the per-message application delay.
+
 ## Deploy
 
 The `deploy` section in `deno.json` uses a dynamic Deno Deploy app with
