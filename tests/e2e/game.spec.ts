@@ -471,9 +471,10 @@ test("entity look selects an octant without panning the camera", async ({ page }
   await page.waitForTimeout(200);
   const after = (await scene()).camera;
   expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(1);
-  await page.keyboard.up("i");
   await page.keyboard.up("l");
-  await expect.poll(async () => (await scene()).aim).toEqual({ x: 1, y: -1 });
+  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: -1 });
+  await page.keyboard.up("i");
+  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: -1 });
 });
 
 test("Ctrl+R keeps browser refresh available and leaves the view level", async ({ page }) => {
