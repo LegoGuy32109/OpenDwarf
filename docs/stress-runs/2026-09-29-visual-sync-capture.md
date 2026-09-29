@@ -19,13 +19,15 @@ recordings were aligned at their common end. Each MP4 has 100 frames at 20 fps,
 five-second duration. The endings are approximately aligned by simultaneous
 page closure; this is not hardware frame synchronization.
 
-The clips and input manifest are in ignored
-`exports/visual-sync/2026-09-29T00-26-52-510Z/` on the test machine:
+The reviewed clips are tracked in the repository:
 
-- `host.mp4`
-- `peer-20.mp4`
-- `side-by-side.mp4`
-- `manifest.json`
+- [Host view](../media/visual-sync-2026-09-29/host.mp4)
+- [Peer 20 view](../media/visual-sync-2026-09-29/peer-20.mp4)
+- [Side-by-side comparison](../media/visual-sync-2026-09-29/side-by-side.mp4)
+
+The input manifest remains in ignored
+`exports/visual-sync/2026-09-29T00-26-52-510Z/manifest.json` on the test
+machine.
 
 This gives a direct visual comparison with 20 peers moving. It does not measure
 phone rendering, TURN, external network latency, or persistence of a visual gap
