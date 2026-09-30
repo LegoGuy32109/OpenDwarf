@@ -129,21 +129,29 @@ schedule. A system Chromium installation is used locally when present.
 
 ## Group stress run
 
-`deno task stress --smoke` runs a short two-guest check. For the sustained 16×16
-baseline, run `deno task stress --count=20 --rendered=4 --duration=900`. The
-host and four guests render WebGL; the other guests connect through WebRTC
-without WebGL. `--rendered=19` exercises the separate 20-renderer profile. Add
-`--world=32` to repeat the run across four fixed 16×16 chunks and all eight z
-levels; the default keeps the original 16×16 baseline. The runner starts a local
-server unless given `--url=https://...`. It applies 50 ms of game-message
-delivery delay in each browser by default, approximating 100 ms round trip
-without changing ICE or physical packet delay. Reports and raw samples land
-under ignored `exports/stress/`; move reviewed summaries into
-[stress-run reports](docs/stress-runs/README.md). Adding `?telemetry=1` to a
-game URL opts that browser into structured, content-free diagnostic logs on Deno
-Deploy. The runner enables it and marks its events as test traffic. For a second
-application-delivery profile, add `--jitter=20 --loss=0.01`. The drop applies to
-delivered game messages, not physical WebRTC packets.
+For current continuous movement, start a dedicated local server and run:
+
+```sh
+deno run -A scripts/benchmark-motion.ts --url=http://127.0.0.1:8000 --count=20 --rendered=4 --duration=60 --world=16 --rate=10 --seed=9
+```
+
+The benchmark measures actual x/y movement, both channel queues and payload,
+frame timing, prediction corrections, and chat delivery. The URL is required;
+the script does not start a server. `--duration=900` gives a 15-minute hold.
+The host and four guests render WebGL. Other guests connect without rendering.
+Use `--rendered=19` for host plus 19 rendered guests, `--world=32` for the larger
+world, or `--view=master` to compare master view. `--rate=20` is a harness-only
+experiment. The live default remains 10 Hz pending the rate review.
+
+By default each browser delays game-message delivery by 50 ms, approximating
+100 ms round trip without changing ICE or physical packet delay. Add
+`--jitter=20 --loss=0.01` for jitter and 1% replaceable motion-message loss.
+Reliable state/chat/input are not dropped. These conditions do not simulate
+physical SCTP loss. Reports and traces land under ignored `exports/benchmarks/`.
+Run browser workloads sequentially and keep served files unchanged during a run.
+Reviewed summaries belong in [stress-run reports](docs/stress-runs/README.md).
+The older `deno task stress` runner remains for historical comparisons, but its
+committed-step movement counters do not measure continuous movement correctly.
 
 `deno task capture:sync` records a five-second visual comparison from the host
 and the 20th peer against the deployed site. All 20 peers use WebRTC, while the

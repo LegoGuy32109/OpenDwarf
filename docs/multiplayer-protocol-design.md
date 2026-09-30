@@ -1,7 +1,8 @@
 # Multiplayer protocol improvement design
 
-Status: confirmed. Implementation is in progress. The motion rate remains an experiment until the 20-peer report
-is reviewed. Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
+Status: stages 1–4 are implemented and pushed. Ten final 20-peer comparisons
+passed. Stage 5 awaits the [rate review](stress-runs/2026-09-30-protocol-split.md),
+then the full group run and desktop/phone check. The existing default is 10 Hz. Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
 
 ## Settled decisions
 
