@@ -17,11 +17,12 @@ import {
   tileKey,
   visibilityPosition,
 } from "../shared/visibility.js";
-import { entityView } from "../shared/view.js";
+import { entityPlayers, entityView } from "../shared/view.js";
 import { unpackVisibility } from "../shared/visibility-wire.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
 import { enableLocomotion, moveEntity } from "../shared/locomotion.js";
 import { chatView, receiveChat, withoutChat } from "../shared/chat.js";
+import { createAttemptDeadline } from "./attempt-deadline.js";
 
 // Test-only game-message delivery conditions; ICE and physical packets are unchanged.
 const harnessParams = new URL(location.href).searchParams;
@@ -211,12 +212,30 @@ export function startHost(scene, session) {
     let rememberedPlayer = null;
     /** @type {{dx:number,dy:number,sequence:number}[]} */
     const pendingMoves = [];
+    const timing = {
+      filterMs: 0,
+      encodeMs: 0,
+      sendMs: 0,
+      statePackets: 0,
+      motionPackets: 0,
+      encodedChars: 0,
+    };
     const sight = createVisibility();
     /** @type {Map<string,import('../shared/chat.js').ChatBand>} */
     const chatBands = new Map();
     const rememberedTerrain = scene.world.terrain.map(() => 0);
     /** @type {"entity"|"master"} */
     let mode = "entity";
+    const deadline = createAttemptDeadline((attempt) => {
+      if (activeAttempt !== attempt) return;
+      activeAttempt = "";
+      snapshotSender?.close();
+      peer?.close();
+      channel?.close();
+      joinFailures++;
+      depart();
+      scene.status = "Visitor connection timed out";
+    });
 
     function publishToPeer() {
       snapshotSender?.publish();
@@ -225,11 +244,12 @@ export function startHost(scene, session) {
     function depart() {
       if (departureTimer) clearTimeout(departureTimer);
       departureTimer = null;
-      rememberedPlayer = scene.world.players[playerId] ?? rememberedPlayer;
+      const established = scene.world.players[playerId];
+      rememberedPlayer = established ?? rememberedPlayer;
       removePlayer(scene.world, playerId);
       direction = { x: 0, y: 0 };
       joined = false;
-      departedAt = performance.now();
+      if (established || !departedAt) departedAt = performance.now();
       scene.status = "A visitor left your world";
       publish();
     }
@@ -331,6 +351,7 @@ export function startHost(scene, session) {
       channel?.close();
       visitorToken = token;
       activeAttempt = attempt;
+      deadline.start(attempt);
       joined = true;
       lastSequence = 0;
       direction = { x: 0, y: 0 };
@@ -345,9 +366,11 @@ export function startHost(scene, session) {
         peer = nextPeer;
         channel = nextPeer.createDataChannel("world", { ordered: true });
         snapshotSender = createSnapshotSender(channel, () => {
+          const began = performance.now();
           const view = mode === "master"
             ? { world: scene.world, visibility: null }
             : entityView(scene.world, playerId, sight, rememberedTerrain);
+          timing.filterMs += performance.now() - began;
           return {
             type: "state",
             ...view,
@@ -357,9 +380,15 @@ export function startHost(scene, session) {
             playerId,
             acknowledgedSequence: lastSequence,
           };
+        }, (sample) => {
+          timing.statePackets++;
+          timing.encodedChars += sample.bytes;
+          timing.encodeMs += sample.encodeMs;
+          timing.sendMs += sample.sendMs;
         });
         channel.onopen = () => {
           if (peer !== nextPeer || !joined) return;
+          deadline.complete(attempt);
           departedAt = 0;
           lastSeen = performance.now();
           if (rememberedPlayer && !scene.world.players[playerId]) {
@@ -414,6 +443,7 @@ export function startHost(scene, session) {
         }
       } catch (error) {
         if (activeAttempt !== attempt) return;
+        deadline.complete(attempt);
         joinFailures++;
         scene.telemetry?.("error", { status: "join-failed" });
         depart();
@@ -429,6 +459,7 @@ export function startHost(scene, session) {
     }
 
     function expireIfSilent() {
+      if (deadline.check()) return;
       if (
         !joined || !scene.world.players[playerId] ||
         performance.now() - lastSeen <= 4500
@@ -438,6 +469,9 @@ export function startHost(scene, session) {
     }
 
     function close() {
+      deadline.close();
+      joined = false;
+      activeAttempt = "";
       if (departureTimer) clearTimeout(departureTimer);
       snapshotSender?.close();
       channel?.close();
@@ -494,23 +528,31 @@ export function startHost(scene, session) {
           !joined || channel?.readyState !== "open" ||
           channel.bufferedAmount > 16 * 1024
         ) return;
+        const began = performance.now();
         const view = mode === "master"
           ? scene.world.players
-          : entityView(scene.world, playerId, sight, rememberedTerrain).world
-            .players;
-        channel.send(JSON.stringify({
+          : entityPlayers(scene.world, playerId, sight, rememberedTerrain);
+        timing.filterMs += performance.now() - began;
+        const encodeAt = performance.now();
+        const encoded = JSON.stringify({
           type: "motion",
           tick: scene.world.tick,
           players: withoutChat(view),
           chat: chatView(scene.world, playerId, chatBands),
           acknowledgedSequence: lastSequence,
-        }));
+        });
+        const sendAt = performance.now();
+        channel.send(encoded);
+        timing.encodeMs += sendAt - encodeAt;
+        timing.sendMs += performance.now() - sendAt;
+        timing.encodedChars += encoded.length;
+        timing.motionPackets++;
       },
       tick: tickPeer,
       expireIfSilent,
       expired: () =>
         !joined && departedAt > 0 &&
-        performance.now() - departedAt >= 60_000,
+        (!rememberedPlayer || performance.now() - departedAt >= 60_000),
       close,
       async diagnostics() {
         const stats = peer ? await peer.getStats() : null;
@@ -519,6 +561,7 @@ export function startHost(scene, session) {
           : null;
         return {
           playerId,
+          timing: { ...timing },
           connected: peer?.connectionState === "connected",
           route: peer ? await selectedRoute(peer) : "none",
           bytesSent: dataChannel && "bytesSent" in dataChannel

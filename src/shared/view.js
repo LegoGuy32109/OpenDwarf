@@ -60,7 +60,7 @@ export function viewMotionPosition(motion, tick) {
 }
 
 /** @param {World} world @param {string} viewerId @param {Visibility} sight @param {number[]} rememberedTerrain */
-export function entityView(world, viewerId, sight, rememberedTerrain) {
+export function entityPlayers(world, viewerId, sight, rememberedTerrain) {
   const viewer = world.players[viewerId];
   if (viewer) {
     recomputeVisibility(world, sight, visibilityPosition(viewer, world.tick));
@@ -135,6 +135,12 @@ export function entityView(world, viewerId, sight, rememberedTerrain) {
       players[id] = { ...player, ...move.target, move: null };
     }
   }
+  return players;
+}
+
+/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {number[]} rememberedTerrain */
+export function entityView(world, viewerId, sight, rememberedTerrain) {
+  const players = entityPlayers(world, viewerId, sight, rememberedTerrain);
   return {
     world: {
       tick: world.tick,
