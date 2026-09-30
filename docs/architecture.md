@@ -67,7 +67,24 @@ position updates about every 100 ms while entities move. Both browsers present
 remote players about 150 ms behind the latest authoritative tick, interpolating
 between received positions. Full snapshots acknowledge processed input and
 correct meaningful local prediction errors. The renderer does not queue old
-remote paths. This is not rollback netcode.
+remote paths. The reliable ordered `world` channel carries state, chat, and input. The
+unordered `motion` channel has `maxRetransmits: 0` and carries independent
+filtered entity records without chat or unnecessary simulation fields. Both
+channels share SCTP congestion control. Pending sends coalesce to current
+state when each channel drains. Stops send a 300 ms settling tail, with 500 ms
+reliable snapshots as recovery.
+
+Protocol version 2 requires a matching join/offer version. Complete snapshots
+are validated before scene mutation. Motion is fenced by connection attempt,
+view revision, sight revision, and tick. The guest retains only the newest
+motion awaiting reliable sight. Older reliable state can refresh terrain and
+sight without rewinding newer remote positions. Invalid motion is discarded.
+Malformed reliable state requests a full resync. Repeated recovery failure
+closes the connection with a refresh instruction. Incomplete attempts expire
+after ten seconds independently of player creation.
+
+This is not rollback netcode. Input acknowledgments indicate the latest
+received direction, not completed movement. Input replay remains deferred.
 WebRTC uses direct connectivity when ICE can establish it; Xirsys TURN
 credentials supply a relay when needed. The signaling route uses Deno KV as a
 mailbox.

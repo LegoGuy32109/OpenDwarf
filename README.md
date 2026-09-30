@@ -65,14 +65,22 @@ KV stores short lived presence and signaling messages. It does not run the
 world. The host sends a view filtered for each joining tab every 500 ms, and
 when that player's sight moves to another tile. Visibility uses compact bit
 masks on the wire. When a WebRTC channel backs up, the host coalesces unsent
-snapshots and sends the newest state after the channel drains. Entity view
+snapshots and sends the newest state after the channel drains. Movement also
+coalesces to the newest unsent state and sends a 300 ms settling tail after a
+stop. An incomplete join expires after ten seconds. Entity view
 contains currently visible players and NPCs plus last observed terrain;
 undiscovered terrain is unknown. Master view contains the full world. Each
 joining tab also receives chat by distance from its character: message text
 within five horizontal blocks and four levels, a `:0` talking indicator from
 five through twelve blocks, and no bubble beyond that range. Typing appears as
 `...` within five blocks. Speech passes through walls and sight boundaries.
-Each snapshot acknowledges that recipient's latest processed input sequence.
+Chat uses the reliable `world` channel with snapshots and player input.
+Replaceable movement uses a separate unordered `motion` channel with zero
+retransmissions. Both channels must open to complete a join. Motion packets
+carry attempt, view, and sight revisions so delayed updates cannot restore an
+older view. The wire uses validated JSON and rejects incompatible versions
+with a refresh instruction. Each snapshot acknowledges that recipient's latest
+received input sequence.
 Each joining tab predicts its own position, and the host sends movement positions
 about every 100 ms for smooth remote interpolation. Meaningful corrections ease
 back toward the host position. The

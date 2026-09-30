@@ -21,8 +21,19 @@ import { entityPlayers, entityView } from "../shared/view.js";
 import { unpackVisibility } from "../shared/visibility-wire.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
 import { enableLocomotion, moveEntity } from "../shared/locomotion.js";
-import { chatView, receiveChat, withoutChat } from "../shared/chat.js";
+import { chatView, receiveChat } from "../shared/chat.js";
 import { createAttemptDeadline } from "./attempt-deadline.js";
+import { createRevisionOrder } from "./revision-order.js";
+import {
+  decodeChat,
+  decodeControl,
+  decodeMotion,
+  decodeState,
+  encodeMotionPlayers,
+  parsePacket,
+  PROTOCOL_VERSION,
+} from "../shared/wire.js";
+import { centerTile } from "../shared/locomotion.js";
 
 // Test-only game-message delivery conditions; ICE and physical packets are unchanged.
 const harnessParams = new URL(location.href).searchParams;
@@ -35,15 +46,19 @@ const harnessJitter = harnessParams.has("harness")
 const harnessLoss = harnessParams.has("harness")
   ? Math.max(0, Math.min(0.2, Number(harnessParams.get("loss")) || 0))
   : 0;
+const motionHz =
+  harnessParams.has("harness") && harnessParams.get("motionHz") === "20"
+    ? 20
+    : 10;
 let randomState = (Number(harnessParams.get("seed")) || 1) >>> 0;
 function random() {
   randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
   return randomState / 0x100000000;
 }
 
-/** @param {()=>void} receive */
-function deliver(receive) {
-  if (harnessLoss && random() < harnessLoss) return;
+/** @param {()=>void} receive @param {boolean} [replaceable] */
+function deliver(receive, replaceable = false) {
+  if (replaceable && harnessLoss && random() < harnessLoss) return;
   const delay = harnessDelay +
     (harnessJitter ? (random() * 2 - 1) * harnessJitter : 0);
   if (delay > 0) setTimeout(receive, delay);
@@ -199,6 +214,15 @@ export function startHost(scene, session) {
     let channel = null;
     /** @type {ReturnType<typeof createSnapshotSender>|null} */
     let snapshotSender = null;
+    /** @type {RTCDataChannel|null} */
+    let motionChannel = null;
+    /** @type {ReturnType<typeof createSnapshotSender>|null} */
+    let motionSender = null;
+    /** @type {ReturnType<typeof createSnapshotSender>|null} */
+    let chatSender = null;
+    let viewRevision = 0;
+    let sightRevision = 0;
+    let lastSight = "";
     let joined = false;
     let departedAt = 0;
     let visitorToken = "";
@@ -218,6 +242,7 @@ export function startHost(scene, session) {
       sendMs: 0,
       statePackets: 0,
       motionPackets: 0,
+      chatPackets: 0,
       encodedChars: 0,
     };
     const sight = createVisibility();
@@ -230,6 +255,9 @@ export function startHost(scene, session) {
       if (activeAttempt !== attempt) return;
       activeAttempt = "";
       snapshotSender?.close();
+      motionSender?.close();
+      chatSender?.close();
+      motionChannel?.close();
       peer?.close();
       channel?.close();
       joinFailures++;
@@ -238,7 +266,28 @@ export function startHost(scene, session) {
     });
 
     function publishToPeer() {
-      snapshotSender?.publish();
+      if (scene.world.players[playerId]) snapshotSender?.publish();
+    }
+
+    function stamp() {
+      if (mode === "entity" && lastSight !== sight.sample) {
+        lastSight = sight.sample;
+        sightRevision++;
+      }
+      return { attempt: activeAttempt, viewRevision, sightRevision };
+    }
+
+    /** @param {"state"|"motion"|"chat"} kind */
+    function recordSend(kind) {
+      /** @param {{bytes:number,encodeMs:number,sendMs:number}} sample */
+      return (sample) => {
+        if (kind === "state") timing.statePackets++;
+        if (kind === "motion") timing.motionPackets++;
+        if (kind === "chat") timing.chatPackets++;
+        timing.encodedChars += sample.bytes;
+        timing.encodeMs += sample.encodeMs;
+        timing.sendMs += sample.sendMs;
+      };
     }
 
     function depart() {
@@ -274,6 +323,10 @@ export function startHost(scene, session) {
     function handleMessage(message) {
       lastSeen = performance.now();
       if (!scene.world.players[playerId]) return;
+      if (message.type === "resync") {
+        publishToPeer();
+        return;
+      }
       if (message.type === "ping") {
         if (channel?.readyState === "open") {
           channel.send(JSON.stringify({ type: "pong", id: message.id }));
@@ -317,7 +370,12 @@ export function startHost(scene, session) {
       }
       if (message.type === "mode") {
         if (message.mode === "entity" || message.mode === "master") {
-          mode = message.mode;
+          if (mode !== message.mode) {
+            mode = message.mode;
+            viewRevision++;
+            sightRevision = 0;
+            lastSight = "";
+          }
           publishToPeer();
         }
         return;
@@ -335,18 +393,30 @@ export function startHost(scene, session) {
       publish();
     }
 
-    /** @param {{relay?:boolean,token?:string,attempt?:string}} request */
+    /** @param {{relay?:boolean,token?:string,attempt?:string,version?:number}} request */
     async function acceptJoin(request) {
       const token = typeof request.token === "string" ? request.token : "";
       const attempt = typeof request.attempt === "string"
         ? request.attempt
         : "";
+      if (request.version !== PROTOCOL_VERSION) {
+        await signal(session, playerId, "incompatible", {
+          attempt,
+          version: PROTOCOL_VERSION,
+        }, "host");
+        scene.status =
+          "Visitor uses a different game version. Refresh both pages.";
+        return;
+      }
       if (!token || !attempt || (visitorToken && token !== visitorToken)) {
         return;
       }
       if (departureTimer) clearTimeout(departureTimer);
       departureTimer = null;
       snapshotSender?.close();
+      motionSender?.close();
+      chatSender?.close();
+      motionChannel?.close();
       peer?.close();
       channel?.close();
       visitorToken = token;
@@ -356,6 +426,8 @@ export function startHost(scene, session) {
       lastSequence = 0;
       direction = { x: 0, y: 0 };
       pendingMoves.length = 0;
+      viewRevision = sightRevision = 0;
+      lastSight = "";
       try {
         const iceServers = await ice();
         if (activeAttempt !== attempt) return;
@@ -365,6 +437,10 @@ export function startHost(scene, session) {
         });
         peer = nextPeer;
         channel = nextPeer.createDataChannel("world", { ordered: true });
+        motionChannel = nextPeer.createDataChannel("motion", {
+          ordered: false,
+          maxRetransmits: 0,
+        });
         snapshotSender = createSnapshotSender(channel, () => {
           const began = performance.now();
           const view = mode === "master"
@@ -373,21 +449,49 @@ export function startHost(scene, session) {
           timing.filterMs += performance.now() - began;
           return {
             type: "state",
+            ...stamp(),
             ...view,
-            world: { ...view.world, players: withoutChat(view.world.players) },
+            world: {
+              ...view.world,
+              players: encodeMotionPlayers(view.world.players),
+            },
             chat: chatView(scene.world, playerId, chatBands),
             mode,
             playerId,
             acknowledgedSequence: lastSequence,
           };
-        }, (sample) => {
-          timing.statePackets++;
-          timing.encodedChars += sample.bytes;
-          timing.encodeMs += sample.encodeMs;
-          timing.sendMs += sample.sendMs;
-        });
-        channel.onopen = () => {
-          if (peer !== nextPeer || !joined) return;
+        }, recordSend("state"));
+        motionSender = createSnapshotSender(motionChannel, () => {
+          const began = performance.now();
+          const players = mode === "master"
+            ? scene.world.players
+            : entityPlayers(scene.world, playerId, sight, rememberedTerrain);
+          timing.filterMs += performance.now() - began;
+          const previousSight = sightRevision;
+          const envelope = stamp();
+          if (sightRevision !== previousSight) publishToPeer();
+          return {
+            type: "motion",
+            ...envelope,
+            tick: scene.world.tick,
+            players: encodeMotionPlayers(players),
+            acknowledgedSequence: lastSequence,
+          };
+        }, recordSend("motion"));
+        chatSender = createSnapshotSender(channel, () => ({
+          type: "chat",
+          ...stamp(),
+          tick: scene.world.tick,
+          chat: chatView(scene.world, playerId, chatBands),
+        }), recordSend("chat"));
+        let opened = false;
+        const ready = () => {
+          if (
+            peer !== nextPeer || !joined || opened ||
+            channel?.readyState !== "open" ||
+            motionChannel?.readyState !== "open"
+          ) return;
+          opened = true;
           deadline.complete(attempt);
           departedAt = 0;
           lastSeen = performance.now();
@@ -398,14 +502,23 @@ export function startHost(scene, session) {
           scene.status = "A visitor joined your world";
           publish();
         };
+        channel.onopen = ready;
+        motionChannel.onopen = ready;
+        const channelClosed = () => {
+          if (peer !== nextPeer || !joined || !opened) return;
+          snapshotSender?.close();
+          motionSender?.close();
+          chatSender?.close();
+          nextPeer.close();
+          depart();
+        };
+        channel.onclose = channelClosed;
+        motionChannel.onclose = channelClosed;
         channel.onmessage = (event) =>
           deliver(() => {
-            if (peer !== nextPeer || !joined) return;
-            try {
-              handleMessage(JSON.parse(event.data));
-            } catch (error) {
-              console.error(error);
-            }
+            if (peer !== nextPeer || !joined || !opened) return;
+            const message = decodeControl(parsePacket(event.data));
+            if (message) handleMessage(message);
           });
         nextPeer.onconnectionstatechange = () => {
           if (peer !== nextPeer || !joined) return;
@@ -439,6 +552,7 @@ export function startHost(scene, session) {
           await signal(session, playerId, "offer", {
             description: nextPeer.localDescription,
             attempt,
+            version: PROTOCOL_VERSION,
           }, "host");
         }
       } catch (error) {
@@ -474,6 +588,9 @@ export function startHost(scene, session) {
       activeAttempt = "";
       if (departureTimer) clearTimeout(departureTimer);
       snapshotSender?.close();
+      motionSender?.close();
+      chatSender?.close();
+      motionChannel?.close();
       channel?.close();
       peer?.close();
     }
@@ -524,29 +641,10 @@ export function startHost(scene, session) {
       acceptAnswer,
       publish: publishToPeer,
       motion() {
-        if (
-          !joined || channel?.readyState !== "open" ||
-          channel.bufferedAmount > 16 * 1024
-        ) return;
-        const began = performance.now();
-        const view = mode === "master"
-          ? scene.world.players
-          : entityPlayers(scene.world, playerId, sight, rememberedTerrain);
-        timing.filterMs += performance.now() - began;
-        const encodeAt = performance.now();
-        const encoded = JSON.stringify({
-          type: "motion",
-          tick: scene.world.tick,
-          players: withoutChat(view),
-          chat: chatView(scene.world, playerId, chatBands),
-          acknowledgedSequence: lastSequence,
-        });
-        const sendAt = performance.now();
-        channel.send(encoded);
-        timing.encodeMs += sendAt - encodeAt;
-        timing.sendMs += performance.now() - sendAt;
-        timing.encodedChars += encoded.length;
-        timing.motionPackets++;
+        if (joined && scene.world.players[playerId]) motionSender?.publish();
+      },
+      chat() {
+        if (joined && scene.world.players[playerId]) chatSender?.publish();
       },
       tick: tickPeer,
       expireIfSilent,
@@ -556,17 +654,31 @@ export function startHost(scene, session) {
       close,
       async diagnostics() {
         const stats = peer ? await peer.getStats() : null;
-        const dataChannel = stats
-          ? [...stats.values()].find((stat) => stat.type === "data-channel")
-          : null;
+        const dataChannels = stats
+          ? [...stats.values()].filter((stat) => stat.type === "data-channel")
+          : [];
+        const bytes = (/** @type {string|undefined} */ label) =>
+          dataChannels.reduce(
+            (sum, stat) =>
+              sum +
+              ((!label || stat.label === label)
+                ? Number(stat.bytesSent ?? 0)
+                : 0),
+            0,
+          );
         return {
           playerId,
           timing: { ...timing },
           connected: peer?.connectionState === "connected",
           route: peer ? await selectedRoute(peer) : "none",
-          bytesSent: dataChannel && "bytesSent" in dataChannel
-            ? Number(dataChannel.bytesSent)
-            : 0,
+          bytesSent: bytes(undefined),
+          reliableBytesSent: bytes("world"),
+          motionBytesSent: bytes("motion"),
+          motionBufferedAmount: motionChannel?.bufferedAmount ?? 0,
+          channels: {
+            reliable: channel?.readyState,
+            motion: motionChannel?.readyState,
+          },
           bufferedAmount: channel?.bufferedAmount ?? 0,
         };
       },
@@ -576,10 +688,26 @@ export function startHost(scene, session) {
   const closeInbox = inbox(session, "host", (message) => {
     if (message.kind === "join") {
       const request =
-        /** @type {{playerId?:string,relay?:boolean,token?:string,attempt?:string}} */ (message
+        /** @type {{playerId?:string,relay?:boolean,token?:string,attempt?:string,version?:number}} */ (message
           .data);
       const playerId = request.playerId ?? "";
-      if (!/^peer-[a-f0-9-]{36}$/.test(playerId)) return;
+      if (!/^peer-[a-f0-9-]{36}$/.test(playerId) || playerId !== message.from) {
+        return;
+      }
+      if (
+        typeof request.attempt !== "string" || !request.attempt ||
+        request.attempt.length > 128 || typeof request.token !== "string" ||
+        !request.token || request.token.length > 128
+      ) return;
+      if (request.version !== PROTOCOL_VERSION) {
+        void signal(session, playerId, "incompatible", {
+          attempt: request.attempt,
+          version: PROTOCOL_VERSION,
+        }, "host").catch(console.error);
+        scene.status =
+          "Visitor uses a different game version. Refresh both pages.";
+        return;
+      }
       let connection = peers.get(playerId);
       if (!connection) {
         connection = createPeer(playerId);
@@ -595,14 +723,28 @@ export function startHost(scene, session) {
     }
   });
   const syncTimer = setInterval(publish, 500);
+  let motionUntil = 0;
   const motionTimer = setInterval(() => {
+    const now = performance.now();
     if (
-      !Object.values(scene.world.players).some((player) =>
-        player.move || Math.hypot(player.vx ?? 0, player.vy ?? 0) > 0.05 ||
-        player.typing || Boolean(player.message)
+      Object.values(scene.world.players).some((player) =>
+        player.move || Math.hypot(player.vx ?? 0, player.vy ?? 0) > 0.05
       )
-    ) return;
-    for (const connection of peers.values()) connection.motion();
+    ) motionUntil = now + 300;
+    if (now <= motionUntil) {
+      for (const connection of peers.values()) connection.motion();
+    }
+  }, 1000 / motionHz);
+  let hadChat = false;
+  const chatTimer = setInterval(() => {
+    const active = Object.values(scene.world.players).some((player) =>
+      player.typing ||
+      Boolean(player.message) && scene.world.tick < player.messageUntil
+    );
+    if (active || hadChat) {
+      for (const connection of peers.values()) connection.chat();
+    }
+    hadChat = active;
   }, 100);
   const watchdog = setInterval(() => {
     for (const [playerId, connection] of peers) {
@@ -652,6 +794,7 @@ export function startHost(scene, session) {
       clearInterval(watchdog);
       clearInterval(syncTimer);
       clearInterval(motionTimer);
+      clearInterval(chatTimer);
       closeInbox();
       for (const connection of peers.values()) connection.close();
     },
@@ -664,6 +807,8 @@ export function joinWorld(scene, session) {
   let peer = null;
   /** @type {RTCDataChannel|null} */
   let channel = null;
+  /** @type {RTCDataChannel|null} */
+  let motionChannel = null;
   let connected = false;
   let closed = false;
   let attempt = "";
@@ -678,8 +823,17 @@ export function joinWorld(scene, session) {
     `peer-${crypto.randomUUID()}`;
   sessionStorage.setItem(playerIdKey, playerId);
   let latestLocalSequence = 0;
-  let lastSnapshotTick = -1;
-  let lastMotionTick = -1;
+  const revisions = createRevisionOrder();
+  /** @type {import('../shared/wire.js').MotionPacket|null} */
+  let pendingMotion = null;
+  let pendingSince = 0;
+  let resyncFailures = 0;
+  const corrections = { count: 0, totalGap: 0, maxGap: 0 };
+  let lastResync = -Infinity;
+  /** @type {import('../shared/wire.js').StatePacket|null} */
+  let debugState = null;
+  /** @type {import('../shared/wire.js').MotionPacket|null} */
+  let debugMotion = null;
   let lastChatTick = -1;
   const forceRelay = new URL(location.href).searchParams.has("relay");
   let lastPong = performance.now();
@@ -700,12 +854,18 @@ export function joinWorld(scene, session) {
     retryNotBefore = 0;
     peer?.close();
     channel?.close();
+    motionChannel?.close();
     peer = null;
     channel = null;
+    motionChannel = null;
     connected = false;
     latestLocalSequence = 0;
-    lastSnapshotTick = -1;
-    lastMotionTick = -1;
+    revisions.reset();
+    pendingMotion = null;
+    pendingSince = 0;
+    lastResync = -Infinity;
+    debugState = debugMotion = null;
+    resyncFailures = 0;
     lastChatTick = -1;
     scene.chatFeed = [];
     attempt = crypto.randomUUID();
@@ -721,6 +881,7 @@ export function joinWorld(scene, session) {
       relay: forceRelay,
       token,
       attempt,
+      version: PROTOCOL_VERSION,
     }, playerId).catch((error) => {
       scene.status = "Join request failed; retrying…";
       scene.telemetry?.("error", { status: "signal-failed" });
@@ -738,50 +899,130 @@ export function joinWorld(scene, session) {
     );
   }
 
-  /** @param {Record<string,unknown>} value */
-  function receiveGame(value) {
-    if (value.type === "motion" && connected) {
-      const tick = Number(value.tick);
-      if (Number.isSafeInteger(tick) && tick > lastMotionTick) {
-        lastMotionTick = tick;
-        if (tick > lastChatTick) {
-          scene.chatFeed = receiveChat(
-            scene.chatFeed,
-            /** @type {import('../shared/chat.js').ChatRecord[]} */ (value
-              .chat ?? []),
-            tick,
-          );
-          lastChatTick = tick;
-        }
-        const players = /** @type {World['players']} */ (value.players);
-        const local = scene.world.players[playerId];
-        if (players && typeof players === "object") {
-          for (const player of Object.values(players)) {
-            if (player.id !== playerId) {
-              scene.presentation.observe(player, tick);
-            }
-          }
-          scene.world.players = {
-            ...players,
-            ...(local ? { [playerId]: local } : {}),
-          };
-        }
+  function recover() {
+    if (performance.now() - lastResync < 1000) return;
+    lastResync = performance.now();
+    pendingMotion = null;
+    pendingSince = 0;
+    if (++resyncFailures >= 3) {
+      endWithError("Invalid world updates. Refresh both pages to reconnect.");
+    } else send({ type: "resync" });
+  }
+
+  /** @param {string} message */
+  function endWithError(message) {
+    closed = true;
+    connected = false;
+    if (retryTimer) clearTimeout(retryTimer);
+    channel?.close();
+    motionChannel?.close();
+    peer?.close();
+    scene.status = message;
+  }
+
+  /** @param {import('../shared/wire.js').MotionPacket} value */
+  function receiveMotion(value) {
+    if (value.attempt !== attempt) return;
+    if (harnessParams.has("harness")) debugMotion = value;
+    const decision = revisions.motion(value);
+    if (decision === "hold") {
+      if (!pendingMotion) pendingSince = performance.now();
+      if (!pendingMotion || value.tick > pendingMotion.tick) {
+        pendingMotion = value;
+      }
+      // A reliable sight packet can still be in transit. The watchdog requests
+      // recovery only when this wait exceeds one second.
+      return;
+    }
+    if (decision === "drop" || !connected) return;
+    const local = scene.world.players[playerId];
+    for (const player of Object.values(value.players)) {
+      if (player.id !== playerId) {
+        scene.presentation.observe(player, value.tick);
       }
     }
+    scene.world.players = {
+      ...value.players,
+      ...(local ? { [playerId]: local } : {}),
+    };
+  }
+
+  /** @param {unknown} raw @param {boolean} [replaceable] */
+  function receiveRaw(raw, replaceable = false) {
+    const value = parsePacket(raw);
+    if (replaceable) {
+      const motion = decodeMotion(value);
+      if (motion) receiveMotion(motion);
+      return;
+    }
+    if (!value) {
+      recover();
+      return;
+    }
+    receiveGame(value);
+  }
+
+  /** @param {Record<string,unknown>} value */
+  function receiveGame(value) {
+    if (value.type === "chat") {
+      const chat = decodeChat(value);
+      if (chat?.attempt === attempt && chat.tick > lastChatTick) {
+        scene.chatFeed = receiveChat(scene.chatFeed, chat.chat, chat.tick);
+        lastChatTick = chat.tick;
+      }
+      return;
+    }
     if (value.type === "state") {
-      const snapshot = /** @type {World} */ (value.world);
-      if (snapshot.tick < lastSnapshotTick) return;
-      lastSnapshotTick = snapshot.tick;
+      const decoded = decodeState(value);
+      if (!decoded || decoded.playerId !== playerId) {
+        recover();
+        return;
+      }
+      if (decoded.attempt !== attempt) return;
+      if (
+        channel?.readyState !== "open" || motionChannel?.readyState !== "open"
+      ) return;
+      const snapshot = decoded.world;
+      const ordering = revisions.reliable({ ...decoded, tick: snapshot.tick });
+      if (!ordering) return;
+      resyncFailures = 0;
+      if (harnessParams.has("harness")) debugState = decoded;
+      const visibility = decoded.mode === "entity"
+        ? unpackVisibility(
+          /** @type {import('../shared/visibility-wire.js').WireVisibility} */ (decoded
+            .visibility),
+        )
+        : createVisibility();
+      if (ordering.preserveMotion) {
+        const incomingLocal = snapshot.players[playerId];
+        const current = scene.world.players;
+        const remote = ordering.sightChanged ? snapshot.players : current;
+        snapshot.players = Object.fromEntries(
+          Object.entries(remote).filter(([id, player]) =>
+            id === playerId || decoded.mode === "master" ||
+            visibility.visible.has(
+              tileKey(
+                centerTile((current[id] ?? player).x),
+                centerTile((current[id] ?? player).y),
+                (current[id] ?? player).z,
+              ),
+            )
+          ).map(([id, player]) => [
+            id,
+            id === playerId ? incomingLocal : current[id] ?? player,
+          ]),
+        );
+        snapshot.players[playerId] = incomingLocal;
+      }
       if (snapshot.tick > lastChatTick) {
         scene.chatFeed = receiveChat(
           scene.chatFeed,
-          /** @type {import('../shared/chat.js').ChatRecord[]} */ (value.chat ??
-            []),
+          decoded.chat,
           snapshot.tick,
         );
         lastChatTick = snapshot.tick;
       }
-      const incomingMode = value.mode === "master" ? "master" : "entity";
+      const incomingMode = decoded.mode === "master" ? "master" : "entity";
       const modeChanged = scene.viewMode !== incomingMode;
       if (connected && !modeChanged) {
         const before = scene.world.players[playerId]
@@ -790,7 +1031,7 @@ export function joinWorld(scene, session) {
         const { corrected } = mergeSnapshot(
           scene.world,
           snapshot,
-          Number(value.acknowledgedSequence) || 0,
+          decoded.acknowledgedSequence,
           latestLocalSequence,
           playerId,
         );
@@ -803,6 +1044,9 @@ export function joinWorld(scene, session) {
             before.y - after.y,
             before.z - after.z,
           );
+          corrections.count++;
+          corrections.totalGap += gap;
+          corrections.maxGap = Math.max(corrections.maxGap, gap);
           scene.renderOffset = gap < 0.5
             ? {
               x: scene.renderOffset.x + before.x - after.x,
@@ -816,18 +1060,17 @@ export function joinWorld(scene, session) {
         scene.presentation.reset();
         scene.renderOffset = { x: 0, y: 0, z: 0 };
       }
-      for (const player of Object.values(snapshot.players)) {
+      for (
+        const player of ordering.preserveMotion
+          ? []
+          : Object.values(snapshot.players)
+      ) {
         if (player.id !== playerId) {
           scene.presentation.observe(player, snapshot.tick);
         }
       }
       scene.viewMode = incomingMode;
-      scene.visibility = incomingMode === "entity"
-        ? unpackVisibility(
-          /** @type {import('../shared/visibility-wire.js').WireVisibility} */ (value
-            .visibility),
-        )
-        : createVisibility();
+      scene.visibility = visibility;
       scene.localId = playerId;
       scene.status = connected ? "Visitor world" : "Connected to visitor";
       if (!connected && scene.metrics) {
@@ -835,8 +1078,17 @@ export function joinWorld(scene, session) {
       }
       if (!connected) scene.telemetry?.("connection", { status: "connected" });
       connected = true;
+      if (pendingMotion) {
+        const waiting = pendingMotion;
+        pendingMotion = null;
+        pendingSince = 0;
+        receiveMotion(waiting);
+      }
     }
-    if (value.type === "pong" && typeof value.id === "string") {
+    if (
+      value.type === "pong" && decodeControl(value) &&
+      typeof value.id === "string"
+    ) {
       const sent = pings.get(value.id);
       if (sent !== undefined && scene.metrics) {
         lastPong = performance.now();
@@ -862,11 +1114,24 @@ export function joinWorld(scene, session) {
       connected = false;
       return;
     }
+    if (message.kind === "incompatible") {
+      const incompatible = /** @type {{attempt?:string}} */ (message.data);
+      if (incompatible.attempt === attempt) {
+        endWithError(
+          "Different game versions. Refresh both pages to reconnect.",
+        );
+      }
+      return;
+    }
     if (message.kind !== "offer") return;
     const offer =
-      /** @type {{description:RTCSessionDescriptionInit,attempt:string}} */ (message
+      /** @type {{description:RTCSessionDescriptionInit,attempt:string,version?:number}} */ (message
         .data);
     if (offer.attempt !== attempt) return;
+    if (offer.version !== PROTOCOL_VERSION) {
+      endWithError("Different game versions. Refresh both pages to reconnect.");
+      return;
+    }
     void (async () => {
       try {
         const nextPeer = new RTCPeerConnection({
@@ -880,16 +1145,26 @@ export function joinWorld(scene, session) {
         peer?.close();
         peer = nextPeer;
         nextPeer.ondatachannel = (event) => {
-          channel = event.channel;
-          channel.onmessage = (incoming) =>
+          const incomingChannel = event.channel;
+          if (incomingChannel.label === "world") channel = incomingChannel;
+          else if (incomingChannel.label === "motion") {
+            motionChannel = incomingChannel;
+          } else {
+            incomingChannel.close();
+            return;
+          }
+          const replaceable = incomingChannel.label === "motion";
+          incomingChannel.onmessage = (incoming) =>
             deliver(() => {
-              if (peer !== nextPeer) return;
-              try {
-                receiveGame(JSON.parse(incoming.data));
-              } catch (error) {
-                console.error(error);
-              }
-            });
+              if (peer !== nextPeer || closed) return;
+              receiveRaw(incoming.data, replaceable);
+            }, replaceable);
+          incomingChannel.onclose = () => {
+            if (peer !== nextPeer || closed) return;
+            connected = false;
+            nextPeer.close();
+            scheduleRetry();
+          };
         };
         nextPeer.onconnectionstatechange = () => {
           if (peer !== nextPeer) return;
@@ -920,6 +1195,9 @@ export function joinWorld(scene, session) {
   });
   requestJoin();
   const watchdog = setInterval(() => {
+    if (!closed && pendingMotion && performance.now() - pendingSince > 1000) {
+      recover();
+    }
     if (!closed && !connected && performance.now() - attemptStarted > 8000) {
       requestJoin();
     } else if (connected && performance.now() - lastPong > 6000) {
@@ -956,6 +1234,31 @@ export function joinWorld(scene, session) {
     send({ type: "ping", id });
   }, 2000);
   return {
+    /** @param {unknown} value @param {boolean} [replaceable] */
+    injectPacket(value, replaceable = false) {
+      if (harnessParams.has("harness")) {
+        receiveRaw(JSON.stringify(value), replaceable);
+      }
+    },
+    resetDiagnostics() {
+      if (harnessParams.has("harness")) {
+        corrections.count = corrections.totalGap = corrections.maxGap = 0;
+      }
+    },
+    wireDebug() {
+      return harnessParams.has("harness")
+        ? {
+          corrections: { ...corrections },
+          state: debugState,
+          motion: debugMotion,
+          pending: pendingMotion,
+          reliable: channel?.readyState,
+          motionChannel: motionChannel?.readyState,
+          ordered: motionChannel?.ordered,
+          maxRetransmits: motionChannel?.maxRetransmits,
+        }
+        : null;
+    },
     send,
     /** @param {"entity"|"master"} mode */
     setMode(mode) {
@@ -974,6 +1277,7 @@ export function joinWorld(scene, session) {
       clearInterval(pingTimer);
       closeInbox();
       channel?.close();
+      motionChannel?.close();
       peer?.close();
     },
   };

@@ -30,6 +30,10 @@ type Harness = {
       players: Record<string, Position & Record<string, unknown>>;
     };
   };
+  resetNetworkStats?: () => void;
+  wireDebug?: () => {
+    corrections?: { count: number; totalGap: number; maxGap: number };
+  } | null;
   hostStats: () => Promise<HostStats>;
   frameStats: () => { meanMs: number; maxMs: number };
   visualSample: (id: string) => Position | null;
@@ -312,6 +316,13 @@ try {
     }
   }
   await chatCheck(host);
+  await Promise.all(
+    guests.map((guest) =>
+      guest.page.evaluate(() =>
+        (globalThis as PageHarness).__od.resetNetworkStats?.()
+      )
+    ),
+  );
   await trace(host, true);
   await Promise.all(
     guests.filter((guest) => guest.rendered).map((guest) =>
@@ -347,6 +358,12 @@ try {
     root.__motionBenchmarkStop = true;
     return root.__motionBenchmarkTrace;
   });
+  const corrections = await Promise.all(guests.map(async (guest) => ({
+    id: guest.id,
+    ...await guest.page.evaluate(() =>
+      (globalThis as PageHarness).__od.wireDebug?.()?.corrections ?? null
+    ),
+  })));
   const observerTraces = await Promise.all(
     guests.filter((guest) => guest.rendered).map(async (guest) => ({
       id: guest.id,
@@ -475,6 +492,7 @@ try {
     movingIntervals,
     lostConnections,
     visual,
+    corrections,
     chatChecks,
     failures,
     samples,

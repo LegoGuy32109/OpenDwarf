@@ -807,7 +807,8 @@ export async function startApp() {
         previousBytes = bytes;
         previousTime = now;
         const queued = stats.connections.reduce(
-          (sum, connection) => sum + connection.bufferedAmount,
+          (sum, connection) =>
+            sum + connection.bufferedAmount + connection.motionBufferedAmount,
           0,
         );
         const frameMean = frameMs.length
@@ -884,7 +885,8 @@ export async function startApp() {
             0,
           ) ?? 0,
           queuedBytes: stats?.connections.reduce(
-            (sum, connection) => sum + connection.bufferedAmount,
+            (sum, connection) =>
+              sum + connection.bufferedAmount + connection.motionBufferedAmount,
             0,
           ) ?? 0,
         });
@@ -1002,6 +1004,11 @@ export async function startApp() {
       /** @param {Record<string,unknown>} message */
       send: (message) => guest?.send(message) ?? false,
       hostStats: () => host?.diagnostics() ?? null,
+      wireDebug: () => guest?.wireDebug() ?? null,
+      resetNetworkStats: () => guest?.resetDiagnostics(),
+      /** @param {unknown} value @param {boolean} [replaceable] */
+      injectPacket: (value, replaceable = false) =>
+        guest?.injectPacket(value, replaceable),
       frameStats: () => ({
         samples: frameMs.length,
         meanMs: frameMs.length
