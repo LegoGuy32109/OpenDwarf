@@ -1,8 +1,13 @@
 # Multiplayer protocol improvement design
 
-Status: stages 1–4 are implemented and pushed. Ten final 20-peer comparisons
-passed. Stage 5 awaits the [rate review](stress-runs/2026-09-30-protocol-split.md),
-then the full group run and desktop/phone check. The existing default is 10 Hz. Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
+Status: implementation is complete for the confirmed scope. Ten final 20-peer
+comparisons passed. Josh selected 10 Hz after reviewing the comparison. The
+[15-minute group run](stress-runs/2026-09-30-protocol-sustained.md) passed with
+20/20 peers moving in every minute. Josh reports that the build looks right
+while testing phone and host/controller responsiveness.
+
+See [the comparison report](stress-runs/2026-09-30-protocol-split.md).
+Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
 
 ## Settled decisions
 

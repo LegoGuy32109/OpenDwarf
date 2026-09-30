@@ -224,7 +224,9 @@ export function decodeState(value) {
   }
   const parsedPlayers = players(world.players, world.edge);
   const chat = chatRecords(value.chat);
-  if (!parsedPlayers || !parsedPlayers[value.playerId] || !chat) return null;
+  if (
+    !parsedPlayers || !Object.hasOwn(parsedPlayers, value.playerId) || !chat
+  ) return null;
   if (value.mode === "master") {
     if (value.visibility !== null) return null;
   } else {

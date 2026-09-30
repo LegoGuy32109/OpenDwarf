@@ -4,9 +4,10 @@ Protocol version 2 separates reliable state/chat/input from unordered motion
 with zero retries. Validation, attempt/view/sight fencing, a 300 ms settling
 tail, and current-state backpressure coalescing are implemented.
 
-The default remains 10 Hz. Selecting a new default requires Josh's review.
+Josh selected the existing 10 Hz default after reviewing these results.
 Terrain/visibility deltas, binary encoding, motion deltas, and input replay
-remain deferred. The full 15-minute group run follows rate selection.
+remain deferred. The [15-minute group run](2026-09-30-protocol-sustained.md)
+passed after selection.
 
 ## Workload and limits
 
@@ -60,7 +61,7 @@ exact cost without profiling.
 
 Recommendation: keep the existing 10 Hz default for this implementation. A
 20 Hz default has not demonstrated enough benefit here to justify its extra
-payload. Review this recommendation before the final 15-minute group run. The
+payload. Josh confirmed this recommendation before the final 15-minute group run. The
 next optimization should have its own design and measurements.
 
 ## Verification

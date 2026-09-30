@@ -296,3 +296,10 @@ Deno.test("control requires integer octants, bounded strings, and proper types",
     ]
   ) assertEquals(decodeControl(value), null);
 });
+
+Deno.test("wire state requires an own local-player entry", () => {
+  const value = snapshot();
+  for (const playerId of ["toString", "hasOwnProperty", "__defineGetter__"]) {
+    assertEquals(decodeState({ ...value, playerId }), null);
+  }
+});
