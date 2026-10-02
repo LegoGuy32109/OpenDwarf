@@ -6,7 +6,21 @@ import { isSolid, TICK_MS, WORLD_TOP } from "./world.js";
 /** @typedef {import('./world.js').Player} Player */
 
 export const PLAYER_SIZE = 0.5;
-export const WALK_SPEED = 2.8;
+/** One tile is a 5 ft square and a D&D round is 6 seconds. */
+export const FEET_PER_TILE = 5;
+export const ROUND_SECONDS = 6;
+/** D&D speeds in feet per round that the speed button cycles through. */
+export const SPEED_STEPS_FT = [30, 50, 60];
+export const DEFAULT_SPEED_FT = SPEED_STEPS_FT[0];
+
+/** Convert a D&D speed to tiles per second. Sprint is the Dash action: it doubles the speed. */
+/** @param {number} [feet] @param {boolean} [sprint] */
+export function speedTilesPerSecond(feet = DEFAULT_SPEED_FT, sprint = false) {
+  const safeFeet = SPEED_STEPS_FT.includes(feet) ? feet : DEFAULT_SPEED_FT;
+  return safeFeet / FEET_PER_TILE / ROUND_SECONDS * (sprint ? 2 : 1);
+}
+
+export const WALK_SPEED = speedTilesPerSecond();
 export const STEP_TICKS = 6;
 const EPS = 0.001;
 
@@ -146,16 +160,16 @@ function tryDescend(world, player, x, y) {
 }
 
 /** Move an entity once at the shared simulation tick. */
-/** @param {World} world @param {string} id @param {number} dx @param {number} dy */
-export function moveEntity(world, id, dx, dy) {
+/** @param {World} world @param {string} id @param {number} dx @param {number} dy @param {number} [speed] tiles per second */
+export function moveEntity(world, id, dx, dy, speed = WALK_SPEED) {
   const player = world.players[id];
   if (!player?.free || player.move) return false;
   if (!supported(world, player.x, player.y, player.z)) {
     return beginStep(world, player, player.x, player.y, player.z - 1);
   }
   const length = Math.hypot(dx, dy);
-  const targetX = length ? dx / length * WALK_SPEED : 0;
-  const targetY = length ? dy / length * WALK_SPEED : 0;
+  const targetX = length ? dx / length * speed : 0;
+  const targetY = length ? dy / length * speed : 0;
   const blend = length ? 0.65 : 0.55;
   player.vx = (player.vx ?? 0) + (targetX - (player.vx ?? 0)) * blend;
   player.vy = (player.vy ?? 0) + (targetY - (player.vy ?? 0)) * blend;
@@ -203,10 +217,10 @@ export function moveEntity(world, id, dx, dy) {
         break;
       }
     }
-    // A flat wall keeps the free tangent component at walking speed.
-    const sideX = player.x + Math.sign(remainingX) * WALK_SPEED * TICK_MS /
+    // A flat wall keeps the free tangent component at the current speed.
+    const sideX = player.x + Math.sign(remainingX) * speed * TICK_MS /
         1000 / parts;
-    const sideY = player.y + Math.sign(remainingY) * WALK_SPEED * TICK_MS /
+    const sideY = player.y + Math.sign(remainingY) * speed * TICK_MS /
         1000 / parts;
     if (
       remainingX && clear(world, player, sideX, player.y, player.z) &&

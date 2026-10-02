@@ -4,6 +4,7 @@ import {
   centerTile,
   enableLocomotion,
   moveEntity,
+  speedTilesPerSecond,
 } from "../../src/shared/locomotion.js";
 import {
   addPlayer,
@@ -12,6 +13,9 @@ import {
   renderPosition,
   terrainIndex,
 } from "../../src/shared/world.js";
+
+/** These tests were tuned at the former 2.8 tiles per second. */
+const FORMER_SPEED = 2.8;
 
 Deno.test("flat travel can stop between tile centers", () => {
   const world = createAuthoredWorld();
@@ -22,7 +26,7 @@ Deno.test("flat travel can stop between tile centers", () => {
   }));
   for (let i = 0; i < 4; i++) {
     advanceTicks(world);
-    moveEntity(world, "self", 1, 0);
+    moveEntity(world, "self", 1, 0, FORMER_SPEED);
   }
   for (let i = 0; i < 8; i++) {
     advanceTicks(world);
@@ -82,7 +86,7 @@ Deno.test("a one-level drop begins when the center crosses the edge", () => {
   }));
   for (let i = 0; i < 10 && !player.move; i++) {
     advanceTicks(world);
-    moveEntity(world, "self", -1, 0);
+    moveEntity(world, "self", -1, 0, FORMER_SPEED);
   }
   assert(player.move);
   assert(player.x > 2.5);
@@ -205,4 +209,39 @@ Deno.test("diagonal descent lands over the crossed edge's support", () => {
   advanceTicks(world);
   moveEntity(world, "self", 0, 0);
   assertEquals(player.move, null);
+});
+
+Deno.test("speed converts D&D feet per round to tiles per second", () => {
+  assertEquals(speedTilesPerSecond(), 1);
+  assertEquals(speedTilesPerSecond(30), 1);
+  assertAlmostEquals(speedTilesPerSecond(50), 5 / 3);
+  assertEquals(speedTilesPerSecond(60), 2);
+  assertEquals(speedTilesPerSecond(30, true), 2);
+  assertEquals(speedTilesPerSecond(60, true), 4);
+  assertEquals(speedTilesPerSecond(45), 1);
+});
+
+Deno.test("sprint covers twice the distance of the same speed", () => {
+  const distance = (sprint: boolean) => {
+    const world = createWorld();
+    world.terrain.fill(1);
+    for (let x = 0; x < world.edge; x++) {
+      for (let y = 0; y < world.edge; y++) {
+        world.terrain[terrainIndex(x, y, 0)] = 2;
+      }
+    }
+    const player = enableLocomotion(addPlayer(world, "self", {
+      x: 2,
+      y: 7,
+      z: 1,
+    }));
+    for (let i = 0; i < 40; i++) {
+      advanceTicks(world);
+      moveEntity(world, "self", 1, 0, speedTilesPerSecond(30, sprint));
+    }
+    return player.x - 2;
+  };
+  const walk = distance(false);
+  assert(walk > 1.5 && walk < 2.1, `walked ${walk}`);
+  assertAlmostEquals(distance(true) / walk, 2, 0.15);
 });

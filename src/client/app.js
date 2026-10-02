@@ -29,8 +29,11 @@ import { createPresentation } from "./presentation.js";
 import { chatView } from "../shared/chat.js";
 import {
   centerTile,
+  DEFAULT_SPEED_FT,
   enableLocomotion,
   moveEntity,
+  SPEED_STEPS_FT,
+  speedTilesPerSecond,
 } from "../shared/locomotion.js";
 
 /** @param {string} selector */
@@ -90,6 +93,8 @@ let unsupportedGamepadId = "";
 /** @type {Set<number>} */
 let gamepadButtons = new Set();
 let sequence = 0;
+let speedFt = DEFAULT_SPEED_FT;
+let sprint = false;
 let lastInputDirection = { x: 0, y: 0 };
 let lastInputSent = -100;
 let lastTyping = false;
@@ -190,6 +195,34 @@ function submitChat() {
   submitMessage(scene.world, scene.localId, text);
   if (isAdmin) guest?.send({ type: "message", text });
   else host?.publish();
+}
+
+function showSpeed() {
+  const speedButton = $("#speed-button");
+  speedButton.textContent = String(speedFt);
+  speedButton.setAttribute("aria-label", `Speed ${speedFt} feet per round`);
+  const sprintButton = $("#sprint-button");
+  sprintButton.setAttribute("aria-pressed", String(sprint));
+  sprintButton.classList.toggle("is-on", sprint);
+  notify(
+    `${speedFt} ft${sprint ? " sprint" : ""}: ${
+      speedTilesPerSecond(speedFt, sprint).toFixed(2)
+    } tiles/s`,
+  );
+}
+
+/** Step through the D&D walking speeds: 30, 50, 60, then back to 30. */
+function cycleSpeed() {
+  speedFt = SPEED_STEPS_FT[
+    (SPEED_STEPS_FT.indexOf(speedFt) + 1) % SPEED_STEPS_FT.length
+  ];
+  showSpeed();
+}
+
+/** Sprint is the Dash action and doubles the chosen speed. */
+function toggleSprint() {
+  sprint = !sprint;
+  showSpeed();
 }
 
 /** @returns {{x:number,y:number}} */
@@ -325,9 +358,17 @@ function move() {
   const changed = direction.x !== lastInputDirection.x ||
     direction.y !== lastInputDirection.y;
   lastInputDirection = direction;
+  const speed = speedTilesPerSecond(speedFt, sprint);
   if (isAdmin && (changed || scene.world.tick - lastInputSent >= 4)) {
     if (changed) sequence++;
-    guest?.send({ type: "input", dx: direction.x, dy: direction.y, sequence });
+    guest?.send({
+      type: "input",
+      dx: direction.x,
+      dy: direction.y,
+      sequence,
+      speedFt,
+      sprint,
+    });
     lastInputSent = scene.world.tick;
   }
   const player = scene.world.players[scene.localId];
@@ -339,6 +380,7 @@ function move() {
     scene.localId,
     direction.x,
     direction.y,
+    speed,
   );
   if (
     !isAdmin && moved && player &&
@@ -516,6 +558,14 @@ function bindInput() {
     scene.inputMode = "touch";
     cameraStick = { x, y };
   });
+  $("#speed-button").addEventListener("click", () => {
+    scene.inputMode = "touch";
+    cycleSpeed();
+  });
+  $("#sprint-button").addEventListener("click", () => {
+    scene.inputMode = "touch";
+    toggleSprint();
+  });
   $("#chat-button").addEventListener("click", () => {
     scene.inputMode = "touch";
     openChat();
@@ -566,6 +616,14 @@ function bindInput() {
     if (event.code === "KeyT" || event.code === "Slash") {
       event.preventDefault();
       if (!event.repeat) openChat(event.code === "Slash" ? "/" : "");
+      return;
+    }
+    if (event.code === "KeyG" || event.code === "KeyH") {
+      event.preventDefault();
+      if (!event.repeat) {
+        if (event.code === "KeyG") cycleSpeed();
+        else toggleSprint();
+      }
       return;
     }
     held.add(event.code);

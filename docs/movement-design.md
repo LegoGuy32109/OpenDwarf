@@ -1,8 +1,16 @@
 # Continuous movement design
 
 Status: implemented. This records the agreed movement rules. The first playable
-build uses 2.8 tiles per second and a six-tick elevation step; these values can
-be tuned after controller and phone playtesting.
+build uses a six-tick elevation step; this value can be tuned after controller
+and phone playtesting.
+
+## Speed
+
+One tile is a 5 ft square and a D&D round is 6 seconds, so a 30 ft speed is
+1 tile per second. The default is 30 ft. The speed button steps through 30, 50,
+and 60 ft (1, 1.67, and 2 tiles per second). The sprint button is the Dash
+action and doubles the chosen speed. Both are per-player and are sent to the
+world host with each input. The earlier build moved at 2.8 tiles per second.
 
 ## Position and input
 

@@ -35,9 +35,15 @@
       </aside>
       <div id="controls" aria-label="Touch controls">
         <section class="stick move" aria-label="Move controller">
-          <span class="control-name">MOVE <b>ESDF</b></span>
+          <span class="control-name">MOVE <b>ESDF</b> · SPEED <b>G</b> · SPRINT <b>H</b></span>
           <button class="stick-hit" data-stick="move" type="button"
             aria-label="Move controller"><span class="octant-guides" aria-hidden="true"></span><span class="stick-deadzone" aria-hidden="true"></span><span class="stick-knob" aria-hidden="true"></span></button>
+          <span class="actions">
+            <button class="action" id="speed-button" type="button"
+              aria-label="Speed 30 feet per round">30</button>
+            <button class="action" id="sprint-button" type="button"
+              aria-label="Sprint" aria-pressed="false">»</button>
+          </span>
         </section>
         <section class="stick camera" aria-label="Look or pan controller">
           <span class="control-name">LOOK <b>IJKL</b></span>

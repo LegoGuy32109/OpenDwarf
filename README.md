@@ -21,8 +21,10 @@ The host's QR code opens `/join/<session>` so a phone joins that world directly.
 Press Q on the host or use the QR button to show the code again.
 
 On a keyboard, ESDF moves the player continuously in eight directions. Keyboard
-diagonals and the left stick share the same full walking speed; release a direction
-to stop between tile centers. In entity view, IJKL points an orange
+diagonals and the left stick share the same full walking speed, 30 ft or 1 tile per
+second by default; release a direction to stop between tile centers. G cycles the
+speed through 30, 50, and 60 ft, and H toggles sprint, which doubles it. On a
+touch screen, the two buttons under the left stick do the same. In entity view, IJKL points an orange
 square at one of the eight neighboring tiles. R/V selects the view level; the
 square appears at the player's level or one level above or below. In master
 view, IJKL pans the camera. Holding U/N smoothly zooms out/in. The mouse wheel

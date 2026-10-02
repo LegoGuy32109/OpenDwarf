@@ -281,6 +281,22 @@ Deno.test("chat validates each record and does not accept client expiry clocks",
 
 Deno.test("control requires integer octants, bounded strings, and proper types", () => {
   assert(decodeControl({ type: "input", dx: 0, dy: 0, sequence: 20 }));
+  assert(decodeControl({
+    type: "input",
+    dx: 0,
+    dy: 0,
+    sequence: 20,
+    speedFt: 50,
+    sprint: true,
+  }));
+  assertEquals(
+    decodeControl({ type: "input", dx: 0, dy: 0, sequence: 20, speedFt: 45 }),
+    null,
+  );
+  assertEquals(
+    decodeControl({ type: "input", dx: 0, dy: 0, sequence: 20, sprint: 1 }),
+    null,
+  );
   assert(decodeControl({ type: "ping", id: "ping-id" }));
   assert(decodeControl({ type: "resync" }));
   for (

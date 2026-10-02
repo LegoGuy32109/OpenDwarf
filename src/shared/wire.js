@@ -1,6 +1,7 @@
 // @ts-check
 
 import { WORLD_TOP } from "./world.js";
+import { SPEED_STEPS_FT } from "./locomotion.js";
 import { unpackVisibility } from "./visibility-wire.js";
 
 /** @typedef {import('./world.js').Player} Player */
@@ -318,6 +319,14 @@ export function decodeControl(value) {
   if (!record(value)) return null;
   switch (value.type) {
     case "input":
+      return counter(value.sequence) && finite(value.dx, -1, 1) &&
+          Number.isInteger(value.dx) &&
+          finite(value.dy, -1, 1) && Number.isInteger(value.dy) &&
+          (value.speedFt === undefined ||
+            SPEED_STEPS_FT.includes(/** @type {number} */ (value.speedFt))) &&
+          (value.sprint === undefined || typeof value.sprint === "boolean")
+        ? value
+        : null;
     case "move":
       return counter(value.sequence) && finite(value.dx, -1, 1) &&
           Number.isInteger(value.dx) &&

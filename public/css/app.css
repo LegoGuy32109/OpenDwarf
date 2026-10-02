@@ -239,6 +239,11 @@ input {
   display: flex;
   justify-content: space-around;
 }
+.action.is-on {
+  color: #fff;
+  border-color: #e4a34a;
+  background: #b8742a;
+}
 .action {
   display: grid;
   width: clamp(44px, 10vw, 54px);
