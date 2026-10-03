@@ -89,13 +89,14 @@ Deno.test("a QR code opens the build's own join link only", () => {
     joinLink(
       request,
       "test-session",
-      "https://od.example.me/b/test/join/test-session?x=1",
+      "http://localhost/b/test/join/test-session?x=1",
     ),
-    "https://od.example.me/b/test/join/test-session",
+    "http://localhost/b/test/join/test-session",
   );
   for (
     const link of [
-      "https://od.example.me/b/test/join/other-session",
+      "https://od.example.me/b/test/join/test-session",
+      "http://localhost/b/test/join/other-session",
       "https://od.example.me/anything",
       "javascript:alert(1)",
       "not a url",

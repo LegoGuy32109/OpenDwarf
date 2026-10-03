@@ -241,6 +241,26 @@ latest promotion. The shared cases in `tests/server/store_cases.ts` run against
 both stores; the Turso run is skipped without credentials and needs a scratch
 database, because the cases leave rows behind.
 
+## Build routes
+
+`src/server/builds.ts` serves the build pages. `/b/<name>` resolves `<name>` as
+a label, then a branch, then a commit SHA of 7 to 40 hex characters. A branch
+becomes its latest commit through the GitHub API (`GITHUB_TOKEN` when set),
+cached for 60 s; a commit never changes, so its lookups and its page stay cached
+for a day. The shell fetches that commit's `public/index.html` from jsDelivr,
+sets `<base href>` to the commit's `public/` folder on jsDelivr, and fills the
+build config with base `/b/<name>/`, an empty `api` (the shell), the label, and
+the commit. `/`, `/host`, and `/join/<session>` serve main, the latest
+promotion, the same way with base `/`; before the first promotion they show a
+short message. An unknown name gets a 404 page that links to `/admin`.
+
+The shell serves no files from disk, except for the build `local`.
+`deno task
+dev` sets `OD_LOCAL_BUILD=1`, so `/` and `/b/local` serve the working
+tree, with `/js/`, `/css/`, `/assets/`, and `/src/` read from disk. Playwright
+starts its server the same way, so e2e specs run the working tree. `/b/<sha>`
+still loads from jsDelivr under `dev`, which needs a pushed commit.
+
 ## Build base path
 
 A build can be served under a path such as `/b/test/`, with its files on another

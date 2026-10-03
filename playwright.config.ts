@@ -14,6 +14,8 @@ export default defineConfig({
   snapshotPathTemplate: "{testDir}/snapshots/{arg}-{projectName}{ext}",
   webServer: {
     command: "deno task start",
+    // The shell serves the working tree only as the local build.
+    env: { OD_LOCAL_BUILD: "1" },
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: true,
     timeout: 30_000,

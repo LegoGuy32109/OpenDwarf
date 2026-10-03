@@ -1,5 +1,7 @@
 /// <reference lib="deno.unstable" />
 import QRCode from "qrcode-svg";
+import { type Builds, openBuilds } from "./builds.ts";
+import { openStore } from "./store.ts";
 const ROOT = new URL("../../", import.meta.url);
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -144,8 +146,8 @@ async function iceServers(): Promise<Response> {
 
 /**
  * The address a QR code opens. A build under a base path sends its own join
- * link; accept it only when it is a web address that ends in this session's
- * join path, so the endpoint cannot encode arbitrary URLs.
+ * link; accept it only when it is on this request's own origin and ends in this
+ * session's join path, so the endpoint cannot encode arbitrary URLs.
  */
 export function joinLink(
   request: Request,
@@ -156,7 +158,7 @@ export function joinLink(
     try {
       const link = new URL(requested);
       if (
-        (link.protocol === "http:" || link.protocol === "https:") &&
+        link.origin === new URL(request.url).origin &&
         new RegExp(`^(/[a-zA-Z0-9._~-]+)*/join/${session}$`).test(link.pathname)
       ) {
         return `${link.origin}${link.pathname}`;
@@ -170,17 +172,15 @@ export function joinLink(
 
 export function createApp(
   kv: Deno.Kv,
+  builds: Builds = openBuilds(openStore()),
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
     // `/api/v1/*` is the client's API; the unversioned paths stay as aliases.
     const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
-    if (
-      (path === "/" || path === "/host" ||
-        /^\/join\/[a-zA-Z0-9_-]{8,80}$/.test(path)) &&
-      request.method === "GET"
-    ) {
-      return file("public/index.html");
+    // Build pages: `/b/<name>/...`, and main at the root pages.
+    if (builds.handles(url.pathname) && request.method === "GET") {
+      return builds.serve(url.pathname);
     }
     const qrPath = /^\/api\/qr\/([a-zA-Z0-9_-]{8,80})$/.exec(path);
     if (qrPath && request.method === "GET") {
@@ -307,14 +307,17 @@ export function createApp(
     if (request.method !== "GET") {
       return new Response("Method not allowed", { status: 405 });
     }
-    if (
-      path.startsWith("/assets/") || path.startsWith("/css/") ||
-      path.startsWith("/js/")
-    ) {
-      return file(`public${path}`);
-    }
-    if (path.startsWith("/src/client/") || path.startsWith("/src/shared/")) {
-      return file(path.slice(1));
+    // Only the local build's files come from disk; other builds load from jsDelivr.
+    if (builds.local) {
+      if (
+        path.startsWith("/assets/") || path.startsWith("/css/") ||
+        path.startsWith("/js/")
+      ) {
+        return file(`public${path}`);
+      }
+      if (path.startsWith("/src/client/") || path.startsWith("/src/shared/")) {
+        return file(path.slice(1));
+      }
     }
     return new Response("Not found", { status: 404 });
   };
