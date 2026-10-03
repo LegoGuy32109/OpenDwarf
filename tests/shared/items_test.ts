@@ -153,31 +153,63 @@ Deno.test("mining the same tile twice over a refilled tile merges the stack", ()
   assertEquals(droppedAt(world, tile), [{ kind: "stone", count: 2 }]);
 });
 
-Deno.test("pickup moves the first whole stack into the inventory", () => {
+Deno.test("pickup moves the named whole stack into the inventory", () => {
   const world = field();
   const player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
   dropItem(world, tile, "coal", 3);
   dropItem(world, tile, "stone");
-  const result = pickUp(world, "self", tile);
+  const result = pickUp(world, "self", tile, "coal");
   assertEquals(result, { ok: true, kind: "coal", count: 3 });
   assertEquals(inventoryOf(player), [
     { kind: PICKAXE, count: 1 },
     { kind: "coal", count: 3 },
   ]);
   assertEquals(droppedAt(world, tile), [{ kind: "stone", count: 1 }]);
-  assertEquals(pickUp(world, "self", tile), {
+  assertEquals(pickUp(world, "self", tile, "stone"), {
     ok: true,
     kind: "stone",
     count: 1,
   });
   assertEquals(droppedItems(world).tiles.size, 0);
-  assertEquals(pickUp(world, "self", tile), {
+  assertEquals(pickUp(world, "self", tile, "stone"), {
     ok: false,
     reason: "nothing to pick up",
   });
   dropItem(world, tile, "coal");
-  pickUp(world, "self", tile);
+  pickUp(world, "self", tile, "coal");
   assertEquals(inventoryOf(player)[1], { kind: "coal", count: 4 });
+});
+
+Deno.test("pickup takes the chosen stack and leaves the others in place", () => {
+  const world = field();
+  const player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
+  dropItem(world, tile, "coal", 3);
+  dropItem(world, tile, "stone");
+  dropItem(world, tile, "gold ore", 2);
+  assertEquals(pickUp(world, "self", tile, "gold ore"), {
+    ok: true,
+    kind: "gold ore",
+    count: 2,
+  });
+  assertEquals(droppedAt(world, tile), [
+    { kind: "coal", count: 3 },
+    { kind: "stone", count: 1 },
+  ]);
+  assertEquals(inventoryOf(player)[1], { kind: "gold ore", count: 2 });
+  // A kind that is not on the tile, or not a kind at all, changes nothing.
+  assertEquals(pickUp(world, "self", tile, "gold ore"), {
+    ok: false,
+    reason: "nothing to pick up",
+  });
+  assertEquals(pickUp(world, "self", tile, "gravel"), {
+    ok: false,
+    reason: "unknown item",
+  });
+  assertEquals(pickUp(world, "self", tile, undefined), {
+    ok: false,
+    reason: "unknown item",
+  });
+  assertEquals(droppedAt(world, tile).length, 2);
 });
 
 Deno.test("two simultaneous pickups give the stack to one player only", () => {
@@ -185,7 +217,10 @@ Deno.test("two simultaneous pickups give the stack to one player only", () => {
   const first = addPlayer(world, "first", { x: 5, y: 5, z: 1 });
   const second = addPlayer(world, "second", { x: 7, y: 5, z: 1 });
   dropItem(world, tile, "diamond");
-  const results = [pickUp(world, "first", tile), pickUp(world, "second", tile)];
+  const results = [
+    pickUp(world, "first", tile, "diamond"),
+    pickUp(world, "second", tile, "diamond"),
+  ];
   assertEquals(results[0], { ok: true, kind: "diamond", count: 1 });
   assertEquals(results[1], { ok: false, reason: "nothing to pick up" });
   assertEquals(inventoryOf(first).length, 2);
@@ -200,7 +235,7 @@ Deno.test("the host checks reach, level, and the tile", () => {
   dropItem(world, { x: 6, y: 5, z: 2 }, "coal");
   dropItem(world, { x: 5, y: 5, z: 1 }, "coal");
   const reason = (x: number, y: number, z: number) => {
-    const result = pickUp(world, "self", { x, y, z });
+    const result = pickUp(world, "self", { x, y, z }, "coal");
     return result.ok ? "ok" : result.reason;
   };
   assertEquals(reason(8, 5, 1), "out of reach");
@@ -212,7 +247,7 @@ Deno.test("the host checks reach, level, and the tile", () => {
   assert(inPickupReach(player, { x: 6, y: 6, z: 1 }), "diagonal");
   // The entity's own tile counts: it can pick up what lies under it.
   assertEquals(reason(5, 5, 1), "ok");
-  assertEquals(pickUp(world, "nobody", tile), {
+  assertEquals(pickUp(world, "nobody", tile, "coal"), {
     ok: false,
     reason: "unknown player",
   });
@@ -223,7 +258,7 @@ Deno.test("a full inventory stack leaves the dropped stack in place", () => {
   const player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
   inventoryOf(player).push({ kind: "coal", count: MAX_STACK_COUNT });
   dropItem(world, tile, "coal");
-  assertEquals(pickUp(world, "self", tile), {
+  assertEquals(pickUp(world, "self", tile, "coal"), {
     ok: false,
     reason: "inventory is full",
   });
@@ -254,9 +289,16 @@ Deno.test("the pickup line names the kind and count", () => {
 });
 
 Deno.test("the wire accepts a pickup request, dropped items, and an inventory", () => {
-  assert(decodeControl({ type: "pickup", x: 6, y: 5, z: 1 }));
-  assertEquals(decodeControl({ type: "pickup", x: 6.5, y: 5, z: 1 }), null);
-  assertEquals(decodeControl({ type: "pickup", x: 6, y: 5, z: 99 }), null);
+  assert(decodeControl({ type: "pickup", x: 6, y: 5, z: 1, kind: "coal" }));
+  assertEquals(decodeControl({ type: "pickup", x: 6, y: 5, z: 1 }), null);
+  assertEquals(
+    decodeControl({ type: "pickup", x: 6.5, y: 5, z: 1, kind: "coal" }),
+    null,
+  );
+  assertEquals(
+    decodeControl({ type: "pickup", x: 6, y: 5, z: 99, kind: "coal" }),
+    null,
+  );
   const entries = [{ x: 6, y: 5, z: 1, stacks: [{ kind: "coal", count: 2 }] }];
   assertEquals(decodeItems({ type: "items", entries }), entries);
   assertEquals(decodeItems({ type: "items", entries: [] }), []);

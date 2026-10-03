@@ -66,6 +66,23 @@ import {
 import { setHeldItem } from "../shared/held-item.js";
 import { createInventoryPanel } from "./inventory-panel.js";
 import {
+  cellAtPoint,
+  clampSelection,
+  closePickupGrid,
+  closeReason,
+  createPickupGrid,
+  gridCenter,
+  isPickupGridOpen,
+  markRequested,
+  moveSelection,
+  openPickupGrid,
+  pickupGridCells,
+  selectedStack,
+  selectStack,
+  shownStacks,
+  stepSelection,
+} from "./pickup-grid.js";
+import {
   droppedAt,
   droppedItems,
   inventoryOf,
@@ -147,6 +164,8 @@ const scene = {
     /** @type {import('../shared/items.js').Stack[]|undefined} */ (undefined),
   /** The held item kind a guest was told about by the world host. */
   heldFeed: /** @type {string|undefined} */ (undefined),
+  /** The pickup grid's squares to draw, in world pixels. Empty while it is closed. */
+  pickupCells: /** @type {import('./pickup-grid.js').GridCell[]} */ ([]),
   /** A short message that shows over the status line, such as a refused action. */
   notice: /** @type {{text:string,until:number}|undefined} */ (undefined),
   sessionId: "",
@@ -195,6 +214,9 @@ let lastPlayerZ = 0;
 let mineLock = null;
 /** @type {ReturnType<typeof createCornerNpc>|null} */
 let tickNpc = null;
+const pickupGrid = createPickupGrid();
+/** The D-pad direction. It moves the pickup grid's selector while the grid is open. */
+let gamepadDpad = { x: 0, y: 0 };
 
 /** @param {number} value @param {number} min @param {number} max */
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -377,13 +399,13 @@ function droppedHere(tile) {
   )?.stacks ?? [];
 }
 
-/** Pick up the first stack of dropped items on a tile. The host checks reach and who asked first. @param {{x:number,y:number,z:number}} target */
-function pickUpAt(target) {
+/** Pick up the stack of one kind from a tile. The host checks reach and who asked first. @param {{x:number,y:number,z:number}} target @param {string} kind */
+function pickUpAt(target, kind) {
   if (isAdmin) {
-    guest?.send({ type: "pickup", ...target });
+    guest?.send({ type: "pickup", ...target, kind });
     return;
   }
-  const result = pickUp(scene.world, scene.localId, target);
+  const result = pickUp(scene.world, scene.localId, target, kind);
   if (result.ok) scene.systemLine(pickupLine(result.kind, result.count));
   else flash(`Cannot pick up: ${result.reason}`);
 }
@@ -439,6 +461,10 @@ function interact() {
   }
   const player = scene.world.players[scene.localId];
   if (!player || scene.chatOpen || scene.menu) return;
+  if (isPickupGridOpen(pickupGrid)) {
+    confirmPickupGrid();
+    return;
+  }
   if (scene.viewMode !== "entity") {
     flash("Switch to entity view to interact");
     return;
@@ -456,8 +482,15 @@ function interact() {
     flash("Nothing to mine there");
     return;
   }
-  if (droppedHere(target).length) {
-    pickUpAt(target);
+  const stacks = droppedHere(target);
+  if (stacks.length === 1) {
+    pickUpAt(target, stacks[0].kind);
+    return;
+  }
+  if (stacks.length) {
+    openPickupGrid(pickupGrid, target, performance.now());
+    gridKeysAtOpen.clear();
+    for (const code of held) gridKeysAtOpen.add(code);
     return;
   }
   mineLock = { x: scene.aim.x, y: scene.aim.y, z: scene.viewZ };
@@ -466,6 +499,84 @@ function interact() {
     const result = startMining(scene.world, scene.localId, target);
     if (!result.ok) flash(`Cannot mine: ${result.reason}`);
   }
+}
+
+/** The stacks the open pickup grid shows. */
+function pickupGridStacks() {
+  const tile = pickupGrid.tile;
+  return tile
+    ? shownStacks(pickupGrid, droppedHere(tile), performance.now())
+    : [];
+}
+
+/** Interact with the grid open: pick up the selected stack. */
+function confirmPickupGrid() {
+  const tile = pickupGrid.tile;
+  const stack = selectedStack(pickupGrid, pickupGridStacks());
+  if (!tile || !stack) return;
+  if (isAdmin) markRequested(pickupGrid, stack.kind, performance.now());
+  pickUpAt(tile, stack.kind);
+}
+
+/**
+ * Each frame: close the grid when the entity leaves reach or the tile empties,
+ * move the selector with IJKL, the look stick, or the D-pad, and compute the
+ * squares to draw.
+ */
+function updatePickupGrid() {
+  const player = scene.world.players[scene.localId];
+  if (!isPickupGridOpen(pickupGrid)) {
+    scene.pickupCells = [];
+    return;
+  }
+  const now = performance.now();
+  const stacks = pickupGridStacks();
+  if (
+    scene.viewMode !== "entity" || scene.chatOpen ||
+    closeReason(pickupGrid, player, stacks.length)
+  ) {
+    closePickupGrid(pickupGrid);
+    scene.pickupCells = [];
+    return;
+  }
+  clampSelection(pickupGrid, stacks.length);
+  // IJKL moves the selector on key press (`gridKey`); the sticks and D-pad here.
+  const direction = gamepadDpad.x || gamepadDpad.y
+    ? gamepadDpad
+    : stickDirection(
+      cameraStick.x + gamepadCamera.x,
+      cameraStick.y + gamepadCamera.y,
+      0.5,
+    );
+  if (!scene.menu) stepSelection(pickupGrid, stacks.length, direction, now);
+  scene.pickupCells = scene.viewZ === pickupGrid.tile?.z && player
+    ? pickupGridCells(pickupGrid, stacks, gridCenter(player), now)
+    : [];
+}
+
+/** @type {Record<string,[number,number]>} */
+const GRID_KEYS = { KeyI: [0, -1], KeyK: [0, 1], KeyJ: [-1, 0], KeyL: [1, 0] };
+/** Keys still held from the aim that opened the grid; their key repeat must not move the selector. */
+const gridKeysAtOpen = new Set();
+
+/** IJKL moves the selector, with the browser's key repeat for a held key. @param {string} code @param {boolean} repeat */
+function gridKey(code, repeat) {
+  const step = GRID_KEYS[code];
+  if (!step || !isPickupGridOpen(pickupGrid) || scene.menu) return;
+  if (repeat && gridKeysAtOpen.has(code)) return;
+  moveSelection(pickupGrid, pickupGridStacks().length, step[0], step[1]);
+}
+
+/** A tap on a square selects it. @param {number} clientX @param {number} clientY */
+function tapPickupGrid(clientX, clientY) {
+  if (!isPickupGridOpen(pickupGrid) || scene.menu) return;
+  const rect = canvas.getBoundingClientRect();
+  const cell = cellAtPoint(
+    scene.pickupCells,
+    (clientX - rect.left - rect.width / 2) / scene.zoom + scene.camera.x,
+    (clientY - rect.top - rect.height / 2) / scene.zoom + scene.camera.y,
+  );
+  if (cell) selectStack(pickupGrid, pickupGridStacks().length, cell.index);
 }
 
 /**
@@ -622,7 +733,8 @@ function pollGamepad() {
     : Math.abs(pad.axes[5] ?? 0) > 0.5
     ? Math.sign(pad.axes[5])
     : 0;
-  if (dpadX || dpadY) {
+  gamepadDpad = { x: dpadX, y: dpadY };
+  if ((dpadX || dpadY) && !isPickupGridOpen(pickupGrid)) {
     gamepadDirection = { x: dpadX, y: dpadY };
   }
   const cameraX = pad.axes[2] ?? 0;
@@ -935,6 +1047,11 @@ function bindInput() {
       if (!event.repeat) toggleBag(false);
       return;
     }
+    if (event.code === "Escape" && isPickupGridOpen(pickupGrid)) {
+      event.preventDefault();
+      if (!event.repeat) closePickupGrid(pickupGrid);
+      return;
+    }
     if (event.code === "Escape" && logPanel.classList.contains("open")) {
       event.preventDefault();
       if (!event.repeat) toggleLog(false);
@@ -963,6 +1080,7 @@ function bindInput() {
       if (!event.repeat) interact();
       return;
     }
+    gridKey(event.code, event.repeat);
     held.add(event.code);
     if (
       bag.isOpen && ["KeyI", "KeyJ", "KeyK", "KeyL"].includes(event.code) &&
@@ -1002,6 +1120,7 @@ function bindInput() {
   document.addEventListener("keyup", (event) => {
     if (event.code === "Space") event.preventDefault();
     held.delete(event.code);
+    gridKeysAtOpen.delete(event.code);
     if (["KeyR", "KeyV", "KeyU", "KeyN"].includes(event.code)) {
       scene.hudUntil = performance.now() + 500;
     }
@@ -1017,6 +1136,7 @@ function bindInput() {
   });
   canvas.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "touch") scene.inputMode = "touch";
+    tapPickupGrid(event.clientX, event.clientY);
     if (!scene.menu) return;
     const panelHeight = Math.min(300, canvas.clientHeight - 20);
     const y = event.clientY - (canvas.clientHeight - panelHeight) / 2;
@@ -1377,7 +1497,10 @@ export async function startApp() {
       scene.camera.x += cameraX * dt * 0.48;
       scene.camera.y += cameraY * dt * 0.48;
     } else {
-      scene.aim = stickDirection(cameraX, cameraY, 0.18);
+      // While the pickup grid is open the look control moves its selector.
+      scene.aim = isPickupGridOpen(pickupGrid)
+        ? { x: 0, y: 0 }
+        : stickDirection(cameraX, cameraY, 0.18);
       checkMineLock();
       const pos = local
         ? renderPosition(local, scene.world.tick + accumulator / TICK_MS)
@@ -1412,6 +1535,7 @@ export async function startApp() {
     drawLog();
     scene.mining = miningDisplay(accumulator / TICK_MS);
     scene.items = itemsDisplay();
+    updatePickupGrid();
     scene.inventory = inventoryDisplay();
     bag.update(scene.inventory, heldDisplay());
     renderer?.render(scene, accumulator / TICK_MS);

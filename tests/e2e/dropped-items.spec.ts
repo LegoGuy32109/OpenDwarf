@@ -181,7 +181,12 @@ test("a joining player sees drops, and two pickups give the stack to one player"
   await host.waitForTimeout(150);
   await host.keyboard.press("Space");
   await guest.keyboard.press("Space"); // arrives at the host after the host's own pickup
-  await expect.poll(() => notice(guest)).toContain("nothing to pick up");
+  // The guest is refused either by the host, or locally when the host's pickup
+  // already reached it and the tile shows nothing to pick up. Either way only
+  // the host gets the stack, which the inventories below check.
+  await expect.poll(() => notice(guest)).toMatch(
+    /nothing to pick up|aim at a neighboring tile/,
+  );
   expect(await inventory(host)).toEqual([
     { kind: "pickaxe", count: 1 },
     { kind: "iron ore", count: 2 },
@@ -211,6 +216,7 @@ test("a joining player sees drops, and two pickups give the stack to one player"
       x: 2,
       y: 2,
       z: 0,
+      kind: "coal",
     })
   );
   await expect.poll(() => notice(guest)).toContain("out of reach");

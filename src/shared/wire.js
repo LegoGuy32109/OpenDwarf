@@ -359,7 +359,8 @@ export function decodeControl(value) {
     case "mine-cancel":
       return value;
     case "pickup":
-      return Number.isInteger(value.x) &&
+      return typeof value.kind === "string" && value.kind.length <= 24 &&
+          Number.isInteger(value.x) &&
           finite(value.x, -MAX_COORD, MAX_COORD) &&
           Number.isInteger(value.y) && finite(value.y, -MAX_COORD, MAX_COORD) &&
           Number.isInteger(value.z) && finite(value.z, 0, WORLD_TOP)
