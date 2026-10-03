@@ -4,8 +4,8 @@
  * The inventory panel's state. B, the bag button, or a gamepad button opens
  * the panel. IJKL, the look stick, or the D-pad moves the selection, and
  * interact or a tap makes the selected stack the held item. The UI layer
- * (`ui.js`) lays the panel out and draws it; `app.js` owns the input and the
- * held item, and this module owns the selection.
+ * (`ui.js`) lays the panel out and draws it; `input.js` owns the input and
+ * `context.js` the held item action, and this module owns the selection.
  */
 
 /** @typedef {import('../shared/items.js').Stack} Stack */

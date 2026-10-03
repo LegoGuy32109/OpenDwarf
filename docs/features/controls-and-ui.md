@@ -69,13 +69,14 @@ Three client modules make the layer, and `render.js` keeps the one draw path:
 - `src/client/ui-draw.js` draws a layout through a painter that `render.js`
   provides (rectangles, text, item icons, the QR texture).
 
-`app.js` builds the view from the scene each frame, calls `layoutUi`, hands the
-result to the renderer as `scene.ui`, and turns element actions into the same
-functions the keys call. `inventory-panel.js` and `shop-panel.js` hold only the
-selection and scroll state. The in-game keyboard types into `scene.chatDraft`; a
-physical keyboard types through `keydown`. No element has focus, so the system
-keyboard never opens. The loading screen draws as soon as the font loads, and
-`canvas[data-ready]` marks that the world's textures are ready.
+`loop.js` builds the view from the scene each frame (`ui-view.js`), calls
+`layoutUi`, hands the result to the renderer as `scene.ui`, and `input.js` turns
+element actions into the same functions the keys call. `inventory-panel.js` and
+`shop-panel.js` hold only the selection and scroll state. The in-game keyboard
+types into `scene.chatDraft`; a physical keyboard types through `keydown`. No
+element has focus, so the system keyboard never opens. The loading screen draws
+as soon as the font loads, and `canvas[data-ready]` marks that the world's
+textures are ready.
 
 With `?harness`, `window.__od.ui` gives specs the current layout, so a spec taps
 an element by its rectangle. `?safe=top,right,bottom,left` simulates safe-area

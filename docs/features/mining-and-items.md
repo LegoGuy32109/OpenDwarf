@@ -69,10 +69,10 @@ and an `inventory` message with only that peer's own inventory. A pickup system
 line goes to the player who picked up and nobody else, through `tell` next to
 `announce` in `network.js`. A client draws one icon per tile, cycling the kinds
 every `ICON_CYCLE_MS`. The pickup grid's state and geometry live in
-`src/client/pickup-grid.js`. `app.js` calls it each frame to close the grid when
-the entity leaves reach or the tile empties, to move the selector, and to hand
-`scene.pickupCells` to the renderer. While the grid is open, the look control
-and D-pad drive it, not the aim or movement.
+`src/client/pickup-grid.js`. `loop.js` calls `updatePickupGrid` (`panels.js`)
+each frame to close the grid when the entity leaves reach or the tile empties,
+to move the selector, and to hand `scene.pickupCells` to the renderer. While the
+grid is open, the look control and D-pad drive it, not the aim or movement.
 
 See [inventory and shop](inventory-and-shop.md) for what happens to the items
 after pickup.

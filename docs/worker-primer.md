@@ -16,18 +16,24 @@ open the others when your ticket touches their area.
 
 ## Where things are
 
-| Area                              | Files                                                                                      |
-| --------------------------------- | ------------------------------------------------------------------------------------------ |
-| World state, ticks, players       | `src/shared/world.js`, `locomotion.js`, `surface.js`                                       |
-| Terrain, chunks, materials        | `src/shared/terrain.js`, `materials.js`, `generation.js`, `spawn-room.js`, `chunk-wire.js` |
-| Mining, items, inventory, shop    | `src/shared/mining.js`, `items.js`, `held-item.js`, `shop.js`, `target.js`                 |
-| Chat and hearing log              | `src/shared/chat.js`, `hearing-log.js`                                                     |
-| Network messages and validation   | `src/shared/protocol.js`, `wire.js`; host and guest in `src/client/network.js`             |
-| Input, HUD, panels, the game loop | `src/client/app.js`, `inventory-panel.js`, `shop-panel.js`, `pickup-grid.js`               |
-| Drawing                           | `src/client/render.js` (WebGL2, bitmap font in `public/assets/font.png`)                   |
-| Build routing, API, store         | `src/server/builds.ts`, `session-routes.ts`, `admin-api.ts`, `store.ts`, `migrations/`     |
-| Unit tests                        | `tests/shared`, `tests/client`, `tests/server`                                             |
-| Browser tests                     | `tests/e2e` (`?harness=1` loads the test layout and exposes `globalThis.__od`)             |
+| Area                              | Files                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------ |
+| World state, ticks, players       | `src/shared/world.js`, `locomotion.js`, `surface.js`                                             |
+| Terrain, chunks, materials        | `src/shared/terrain.js`, `materials.js`, `generation.js`, `spawn-room.js`, `chunk-wire.js`       |
+| Mining, items, inventory, shop    | `src/shared/mining.js`, `items.js`, `held-item.js`, `shop.js`, `target.js`                       |
+| Chat and hearing log              | `src/shared/chat.js`, `hearing-log.js`                                                           |
+| Network messages and validation   | `src/shared/protocol.js`, `wire.js`; host and guest in `src/client/network.js`                   |
+| Client startup and shared state   | `src/client/app.js` (wiring only), `context.js` (the `ctx` object, held-item and sale requests)  |
+| Input and gamepad                 | `src/client/input.js` (handlers), `input-read.js` (directions)                                   |
+| Interact, mining, pickup, placing | `src/client/interact.js`                                                                         |
+| Chat typing and keyboard          | `src/client/chat-input.js`                                                                       |
+| Panels, HUD view, drawn state     | `panels.js`, `ui-view.js`, `display.js`, `inventory-panel.js`, `shop-panel.js`, `pickup-grid.js` |
+| Hosting, joining, telemetry       | `src/client/session.js`; network in `network.js`                                                 |
+| Frame loop and camera             | `src/client/loop.js`; `harness.js` exposes `globalThis.__od`                                     |
+| Drawing                           | `src/client/render.js` (WebGL2, bitmap font in `public/assets/font.png`)                         |
+| Build routing, API, store         | `src/server/builds.ts`, `session-routes.ts`, `admin-api.ts`, `store.ts`, `migrations/`           |
+| Unit tests                        | `tests/shared`, `tests/client`, `tests/server`                                                   |
+| Browser tests                     | `tests/e2e` (`?harness=1` loads the test layout and exposes `globalThis.__od`)                   |
 
 ## Rules that bite
 

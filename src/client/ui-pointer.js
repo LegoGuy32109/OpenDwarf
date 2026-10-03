@@ -10,7 +10,7 @@ import { hitTest, stickVector } from "./ui.js";
  * starts on no element belongs to the world, which is where pinch and
  * two-finger level drags work.
  *
- * It holds no DOM. `app.js` feeds it pointer events as plain objects.
+ * It holds no DOM. `input.js` feeds it pointer events as plain objects.
  */
 
 /** A drag longer than this many CSS pixels scrolls a list instead of tapping. */
