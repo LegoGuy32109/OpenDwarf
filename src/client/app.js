@@ -44,6 +44,7 @@ import {
   TEXT_SIZE_KEY,
   TEXT_SIZES,
 } from "../shared/chat.js";
+import { keyboardInset } from "./chat-bar.js";
 import {
   addSystemLine,
   createHearingLog,
@@ -155,6 +156,7 @@ const scene = {
   hearingLog: createHearingLog(),
   /** @param {string} text */
   systemLine: (text) => addSystemLine(scene.hearingLog, text),
+  chatLift: 0,
   status: "Local world",
   aim: { x: 0, y: 0 },
   /** Mining actions to draw, with progress from 0 to 1. */
@@ -263,6 +265,15 @@ function typing() {
   else host?.publish();
 }
 
+/** Lift the chat bar above the on-screen keyboard while chat is open. */
+function placeChatBar() {
+  const visual = globalThis.visualViewport;
+  scene.chatLift = scene.chatOpen && visual
+    ? keyboardInset(globalThis.innerHeight, visual)
+    : 0;
+  chatInput.style.setProperty("--chat-lift", `${scene.chatLift}px`);
+}
+
 /** @param {string} [prefill] */
 function openChat(prefill = "") {
   bag.toggle(false);
@@ -274,6 +285,7 @@ function openChat(prefill = "") {
   chatInput.value = prefill;
   chatInput.classList.add("open");
   chatInput.focus();
+  placeChatBar();
   typing();
 }
 
@@ -283,6 +295,7 @@ function closeChat() {
   chatInput.value = "";
   chatInput.classList.remove("open");
   chatInput.blur();
+  placeChatBar();
   typing();
 }
 
@@ -1061,6 +1074,9 @@ function bindInput() {
     scene.menu = !scene.menu;
     scene.menuPage = "root";
   });
+  const visual = globalThis.visualViewport;
+  visual?.addEventListener("resize", placeChatBar);
+  visual?.addEventListener("scroll", placeChatBar);
   chatInput.addEventListener("input", () => {
     scene.chatDraft = chatInput.value;
     typing();

@@ -91,7 +91,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,chatLift:number,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
 
 /**
  * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
@@ -985,7 +985,7 @@ export async function createRenderer(canvas) {
     }
     if (scene.chatOpen) {
       const barX = 12 * dpr;
-      const barY = height - 54 * dpr;
+      const barY = height - (54 + scene.chatLift) * dpr;
       rect(barX, barY, width - barX * 2, 30 * dpr, [0.1, 0.1, 0.1, 0.9]);
       text(`> ${scene.chatDraft}_`, barX + 8 * dpr, barY + 3 * dpr, scale);
     }

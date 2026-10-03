@@ -307,7 +307,7 @@ input {
 #chat-input {
   position: absolute;
   z-index: 8;
-  bottom: calc(var(--safe-bottom) + 22px);
+  bottom: calc(var(--safe-bottom) + 22px + var(--chat-lift, 0px));
   left: 12px;
   width: calc(100% - 24px);
   height: 34px;

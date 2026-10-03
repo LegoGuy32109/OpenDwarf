@@ -82,11 +82,13 @@ not send input. Pair that model over Bluetooth to play.
 The fullscreen button uses the browser API when available; on Safari, adding the
 page to the Home Screen can hide browser controls. Pinch to zoom or drag two
 fingers vertically to change view levels. The on-screen A button opens the chat
-bar, and the on-screen B button opens the menu. Use `/nick Josh
-Hale` to set a
-name. Names are unique within a world. Any player can use `/master` for an
-unrestricted camera and the complete world view, then `/entity` to return to the
-player's field of view. Master travel does not add tiles to entity-view memory.
+bar, which turns off autocorrect and suggestions so the iOS keyboard stays small
+and rides above it using the visual viewport, and the on-screen B button opens
+the menu. Use `/nick Josh
+Hale` to set a name. Names are unique within a world.
+Any player can use `/master` for an unrestricted camera and the complete world
+view, then `/entity` to return to the player's field of view. Master travel does
+not add tiles to entity-view memory.
 
 ## Code
 
