@@ -1,15 +1,23 @@
 import { expect, test } from "@playwright/test";
 
-test("the host can show the join QR again after starting play", async ({ page }) => {
+test("the host opens the small join QR from the QR button", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#loading")).toBeHidden();
+  await expect(page.locator("#join-panel")).toBeHidden();
+  await page.locator("#join-toggle").click();
   await expect(page.locator("#join-panel")).toBeVisible();
+  await expect(page.locator("#join-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
   await expect.poll(() =>
     page.locator("#join-code").evaluate((image: HTMLImageElement) =>
       image.complete && image.naturalWidth > 0
     )
   ).toBe(true);
-  await page.locator("#join-close").click();
+  const box = await page.locator("#join-code").boundingBox();
+  expect(box?.width).toBeLessThanOrEqual(144);
+  await page.locator("#join-toggle").click();
   await expect(page.locator("#join-panel")).toBeHidden();
   await page.keyboard.press("q");
   await expect(page.locator("#join-panel")).toBeVisible();

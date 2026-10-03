@@ -18,7 +18,8 @@ another browser to see active worlds and join one. A corner NPC loops around
 four tiles. The `/admin` route has no access control in this demo. Joining has
 no fixed cap for stress testing; the practical limit is still being measured.
 The host's QR code opens `/join/<session>` so a phone joins that world directly.
-Press Q on the host or use the QR button to show the code again.
+The code is hidden at start. Press Q on the host or use the QR button to show
+it in the top right corner.
 
 On a keyboard, ESDF moves the player continuously in eight directions. Keyboard
 diagonals and the left stick share the same full walking speed, 30 ft or 1 tile per

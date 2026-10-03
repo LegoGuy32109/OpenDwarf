@@ -22,16 +22,13 @@
       <output id="display-status" role="status" aria-live="polite"></output>
       <aside id="diagnostics" hidden aria-label="Host diagnostics"></aside>
       <div id="host-tools" hidden>
-        <button id="join-toggle" type="button"
-          aria-label="Show join code">QR</button>
+        <button id="join-toggle" type="button" aria-label="Show join code"
+          aria-controls="join-panel" aria-expanded="false">QR</button>
         <span id="player-count">1 player</span>
       </div>
       <aside id="join-panel" hidden aria-label="Join this world">
-        <h1>JOIN THIS WORLD</h1>
         <img id="join-code" alt="Scan to join this world" width="384"
           height="384">
-        <a id="join-link" href="#"></a>
-        <button id="join-close" type="button">Play</button>
       </aside>
       <div id="controls" aria-label="Touch controls">
         <section class="stick move" aria-label="Move controller">

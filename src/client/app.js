@@ -225,6 +225,13 @@ function toggleSprint() {
   showSpeed();
 }
 
+/** Shows or hides the small join QR below the host tools. */
+function toggleJoinPanel() {
+  const panel = $("#join-panel");
+  panel.hidden = !panel.hidden;
+  $("#join-toggle").setAttribute("aria-expanded", String(!panel.hidden));
+}
+
 /** @returns {{x:number,y:number}} */
 function inputDirection() {
   if (joystick.x || joystick.y) return joystick;
@@ -601,7 +608,7 @@ function bindInput() {
     }
     if (event.code === "KeyQ" && !isAdmin && !event.repeat) {
       event.preventDefault();
-      $("#join-panel").hidden = !$("#join-panel").hidden;
+      toggleJoinPanel();
       return;
     }
     scene.inputMode = "keyboard";
@@ -818,21 +825,10 @@ export async function startApp() {
       tickNpc = createCornerNpc(scene.world);
       host = startHost(scene, scene.sessionId);
       const hostTools = $("#host-tools");
-      const joinPanel = $("#join-panel");
-      const link = `${location.origin}/join/${scene.sessionId}`;
-      const anchor = /** @type {HTMLAnchorElement} */ ($("#join-link"));
       const code = /** @type {HTMLImageElement} */ ($("#join-code"));
-      anchor.href = link;
-      anchor.textContent = link;
       code.src = `/api/qr/${scene.sessionId}`;
       hostTools.hidden = new URL(location.href).searchParams.has("harness");
-      joinPanel.hidden = hostTools.hidden;
-      $("#join-toggle").addEventListener("click", () => {
-        joinPanel.hidden = !joinPanel.hidden;
-      });
-      $("#join-close").addEventListener("click", () => {
-        joinPanel.hidden = true;
-      });
+      $("#join-toggle").addEventListener("click", toggleJoinPanel);
       setInterval(() => {
         const count = Object.keys(scene.world.players).filter((id) =>
           id !== "npc-corner"
