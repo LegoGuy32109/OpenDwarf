@@ -2,6 +2,9 @@ import { defineConfig } from "@playwright/test";
 import { existsSync } from "node:fs";
 import process from "node:process";
 
+// Parallel worktrees set PORT so each runs specs against its own server.
+const port = process.env.PORT ?? "8000";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
@@ -11,12 +14,12 @@ export default defineConfig({
   snapshotPathTemplate: "{testDir}/snapshots/{arg}-{projectName}{ext}",
   webServer: {
     command: "deno task start",
-    url: "http://127.0.0.1:8000",
+    url: `http://127.0.0.1:${port}`,
     reuseExistingServer: true,
     timeout: 30_000,
   },
   use: {
-    baseURL: "http://127.0.0.1:8000",
+    baseURL: `http://127.0.0.1:${port}`,
     browserName: "chromium",
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 1,
