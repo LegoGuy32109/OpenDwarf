@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready } from "./ui.ts";
 
 type Harness = {
   __od: {
@@ -39,7 +40,7 @@ async function walkNorth(page: Page) {
 
 test("stone and every ore draw distinctly at the player's level and from above", async ({ page }) => {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   expect(await oreRow(page)).toEqual(ROW_MATERIALS);
   await walkNorth(page);
   await page.waitForTimeout(400);
@@ -55,12 +56,12 @@ test("a joining player receives ore materials", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   // The guest spawns at the host's spawn tile and sees the row of tiles.
   await expect.poll(() => oreRow(guest)).toEqual(ROW_MATERIALS);
   await Promise.all([host.close(), guest.close()]);

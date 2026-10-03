@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready } from "./ui.ts";
 
 type Game = {
   __od: {
@@ -16,7 +17,7 @@ test("a host and a guest join through the relay", async ({ page, context }) => {
   guest.on("websocket", (socket) => sockets.push(socket.url()));
   try {
     await host.goto("/?harness=1");
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const session = await host.evaluate(() =>
       (globalThis as unknown as Game).__od.scene.sessionId
     );
@@ -56,7 +57,7 @@ test("a guest that loses its signaling socket reconnects with a new token", asyn
   guest.on("websocket", (socket) => sockets.push(socket.url()));
   try {
     await host.goto("/?harness=1");
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const session = await host.evaluate(() =>
       (globalThis as unknown as Game).__od.scene.sessionId
     );

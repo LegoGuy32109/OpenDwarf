@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { hasUi, ready } from "./ui.ts";
 
 type Stack = { kind: string; count: number };
 type Entry = { x: number; y: number; z: number; stacks: Stack[] };
@@ -81,7 +82,7 @@ const drop = (page: Page, x: number, y: number, kind: string, count = 1) =>
 
 async function startHost(page: Page) {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
 }
 
 async function walkToRow(page: Page) {
@@ -97,7 +98,7 @@ test("mining drops the item, and interact picks it up", async ({ page }) => {
   test.setTimeout(60_000);
   await startHost(page);
   await page.keyboard.press("Backquote"); // open the hearing log for the video
-  await expect(page.locator("#hearing-log")).toBeVisible();
+  await expect.poll(() => hasUi(page, "panel:log")).toBe(true);
   expect(await inventory(page)).toEqual([{ kind: "pickaxe", count: 1 }]);
   await placeAt(page, 2, 2);
   await page.keyboard.down("i"); // aim north at the stone
@@ -164,7 +165,7 @@ test("a joining player sees drops, and two pickups give the stack to one player"
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   await walkToRow(host);
   await walkToRow(guest);
   const hostTile = Math.round((await position(host))!.x);

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready, say } from "./ui.ts";
 
 type Player = { x: number; y: number; z: number; move?: unknown };
 type Harness = {
@@ -67,8 +68,8 @@ test("the host generates chunks within one chunk of a player, from the seed, and
     );
   await first.goto("/?harness=1&seed=alpha");
   await second.goto("/?harness=1&seed=alpha");
-  await expect(first.locator("#loading")).toBeHidden();
-  await expect(second.locator("#loading")).toBeHidden();
+  await ready(first);
+  await ready(second);
   // The authored chunk starts with its neighbors generated around it.
   await expect.poll(() => chunkKeys(first)).toEqual(keysAround(0, 0).sort());
   const before = await authored(first);
@@ -99,12 +100,12 @@ test("a joining player receives generated chunks only as it reaches and sees the
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1&seed=beta");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   await expect.poll(() => chunkKeys(guest)).toContain("0,0");
   // The guest's own world already holds the authored chunk, so wait until the
   // host has accepted the guest's player.
@@ -157,10 +158,8 @@ test("a joining player receives generated chunks only as it reaches and sees the
 
 test("master view shows generated terrain at three levels while chunks appear as the camera moves", async ({ page }) => {
   await page.goto("/?harness=1&seed=evidence");
-  await expect(page.locator("#loading")).toBeHidden();
-  await page.keyboard.press("/");
-  await page.locator("#chat-input").fill("/master");
-  await page.locator("#chat-input").press("Enter");
+  await ready(page);
+  await say(page, "/master");
   await expect.poll(() =>
     page.evaluate(() => (globalThis as unknown as Harness).__od.scene.viewMode)
   ).toBe("master");

@@ -236,8 +236,8 @@ let gamepadDpad = { x: 0, y: 0 };
 /** The sticks, the log, and the other UI state that no game module owns. */
 const ui = {
   sticks: {
-    move: { active: false, x: 0, y: 0 },
-    look: { active: false, x: 0, y: 0 },
+    move: { active: false, x: 0, y: 0, dir: "center" },
+    look: { active: false, x: 0, y: 0, dir: "center" },
   },
   chatPage: /** @type {"letters"|"symbols"} */ ("letters"),
   chatShift: false,
@@ -905,7 +905,12 @@ const router = createPointerRouter({
   },
   onStick: (id, state) => {
     const stick = id === "stick:move" ? "move" : "look";
-    ui.sticks[stick] = { active: state.active, x: state.knobX, y: state.knobY };
+    ui.sticks[stick] = {
+      active: state.active,
+      x: state.knobX,
+      y: state.knobY,
+      dir: state.x || state.y ? `${state.x},${state.y}` : "center",
+    };
     if (stick === "move") joystick = { x: state.x, y: state.y };
     else cameraStick = { x: state.x, y: state.y };
   },
@@ -1458,30 +1463,25 @@ function startAdminList() {
 
 /**
  * Load the join QR code as a texture. The shell serves it as an SVG, which a
- * canvas draws at a fixed size; a blob URL keeps the canvas from tainting.
+ * canvas draws at a fixed size. A data URL keeps the canvas from tainting.
  * @param {string} url @param {{setQr:(source:TexImageSource|null)=>void}} renderer
  */
 async function loadQr(url, renderer) {
   const response = await fetch(url);
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  try {
-    const picture = new Image();
-    picture.src = objectUrl;
-    await picture.decode();
-    const surface = document.createElement("canvas");
-    surface.width = surface.height = 384;
-    const context = surface.getContext("2d");
-    if (!context) return;
-    context.imageSmoothingEnabled = false;
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, 384, 384);
-    context.drawImage(picture, 0, 0, 384, 384);
-    renderer.setQr(surface);
-    ui.qrReady = true;
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
+  const svg = await response.text();
+  const picture = new Image();
+  picture.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await picture.decode();
+  const surface = document.createElement("canvas");
+  surface.width = surface.height = 384;
+  const context = surface.getContext("2d");
+  if (!context) return;
+  context.imageSmoothingEnabled = false;
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, 384, 384);
+  context.drawImage(picture, 0, 0, 384, 384);
+  renderer.setQr(surface);
+  ui.qrReady = true;
 }
 
 /** @param {string} id */
@@ -1537,7 +1537,9 @@ export async function startApp() {
       ui.qrUrl = build.apiUrl(
         `qr/${scene.sessionId}?link=${encodeURIComponent(link)}`,
       );
-      ui.hostTools = !new URL(location.href).searchParams.has("harness");
+      const params = new URL(location.href).searchParams;
+      // Specs hide the host tools, which sit in screenshots, unless they ask with `?tools=1`.
+      ui.hostTools = !params.has("harness") || params.has("tools");
       if (renderer) loadQr(ui.qrUrl, renderer).catch(() => {});
     }
   }
@@ -1779,6 +1781,7 @@ export async function startApp() {
     /** @type {{__od?:unknown}} */ (globalThis).__od = {
       scene,
       openChat,
+      stamina,
       join: joinSession,
       /** The UI layer's current layout, for specs that tap elements. */
       ui: {

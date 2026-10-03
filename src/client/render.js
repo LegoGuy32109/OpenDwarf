@@ -319,7 +319,12 @@ export async function createRenderer(canvas) {
     }
     const zoom = dpr * scene.zoom;
     const cameraX = scene.camera.x;
-    const cameraY = scene.camera.y;
+    // The in-game keyboard covers the bottom of the screen: center on what is above it.
+    const chatTop = scene.ui?.layout.chatTop;
+    const lift = chatTop === null || chatTop === undefined
+      ? 0
+      : (canvas.clientHeight - chatTop) * dpr / 2;
+    const cameraY = scene.camera.y + lift / zoom;
     gl.uniform2f(locationCamera, cameraX, cameraY);
     gl.uniform1f(locationZoom, zoom);
     // Sprites start on a whole device pixel relative to the camera. At a

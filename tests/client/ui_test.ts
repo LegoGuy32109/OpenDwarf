@@ -82,6 +82,42 @@ function circleClearOfBox(circle: UiElement, box: UiElement) {
   return Math.hypot(nearestX - circle.cx!, nearestY - circle.cy!) > circle.r!;
 }
 
+/** Every touch control is clear of the others at a UI scale. */
+function controlsApart(screen: typeof PORTRAIT, scale: number) {
+  const layout = layoutUi(view(screen, { scale }));
+  const move = layout.byId.get("stick:move")!;
+  const look = layout.byId.get("stick:look")!;
+  const interact = layout.byId.get("btn:interact")!;
+  const sprint = layout.byId.get("btn:sprint")!;
+  // A button box must stay clear of the stick circles, as the old CSS checks did.
+  assert(circleClearOfBox(move, interact));
+  assert(circleClearOfBox(look, sprint));
+  assert(circleClearOfBox(look, interact));
+  assert(circleClearOfBox(move, sprint));
+  assert(interact.rect.x >= move.rect.x + move.rect.w);
+  assert(interact.rect.x + interact.rect.w <= sprint.rect.x);
+  // Interact mirrors sprint across the middle of the screen.
+  assertEquals(interact.rect.y, sprint.rect.y);
+  const row = ["btn:chat", "btn:log", "btn:menu", "btn:bag"].map((id) =>
+    layout.byId.get(id)!
+  );
+  for (const [index, button] of row.entries()) {
+    for (const other of row.slice(index + 1)) {
+      assert(
+        Math.hypot(button.cx! - other.cx!, button.cy! - other.cy!) >
+          button.r! + other.r!,
+        `${button.id} and ${other.id} apart`,
+      );
+    }
+    for (const stick of [move, look]) {
+      assert(
+        circleClearOfBox(stick, button),
+        `${button.id} clear of ${stick.id}`,
+      );
+    }
+  }
+}
+
 for (const [name, screen] of Object.entries(SCREENS)) {
   Deno.test(`touch controls fit the safe area in ${name}`, () => {
     for (const scale of [1, 1.5, 2]) {
@@ -106,37 +142,17 @@ for (const [name, screen] of Object.entries(SCREENS)) {
   });
 
   Deno.test(`touch controls do not overlap in ${name}`, () => {
-    const layout = layoutUi(view(screen));
-    const move = layout.byId.get("stick:move")!;
-    const look = layout.byId.get("stick:look")!;
-    const interact = layout.byId.get("btn:interact")!;
-    const sprint = layout.byId.get("btn:sprint")!;
-    // A button box must stay clear of the stick circles, as the old CSS checks did.
-    assert(circleClearOfBox(move, interact));
-    assert(circleClearOfBox(look, sprint));
-    assert(circleClearOfBox(look, interact));
-    assert(circleClearOfBox(move, sprint));
-    assert(interact.rect.x >= move.rect.x + move.rect.w);
-    assert(interact.rect.x + interact.rect.w <= sprint.rect.x);
-    // Interact mirrors sprint across the middle of the screen.
-    assertEquals(interact.rect.y, sprint.rect.y);
-    const row = ["btn:chat", "btn:log", "btn:menu", "btn:bag"].map((id) =>
-      layout.byId.get(id)!
-    );
-    for (const [index, button] of row.entries()) {
-      for (const other of row.slice(index + 1)) {
-        assert(
-          Math.hypot(button.cx! - other.cx!, button.cy! - other.cy!) >
-            button.r! + other.r!,
-          `${button.id} and ${other.id} apart`,
-        );
-      }
-      for (const stick of [move, look]) {
-        assert(
-          circleClearOfBox(stick, button),
-          `${button.id} clear of ${stick.id}`,
-        );
-      }
+    for (const scale of [1, 1.5, 2]) controlsApart(screen, scale);
+  });
+
+  Deno.test(`a larger UI scale never shrinks the buttons in ${name}`, () => {
+    const small = layoutUi(view(screen, { scale: 1 }));
+    const large = layoutUi(view(screen, { scale: 2 }));
+    for (const id of ["btn:interact", "btn:sprint", "btn:chat", "btn:bag"]) {
+      assert(
+        large.byId.get(id)!.rect.w >= small.byId.get(id)!.rect.w - 0.01,
+        id,
+      );
     }
   });
 
@@ -269,13 +285,17 @@ Deno.test("a menu or loading screen takes every pointer", () => {
 });
 
 Deno.test("the layout scales with the UI scale setting", () => {
-  const one = layoutUi(view(LANDSCAPE, { scale: 1 }));
-  const two = layoutUi(view(LANDSCAPE, { scale: 2 }));
+  const one = layoutUi(view(LANDSCAPE, { scale: 1, held: "pickaxe" }));
+  const two = layoutUi(view(LANDSCAPE, { scale: 2, held: "pickaxe" }));
   assert(
-    two.byId.get("btn:interact")!.rect.w >
-      one.byId.get("btn:interact")!.rect.w,
+    two.byId.get("icon:held")!.rect.w > one.byId.get("icon:held")!.rect.w,
   );
   assert(two.ts > one.ts);
+  // Controls grow as far as the screen has room, and no further.
+  assert(
+    two.byId.get("btn:interact")!.rect.w >=
+      one.byId.get("btn:interact")!.rect.w,
+  );
 });
 
 Deno.test("text uses a whole number of device pixels per font pixel", () => {

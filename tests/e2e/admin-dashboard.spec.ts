@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
+import { ready } from "./ui.ts";
 
 /** Start tests/e2e/seed-shell.ts on a free port beside the suite's own, and wait until it answers. */
 let nextPort = Number(process.env.PORT ?? "8000") + 20;
@@ -71,7 +72,7 @@ for (
       // A real host tab starts a live session on this shell.
       const host = await context.newPage();
       await host.goto(`${origin}/b/local/?harness=1`);
-      await expect(host.locator("#loading")).toBeHidden();
+      await ready(host);
       const sessionId = await host.evaluate(() =>
         (globalThis as unknown as { __od: { scene: { sessionId: string } } })
           .__od.scene.sessionId
@@ -133,7 +134,7 @@ for (
       // The join link opens the host's build and joins the world.
       const guest = await context.newPage();
       await guest.goto(`${origin}${join}?harness=1`);
-      await expect(guest.locator("#loading")).toBeHidden();
+      await ready(guest);
     } finally {
       await context.close();
       stop();

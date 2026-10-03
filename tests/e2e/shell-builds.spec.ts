@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready } from "./ui.ts";
 
 // A pushed commit of the public repo; jsDelivr serves it forever.
 const PUSHED = "c9dbb28f64adac5f1da62405ea20a1733845e560";
@@ -15,7 +16,7 @@ test("/b/local runs the working tree from this server", async ({ page }) => {
   const origins = new Set<string>();
   page.on("request", (request) => origins.add(new URL(request.url()).origin));
   await page.goto("/b/local?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   expect(await buildOf(page)).toBeTruthy();
   expect([...origins]).toEqual([new URL(page.url()).origin]);
   await evidenceShot(page, "shell-builds-local");
@@ -32,6 +33,7 @@ test("/b/<sha> of a pushed commit loads its files from jsDelivr and starts a gam
     if (url.hostname === "cdn.jsdelivr.net") files.push(url.pathname);
   });
   await page.goto(`/b/${PUSHED.slice(0, 7)}?harness=1`);
+  // The pushed commit is an old build, so it has no `data-ready` mark: wait for its loading screen.
   await expect(page.locator("#loading")).toBeHidden({ timeout: 20_000 });
   expect(await buildOf(page)).toBeTruthy();
   expect(files).toContain(

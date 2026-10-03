@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { ready } from "./ui.ts";
 
 test("unanswered offer expires without leaving a player or connection record", async ({ page }) => {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   const session = await page.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } })
       .__od.scene.sessionId

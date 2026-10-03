@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { clickUi, ready, say as sayLine } from "./ui.ts";
 
 type Odd = {
   __od: {
@@ -23,28 +24,17 @@ const messages = [
 ];
 
 async function say(page: Page, lines: string[]) {
-  for (const line of lines) {
-    await page.keyboard.press("t");
-    await page.locator("#chat-input").fill(line);
-    await page.locator("#chat-input").press("Enter");
-  }
-}
-
-/** Clicks a settings row using the menu panel's 320 px wide, 300 px tall layout. */
-async function clickMenu(page: Page, x: number, y: number) {
-  const size = page.viewportSize()!;
-  const top = (size.height - Math.min(300, size.height - 20)) / 2;
-  await page.mouse.click(size.width / 2 + x, top + y);
+  for (const line of lines) await sayLine(page, line);
 }
 
 async function chooseTextSize(page: Page, size: "small" | "medium" | "large") {
   await page.keyboard.press("Escape");
-  await clickMenu(page, 0, 90);
-  await clickMenu(page, { small: -90, medium: 0, large: 90 }[size], 180);
+  await clickUi(page, "btn:settings");
+  await clickUi(page, `btn:size:${size}`);
   await expect.poll(() =>
     page.evaluate(() => (globalThis as unknown as Odd).__od.scene.textSize)
   ).toBe(size);
-  await clickMenu(page, 0, 225);
+  await clickUi(page, "btn:back");
   await page.keyboard.press("Escape");
 }
 
@@ -53,12 +43,12 @@ test("three quick messages show three stacked bubbles on the host and a nearby g
   const guest = await browser.newPage();
   try {
     await host.goto("/?harness=1");
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const session = await host.evaluate(() =>
       (globalThis as unknown as Odd).__od.scene.sessionId
     );
     await guest.goto(`/join/${session}?harness=1`);
-    await expect(guest.locator("#loading")).toBeHidden();
+    await ready(guest);
     await expect.poll(() =>
       guest.evaluate(() => (globalThis as unknown as Odd).__od.scene.localId)
     ).toMatch(/^peer-/);
@@ -87,7 +77,7 @@ test("three quick messages show three stacked bubbles on the host and a nearby g
 
 test("text size changes bubble size and persists across reloads", async ({ page }) => {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   expect(
     await page.evaluate(() =>
       (globalThis as unknown as Odd).__od.scene.textSize
@@ -101,7 +91,7 @@ test("text size changes bubble size and persists across reloads", async ({ page 
     await page.waitForTimeout(5500);
   }
   await page.reload();
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   expect(
     await page.evaluate(() =>
       (globalThis as unknown as Odd).__od.scene.textSize

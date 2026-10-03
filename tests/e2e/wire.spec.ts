@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { StatePacket } from "../../src/shared/wire.js";
+import { ready } from "./ui.ts";
 
 /** The state packet as sent: chunks are run-length strings. */
 type WireState = Omit<StatePacket, "world"> & {
@@ -12,7 +13,7 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } })
       .__od.scene.sessionId
@@ -137,7 +138,7 @@ test("an incompatible join ends with a refresh instruction", async ({ browser })
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } })
       .__od.scene.sessionId
@@ -170,7 +171,7 @@ test("reliable chat survives simulated motion loss and jitter", async ({ browser
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1&loss=0.2&delay=50&jitter=60");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } })
       .__od.scene.sessionId

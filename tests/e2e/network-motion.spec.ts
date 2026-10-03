@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { clickUi, ready, say } from "./ui.ts";
 
 type Position = {
   tick: number;
@@ -68,15 +69,15 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
   const first = await browser.newPage();
   const second = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
   for (const guest of [first, second]) {
     await guest.goto("/host?harness=1");
-    await expect(guest.locator("#loading")).toBeHidden();
-    await guest.locator(`[data-session-id="${session}"]`).click();
+    await ready(guest);
+    await clickUi(guest, `btn:session:${session}`);
     await expect.poll(
       () =>
         guest.evaluate(() =>
@@ -178,15 +179,15 @@ test("held and reversed guest movement converges in host and two joining tabs", 
   const first = await browser.newPage();
   const second = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
   for (const guest of [first, second]) {
     await guest.goto("/host?harness=1");
-    await expect(guest.locator("#loading")).toBeHidden();
-    await guest.locator(`[data-session-id="${session}"]`).click();
+    await ready(guest);
+    await clickUi(guest, `btn:session:${session}`);
     await expect.poll(() =>
       guest.evaluate(() =>
         (globalThis as unknown as { __od: { scene: { localId: string } } })
@@ -311,14 +312,14 @@ test("a guest circles the pillar without leaving a remote sprite behind", async 
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
   await guest.goto("/host?harness=1");
-  await expect(guest.locator("#loading")).toBeHidden();
-  await guest.locator(`[data-session-id="${session}"]`).click();
+  await ready(guest);
+  await clickUi(guest, `btn:session:${session}`);
   await expect.poll(() =>
     guest.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { localId: string } } })
@@ -380,14 +381,14 @@ test("a guest sees the host move and fade behind the pillar", async ({ browser }
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
   await guest.goto("/host?harness=1");
-  await expect(guest.locator("#loading")).toBeHidden();
-  await guest.locator(`[data-session-id="${session}"]`).click();
+  await ready(guest);
+  await clickUi(guest, `btn:session:${session}`);
   await expect.poll(() =>
     guest.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { localId: string } } })
@@ -501,14 +502,14 @@ test("guest master mode receives full terrain and entity mode restores only disc
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
   await guest.goto("/host?harness=1");
-  await expect(guest.locator("#loading")).toBeHidden();
-  await guest.locator(`[data-session-id="${session}"]`).click();
+  await ready(guest);
+  await clickUi(guest, `btn:session:${session}`);
   await expect.poll(() =>
     guest.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
@@ -543,9 +544,7 @@ test("guest master mode receives full terrain and entity mode restores only disc
   // Undiscovered tiles read as UNKNOWN inside a chunk the guest has partly seen.
   expect(Object.values(before.terrain).flat()).toContain(0);
   const command = async (value: string) => {
-    await guest.keyboard.press("/");
-    await guest.locator("#chat-input").fill(value);
-    await guest.locator("#chat-input").press("Enter");
+    await say(guest, value);
   };
   await command("/master");
   await expect.poll(async () => (await state()).mode).toBe("master");

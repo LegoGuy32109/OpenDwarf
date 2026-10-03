@@ -1,5 +1,8 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready, tapUi, type UiRect, uiRect } from "./ui.ts";
+
+const box = ({ x, y, w, h }: UiRect) => ({ x, y, width: w, height: h });
 
 type Entry = { id: string; x: number; y: number; z: number; progress: number };
 type Harness = {
@@ -66,7 +69,7 @@ const placeAt = (page: Page, x: number, y: number) =>
 
 async function startHost(page: Page) {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
 }
 
 test("the host mines stone, then coal, with the progress square", async ({ page }) => {
@@ -153,7 +156,7 @@ test("a joining player sees the breaking decal and the tile change, and can mine
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   await expect.poll(() => tile(guest, 7)).toBe(REDSTONE);
   await goToRow(host);
   await goToRow(guest);
@@ -221,9 +224,9 @@ test.describe("phone interact button", () => {
 
   test("sits beside the move stick without touching it, and mines on tap", async ({ page }) => {
     await startHost(page);
-    const button = (await page.locator("#interact-button").boundingBox())!;
-    const sprint = (await page.locator("#sprint-button").boundingBox())!;
-    const move = (await page.locator("[data-stick=move]").boundingBox())!;
+    const button = box(await uiRect(page, "btn:interact"));
+    const sprint = box(await uiRect(page, "btn:sprint"));
+    const move = box(await uiRect(page, "stick:move"));
     const view = page.viewportSize()!;
     // The move stick is a circle: its edge must stay clear of the button box.
     const radius = move.width / 2;
@@ -244,9 +247,8 @@ test.describe("phone interact button", () => {
     expect(Math.abs(button.y - sprint.y)).toBeLessThan(2);
     await evidenceShot(page, "interact-portrait");
     await page.setViewportSize({ width: 844, height: 390 });
-    const landscape = (await page.locator("#interact-button").boundingBox())!;
-    const landscapeMove =
-      (await page.locator("[data-stick=move]").boundingBox())!;
+    const landscape = box(await uiRect(page, "btn:interact"));
+    const landscapeMove = box(await uiRect(page, "stick:move"));
     expect(landscape.x).toBeGreaterThanOrEqual(
       landscapeMove.x + landscapeMove.width,
     );
@@ -256,7 +258,7 @@ test.describe("phone interact button", () => {
     expect(await tile(page, 3)).toBe(COAL);
     await page.keyboard.down("i");
     await page.waitForTimeout(150);
-    await page.locator("#interact-button").tap();
+    await tapUi(page, "btn:interact");
     await expect.poll(async () => (await mining(page)).length).toBe(1);
     await page.waitForTimeout(500);
     await evidenceShot(page, "interact-mining-phone");
@@ -268,8 +270,8 @@ test.describe("phone interact button", () => {
     await startHost(page);
     await placeAt(page, 4, 2);
     expect(await tile(page, 4)).not.toBe(OPEN);
-    const look = (await page.locator("[data-stick=camera]").boundingBox())!;
-    const button = (await page.locator("#interact-button").boundingBox())!;
+    const look = box(await uiRect(page, "stick:look"));
+    const button = box(await uiRect(page, "btn:interact"));
     // Aim north: one finger near the top of the look stick.
     const aim = {
       x: look.x + look.width / 2,

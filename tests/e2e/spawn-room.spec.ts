@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready } from "./ui.ts";
 
 type Harness = {
   __od: {
@@ -43,13 +44,13 @@ test("a host and a joined guest start inside the spawn room", async ({ browser }
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1&layout=room");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   expect(insideRoom(await position(host))).toBe(true);
   const session = await host.evaluate(() =>
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   await expect.poll(async () => insideRoom(await position(guest))).toBe(true);
   // The host sees the guest inside the room too, and the NPC walks there.
   await expect.poll(async () => {
@@ -67,7 +68,7 @@ test("a host and a joined guest start inside the spawn room", async ({ browser }
 
 test("the doorway and the stairs work and the tunnel is reachable", async ({ page: host }) => {
   await host.goto("/?harness=1&layout=room");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   // South out of the doorway, which opens into solid stone.
   await holdUntil(host, "d", (p) => p.y >= 18.9);
   await host.waitForTimeout(500);

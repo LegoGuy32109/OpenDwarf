@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready } from "./ui.ts";
 
 type Harness = {
   __od: {
@@ -24,12 +25,12 @@ test("host and guest see the authored chunk as one world", async ({ browser }) =
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   const session = await host.evaluate(() =>
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   await expect.poll(() => chunkKeys(guest)).toEqual(["0,0"]);
   // The host also holds the generated chunks around the player.
   expect(await chunkKeys(host)).toEqual([
@@ -59,7 +60,7 @@ test("a guest walks across a chunk border in the expanded authored world", async
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1&world=32");
-  await expect(host.locator("#loading")).toBeHidden();
+  await ready(host);
   expect(await chunkKeys(host)).toEqual(
     expect.arrayContaining(["0,0", "0,1", "1,0", "1,1"]),
   );
@@ -67,7 +68,7 @@ test("a guest walks across a chunk border in the expanded authored world", async
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   await expect.poll(() => chunkKeys(guest)).toContain("0,0");
   const guestX = () =>
     guest.evaluate(() => {

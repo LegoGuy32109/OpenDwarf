@@ -103,6 +103,7 @@ export const CHAT_LIMIT = 120;
  * @property {{x:number,y:number,w:number,h:number,capacity:number}|null} shopList
  * @property {{capacity:number,total:number,scroll:number}|null} logList
  * @property {number} controlsTop
+ * @property {number|null} chatTop the top of the in-game keyboard and chat line, or null while none shows
  */
 
 /** @type {Insets} */
@@ -282,16 +283,53 @@ export function layoutUi(view) {
       : H <= 420
       ? Math.min(0.34 * H, 160)
       : clamp(0.3 * H, 148, 220);
-    const stick = Math.min(stickBase * s, 0.4 * W, 0.46 * H);
+    const availW = W - safe.left - safe.right;
+    const gutter = portrait ? 12 : clamp(0.07 * W, 18, 66);
     const round = portrait ? clamp(0.115 * W, 44, 56) : clamp(0.12 * H, 52, 64);
     const action = portrait ? clamp(0.1 * W, 44, 54) : clamp(0.08 * H, 38, 46);
-    const sideRoom = (W - safe.left - safe.right - 4 * edge - 2 * stick) / 2;
-    const roundSize = Math.min(round * s, Math.max(36, sideRoom - 6 * s));
-    const actionSize = Math.min(action * s, 0.2 * W);
-    const gutter = portrait ? edge : clamp(0.07 * W, 18, 66) * s;
+    /**
+     * The sizes of the controls at a control scale. The sticks give way before
+     * the buttons between them shrink below their base size.
+     * @param {number} scale
+     */
+    const geometry = (scale) => {
+      const room = (availW - 2 * gutter - 2 * (round + 6) - 8) / 2;
+      const stick = Math.min(
+        stickBase * scale,
+        0.4 * W,
+        0.46 * H,
+        Math.max(100, room),
+      );
+      const sideRoom = (availW - 2 * gutter - 2 * stick) / 2;
+      const roundSize = Math.min(
+        round * scale,
+        Math.max(round, sideRoom - 10),
+        0.6 * stick,
+      );
+      const actionSize = Math.min(action * scale, 0.2 * W);
+      const gap = 8 * scale;
+      // In landscape the A, L, B, and bag row sits between the two buttons beside the sticks.
+      const between = availW - 2 * (gutter + stick + 6 + roundSize);
+      return {
+        stick,
+        roundSize,
+        actionSize,
+        gap,
+        scale,
+        fits: portrait || 4 * actionSize + 3 * gap + 16 <= between,
+      };
+    };
+    // Controls scale with the UI scale as far as the screen has room for them.
+    let sized = geometry(s);
+    for (let scale = s; !sized.fits && scale > 1;) {
+      scale = Math.max(1, scale - 0.25);
+      sized = geometry(scale);
+    }
+    const { stick, roundSize, actionSize } = sized;
+    const cs = sized.scale;
     const strip = portrait
-      ? Math.max(clamp(0.1 * H, 54, 94), actionSize + 20 * s)
-      : 14 * s;
+      ? Math.max(clamp(0.1 * H, 54, 94), actionSize + 20 * cs)
+      : 14 * cs;
     const stickBottom = bottom - strip;
     const stickTop = stickBottom - stick;
     const moveX = left + gutter;
@@ -340,14 +378,14 @@ export function layoutUi(view) {
     };
     roundButton(
       "btn:interact",
-      moveX + stick + 6 * s,
+      moveX + stick + 6,
       stickBottom - roundSize,
       roundSize,
       { glyph: "pickaxe" },
     );
     roundButton(
       "btn:sprint",
-      lookX - 6 * s - roundSize,
+      lookX - 6 - roundSize,
       stickBottom - roundSize,
       roundSize,
       {
@@ -357,9 +395,9 @@ export function layoutUi(view) {
         fill: stamina.value,
       },
     );
-    const gap = 8 * s;
+    const gap = sized.gap;
     const rowWidth = 4 * actionSize + 3 * gap;
-    const rowY = bottom - (portrait ? 10 * s : 14 * s) - actionSize;
+    const rowY = bottom - (portrait ? 10 * cs : 14 * cs) - actionSize;
     const rowX = (left + right) / 2 - rowWidth / 2;
     /** @type {[string,string,Partial<UiElement>][]} */
     const buttons = [
@@ -610,6 +648,9 @@ export function layoutUi(view) {
       }
     }
     const capacity = Math.max(1, Math.floor((maxH - headerH - 8 * s) / pitch));
+    if (!wrapped.length) {
+      wrapped.push({ text: "Nothing heard yet.", kind: "empty", speaker: 0 });
+    }
     const shown = Math.min(capacity, wrapped.length);
     const h = headerH + 8 * s + Math.max(1, shown) * pitch;
     const maxScroll = Math.max(0, wrapped.length - capacity);
@@ -639,7 +680,11 @@ export function layoutUi(view) {
           lh,
         ),
         text: line.text,
-        color: line.kind === "system" ? "amber" : "cream",
+        color: line.kind === "system"
+          ? "amber"
+          : line.kind === "empty"
+          ? "dim"
+          : "cream",
         speaker: line.speaker,
       });
     }
@@ -864,6 +909,8 @@ export function layoutUi(view) {
   }
 
   // Chat: the typed line, and on touch the keyboard under it.
+  /** @type {number|null} */
+  let chatTop = null;
   if (chat?.open) {
     const barH = 30 * s;
     if (keyboard) {
@@ -876,15 +923,11 @@ export function layoutUi(view) {
       const kbH = 4 * rowH + 3 * gapKey + 2 * padY;
       const kbBottom = H;
       const keyboardTop = kbBottom - safe.bottom - kbH;
+      chatTop = keyboardTop - barH - 12 * s;
       add({
         id: "panel:keyboard",
         kind: "panel",
-        rect: box(
-          0,
-          keyboardTop - barH - 12 * s,
-          W,
-          kbH + safe.bottom + barH + 12 * s,
-        ),
+        rect: box(0, chatTop, W, H - chatTop),
         blocks: true,
       });
       const kx = left + 4 * s;
@@ -969,7 +1012,7 @@ export function layoutUi(view) {
 
   // The join QR code, over the panels.
   if (host?.joinOpen) {
-    const size = clamp(0.4 * Math.min(W, H), 144, 224);
+    const size = clamp(0.22 * Math.min(W, H), 120, 168);
     const pad = 6 * s;
     const x = Math.max(
       left + edge,
@@ -1164,6 +1207,7 @@ export function layoutUi(view) {
     shopList,
     logList,
     controlsTop,
+    chatTop,
   };
 }
 
