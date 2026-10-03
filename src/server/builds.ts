@@ -15,6 +15,60 @@ const PAGE_PATH = /^(|host|join\/[a-zA-Z0-9_-]{8,80})$/;
 
 export const LOCAL_BUILD = "local";
 
+const REFS_URL =
+  `https://github.com/${REPO}.git/info/refs?service=git-upload-pack`;
+const PULLS_URL =
+  `https://api.github.com/repos/${REPO}/pulls?state=open&per_page=100`;
+const PULLS_TTL_MS = 5 * 60_000;
+/** Branches that are listed nowhere: `evidence` holds only screenshots. */
+const HIDDEN_BRANCHES = new Set(["evidence"]);
+
+/** A branch and the commit at its head. */
+export interface BranchHead {
+  name: string;
+  commit: string;
+}
+
+/** An open pull request from a branch of this repository. */
+export interface PullRequest {
+  number: number;
+  title: string;
+  url: string;
+  branch: string;
+}
+
+/**
+ * Reads the branches from a git smart-HTTP ref advertisement (`info/refs?service=git-upload-pack`):
+ * pkt-lines of a 4-digit hex length and a payload. Only `refs/heads/*` lines are kept; the service
+ * line, HEAD, tags, and a line that does not parse are skipped. Hidden branches are left out.
+ */
+export function parseBranches(advertisement: Uint8Array): BranchHead[] {
+  const decoder = new TextDecoder();
+  const branches: BranchHead[] = [];
+  let at = 0;
+  while (at + 4 <= advertisement.length) {
+    const length = parseInt(
+      decoder.decode(advertisement.subarray(at, at + 4)),
+      16,
+    );
+    // 0000 is a flush packet; anything under 4 is not a data packet.
+    if (!(length >= 4)) {
+      if (Number.isNaN(length)) break;
+      at += 4;
+      continue;
+    }
+    const line = decoder.decode(advertisement.subarray(at + 4, at + length));
+    at += length;
+    // The first ref line carries capabilities after a NUL.
+    const [ref] = line.split("\0");
+    const match = /^([0-9a-f]{40}) refs\/heads\/(.+?)\n?$/.exec(ref);
+    if (match && !HIDDEN_BRANCHES.has(match[2])) {
+      branches.push({ name: match[2], commit: match[1] });
+    }
+  }
+  return branches;
+}
+
 export interface BuildOptions {
   store: Store;
   fetch?: typeof fetch;
@@ -111,6 +165,10 @@ export interface Builds {
   branch(name: string, options?: { fresh?: boolean }): Promise<string | null>;
   /** The full SHA of a commit (full or short), or null when the repository has no such commit. */
   commit(sha: string): Promise<string | null>;
+  /** Every branch with its head commit, from git's refs endpoint, cached for 60 s. Throws when GitHub fails. */
+  branches(): Promise<BranchHead[]>;
+  /** Open pull requests, cached for 5 minutes. Throws when GitHub fails; a failure is cached too. */
+  pulls(): Promise<PullRequest[]>;
 }
 
 export function createBuilds(options: BuildOptions): Builds {
@@ -119,6 +177,77 @@ export function createBuilds(options: BuildOptions): Builds {
   const now = options.now ?? Date.now;
   const refs = new Map<string, { sha: string | null; expires: number }>();
   const pages = new Map<string, { html: string; expires: number }>();
+  let branchList: { value: BranchHead[]; expires: number } | undefined;
+  let pullList:
+    | { value: PullRequest[] | Error; expires: number }
+    | undefined;
+
+  async function branches(): Promise<BranchHead[]> {
+    if (branchList && branchList.expires > now()) return branchList.value;
+    const response = await fetcher(REFS_URL, {
+      headers: { "user-agent": "open-dwarf-shell" },
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`GitHub refs answered ${response.status}`);
+    }
+    const value = parseBranches(new Uint8Array(await response.arrayBuffer()));
+    branchList = { value, expires: now() + BRANCH_TTL_MS };
+    return value;
+  }
+
+  async function loadPulls(): Promise<PullRequest[]> {
+    const headers: Record<string, string> = {
+      accept: "application/vnd.github+json",
+      "user-agent": "open-dwarf-shell",
+    };
+    if (options.githubToken) {
+      headers.authorization = `Bearer ${options.githubToken}`;
+    }
+    const response = await fetcher(PULLS_URL, { headers });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`GitHub pulls answered ${response.status}`);
+    }
+    const data: unknown = await response.json();
+    if (!Array.isArray(data)) throw new Error("GitHub pulls were not a list");
+    const pulls: PullRequest[] = [];
+    for (const item of data) {
+      // A pull request from a fork names a branch that this repository does not have.
+      if (item?.head?.repo?.full_name !== REPO) continue;
+      if (
+        typeof item.number === "number" && typeof item.title === "string" &&
+        typeof item.html_url === "string" && typeof item.head.ref === "string"
+      ) {
+        pulls.push({
+          number: item.number,
+          title: item.title,
+          url: item.html_url,
+          branch: item.head.ref,
+        });
+      }
+    }
+    return pulls;
+  }
+
+  async function pulls(): Promise<PullRequest[]> {
+    if (!pullList || pullList.expires <= now()) {
+      let value: PullRequest[] | Error;
+      try {
+        value = await loadPulls();
+      } catch (error) {
+        value = error instanceof Error ? error : new Error(String(error));
+      }
+      // A failure is kept for a short time so a dashboard left open does not hammer GitHub.
+      pullList = {
+        value,
+        expires: now() +
+          (value instanceof Error ? BRANCH_TTL_MS : PULLS_TTL_MS),
+      };
+    }
+    if (pullList.value instanceof Error) throw pullList.value;
+    return pullList.value;
+  }
 
   /** The commit a ref names on GitHub: a branch (`heads/<name>`) or a SHA. Null when unknown. */
   async function github(ref: string, fresh = false): Promise<string | null> {
@@ -230,6 +359,8 @@ export function createBuilds(options: BuildOptions): Builds {
     local: options.localBuild === true,
     branch,
     commit,
+    branches,
+    pulls,
     handles: (path) => split(path) !== null,
     resolve,
     async serve(path) {
