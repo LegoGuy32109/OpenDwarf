@@ -7,17 +7,17 @@ import { enableLocomotion, moveEntity } from "./locomotion.js";
 
 const DIRECTIONS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
-/** One corner NPC uses the same tile move as a person. */
-/** @param {World} world */
-export function createCornerNpc(world) {
-  const npc = addPlayer(world, "npc-corner", { x: 2, y: 2, z: 0 });
+/** One corner NPC uses the same tile move as a person. It walks the 2×2 square whose corner is `origin`. */
+/** @param {World} world @param {{x:number,y:number,z:number}} [origin] */
+export function createCornerNpc(world, origin = { x: 2, y: 2, z: 0 }) {
+  const npc = addPlayer(world, "npc-corner", origin);
   if (world.players.self?.free) {
     enableLocomotion(npc);
     const waypoints = [
-      { x: 3, y: 2 },
-      { x: 3, y: 3 },
-      { x: 2, y: 3 },
-      { x: 2, y: 2 },
+      { x: origin.x + 1, y: origin.y },
+      { x: origin.x + 1, y: origin.y + 1 },
+      { x: origin.x, y: origin.y + 1 },
+      { x: origin.x, y: origin.y },
     ];
     let waypoint = 0;
     let visits = 0;

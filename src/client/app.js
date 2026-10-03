@@ -26,6 +26,11 @@ import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
 import { createCornerNpc } from "../shared/npc.js";
+import {
+  layoutFromParams,
+  NPC_ORIGIN,
+  roomSpawnTile,
+} from "../shared/spawn-room.js";
 import { createPresentation } from "./presentation.js";
 import {
   chatView,
@@ -70,6 +75,10 @@ function storedTextSize() {
 const scene = {
   world: createWorld(),
   localId: "self",
+  /** `room` is the spawn room; `test` is the old pillar and staircase for specs. */
+  layout: /** @type {"room"|"test"} */ (layoutFromParams(
+    new URL(location.href).searchParams,
+  )),
   menu: false,
   menuPage: "root",
   uiScale: 1,
@@ -890,12 +899,19 @@ export const phoneDiagnostics = {
 
 export async function startApp() {
   if (!isAdmin) {
-    scene.world = (await import("../shared/authored-terrain.js"))
-      .createAuthoredWorld(
+    scene.world = scene.layout === "room"
+      ? (await import("../shared/spawn-room.js")).createSpawnRoomWorld()
+      : (await import("../shared/authored-terrain.js")).createAuthoredWorld(
         new URL(location.href).searchParams.get("world") === "32" ? 32 : 16,
       );
   }
-  enableLocomotion(addPlayer(scene.world, "self"));
+  enableLocomotion(
+    addPlayer(
+      scene.world,
+      "self",
+      scene.layout === "room" && !isAdmin ? roomSpawnTile(0) : undefined,
+    ),
+  );
   bindInput();
   const renderer = isSynthetic ? null : await createRenderer(canvas);
   $("#loading").hidden = true;
@@ -903,7 +919,9 @@ export async function startApp() {
   else {
     if (!isAdmin) {
       scene.sessionId = crypto.randomUUID();
-      tickNpc = createCornerNpc(scene.world);
+      tickNpc = scene.layout === "room"
+        ? createCornerNpc(scene.world, NPC_ORIGIN)
+        : createCornerNpc(scene.world);
       host = startHost(scene, scene.sessionId);
       const hostTools = $("#host-tools");
       const code = /** @type {HTMLImageElement} */ ($("#join-code"));
