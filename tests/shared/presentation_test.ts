@@ -142,3 +142,32 @@ Deno.test("newer remote positions replace unfinished visual paths", () => {
   }
   assert(visual.positionAt(player, 12, false).x > 3.4);
 });
+
+Deno.test("remote delay recovers after the simulation falls behind the clock", () => {
+  const world = createAuthoredWorld();
+  const npc = enableLocomotion(addPlayer(world, "npc", { x: 2, y: 2, z: 0 }));
+  const visual = createPresentation();
+  const realNow = performance.now;
+  let now = 1000;
+  performance.now = () => now;
+  try {
+    const run = (ticks: number) => {
+      for (let i = 0; i < ticks; i++) {
+        world.tick++;
+        npc.x += 0.05;
+        now += 50;
+        visual.observe(npc, world.tick);
+      }
+    };
+    run(40);
+    // A hidden tab resumes with only one capped frame of simulation time.
+    now += 3000;
+    run(60);
+    now += 25;
+    const shown = visual.positionAt(npc, world.tick + 0.5, false);
+    // 150 ms behind the newest sample, not held on it.
+    assertAlmostEquals(shown.x, npc.x - 0.125, 0.01);
+  } finally {
+    performance.now = realNow;
+  }
+});

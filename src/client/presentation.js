@@ -7,6 +7,8 @@ import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 /** @typedef {import('../shared/world.js').Player} Player */
 /** @typedef {import('../shared/world.js').Tile} Tile */
 
+const CLOCK_WINDOW_MS = 2000;
+
 /** Follow the newest simulation position without replaying a backlog of old moves. */
 export function createPresentation() {
   /** @type {Map<string,{position:Tile,tick:number,time?:number}>} */
@@ -15,13 +17,25 @@ export function createPresentation() {
   const samples = new Map();
   /** @type {Map<string,{player:Player,position:Tile,opacity:number,from:number,to:number,started:number,sample:string,lastSeen:number}>} */
   const sight = new Map();
+  /** Recent tick clock offsets in rising order; the first is the window minimum. */
+  /** @type {{time:number,offset:number}[]} */
+  let offsets = [];
   let clockBase = Infinity;
 
   /** @param {Player} player @param {number} tick */
   function observe(player, tick) {
     if (!player.free) return;
     const now = performance.now();
-    clockBase = Math.min(clockBase, now - tick * TICK_MS);
+    // The earliest recent sample absorbs network jitter. A window, not an
+    // all-time minimum, lets the clock follow a lasting shift, such as a
+    // hidden tab whose simulation fell behind.
+    const offset = now - tick * TICK_MS;
+    while (offsets.length && offsets[offsets.length - 1].offset >= offset) {
+      offsets.pop();
+    }
+    offsets.push({ time: now, offset });
+    while (now - offsets[0].time > CLOCK_WINDOW_MS) offsets.shift();
+    clockBase = offsets[0].offset;
     const list = samples.get(player.id) ?? [];
     if (list.length && tick <= list[list.length - 1].tick) return;
     list.push({
@@ -209,6 +223,7 @@ export function createPresentation() {
       entries.clear();
       samples.clear();
       sight.clear();
+      offsets = [];
       clockBase = Infinity;
     },
   };
