@@ -10,9 +10,9 @@ import {
   addPlayer,
   advanceTicks,
   createWorld,
-  terrainIndex,
   TICK_MS,
 } from "../../src/shared/world.js";
+import { OPEN, STONE, writeTile } from "../../src/shared/terrain.js";
 import {
   enableLocomotion,
   moveEntity,
@@ -77,11 +77,9 @@ Deno.test("exhaustion turns sprint off and locks it until stamina is full", () =
 Deno.test("a guest that claims sprint without stamina moves at walk speed", () => {
   const distance = (stamina: ReturnType<typeof createStamina>) => {
     const world = createWorld();
-    world.terrain.fill(1);
-    for (let x = 0; x < world.edge; x++) {
-      for (let y = 0; y < world.edge; y++) {
-        world.terrain[terrainIndex(x, y, 0)] = 2;
-      }
+    for (const chunk of world.chunks.values()) chunk.fill(OPEN);
+    for (let x = 0; x < 16; x++) {
+      for (let y = 0; y < 16; y++) writeTile(world, x, y, 0, STONE);
     }
     const player = enableLocomotion(
       addPlayer(world, "self", { x: 2, y: 7, z: 1 }),

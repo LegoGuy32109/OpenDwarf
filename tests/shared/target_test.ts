@@ -10,7 +10,7 @@ Deno.test("entity target covers eight neighbors on three adjacent levels", () =>
     for (const x of [-1, 0, 1]) {
       for (const y of [-1, 0, 1]) {
         if (!x && !y) continue;
-        assertEquals(adjacentTarget(player, { x, y }, z, world.edge), {
+        assertEquals(adjacentTarget(player, { x, y }, z, world), {
           x: 7 + x,
           y: 7 + y,
           z,
@@ -18,8 +18,10 @@ Deno.test("entity target covers eight neighbors on three adjacent levels", () =>
       }
     }
   }
-  assertEquals(adjacentTarget(player, { x: 1, y: 0 }, 5, world.edge), null);
-  assertEquals(adjacentTarget(player, { x: 0, y: 0 }, 3, world.edge), null);
-  player.x = world.edge - 1;
-  assertEquals(adjacentTarget(player, { x: 1, y: 0 }, 3, world.edge), null);
+  assertEquals(adjacentTarget(player, { x: 1, y: 0 }, 5, world), null);
+  assertEquals(adjacentTarget(player, { x: 0, y: 0 }, 3, world), null);
+  player.x = 15;
+  assertEquals(adjacentTarget(player, { x: 1, y: 0 }, 3, world), null);
+  player.x = 0;
+  assertEquals(adjacentTarget(player, { x: -1, y: 0 }, 3, world), null);
 });

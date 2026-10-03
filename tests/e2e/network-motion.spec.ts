@@ -522,7 +522,7 @@ test("guest master mode receives full terrain and entity mode restores only disc
           scene: {
             viewMode: string;
             world: {
-              terrain: number[];
+              chunks: Map<string, Uint8Array>;
               players: Record<string, { y: number }>;
             };
             localId: string;
@@ -532,13 +532,16 @@ test("guest master mode receives full terrain and entity mode restores only disc
       }).__od.scene;
       return {
         mode: scene.viewMode,
-        terrain: [...scene.world.terrain],
+        terrain: Object.fromEntries(
+          [...scene.world.chunks].map(([key, data]) => [key, [...data]]),
+        ),
         visible: [...scene.visibility.visible],
         y: scene.world.players[scene.localId]?.y,
       };
     });
   const before = await state();
-  expect(before.terrain).toContain(0);
+  // Undiscovered tiles read as UNKNOWN inside a chunk the guest has partly seen.
+  expect(Object.values(before.terrain).flat()).toContain(0);
   const command = async (value: string) => {
     await guest.keyboard.press("/");
     await guest.locator("#chat-input").fill(value);
@@ -546,21 +549,30 @@ test("guest master mode receives full terrain and entity mode restores only disc
   };
   await command("/master");
   await expect.poll(async () => (await state()).mode).toBe("master");
-  expect((await state()).terrain.every((tile) => tile !== 0)).toBe(true);
+  expect(
+    Object.values((await state()).terrain).every((chunk) =>
+      chunk.every((tile) => tile !== 0)
+    ),
+  ).toBe(true);
   await guest.keyboard.down("e");
   await expect.poll(async () => (await state()).y).toBeLessThan(before.y ?? 7);
   await guest.keyboard.up("e");
   await command("/entity");
   await expect.poll(async () => (await state()).mode).toBe("entity");
   const after = await state();
-  expect(after.terrain).toContain(0);
+  expect(Object.values(after.terrain).flat()).toContain(0);
   const visible = new Set(after.visible);
-  for (let index = 0; index < after.terrain.length; index++) {
-    if (before.terrain[index] !== 0 || after.terrain[index] === 0) continue;
-    const z = Math.floor(index / 256);
-    const y = Math.floor(index % 256 / 16);
-    const x = index % 16;
-    expect(visible.has(`${x},${y},${z}`)).toBe(true);
+  for (const [key, chunk] of Object.entries(after.terrain)) {
+    const [cx, cy] = key.split(",").map(Number);
+    const earlier = before.terrain[key];
+    for (let index = 0; index < chunk.length; index++) {
+      if (earlier?.[index] !== 0 && earlier !== undefined) continue;
+      if (chunk[index] === 0) continue;
+      const z = Math.floor(index / 256);
+      const y = cy * 16 + Math.floor(index % 256 / 16);
+      const x = cx * 16 + index % 16;
+      expect(visible.has(`${x},${y},${z}`)).toBe(true);
+    }
   }
   await Promise.all([host.close(), guest.close()]);
 });

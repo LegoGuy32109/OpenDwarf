@@ -1,6 +1,7 @@
 // @ts-check
 
-import { isSolid, WORLD_TOP } from "./world.js";
+import { isSolid } from "./world.js";
+import { nearLoadedTerrain, WORLD_TOP } from "./terrain.js";
 import { centerTile } from "./locomotion.js";
 
 export const FOV_RADIUS = 20;
@@ -13,6 +14,18 @@ export const FOV_RADIUS = 20;
 /** @param {number} x @param {number} y @param {number} z */
 export function tileKey(x, y, z) {
   return `${x},${y},${z}`;
+}
+
+/** Parse a `tileKey` back to `[x, y, z]`. Faster than `split`, which sight loops call thousands of times. */
+/** @param {string} key @returns {[number,number,number]} */
+export function parseTileKey(key) {
+  const first = key.indexOf(",");
+  const second = key.indexOf(",", first + 1);
+  return [
+    Number(key.slice(0, first)),
+    Number(key.slice(first + 1, second)),
+    Number(key.slice(second + 1)),
+  ];
 }
 
 /** @returns {Visibility} */
@@ -114,14 +127,17 @@ export function recomputeVisibility(world, state, position) {
   if (state.sample === sample) return false;
   const next = new Set();
   const radiusSquared = FOV_RADIUS * FOV_RADIUS;
-  // One stone tile beyond XY bounds is the farthest exterior surface visible.
+  // One stone tile beyond loaded chunks is the farthest exterior surface visible.
+  const minX = Math.floor(position.x) - FOV_RADIUS;
+  const minY = Math.floor(position.y) - FOV_RADIUS;
   for (let z = -1; z <= WORLD_TOP + 1; z++) {
-    for (let y = -1; y <= world.edge; y++) {
-      for (let x = -1; x <= world.edge; x++) {
+    for (let y = minY; y <= minY + 2 * FOV_RADIUS + 1; y++) {
+      for (let x = minX; x <= minX + 2 * FOV_RADIUS + 1; x++) {
         const dx = x - position.x;
         const dy = y - position.y;
         const dz = z - position.z;
         if (dx * dx + dy * dy + dz * dz > radiusSquared) continue;
+        if (!nearLoadedTerrain(world, x, y)) continue;
         if (hasLineOfSight(world, position, { x, y, z })) {
           next.add(tileKey(x, y, z));
         }
@@ -130,7 +146,7 @@ export function recomputeVisibility(world, state, position) {
   }
   // Reveal walls next to visible air, even when the wall center is behind a ray.
   for (const key of [...next]) {
-    const [x, y, z] = key.split(",").map(Number);
+    const [x, y, z] = parseTileKey(key);
     if (isSolid(world, x, y, z)) continue;
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       if (isSolid(world, x + dx, y + dy, z)) {

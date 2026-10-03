@@ -11,9 +11,15 @@ demo draws these with one small WebGL2 renderer. The older Rust engine stays on
 
 The default authored world is one 16×16 tile square across z levels 0–7.
 `?world=32` starts an expanded 32×32 authored area with four fixed 16×16 chunks
-and the same eight levels. The expanded area includes a second pillar. All
-chunks load at join; there is no distance-based loading. Unknown XY coordinates
-are solid stone at every level. A seven-step staircase on the south edge reaches
+and the same eight levels. The expanded area includes a second pillar.
+Terrain is stored per 16×16 chunk in a map keyed by chunk coordinates, which can
+be negative ([ADR 0003](adr/0003-chunked-terrain-generated-on-demand.md)).
+`src/shared/terrain.js` is the API: `readTile` and `writeTile` for one material
+at x, y, z; `world.generateChunk`, a hook `ensureChunk` calls to create a missing
+chunk (the generator plugs into it); and `drainTileChanges`, which lists the
+tiles written since the last call so the host can send them to peers. A tile in
+a chunk that does not exist reads as solid stone. There is no distance-based
+chunk creation yet. A seven-step staircase on the south edge reaches
 the top landing; a full-height pillar tests occlusion. The view can show five
 lower levels, with deeper floors turning blue before they disappear. There is no
 world generation, chunk loading, persistence, or inventory. Players and the corner NPC use continuous x/y centers and half-tile square
@@ -45,8 +51,9 @@ through walls and outside sight without exposing the speaker's sprite or name.
 The hearing log keeps each message text it receives once, so unheard messages
 never enter it. The world host adds join, leave, and name change system lines
 to its own log and sends them to guests as `system` packets on the reliable
-channel. Visibility and memory use fixed-size bit masks in network
-snapshots. The host skips superseded snapshots while a guest's data channel is
+channel. Visibility and memory use one bit mask per chunk in network snapshots, and
+terrain travels as run-length encoded chunks. A joining player receives only the
+chunks that hold a tile it has seen. The host skips superseded snapshots while a guest's data channel is
 backed up, then sends the current state when that channel drains. R/V changes
 view level, holding U/N lerps zoom, and touch offers pinch zoom and two-finger
 vertical drag for view levels. A brief bitmap HUD shows both values during
@@ -77,7 +84,7 @@ channels share SCTP congestion control. Pending sends coalesce to current
 state when each channel drains. Stops send a 300 ms settling tail, with 500 ms
 reliable snapshots as recovery.
 
-Protocol version 2 requires a matching join/offer version. Complete snapshots
+Protocol version 3 requires a matching join/offer version. Complete snapshots
 are validated before scene mutation. Motion is fenced by connection attempt,
 view revision, sight revision, and tick. The guest retains only the newest
 motion awaiting reliable sight. Older reliable state can refresh terrain and

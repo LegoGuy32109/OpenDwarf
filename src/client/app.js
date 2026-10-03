@@ -20,6 +20,7 @@ import {
   visibilityPosition,
 } from "../shared/visibility.js";
 import { clampCameraAxis, playerOccluded } from "../shared/surface.js";
+import { terrainExtent } from "../shared/terrain.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { createRenderer } from "./render.js";
@@ -1110,17 +1111,20 @@ export async function startApp() {
     }
     if (scene.viewMode === "master") {
       const zoom = scene.zoom;
+      const extent = terrainExtent(scene.world);
       scene.camera.x = clampCameraAxis(
         scene.camera.x,
         canvas.clientWidth,
         zoom,
-        scene.world.edge,
+        extent.maxX,
+        extent.minX,
       );
       scene.camera.y = clampCameraAxis(
         scene.camera.y,
         canvas.clientHeight,
         zoom,
-        scene.world.edge,
+        extent.maxY,
+        extent.minY,
       );
     }
     if (!isAdmin) {

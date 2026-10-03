@@ -1,6 +1,7 @@
 // @ts-check
 
-import { WORLD_TOP } from "./world.js";
+import { WORLD_TOP } from "./terrain.js";
+import { decodeChunks, encodeChunks } from "./chunk-wire.js";
 import { unpackVisibility } from "./visibility-wire.js";
 
 /** @typedef {import('./world.js').Player} Player */
@@ -12,10 +13,12 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {Envelope & {type:"motion",tick:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MAX_PACKET_BYTES = 256 * 1024;
 const MAX_ENTITIES = 1024;
 const MAX_TICK = Number.MAX_SAFE_INTEGER;
+/** Tile coordinates are bounded, not tied to a world size; terrain is chunked. */
+const MAX_COORD = 1 << 24;
 
 /** Reject oversized transport payloads before JSON parsing or scene decoding. */
 /** @param {unknown} raw @returns {Record<string,unknown>|null} */
@@ -60,28 +63,29 @@ function envelope(value) {
     counter(value.sightRevision);
 }
 
-/** @param {unknown} value @param {number} edge */
-function tile(value, edge) {
-  return record(value) && finite(value.x, -1, edge) &&
-    finite(value.y, -1, edge) && finite(value.z, -1, WORLD_TOP + 1);
+/** @param {unknown} value */
+function tile(value) {
+  return record(value) && finite(value.x, -MAX_COORD, MAX_COORD) &&
+    finite(value.y, -MAX_COORD, MAX_COORD) &&
+    finite(value.z, -1, WORLD_TOP + 1);
 }
 
-/** @param {unknown} value @param {number} edge @param {boolean} [boundary] */
-function movement(value, edge, boundary = false) {
+/** @param {unknown} value @param {boolean} [boundary] */
+function movement(value, boundary = false) {
   if (!record(value)) return false;
   return counter(value.startTick) && counter(value.durationTicks, 1000) &&
     value.durationTicks > 0 && counter(value.sequence) &&
     (boundary
-      ? tile(value.from, edge) && tile(value.to, edge) &&
+      ? tile(value.from) && tile(value.to) &&
         typeof value.entering === "boolean"
-      : tile(value.origin, edge) && tile(value.target, edge) &&
-        tile(value.startPosition, edge));
+      : tile(value.origin) && tile(value.target) &&
+        tile(value.startPosition));
 }
 
-/** @param {unknown} value @param {number} edge @returns {value is Player} */
-function player(value, edge) {
+/** @param {unknown} value @returns {value is Player} */
+function player(value) {
   if (
-    !record(value) || !identifier(value.id) || !tile(value, edge) ||
+    !record(value) || !identifier(value.id) || !tile(value) ||
     !Number.isInteger(value.z)
   ) {
     return false;
@@ -89,10 +93,10 @@ function player(value, edge) {
   if (
     typeof value.name !== "string" || value.name.length > 24 ||
     typeof value.facingLeft !== "boolean" ||
-    (value.move !== null && !movement(value.move, edge))
+    (value.move !== null && !movement(value.move))
   ) return false;
   if (
-    value.viewMotion !== undefined && !movement(value.viewMotion, edge, true)
+    value.viewMotion !== undefined && !movement(value.viewMotion, true)
   ) {
     return false;
   }
@@ -124,11 +128,11 @@ export function encodeMotionPlayers(players) {
   );
 }
 
-/** @param {unknown} value @param {number} edge @returns {World['players']|null} */
-function players(value, edge) {
+/** @param {unknown} value @returns {World['players']|null} */
+function players(value) {
   if (!record(value) || Object.keys(value).length > MAX_ENTITIES) return null;
   for (const [id, entity] of Object.entries(value)) {
-    if (!identifier(id) || !player(entity, edge) || entity.id !== id) {
+    if (!identifier(id) || !player(entity) || entity.id !== id) {
       return null;
     }
   }
@@ -149,7 +153,7 @@ function chatRecords(value) {
   if (!Array.isArray(value) || value.length > MAX_ENTITIES) return null;
   const ids = new Set();
   for (const item of value) {
-    if (!record(item) || !identifier(item.id) || !tile(item, 32)) return null;
+    if (!record(item) || !identifier(item.id) || !tile(item)) return null;
     if (ids.has(item.id)) return null;
     ids.add(item.id);
     if (
@@ -213,6 +217,16 @@ function chatRecords(value) {
   }));
 }
 
+/** Wire form of a world snapshot: chunks become run-length strings and players keep only wire fields. */
+/** @param {World} world */
+export function encodeWorld(world) {
+  return {
+    tick: world.tick,
+    chunks: encodeChunks(world.chunks),
+    players: encodeMotionPlayers(world.players),
+  };
+}
+
 /** Returns null without exposing partially validated snapshot state. */
 /** @param {unknown} value @returns {StatePacket|null} */
 export function decodeState(value) {
@@ -223,27 +237,10 @@ export function decodeState(value) {
     !record(value.world)
   ) return null;
   const world = value.world;
-  if (world.edge !== 16 && world.edge !== 32) return null;
-  const edge = world.edge;
-  if (!counter(world.tick) || !Array.isArray(world.terrain)) return null;
-  if (
-    world.terrain.length !== (WORLD_TOP + 1) * world.edge ** 2 ||
-    !world.terrain.every((cell) => cell === 0 || cell === 1 || cell === 2)
-  ) return null;
-  if (
-    !Array.isArray(world.chunks) ||
-    world.chunks.length !== (world.edge / 16) ** 2
-  ) {
-    return null;
-  }
-  const expectedChunks = Array.from(
-    { length: (world.edge / 16) ** 2 },
-    (_, i) => `${i % (edge / 16)},${Math.floor(i / (edge / 16))}`,
-  );
-  if (!world.chunks.every((chunk, index) => chunk === expectedChunks[index])) {
-    return null;
-  }
-  const parsedPlayers = players(world.players, world.edge);
+  if (!counter(world.tick)) return null;
+  const chunks = decodeChunks(world.chunks);
+  if (!chunks) return null;
+  const parsedPlayers = players(world.players);
   const chat = chatRecords(value.chat);
   if (
     !parsedPlayers || !Object.hasOwn(parsedPlayers, value.playerId) || !chat
@@ -252,11 +249,11 @@ export function decodeState(value) {
     if (value.visibility !== null) return null;
   } else {
     if (
-      !record(value.visibility) || value.visibility.edge !== world.edge ||
+      !record(value.visibility) ||
       typeof value.visibility.sample !== "string" ||
       value.visibility.sample.length > 128 ||
-      typeof value.visibility.visible !== "string" ||
-      typeof value.visibility.memory !== "string"
+      !record(value.visibility.visible) ||
+      !record(value.visibility.memory)
     ) return null;
     try {
       unpackVisibility(
@@ -278,16 +275,13 @@ export function decodeState(value) {
     mode: parsed.mode,
     visibility: parsed.visibility === null ? null : {
       encoding: parsed.visibility.encoding,
-      edge: parsed.visibility.edge,
       sample: parsed.visibility.sample,
       visible: parsed.visibility.visible,
       memory: parsed.visibility.memory,
     },
     world: {
       tick: parsed.world.tick,
-      edge: parsed.world.edge,
-      chunks: [...parsed.world.chunks],
-      terrain: [...parsed.world.terrain],
+      chunks,
       players: parsedPlayers,
     },
     chat,
@@ -300,7 +294,7 @@ export function decodeMotion(value) {
     !record(value) || value.type !== "motion" || !envelope(value) ||
     !counter(value.tick) || !counter(value.acknowledgedSequence)
   ) return null;
-  const parsedPlayers = players(value.players, 32);
+  const parsedPlayers = players(value.players);
   if (!parsedPlayers) return null;
   const parsed = /** @type {MotionPacket} */ (value);
   return {

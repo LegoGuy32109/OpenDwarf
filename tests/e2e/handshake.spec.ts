@@ -17,7 +17,7 @@ test("unanswered offer expires without leaving a player or connection record", a
         playerId,
         token: crypto.randomUUID(),
         attempt: crypto.randomUUID(),
-        version: 2,
+        version: 3,
       },
     },
   });

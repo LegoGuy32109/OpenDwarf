@@ -11,8 +11,17 @@ import {
   advanceTicks,
   createWorld,
   renderPosition,
-  terrainIndex,
 } from "../../src/shared/world.js";
+
+import { writeTile } from "../../src/shared/terrain.js";
+
+/** Set every tile of every loaded chunk. */
+function fillTerrain(
+  world: { chunks: Map<string, Uint8Array> },
+  material: number,
+) {
+  for (const chunk of world.chunks.values()) chunk.fill(material);
+}
 
 /** These tests were tuned at the former 2.8 tiles per second. */
 const FORMER_SPEED = 2.8;
@@ -96,8 +105,8 @@ Deno.test("a one-level drop begins when the center crosses the edge", () => {
 
 Deno.test("loss of support chains downward steps without changing x or y", () => {
   const world = createWorld();
-  world.terrain.fill(1);
-  world.terrain[terrainIndex(7, 7, 0)] = 2;
+  fillTerrain(world, 1);
+  writeTile(world, 7, 7, 0, 2);
   const player = enableLocomotion(addPlayer(world, "self", {
     x: 7,
     y: 7,
@@ -114,8 +123,8 @@ Deno.test("loss of support chains downward steps without changing x or y", () =>
 
 Deno.test("an occupied landing blocks a climb until the entity moves away", () => {
   const world = createWorld();
-  world.terrain.fill(1);
-  world.terrain[terrainIndex(8, 7, 0)] = 2;
+  fillTerrain(world, 1);
+  writeTile(world, 8, 7, 0, 2);
   const climber = enableLocomotion(addPlayer(world, "climber", {
     x: 7,
     y: 7,
@@ -143,8 +152,8 @@ Deno.test("an occupied landing blocks a climb until the entity moves away", () =
 
 Deno.test("an occupied diagonal landing blocks both directions", () => {
   const world = createWorld();
-  world.terrain.fill(1);
-  world.terrain[terrainIndex(8, 8, 0)] = 2;
+  fillTerrain(world, 1);
+  writeTile(world, 8, 8, 0, 2);
   const climber = enableLocomotion(addPlayer(world, "climber", {
     x: 7,
     y: 7,
@@ -187,9 +196,9 @@ Deno.test("stopping diagonal travel does not reverse the rendered path", () => {
 
 Deno.test("diagonal descent lands over the crossed edge's support", () => {
   const world = createWorld();
-  world.terrain.fill(1);
-  world.terrain[terrainIndex(7, 7, 1)] = 2;
-  world.terrain[terrainIndex(8, 7, 0)] = 2;
+  fillTerrain(world, 1);
+  writeTile(world, 7, 7, 1, 2);
+  writeTile(world, 8, 7, 0, 2);
   const player = enableLocomotion(addPlayer(world, "self", {
     x: 7.4,
     y: 7,
@@ -220,10 +229,10 @@ Deno.test("walk speed of 30 ft per round is one tile per second, and sprint doub
 Deno.test("sprint covers twice the distance of the same speed", () => {
   const distance = (sprint: boolean) => {
     const world = createWorld();
-    world.terrain.fill(1);
-    for (let x = 0; x < world.edge; x++) {
-      for (let y = 0; y < world.edge; y++) {
-        world.terrain[terrainIndex(x, y, 0)] = 2;
+    fillTerrain(world, 1);
+    for (let x = 0; x < 16; x++) {
+      for (let y = 0; y < 16; y++) {
+        writeTile(world, x, y, 0, 2);
       }
     }
     const player = enableLocomotion(addPlayer(world, "self", {

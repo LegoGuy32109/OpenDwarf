@@ -1,14 +1,16 @@
 // @ts-check
 
+import { createWorld, EXPANDED_WORLD_EDGE, WORLD_EDGE } from "./world.js";
 import {
-  createWorld,
-  EXPANDED_WORLD_EDGE,
-  terrainIndex,
-  WORLD_EDGE,
+  CHUNK_EDGE,
+  chunkIndex,
+  getChunk,
+  OPEN,
+  STONE,
   WORLD_TOP,
-} from "./world.js";
+} from "./terrain.js";
 
-/** The authored map is loaded only by a host. Guests receive discovered cells. */
+/** The authored map is loaded only by a host. Guests receive discovered chunks. */
 /** @param {number} [edge] */
 export function createAuthoredWorld(edge = WORLD_EDGE) {
   const world = createWorld(edge);
@@ -19,7 +21,15 @@ export function createAuthoredWorld(edge = WORLD_EDGE) {
           (y === 13 && x >= 2 && x <= 8 && z <= x - 2) ||
           (x >= 9 && x <= 12 && (y === 13 || y === 14) && z <= 6) ||
           (edge === EXPANDED_WORLD_EDGE && x === 23 && y === 23);
-        world.terrain[terrainIndex(x, y, z, edge)] = solid ? 2 : 1;
+        const chunk = getChunk(
+          world,
+          Math.floor(x / CHUNK_EDGE),
+          Math.floor(y / CHUNK_EDGE),
+        );
+        if (!chunk) continue;
+        chunk[chunkIndex(x % CHUNK_EDGE, y % CHUNK_EDGE, z)] = solid
+          ? STONE
+          : OPEN;
       }
     }
   }
