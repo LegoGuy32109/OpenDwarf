@@ -34,12 +34,11 @@ import {
 } from "../shared/hearing-log.js";
 import {
   centerTile,
-  DEFAULT_SPEED_FT,
   enableLocomotion,
   moveEntity,
-  SPEED_STEPS_FT,
   speedTilesPerSecond,
 } from "../shared/locomotion.js";
+import { createStamina, setSprint, stepStamina } from "../shared/stamina.js";
 
 /** @param {string} selector */
 const $ = (
@@ -104,8 +103,8 @@ let unsupportedGamepadId = "";
 /** @type {Set<number>} */
 let gamepadButtons = new Set();
 let sequence = 0;
-let speedFt = DEFAULT_SPEED_FT;
-let sprint = false;
+/** Local stamina. A guest predicts with it; the world host decides for guests. */
+const stamina = createStamina();
 let lastInputDirection = { x: 0, y: 0 };
 let lastInputSent = -100;
 let lastTyping = false;
@@ -256,32 +255,23 @@ function drawLog() {
   }
 }
 
-function showSpeed() {
-  const speedButton = $("#speed-button");
-  speedButton.textContent = String(speedFt);
-  speedButton.setAttribute("aria-label", `Speed ${speedFt} feet per round`);
-  const sprintButton = $("#sprint-button");
-  sprintButton.setAttribute("aria-pressed", String(sprint));
-  sprintButton.classList.toggle("is-on", sprint);
-  notify(
-    `${speedFt} ft${sprint ? " sprint" : ""}: ${
-      speedTilesPerSecond(speedFt, sprint).toFixed(2)
-    } tiles/s`,
+/** Draw the sprint button: pressed, dimmed while locked, and the stamina line. */
+function showSprint() {
+  const button = $("#sprint-button");
+  button.setAttribute("aria-pressed", String(stamina.sprint));
+  button.classList.toggle("is-on", stamina.sprint);
+  button.classList.toggle("is-locked", stamina.locked);
+  button.style.setProperty("--stamina", String(stamina.value));
+  button.setAttribute(
+    "aria-label",
+    stamina.locked ? "Sprint locked until stamina is full" : "Sprint",
   );
 }
 
-/** Step through the D&D walking speeds: 30, 50, 60, then back to 30. */
-function cycleSpeed() {
-  speedFt = SPEED_STEPS_FT[
-    (SPEED_STEPS_FT.indexOf(speedFt) + 1) % SPEED_STEPS_FT.length
-  ];
-  showSpeed();
-}
-
-/** Sprint is the Dash action and doubles the chosen speed. */
+/** Sprint doubles walk speed. It needs stamina and stays off while locked. */
 function toggleSprint() {
-  sprint = !sprint;
-  showSpeed();
+  setSprint(stamina, !stamina.sprint);
+  showSprint();
 }
 
 /** Shows or hides the small join QR below the host tools. */
@@ -424,7 +414,7 @@ function move() {
   const changed = direction.x !== lastInputDirection.x ||
     direction.y !== lastInputDirection.y;
   lastInputDirection = direction;
-  const speed = speedTilesPerSecond(speedFt, sprint);
+  const speed = speedTilesPerSecond(stamina.sprint);
   if (isAdmin && (changed || scene.world.tick - lastInputSent >= 4)) {
     if (changed) sequence++;
     guest?.send({
@@ -432,8 +422,7 @@ function move() {
       dx: direction.x,
       dy: direction.y,
       sequence,
-      speedFt,
-      sprint,
+      sprint: stamina.sprint,
     });
     lastInputSent = scene.world.tick;
   }
@@ -448,6 +437,8 @@ function move() {
     direction.y,
     speed,
   );
+  stepStamina(stamina);
+  showSprint();
   if (
     !isAdmin && moved && player &&
     (player.move || before?.x !== centerTile(player.x) ||
@@ -624,10 +615,6 @@ function bindInput() {
     scene.inputMode = "touch";
     cameraStick = { x, y };
   });
-  $("#speed-button").addEventListener("click", () => {
-    scene.inputMode = "touch";
-    cycleSpeed();
-  });
   $("#sprint-button").addEventListener("click", () => {
     scene.inputMode = "touch";
     toggleSprint();
@@ -699,12 +686,9 @@ function bindInput() {
       if (!event.repeat) openChat(event.code === "Slash" ? "/" : "");
       return;
     }
-    if (event.code === "KeyG" || event.code === "KeyH") {
+    if (event.code === "KeyH") {
       event.preventDefault();
-      if (!event.repeat) {
-        if (event.code === "KeyG") cycleSpeed();
-        else toggleSprint();
-      }
+      if (!event.repeat) toggleSprint();
       return;
     }
     held.add(event.code);

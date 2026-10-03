@@ -32,17 +32,22 @@
       </aside>
       <div id="controls" aria-label="Touch controls">
         <section class="stick move" aria-label="Move controller">
-          <span class="control-name">MOVE <b>ESDF</b> · SPEED <b>G</b> · SPRINT <b>H</b></span>
+          <span class="control-name">MOVE <b>ESDF</b> · SPRINT <b>H</b></span>
           <button class="stick-hit" data-stick="move" type="button"
             aria-label="Move controller"><span class="octant-guides" aria-hidden="true"></span><span class="stick-deadzone" aria-hidden="true"></span><span class="stick-knob" aria-hidden="true"></span></button>
           <span class="actions">
-            <button class="action" id="speed-button" type="button"
-              aria-label="Speed 30 feet per round">30</button>
-            <button class="action" id="sprint-button" type="button"
-              aria-label="Sprint" aria-pressed="false">»</button>
           </span>
         </section>
         <section class="stick camera" aria-label="Look or pan controller">
+          <button class="action" id="sprint-button" type="button"
+            aria-label="Sprint" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
+              stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+              stroke-linejoin="round"><circle cx="15" cy="4.5" r="1.8"
+                fill="currentColor" stroke="none" /><path
+                d="M13 8.5l-3 3.5 3 2.5-1.5 5M10 12l-3.5 1M13 8.5l3 2.5 3 .5M13 14.5l3.5 2" /></svg>
+            <span class="stamina-line" aria-hidden="true"></span>
+          </button>
           <span class="control-name">LOOK <b>IJKL</b></span>
           <button class="stick-hit" data-stick="camera" type="button"
             aria-label="Look or pan controller"><span class="octant-guides" aria-hidden="true"></span><span class="stick-deadzone" aria-hidden="true"></span><span class="stick-knob" aria-hidden="true"></span></button>

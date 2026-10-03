@@ -226,6 +226,54 @@ input {
   display: flex;
   justify-content: space-around;
 }
+#sprint-button {
+  position: absolute;
+  z-index: 1;
+  right: calc(100% + 6px);
+  bottom: 18px;
+  width: clamp(56px, 13vw, 68px);
+  --stamina: 1;
+}
+#sprint-button svg {
+  width: 56%;
+  margin-top: -6px;
+}
+.stamina-line {
+  position: absolute;
+  bottom: 22%;
+  left: 20%;
+  width: 60%;
+  height: 4px;
+  border-radius: 2px;
+  background: #282b2f33;
+  overflow: hidden;
+}
+.stamina-line::before {
+  display: block;
+  width: calc(var(--stamina) * 100%);
+  height: 100%;
+  content: "";
+  background: #2f8f4e;
+}
+#sprint-button.is-on .stamina-line {
+  background: #fff4;
+}
+#sprint-button.is-on .stamina-line::before {
+  background: #fff;
+}
+#sprint-button.is-locked {
+  color: #8d9195;
+  border-color: #5a5f65;
+  background: #6b7076;
+  box-shadow: 0 3px 0 #111315;
+  opacity: .75;
+}
+#sprint-button.is-locked .stamina-line {
+  background: #0006;
+}
+#sprint-button.is-locked .stamina-line::before {
+  background: #e4a34a;
+}
 .action.is-on {
   color: #fff;
   border-color: #e4a34a;
@@ -398,7 +446,7 @@ input {
     right: calc(var(--safe-right) + 12px);
   }
   .stick-hit {
-    width: clamp(132px, 36vw, 190px);
+    width: clamp(120px, 32vw, 190px);
   }
 }
 @media (orientation: landscape) {
@@ -411,6 +459,9 @@ input {
   }
   .action {
     width: clamp(38px, 8vh, 46px);
+  }
+  #sprint-button {
+    width: clamp(52px, 12vh, 64px);
   }
 }
 @media (max-height: 420px) and (orientation: landscape) {

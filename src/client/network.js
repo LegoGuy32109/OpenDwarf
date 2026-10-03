@@ -21,12 +21,11 @@ import { entityPlayers, entityView } from "../shared/view.js";
 import { unpackVisibility } from "../shared/visibility-wire.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
 import {
-  DEFAULT_SPEED_FT,
   enableLocomotion,
   moveEntity,
-  SPEED_STEPS_FT,
   speedTilesPerSecond,
 } from "../shared/locomotion.js";
+import { createStamina, setSprint, stepStamina } from "../shared/stamina.js";
 import { chatView, receiveChat } from "../shared/chat.js";
 import { createAttemptDeadline } from "./attempt-deadline.js";
 import { createRevisionOrder } from "./revision-order.js";
@@ -248,8 +247,8 @@ export function startHost(scene, session) {
     let lastSeen = performance.now();
     let lastSequence = 0;
     let direction = { x: 0, y: 0 };
-    let speedFt = DEFAULT_SPEED_FT;
-    let sprint = false;
+    /** The host tracks stamina, so a guest cannot sprint without it. */
+    let stamina = createStamina();
     /** @type {ReturnType<typeof setTimeout>|null} */
     let departureTimer = null;
     /** @type {import('../shared/world.js').Player|null} */
@@ -366,10 +365,7 @@ export function startHost(scene, session) {
         ) {
           lastSequence = incomingSequence;
           direction = { x: dx, y: dy };
-          speedFt = SPEED_STEPS_FT.includes(Number(message.speedFt))
-            ? Number(message.speedFt)
-            : DEFAULT_SPEED_FT;
-          sprint = message.sprint === true;
+          setSprint(stamina, message.sprint === true);
         }
         return;
       }
@@ -454,8 +450,7 @@ export function startHost(scene, session) {
       joined = true;
       lastSequence = 0;
       direction = { x: 0, y: 0 };
-      speedFt = DEFAULT_SPEED_FT;
-      sprint = false;
+      stamina = createStamina();
       pendingMoves.length = 0;
       viewRevision = sightRevision = 0;
       lastSight = "";
@@ -640,8 +635,9 @@ export function startHost(scene, session) {
         playerId,
         direction.x,
         direction.y,
-        speedTilesPerSecond(speedFt, sprint),
+        speedTilesPerSecond(stamina.sprint),
       );
+      stepStamina(stamina);
       const player = scene.world.players[playerId];
       const position = player
         ? visibilityPosition(player, scene.world.tick)

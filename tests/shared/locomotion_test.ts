@@ -211,14 +211,10 @@ Deno.test("diagonal descent lands over the crossed edge's support", () => {
   assertEquals(player.move, null);
 });
 
-Deno.test("speed converts D&D feet per round to tiles per second", () => {
+Deno.test("walk speed of 30 ft per round is one tile per second, and sprint doubles it", () => {
   assertEquals(speedTilesPerSecond(), 1);
-  assertEquals(speedTilesPerSecond(30), 1);
-  assertAlmostEquals(speedTilesPerSecond(50), 5 / 3);
-  assertEquals(speedTilesPerSecond(60), 2);
-  assertEquals(speedTilesPerSecond(30, true), 2);
-  assertEquals(speedTilesPerSecond(60, true), 4);
-  assertEquals(speedTilesPerSecond(45), 1);
+  assertEquals(speedTilesPerSecond(false), 1);
+  assertEquals(speedTilesPerSecond(true), 2);
 });
 
 Deno.test("sprint covers twice the distance of the same speed", () => {
@@ -237,7 +233,7 @@ Deno.test("sprint covers twice the distance of the same speed", () => {
     }));
     for (let i = 0; i < 40; i++) {
       advanceTicks(world);
-      moveEntity(world, "self", 1, 0, speedTilesPerSecond(30, sprint));
+      moveEntity(world, "self", 1, 0, speedTilesPerSecond(sprint));
     }
     return player.x - 2;
   };

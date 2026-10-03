@@ -286,13 +286,8 @@ Deno.test("control requires integer octants, bounded strings, and proper types",
     dx: 0,
     dy: 0,
     sequence: 20,
-    speedFt: 50,
     sprint: true,
   }));
-  assertEquals(
-    decodeControl({ type: "input", dx: 0, dy: 0, sequence: 20, speedFt: 45 }),
-    null,
-  );
   assertEquals(
     decodeControl({ type: "input", dx: 0, dy: 0, sequence: 20, sprint: 1 }),
     null,
