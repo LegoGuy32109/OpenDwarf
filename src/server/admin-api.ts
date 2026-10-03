@@ -1,4 +1,4 @@
-// The shell's owner API under `/api/v1`: label and promotion writes, and public reads. A write
+// The shell's owner API under `/api/v1`: label and promotion writes, and public reads (labels, promotions, shell deploys, status). A write
 // needs the owner token (`OD_OWNER_TOKEN`). The shell keeps only a SHA-256 hash of it, compares
 // hashes in constant time, and never logs or returns it. Without a token set, writes answer 403.
 // Terms follow CONTEXT.md: Label, Main, Promotion, Session.
@@ -165,6 +165,9 @@ export function createAdminApi(options: AdminOptions): AdminApi {
     if (path === "/promotions" && read) {
       return json({ promotions: await store.listPromotions(50) });
     }
+    if (path === "/shell-deploys" && read) {
+      return json({ deploys: await store.listShellDeploys(50) });
+    }
     if (path === "/status" && read) return status();
     const named = /^\/labels\/([^/]+)(\/rename)?$/.exec(path);
     const writes = (path === "/promotions" && method === "POST") ||
@@ -195,9 +198,11 @@ export function createAdminApi(options: AdminOptions): AdminApi {
 
   return {
     async handle(request) {
-      const path = /^\/api\/v1(\/(?:labels|promotions|status)(?:\/.*)?)$/.exec(
-        new URL(request.url).pathname,
-      )?.[1];
+      const path =
+        /^\/api\/v1(\/(?:labels|promotions|shell-deploys|status)(?:\/.*)?)$/
+          .exec(
+            new URL(request.url).pathname,
+          )?.[1];
       if (!path) return null;
       try {
         return await route(request, path);

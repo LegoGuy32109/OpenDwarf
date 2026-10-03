@@ -142,7 +142,7 @@ Deno.test("the API answers under /api/v1 and /host serves the page", async () =>
   assertEquals(sessions.status, 200);
   assertEquals(await sessions.json(), { sessions: [] });
   assertEquals((await app(new Request("http://localhost/host"))).status, 200);
-  for (const gone of ["/admin", "/phone-test"]) {
+  for (const gone of ["/phone-test"]) {
     assertEquals(
       (await app(new Request(`http://localhost${gone}`))).status,
       404,

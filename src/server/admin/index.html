@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Open Dwarf admin</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Open Dwarf admin</h1>
+      <p id="refreshed" role="status">Loading…</p>
+    </header>
+    <main>
+      <section aria-labelledby="live-title">
+        <h2 id="live-title">Live sessions</h2>
+        <div id="live"></div>
+      </section>
+      <section aria-labelledby="labels-title">
+        <h2 id="labels-title">Builds and labels</h2>
+        <div id="labels"></div>
+      </section>
+      <section aria-labelledby="main-title">
+        <h2 id="main-title">Main and promotions</h2>
+        <div id="main"></div>
+      </section>
+      <section aria-labelledby="deploys-title">
+        <h2 id="deploys-title">Shell deploys</h2>
+        <div id="deploys"></div>
+      </section>
+      <section aria-labelledby="telemetry-title">
+        <h2 id="telemetry-title">Recent session telemetry</h2>
+        <div id="telemetry"></div>
+      </section>
+    </main>
+    <script type="module" src="/admin/admin.js"></script>
+  </body>
+</html>

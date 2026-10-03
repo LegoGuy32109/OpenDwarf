@@ -326,12 +326,23 @@ the commit. `/`, `/host`, and `/join/<session>` serve main, the latest
 promotion, the same way with base `/`; before the first promotion they show a
 short message. An unknown name gets a 404 page that links to `/admin`.
 
-The shell serves no files from disk, except for the build `local`.
-`deno task
-dev` sets `OD_LOCAL_BUILD=1`, so `/` and `/b/local` serve the working
-tree, with `/js/`, `/css/`, `/assets/`, and `/src/` read from disk. Playwright
-starts its server the same way, so e2e specs run the working tree. `/b/<sha>`
-still loads from jsDelivr under `dev`, which needs a pushed commit.
+## Admin dashboard
+
+`/admin` is the admin dashboard: a public, read-only page the shell serves from
+`src/server/admin/` (plain HTML, CSS, and JavaScript), not from a build, so it
+works when every build is broken. `src/server/admin-page.ts` serves its three
+files. The page only reads `/api/v1/status`, `/promotions`, `/shell-deploys`,
+`/sessions/recent`, and `/sessions/<id>/telemetry`, holds no credential, and has
+no write control. It refreshes every 15 s. A live session's join link is
+`/b/<commit>/join/<session>`. The e2e spec starts `tests/e2e/seed-shell.ts`, a
+shell with seeded history, to capture it.
+
+The shell serves no files from disk, except for the build `local` and the admin
+dashboard. `deno task
+dev` sets `OD_LOCAL_BUILD=1`, so `/` and `/b/local` serve
+the working tree, with `/js/`, `/css/`, `/assets/`, and `/src/` read from disk.
+Playwright starts its server the same way, so e2e specs run the working tree.
+`/b/<sha>` still loads from jsDelivr under `dev`, which needs a pushed commit.
 
 ## Build base path
 

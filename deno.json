@@ -27,7 +27,7 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "check": "deno check main.ts playwright.config.ts scripts/*.ts src/server/*.ts src/shared/*.js src/client/*.js public/js/*.js tests/lint/*.ts tests/shared/*.ts tests/e2e/*.ts tests/client/*.ts tests/server/*.ts",
+    "check": "deno check main.ts playwright.config.ts scripts/*.ts src/server/*.ts src/server/admin/*.js src/shared/*.js src/client/*.js public/js/*.js tests/lint/*.ts tests/shared/*.ts tests/e2e/*.ts tests/client/*.ts tests/server/*.ts",
     "test": "deno test --allow-read --allow-net --allow-env tests/lint tests/shared tests/client tests/server",
     "e2e": "deno run -A npm:playwright@1.63.0 test",
     "stress": "deno run -A scripts/stress.ts",
