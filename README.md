@@ -243,8 +243,9 @@ deploy (commit, Deno revision from the CLI's `--json` output, time, note) in
 environment and `TURSO_DB_URL` and `TURSO_DB_TOKEN` in `.env.prod`. Do not print
 them.
 
-The shell still serves the client from disk, so the upload keeps `public/`,
-`src/client/`, and `src/shared/`. A later ticket decides when to exclude them.
+The upload still includes `public/`, `src/client/`, and `src/shared/`, but
+production serves builds from jsDelivr; those files are served from disk only
+with `OD_LOCAL_BUILD=1`.
 
 The `deploy` section in `deno.json` uses a dynamic Deno Deploy app with
 `main.ts` as its entrypoint. Set `TURSO_DB_URL` and `TURSO_DB_TOKEN` so the
@@ -255,10 +256,14 @@ For CLI access to the existing `opendwarf` app, load `DENO_DEPLOY_TOKEN` from
 `~/Projects/work-portal/.env` into the command environment. Do not copy the
 token into this repository.
 
-The `client-first-deno` branch is linked to the `opendwarf` app. Pushing the
-branch triggers a Deno Deploy build; verify the served client files and CI after
-the push. `opendwarf.joshhale.me` is already configured. Add any extra domains
-in Deno Deploy and DNS manually; the code does not register domains.
+The GitHub repository is not linked to the `opendwarf` app, so a push deploys
+nothing. A pushed commit is a build at `https://od.joshhale.me/b/<branch|sha>`,
+and `/` serves main, which `deno task od promote ... --prod` changes. The app
+answers on `od.joshhale.me`, `opendwarf.joshhale.me`, and `dwarf.joshhale.me`.
+Add any extra domains in Deno Deploy and DNS manually; the code does not
+register domains. The production variables are `TURSO_DB_URL`, `TURSO_DB_TOKEN`,
+`OD_OWNER_TOKEN`, and the three `XIRSYS_*` values; `GITHUB_TOKEN` is optional
+and raises the GitHub API limit for branch lookups.
 
 See the Deno Deploy
 [build configuration](https://docs.deno.com/deploy/reference/builds/).

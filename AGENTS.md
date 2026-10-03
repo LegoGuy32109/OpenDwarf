@@ -23,6 +23,10 @@ Client changes never need a deploy. Deploy only when shell code changes, with
 pending `od-prod` migration, and it records a Shell deploy. Never deploy from a
 worker without being asked.
 
+A pushed branch is a preview: `https://od.joshhale.me/b/<branch>` (no slashes in
+the branch name). Production `/` serves main, which changes only with
+`deno task od promote <label|branch|sha> --prod`.
+
 ## Evidence
 
 A ticket with a visible change needs screenshots, and an interaction needs a
