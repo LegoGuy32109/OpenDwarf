@@ -1,10 +1,21 @@
 name: CI
+# Pull requests and the integration branch only: ticket pushes are checked by
+# their PR, and the `evidence` branch holds only screenshots and videos.
 on:
-  push:
   pull_request:
+  push:
+    branches: [client-first-deno]
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      # The od-test database: the Turso store tests run against it, and skip
+      # without it (forks get no secrets).
+      TURSO_DB_URL: ${{ secrets.TURSO_DB_URL }}
+      TURSO_DB_TOKEN: ${{ secrets.TURSO_DB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -13,6 +24,12 @@ jobs:
       - run: deno task verify
   browser:
     runs-on: ubuntu-latest
+    env:
+      # With these set, the e2e config starts a second shell for the real
+      # Xirsys spec.
+      XIRSYS_IDENT: ${{ secrets.XIRSYS_IDENT }}
+      XIRSYS_SECRET: ${{ secrets.XIRSYS_SECRET }}
+      XIRSYS_CHANNEL: ${{ secrets.XIRSYS_CHANNEL }}
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -20,3 +37,9 @@ jobs:
           deno-version: v2.x
       - run: deno run -A npm:playwright@1.63.0 install --with-deps chromium
       - run: deno task e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: exports/playwright-results
+          retention-days: 7

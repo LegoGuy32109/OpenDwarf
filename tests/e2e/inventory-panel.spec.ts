@@ -77,6 +77,24 @@ async function startHost(page: Page) {
 
 const panel = (page: Page) => page.locator("#inventory-panel");
 
+/**
+ * Hold a look key until the selection reaches `kind`, then let go. A fixed hold
+ * time misses the step when no frame runs during it, or steps twice when one
+ * long frame passes the panel's 180 ms key repeat.
+ */
+async function step(page: Page, key: string, kind: string) {
+  await page.keyboard.down(key);
+  await expect(page.locator(".slot.is-selected")).toHaveAttribute(
+    "data-kind",
+    kind,
+  );
+  await page.keyboard.up(key);
+  await expect(page.locator(".slot.is-selected")).toHaveAttribute(
+    "data-kind",
+    kind,
+  );
+}
+
 test("B opens the panel, IJKL moves the selection, and interact holds an item", async ({ page }) => {
   test.setTimeout(60_000);
   await startHost(page);
@@ -117,27 +135,11 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
     "data-kind",
     "pickaxe",
   );
-  await page.keyboard.down("l");
-  await page.waitForTimeout(100);
-  await page.keyboard.up("l");
-  await expect(page.locator(".slot.is-selected")).toHaveAttribute(
-    "data-kind",
-    "coal",
-  );
-  await page.keyboard.down("l");
-  await page.waitForTimeout(100);
-  await page.keyboard.up("l");
-  await page.keyboard.down("l");
-  await page.waitForTimeout(100);
-  await page.keyboard.up("l");
-  await expect(page.locator(".slot.is-selected")).toHaveAttribute(
-    "data-kind",
-    "gold ore",
-  );
-  await page.keyboard.down("j");
-  await page.waitForTimeout(100);
-  await page.keyboard.up("j");
-  await page.keyboard.press("Space"); // interact holds coal
+  await step(page, "l", "coal");
+  await step(page, "l", "diamond");
+  await step(page, "l", "gold ore");
+  await step(page, "j", "diamond");
+  await page.keyboard.press("Space"); // interact holds diamond
   await expect.poll(() => held(page)).toBe("diamond");
   await expect(page.locator(".slot.is-held")).toHaveAttribute(
     "data-kind",

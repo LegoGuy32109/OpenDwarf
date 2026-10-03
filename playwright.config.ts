@@ -14,7 +14,10 @@ const realXirsys = Boolean(
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
-  workers: 1,
+  // One worker by default: the specs draw in software WebGL, and with 2 or 4
+  // workers (2026-10-03) the specs that count frames or time a walk failed under
+  // the load. E2E_WORKERS=n runs files in parallel for a quick, rougher pass.
+  workers: Number(process.env.E2E_WORKERS ?? 1),
   reporter: "list",
   outputDir: "exports/playwright-results",
   snapshotPathTemplate: "{testDir}/snapshots/{arg}-{projectName}{ext}",
