@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { createApp } from "../../src/server/app.ts";
+import { createApp, joinLink } from "../../src/server/app.ts";
 
 Deno.test("telemetry logs only approved fields", async () => {
   const kv = await Deno.openKv(":memory:");
@@ -53,4 +53,52 @@ Deno.test("a session has a direct join page and local QR image", async () => {
   } finally {
     kv.close();
   }
+});
+
+Deno.test("the API answers under /api/v1 and /host serves the page", async () => {
+  const kv = await Deno.openKv(":memory:");
+  try {
+    const app = createApp(kv);
+    const session = "test-session";
+    const qr = await app(new Request(`http://localhost/api/v1/qr/${session}`));
+    assertEquals(qr.status, 200);
+    const sessions = await app(
+      new Request("http://localhost/api/v1/admin/sessions"),
+    );
+    assertEquals(sessions.status, 200);
+    assertEquals(
+      (await app(new Request("http://localhost/host"))).status,
+      200,
+    );
+    for (const gone of ["/admin", "/phone-test"]) {
+      assertEquals(
+        (await app(new Request(`http://localhost${gone}`))).status,
+        404,
+      );
+    }
+  } finally {
+    kv.close();
+  }
+});
+
+Deno.test("a QR code opens the build's own join link only", () => {
+  const request = new Request("http://localhost/api/v1/qr/test-session");
+  const own = "http://localhost/join/test-session";
+  assertEquals(joinLink(request, "test-session", null), own);
+  assertEquals(
+    joinLink(
+      request,
+      "test-session",
+      "https://od.example.me/b/test/join/test-session?x=1",
+    ),
+    "https://od.example.me/b/test/join/test-session",
+  );
+  for (
+    const link of [
+      "https://od.example.me/b/test/join/other-session",
+      "https://od.example.me/anything",
+      "javascript:alert(1)",
+      "not a url",
+    ]
+  ) assertEquals(joinLink(request, "test-session", link), own);
 });

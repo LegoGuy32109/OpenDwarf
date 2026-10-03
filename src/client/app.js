@@ -28,6 +28,7 @@ import {
 } from "../shared/generation.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
+import { build } from "./build.js";
 import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
 import { createCornerNpc } from "../shared/npc.js";
@@ -212,9 +213,9 @@ let lastTyping = false;
 let host = null;
 /** @type {ReturnType<typeof joinWorld>|null} */
 let guest = null;
-const isPhoneTest = location.pathname === "/phone-test";
-const joinRoute = /^\/join\/([a-zA-Z0-9_-]{8,80})$/.exec(location.pathname);
-const isAdmin = location.pathname === "/admin" || isPhoneTest || !!joinRoute;
+const route = build.route(location.pathname);
+const joinRoute = route.kind === "join" ? route.session : null;
+const isAdmin = route.kind !== "play";
 const isSynthetic = new URL(location.href).searchParams.has("synthetic") &&
   new URL(location.href).searchParams.has("harness");
 let lastPlayerZ = 0;
@@ -1279,7 +1280,7 @@ function startAdminList() {
   }, 500);
   const refresh = async () => {
     try {
-      const response = await fetch("/api/admin/sessions");
+      const response = await fetch(build.apiUrl("admin/sessions"));
       const data = await response.json();
       sessions.replaceChildren();
       status.textContent = data.sessions.length
@@ -1312,38 +1313,6 @@ function joinSession(id) {
   scene.sessionId = id;
   guest = joinWorld(scene, id);
 }
-
-/** Expose only predefined diagnostics from the opt-in phone test page. */
-export const phoneDiagnostics = {
-  /** @param {string} id */
-  join(id) {
-    if (!isPhoneTest || !/^[a-zA-Z0-9_-]{8,80}$/.test(id)) return false;
-    joinSession(id);
-    return true;
-  },
-  /** @param {number} [holdMs] */
-  drop(holdMs = 0) {
-    if (isPhoneTest) guest?.dropConnection(holdMs);
-  },
-  sample() {
-    return {
-      at: new Date().toISOString(),
-      session: scene.sessionId,
-      status: scene.status,
-      route: scene.metrics?.route ?? "none",
-      joinMs: scene.metrics?.joinMs ?? null,
-      rttMs: scene.metrics?.rttMs ?? [],
-      localId: scene.localId,
-      player: scene.world.players[scene.localId]
-        ? {
-          x: scene.world.players[scene.localId].x,
-          y: scene.world.players[scene.localId].y,
-          z: scene.world.players[scene.localId].z,
-        }
-        : null,
-    };
-  },
-};
 
 export async function startApp() {
   if (!isAdmin) {
@@ -1378,7 +1347,10 @@ export async function startApp() {
       generateAround(scene.world, Object.values(scene.world.players), 9);
       const hostTools = $("#host-tools");
       const code = /** @type {HTMLImageElement} */ ($("#join-code"));
-      code.src = `/api/qr/${scene.sessionId}`;
+      const link = build.joinLink(scene.sessionId, location.origin);
+      code.src = build.apiUrl(
+        `qr/${scene.sessionId}?link=${encodeURIComponent(link)}`,
+      );
       hostTools.hidden = new URL(location.href).searchParams.has("harness");
       $("#join-toggle").addEventListener("click", toggleJoinPanel);
       setInterval(() => {
@@ -1391,11 +1363,7 @@ export async function startApp() {
       }, 1000);
     }
   }
-  if (isPhoneTest) {
-    const selected = new URL(location.href).searchParams.get("session");
-    if (selected) joinSession(selected);
-  }
-  if (joinRoute) joinSession(joinRoute[1]);
+  if (joinRoute) joinSession(joinRoute);
   if (!isAdmin) {
     let previousBytes = 0;
     let previousTime = performance.now();
@@ -1444,7 +1412,7 @@ export async function startApp() {
     /** @param {"summary"|"connection"|"error"} kind @param {Record<string,unknown>} fields */
     const report = (kind, fields = {}) => {
       if (!scene.sessionId) return;
-      void fetch("/api/telemetry", {
+      void fetch(build.apiUrl("telemetry"), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

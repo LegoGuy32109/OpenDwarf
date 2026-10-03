@@ -16,7 +16,7 @@
 }
 .item-icon {
   display: block;
-  background-image: url("/assets/items.png");
+  background-image: url("../assets/items.png");
   background-repeat: no-repeat;
   image-rendering: pixelated;
 }

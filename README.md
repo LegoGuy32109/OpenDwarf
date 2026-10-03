@@ -13,13 +13,16 @@ deno task start
 ```
 
 Open `http://localhost:8000/` to start a local 16×16 world with eight view
-levels, a staircase, and a center pillar. Open `http://localhost:8000/admin` in
+levels, a staircase, and a center pillar. Open `http://localhost:8000/host` in
 another browser to see active worlds and join one. A corner NPC loops around
-four tiles. The `/admin` route has no access control in this demo. Joining has
-no fixed cap for stress testing; the practical limit is still being measured.
-The host's QR code opens `/join/<session>` so a phone joins that world directly.
-The code is hidden at start. Press Q on the host or use the QR button to show it
-in the top right corner.
+four tiles. The `/host` route has no access control in this demo. Joining has no
+fixed cap for stress testing; the practical limit is still being measured. The
+host's QR code opens `<base>/join/<session>` so a phone joins that world
+directly. `<base>` is `/` here and the build's path, such as `/b/test/`, when
+the page is served as a build (see
+[Build base path](docs/architecture.md#build-base-path)). The code is hidden at
+start. Press Q on the host or use the QR button to show it in the top right
+corner.
 
 On a keyboard, ESDF moves the player continuously in eight directions. Keyboard
 diagonals and the left stick share the same full walking speed, 30 ft or 1 tile
@@ -127,17 +130,13 @@ while the world remains open. View mode and discovered terrain also survive that
 rejoin. Remote player and NPC sprites interpolate recent host positions with a
 150 ms presentation delay.
 
-For a TURN diagnostic, open `/admin?relay=1` and join a world. That join forces
+For a TURN diagnostic, open `/host?relay=1` and join a world. That join forces
 relay candidates on both browsers and shows the selected candidate types in the
 admin panel. A working TURN configuration is required. Normal WebRTC joins allow
 a direct route. The Xirsys values belong in the server environment; the browser
 receives temporary ICE credentials. For local testing, put `XIRSYS_IDENT`,
 `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` in an ignored `.env` file and run
 `deno task start:env`.
-
-After deployment, follow the [phone connection test](docs/phone-network-test.md)
-to compare direct and TURN routes on Wi-Fi and cellular data. The opt-in
-`/phone-test` route accepts a small set of remote commands under a random code.
 
 The floor, edges, ceilings, depth tint, visibility, and player sprite come from
 the WebGL experiment. The bitmap font and Escape menu labels come from the

@@ -8,7 +8,7 @@ test("unanswered offer expires without leaving a player or connection record", a
       .__od.scene.sessionId
   );
   const playerId = `peer-${crypto.randomUUID()}`;
-  const response = await page.request.post(`/api/signal/${session}/host`, {
+  const response = await page.request.post(`/api/v1/signal/${session}/host`, {
     data: {
       id: crypto.randomUUID(),
       from: playerId,

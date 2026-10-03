@@ -14,7 +14,7 @@ The first group test uses an authored 32×32 area built from four 16×16 chunks.
 Each chunk spans the same eight view levels as the current world and has a
 stable identity. All four load when a guest joins; distance-based loading and
 generation wait. The QR link is the normal way to join a specific session, while
-`/admin` continues to list active worlds for development. Joining players appear
+`/host` continues to list active worlds for development. Joining players appear
 across walkable tiles in a spawn chunk. Several may appear on the same tile.
 Normal movement still blocks entry into an occupied tile. Any player can use
 `/master` as a development tool. Phones may connect over the venue's Wi-Fi or

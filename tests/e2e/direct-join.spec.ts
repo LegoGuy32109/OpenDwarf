@@ -1,3 +1,4 @@
+import process from "node:process";
 import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 
@@ -38,7 +39,13 @@ test("a phone link joins the expanded authored world directly", async ({ browser
     );
     await expect(host.locator("#join-code")).toHaveAttribute(
       "src",
-      `/api/qr/${session}`,
+      new RegExp(
+        `^/api/v1/qr/${session}\\?link=${
+          encodeURIComponent(
+            `http://127.0.0.1:${process.env.PORT ?? "8000"}/join/${session}`,
+          )
+        }$`,
+      ),
     );
     await guest.goto(`/join/${session}?harness=1`);
     await expect(guest.locator("#loading")).toBeHidden();
