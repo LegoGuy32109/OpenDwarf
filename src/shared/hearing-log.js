@@ -37,22 +37,31 @@ export function addSystemLine(log, text) {
  * speakers inside chat hearing range, so talking and typing records, which
  * carry no readable text, never reach the log.
  * @param {HearingLog} log
- * @param {import('./chat.js').ChatRecord[]} feed
+ * @param {(import('./chat.js').ChatRecord|import('./chat.js').DisplayChatRecord)[]} feed
  * @param {(id:string)=>string} nameOf
  */
 export function hearChat(log, feed, nameOf) {
   for (const record of feed) {
     if (!record.text) continue;
-    const key = `${record.id}:${record.expiresTick}:${record.text}`;
-    if (log.heard.has(key)) continue;
-    log.heard.add(key);
-    if (log.heard.size > HEARD_KEYS_LIMIT) {
-      log.heard.delete(/** @type {string} */ (log.heard.values().next().value));
+    // Stacked bubbles can bring several new messages in one update, oldest
+    // first, so log each bubble rather than only the newest text.
+    const messages = record.bubbles?.length
+      ? record.bubbles
+      : [{ text: record.text, expiresTick: record.expiresTick }];
+    for (const message of messages) {
+      const key = `${record.id}:${message.expiresTick}:${message.text}`;
+      if (log.heard.has(key)) continue;
+      log.heard.add(key);
+      if (log.heard.size > HEARD_KEYS_LIMIT) {
+        log.heard.delete(
+          /** @type {string} */ (log.heard.values().next().value),
+        );
+      }
+      append(log, {
+        kind: "chat",
+        text: message.text,
+        speaker: nameOf(record.id),
+      });
     }
-    append(log, {
-      kind: "chat",
-      text: record.text,
-      speaker: nameOf(record.id),
-    });
   }
 }

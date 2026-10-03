@@ -68,3 +68,15 @@ Deno.test("system lines share the log, are trimmed, and the log is bounded", () 
   assertEquals(log.lines.length, HEARING_LOG_LIMIT);
   assertEquals(log.lines.at(-1)?.text, `n${HEARING_LOG_LIMIT + 4}`);
 });
+
+Deno.test("hearing log keeps every stacked message that arrives in one update", () => {
+  const world = createWorld();
+  addPlayer(world, "listener", { x: 1, y: 1, z: 0 });
+  addPlayer(world, "near", { x: 2, y: 1, z: 0 });
+  const log = createHearingLog();
+  submitMessage(world, "near", "first");
+  submitMessage(world, "near", "second");
+  hearChat(log, chatView(world, "listener", new Map()), (id) => id);
+  hearChat(log, chatView(world, "listener", new Map()), (id) => id);
+  assertEquals(log.lines.map((line) => line.text), ["first", "second"]);
+});
