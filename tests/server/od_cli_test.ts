@@ -14,8 +14,7 @@ const PAGE =
 const BASE = "http://shell.test";
 
 /** A shell with the in-memory store and a stubbed GitHub and jsDelivr. */
-async function shell(options: { ownerToken?: string | null } = {}) {
-  const kv = await Deno.openKv(":memory:");
+function shell(options: { ownerToken?: string | null } = {}) {
   const refs: Record<string, string> = {
     "heads/feature": OLD,
     "heads/other": NEWER,
@@ -44,7 +43,6 @@ async function shell(options: { ownerToken?: string | null } = {}) {
     ? undefined
     : options.ownerToken ?? TOKEN;
   const app = createApp(
-    kv,
     builds,
     createAdminApi({ store, builds, ownerToken }),
   );
@@ -68,7 +66,6 @@ async function shell(options: { ownerToken?: string | null } = {}) {
     lines,
     errors,
     advance: (ms: number) => time += ms,
-    close: () => kv.close(),
   };
 }
 
@@ -77,12 +74,8 @@ const withShell = (
   body: (s: Awaited<ReturnType<typeof shell>>) => Promise<void>,
 ) =>
   Deno.test(name, async () => {
-    const s = await shell();
-    try {
-      await body(s);
-    } finally {
-      s.close();
-    }
+    const s = shell();
+    await body(s);
   });
 
 const BASE_ARGS = ["--base-url", BASE];
@@ -280,24 +273,18 @@ withShell(
 );
 
 Deno.test("without OD_OWNER_TOKEN set, write routes answer 403 even with a bearer token", async () => {
-  const s = await shell({ ownerToken: null });
-  try {
-    for (const token of [TOKEN, "", undefined]) {
-      const response = await s.request("/api/v1/promotions", {
-        method: "POST",
-        headers: token === undefined
-          ? {}
-          : { authorization: `Bearer ${token}` },
-        body: JSON.stringify({ target: "feature" }),
-      });
-      assertEquals(response.status, 403);
-      await response.body?.cancel();
-    }
-    assertEquals(await s.store.getMain(), null);
-    assertEquals((await s.request("/api/v1/status")).status, 200);
-  } finally {
-    s.close();
+  const s = shell({ ownerToken: null });
+  for (const token of [TOKEN, "", undefined]) {
+    const response = await s.request("/api/v1/promotions", {
+      method: "POST",
+      headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ target: "feature" }),
+    });
+    assertEquals(response.status, 403);
+    await response.body?.cancel();
   }
+  assertEquals(await s.store.getMain(), null);
+  assertEquals((await s.request("/api/v1/status")).status, 200);
 });
 
 withShell(

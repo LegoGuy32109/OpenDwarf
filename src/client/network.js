@@ -111,10 +111,13 @@ function deliver(receive, replaceable = false) {
 /** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],heldFeed?:string,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {import('../shared/signal-frame.js').Signal} Signal */
 
+/** The host tells the shell its session is live this often; the shell ends one after 45 s without. */
+const HEARTBEAT_MS = 15_000;
+
 /**
  * Ask the shell for a credentials ticket: a signaling address with a fresh token.
  * @param {string} path @param {Record<string,unknown>} body
- * @returns {Promise<{signalUrl:string,channel:string,hostKey?:string}>}
+ * @returns {Promise<{signalUrl:string,channel:string,hostKey?:string,build?:unknown}>}
  */
 async function ticket(path, body) {
   const response = await fetch(build.apiUrl(path), {
@@ -191,16 +194,6 @@ export function startHost(scene, session) {
   /** @type {ReturnType<typeof setTimeout>|null} */
   let publishTimer = null;
   let lastPublish = 0;
-  const heartbeat = () => {
-    void fetch(build.apiUrl("presence"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: session }),
-    }).catch(() => {});
-  };
-  heartbeat();
-  const heartbeatTimer = setInterval(heartbeat, 10_000);
-
   function flushPublish() {
     publishTimer = null;
     lastPublish = performance.now();
@@ -978,11 +971,30 @@ export function startHost(scene, session) {
     self: "host",
     receive: receiveSignal,
     credentials: async () => {
-      const result = await ticket("sessions", { id: session, hostKey });
+      const result = await ticket("sessions", {
+        id: session,
+        hostKey,
+        ...build.identity,
+      });
       hostKey = result.hostKey ?? hostKey;
       return result;
     },
   });
+  /** Tell the shell this session is live, with its build and player count. The host key proves it. */
+  const heartbeat = () => {
+    if (!hostKey || ended) return;
+    void fetch(build.apiUrl(`sessions/${session}/heartbeat`), {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-host-key": hostKey },
+      body: JSON.stringify({
+        players: Object.keys(scene.world.players).filter((id) =>
+          !id.startsWith("npc-")
+        ).length,
+        ...build.identity,
+      }),
+    }).catch(() => {});
+  };
+  const heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
   const syncTimer = setInterval(publish, 500);
   let motionUntil = 0;
   const motionTimer = setInterval(() => {
@@ -1030,13 +1042,7 @@ export function startHost(scene, session) {
       keepalive: true,
     }).catch(() => {});
   }
-  globalThis.addEventListener("pagehide", () => {
-    endSession();
-    void fetch(build.apiUrl("presence/" + session), {
-      method: "DELETE",
-      keepalive: true,
-    });
-  }, { once: true });
+  globalThis.addEventListener("pagehide", endSession, { once: true });
   return {
     publish,
     announce,
@@ -1551,7 +1557,24 @@ export function joinWorld(scene, session) {
     onPeer: (peer) => {
       if (peer === "host" && !connected) requestJoin();
     },
-    credentials: () => ticket(`sessions/${session}/join`, { peer: playerId }),
+    credentials: async () => {
+      const result = await ticket(`sessions/${session}/join`, {
+        peer: playerId,
+      });
+      // The host runs another build: join on that one, so both run the same client.
+      const target = build.joinRedirect(
+        result.build,
+        session,
+        location.origin,
+        location.search,
+      );
+      if (target) {
+        scene.status = "Opening the host's build…";
+        location.replace(target);
+        throw new Error("Joining on the host's build");
+      }
+      return result;
+    },
   });
   requestJoin();
   const watchdog = setInterval(() => {

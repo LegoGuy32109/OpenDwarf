@@ -213,8 +213,8 @@ function and screenshots; they do not substitute for those device measurements.
   list and join active worlds in this stage.
 - A world has one browser host and currently has no fixed joining cap. Host
   upload and browser performance set the practical limit. It ends when the host
-  closes the page. A missed close signal leaves presence until the 30 second TTL
-  ends.
+  closes the page. A missed close signal leaves the session live until 45
+  seconds pass without a heartbeat.
 - A signal for a peer that is not connected to its session channel is dropped. A
   guest asks again when the host's `peer_connected` frame arrives, and otherwise
   retries its join after eight seconds.
@@ -232,17 +232,22 @@ channel, the sub-channel `<XIRSYS_CHANNEL>/<session>`
 ([ADR 0004](adr/0004-shell-serves-builds-from-commits.md)). The shell holds the
 Xirsys credentials. `src/server/session-routes.ts` answers:
 
-- `POST /api/v1/sessions` with `{id, hostKey?}` creates the channel and returns
-  the host's `channel`, `token`, `host`, `signalUrl`, `iceServers`, and a
-  `hostKey`. The host sends its `hostKey` back to get a fresh token for the same
-  channel. The key is an HMAC of the session id, so the shell stores nothing;
-  `session-routes.ts` marks where the session store (S06) will record a live
-  session.
-- `POST /api/v1/sessions/<id>/join` with `{peer}` returns the same for a guest.
+- `POST /api/v1/sessions` with `{id, commit?, label?, hostKey?}` creates the
+  channel, records the session with the host's build, and returns the host's
+  `channel`, `token`, `host`, `signalUrl`, `iceServers`, and a `hostKey`. The
+  host sends its `hostKey` back to get a fresh token for the same channel. The
+  key is an HMAC of the session id, so the shell stores nothing. A taken id
+  without its key answers 409. A build with no commit (the working tree) is
+  stored as `local`.
+- `POST /api/v1/sessions/<id>/join` with `{peer}` returns the same for a guest,
+  and the host's `build`: `{commit, label, path}`. A session that ended answers
+  404.
+- `POST /api/v1/sessions/<id>/heartbeat` with the `x-host-key` header and
+  `{players, commit?, label?}`. See Live sessions.
 - `GET /api/v1/sessions/<id>/ice` returns fresh ICE servers, because TURN
   credentials last 60 seconds.
-- `DELETE /api/v1/sessions/<id>` with the `x-host-key` header deletes the
-  channel. The host calls it when it leaves.
+- `DELETE /api/v1/sessions/<id>` with the `x-host-key` header ends the session
+  and deletes the channel. The host calls it when it leaves.
 
 The client (`src/client/signaling.js`) opens `signalUrl`
 (`wss://<host>/v2/<token>`) and sends
@@ -254,6 +259,41 @@ outlives it, so when a socket closes the client asks the shell for a new token.
 `/v2/<token>` that issues its own tokens and speaks the same frames. The shell
 uses it when the Xirsys values are missing. Session starts and joins are limited
 per IP in memory (30 a minute; ICE requests 60 a minute).
+
+## Live sessions
+
+The host sends a heartbeat about every 15 seconds with its player count and
+build. The `x-host-key` header proves the host, so only the host updates its
+session. A session with no heartbeat for 45 seconds counts as ended, but its row
+stays as history. A heartbeat on a session the host ended answers 410. Public
+reads, with no host key and no peer id in them:
+
+- `GET /api/v1/sessions` lists live sessions, newest first.
+- `GET /api/v1/sessions/recent?limit=` lists ended sessions, newest first. A
+  session whose heartbeat timed out has `ended` set to that time.
+- `GET /api/v1/sessions/<id>/telemetry` lists the stored summaries of a session.
+
+Each session is
+`{id, build:{commit,label,path}, started, lastHeartbeat,
+playerCount, ended}`.
+`path` is `/b/<commit>/`, the build's base path.
+
+A guest joins on the host's build. The join response carries the host's build,
+and a client whose own commit differs opens `<path>join/<session>` (`local` is
+the commit of the working tree). The world host still validates every guest
+action; the build only decides which client the guest runs.
+
+`POST /api/v1/telemetry` keeps its validation and its console line, and stores
+each `summary` for 30 days. `connection` and `error` events stay in the log.
+
+`src/server/sweep.ts` deletes the Xirsys channel of every ended session. Deno
+Deploy has no cron here, so each session start and heartbeat runs the sweep, at
+most once a minute in each isolate. An isolate takes a lease on a session in
+Turso before it deletes the channel, so isolates running at once delete a
+channel once. A failed delete is tried again after the two minute lease. The
+same run prunes telemetry older than 30 days once an hour. A host that loses its
+heartbeat for 45 seconds, for example in a tab the browser throttles, can lose
+its channel to the sweep.
 
 ## Shell database
 

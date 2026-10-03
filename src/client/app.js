@@ -1280,7 +1280,7 @@ function startAdminList() {
   }, 500);
   const refresh = async () => {
     try {
-      const response = await fetch(build.apiUrl("admin/sessions"));
+      const response = await fetch(build.apiUrl("sessions"));
       const data = await response.json();
       sessions.replaceChildren();
       status.textContent = data.sessions.length
@@ -1299,7 +1299,7 @@ function startAdminList() {
         sessions.append(li);
       }
     } catch {
-      status.textContent = "Presence unavailable";
+      status.textContent = "Sessions unavailable";
     }
   };
   void refresh();
