@@ -69,14 +69,26 @@ Measure draft-to-typing-bubble and submit-to-chat-bubble timing on other
 clients, and check that clearing a draft removes its typing bubble. Use event
 IDs and timings in diagnostics without recording chat content.
 
-## Later interaction path
+## Mining and trading stage
 
-1. Add destructive terrain edits without collectible material.
-2. Resolve the inventory UI before adding inventory behavior.
-3. Make terrain deletions create rock entities that players can manage in
-   inventory.
-4. Let players switch what they hold between a pickaxe and a rock.
-5. Let players place held rock, creating additive terrain edits.
+The second live session showed that the group movement test works. Josh chose
+the next stage for a Thursday, October 8, 2026 demo:
+
+- The world becomes endless chunked terrain, generated on demand from the
+  session seed, with Minecraft-style ores in depth bands and caves. See
+  [ADR 0003](adr/0003-chunked-terrain-generated-on-demand.md).
+- Players start in an authored spawn room with a shopkeeper who buys items for
+  coins. Coins are the score for now.
+- An entity that holds a pickaxe mines a highlighted tile. Mining drops the
+  tile's item on the tile, Dwarf Fortress style, and interact picks it up.
+- The phone controls get an interact button, an inventory button, and a sprint
+  button with stamina.
+- Chat gets stacked speech bubbles, an animated typing bubble, a hearing log,
+  and a chat bar that stays visible above the iOS keyboard.
+
+The terms are in [CONTEXT.md](../CONTEXT.md). The work is tracked as a wayfinder
+map with child tickets on GitHub Issues. Placing stone back into the terrain
+remains a later step.
 
 ## Status
 

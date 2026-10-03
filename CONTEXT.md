@@ -71,15 +71,73 @@ run. It may participate in WebRTC without rendering WebGL.
 A stress-run client whose WebGL output is sampled for visual-sync evidence.
 
 **Destructive terrain edit**:
-A world change that removes a solid terrain tile. The first stage does not
-produce a collectible item.
+A world change that removes a solid terrain tile.
 
-**Rock entity**:
-A movable piece of rock produced by a later terrain deletion and managed as
-an item.
+**Mining**:
+A destructive terrain edit made by an entity. It always leaves the tile's
+item as a dropped item.
 
 **Additive terrain edit**:
-A world change that places carried rock into the terrain as a solid tile.
+A world change that places a carried stone item into the terrain as a solid
+tile.
+
+**Item kind**:
+A type of item, such as stone, coal, iron ore, gold ore, lapis, redstone,
+diamond, emerald, or coin.
+
+**Dropped item**:
+Items of one item kind that lie on a whole tile. Several kinds can lie on the
+same tile, and items of one kind on a tile form one stack with a count.
+
+**Inventory**:
+The items an entity carries, as stacks with counts.
+
+**Coin**:
+An item kind received for selling items. For now the number of coins a player
+carries is their score.
+
+**Pickaxe**:
+An item kind that lets an entity mine while the entity holds it.
+
+**Held item**:
+The one inventory item an entity has selected to use. Any item can be held, but
+only a held pickaxe changes what interact does.
+
+**Highlighted tile**:
+The tile an entity aims at with the look control, shown by an orange outline.
+With no aim, the entity's own tile is highlighted.
+
+**Interact**:
+The one action control. On a highlighted tile it picks up dropped items, starts
+mining when the entity holds a pickaxe, or opens the shop at the shopkeeper.
+
+**Mining progress**:
+The local player's view of a mining action in progress, a square that grows
+inside the highlight until the tile breaks. Other players see only the
+breaking decal.
+_Avoid_: Mining bar
+
+**Breaking decal**:
+Crack marks on a tile that grow while any entity mines it. Every player who can
+see the tile sees them.
+
+**Pickup grid**:
+The dark squares that unfold into the 3×3 tiles around an entity when it
+interacts with a tile that holds dropped items. Each square shows one stack.
+More than nine stacks show a gray plus, and the selector scrolls down.
+
+**Stamina**:
+The sprint reserve of an entity. Sprint uses it over six seconds and it refills
+in proportion over twelve seconds while the entity does not sprint.
+
+**Shopkeeper**:
+The NPC in the spawn room who buys items for coins.
+
+**Spawn room**:
+The authored room in the spawn chunk where joining players first appear.
+
+**Generated terrain**:
+Terrain outside the authored area, made from the session's seed.
 
 **Visitor token**:
 A tab-held identifier used to reclaim a joining player's place after a
