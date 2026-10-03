@@ -271,8 +271,26 @@ Deno.test("chat validates each record and does not accept client expiry clocks",
       { ...record, expiresTick: -1 },
       { ...record, text: undefined },
       { ...record, z: 9 },
+      { ...record, bubbles: [{ text: "", expiresTick: 5 }] },
+      { ...record, bubbles: Array(4).fill({ text: "a", expiresTick: 5 }) },
+      { ...record, bubbles: [{ text: "a", expiresTick: -1 }] },
+      { ...record, text: undefined, talking: true, bubbles: [] },
     ]
   ) assertEquals(decodeChat({ ...packet, chat: [bad] }), null);
+  const stacked = decodeChat({
+    ...packet,
+    chat: [{
+      ...record,
+      bubbles: [{ text: "hi", expiresTick: 90, hidden: 1 }, {
+        text: "hello",
+        expiresTick: 100,
+      }],
+    }],
+  });
+  assertEquals(stacked?.chat[0].bubbles, [
+    { text: "hi", expiresTick: 90 },
+    { text: "hello", expiresTick: 100 },
+  ]);
   assertEquals(decodeChat({ ...packet, chat: [record, record] }), null);
   const state = snapshot();
   state.chat = [{ ...record, x: NaN }];

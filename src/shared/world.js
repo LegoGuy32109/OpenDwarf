@@ -5,12 +5,21 @@ export const EXPANDED_WORLD_EDGE = 32;
 export const WORLD_TOP = 7;
 export const Z_LEVELS_BELOW = 5;
 export const TICK_MS = 50;
+export const MAX_BUBBLES = 3;
+const BUBBLE_BASE_TICKS = 100;
+const BUBBLE_LONG_LENGTH = 40;
+
+/** Five seconds, plus one tick per character past 40 so long messages can be read. @param {string} text */
+export function bubbleTicks(text) {
+  return BUBBLE_BASE_TICKS + Math.max(0, text.length - BUBBLE_LONG_LENGTH);
+}
 export const MOVE_TICKS = 10;
 
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
-/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number}} Player */
+/** @typedef {{text:string,until:number}} Bubble */
+/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number}} Player */
 /** @typedef {{tick:number,edge:number,chunks:string[],players:Record<string,Player>,terrain:number[]}} World */
 
 /** @param {number} x @param {number} y @param {number} z @param {number} [edge] */
@@ -203,6 +212,11 @@ export function advanceTicks(world, count = 1) {
           player.move = null;
         }
       }
+      if (player.messages) {
+        player.messages = player.messages.filter((bubble) =>
+          world.tick < bubble.until
+        );
+      }
       if (player.message && world.tick >= player.messageUntil) {
         player.message = "";
       }
@@ -255,7 +269,15 @@ export function submitMessage(world, id, message) {
   const text = message.trim().slice(0, 120);
   player.typing = false;
   if (!text) return false;
+  const live = (player.messages ?? []).filter((bubble) =>
+    world.tick < bubble.until
+  );
+  const until = Math.max(
+    world.tick + bubbleTicks(text),
+    ...live.map((bubble) => bubble.until),
+  );
+  player.messages = [...live, { text, until }].slice(-MAX_BUBBLES);
   player.message = text;
-  player.messageUntil = world.tick + 100;
+  player.messageUntil = until;
   return true;
 }

@@ -5,7 +5,7 @@ import { TICK_MS } from "./world.js";
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./world.js').Player} Player */
 /** @typedef {"text"|"talking"|"none"} ChatBand */
-/** @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,expiresTick?:number}} ChatRecord */
+/** @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,expiresTick?:number,bubbles?:{text:string,expiresTick:number}[]}} ChatRecord */
 
 export const CHAT_TEXT_RADIUS = 5;
 export const CHAT_TALKING_RADIUS = 12;
@@ -77,10 +77,14 @@ export function chatView(world, listenerId, bands) {
       z: speaker.z,
     };
     if (hasMessage && band === "text") {
+      const bubbles = (speaker.messages ?? [])
+        .filter((bubble) => world.tick < bubble.until)
+        .map((bubble) => ({ text: bubble.text, expiresTick: bubble.until }));
       records.push({
         ...base,
         text: speaker.message,
         expiresTick: speaker.messageUntil,
+        ...(bubbles.length ? { bubbles } : {}),
       });
     } else if (hasMessage && band === "talking") {
       records.push({
@@ -100,12 +104,37 @@ export function withoutChat(players) {
   return Object.fromEntries(
     Object.entries(players).map(([id, player]) => [
       id,
-      { ...player, message: "", messageUntil: 0, typing: false },
+      { ...player, message: "", messageUntil: 0, messages: [], typing: false },
     ]),
   );
 }
 
-/** @typedef {ChatRecord & {expiresAt?:number}} DisplayChatRecord */
+/** @typedef {Omit<ChatRecord,"bubbles"> & {expiresAt?:number,bubbles?:{text:string,expiresTick:number,expiresAt?:number}[]}} DisplayChatRecord */
+
+/** @typedef {"small"|"medium"|"large"} TextSize */
+export const TEXT_SIZES = /** @type {TextSize[]} */ ([
+  "small",
+  "medium",
+  "large",
+]);
+/** Bubble text size as a share of the previous fixed size; medium is the default. */
+export const TEXT_SIZE_SCALE = { small: 0.5, medium: 2 / 3, large: 1 };
+export const TEXT_SIZE_KEY = "open-dwarf-text-size";
+
+/** @param {unknown} value @returns {TextSize} */
+export function parseTextSize(value) {
+  return TEXT_SIZES.find((size) => size === value) ?? "medium";
+}
+
+/** Bubbles to draw for one record, oldest first, newest last. @param {DisplayChatRecord} record @param {number} now */
+export function liveBubbles(record, now) {
+  if (record.text === undefined) return [];
+  const bubbles = record.bubbles ??
+    [{ text: record.text, expiresAt: record.expiresAt }];
+  return bubbles.filter((bubble) =>
+    bubble.expiresAt === undefined || now < bubble.expiresAt
+  ).slice(-3).map((bubble) => bubble.text);
+}
 
 /** @param {DisplayChatRecord[]} existing @param {ChatRecord[]} incoming @param {number} hostTick @param {number} [now] */
 export function receiveChat(
@@ -127,7 +156,23 @@ export function receiveChat(
       : old?.expiresTick === record.expiresTick && old.expiresAt !== undefined
       ? old.expiresAt
       : now + (record.expiresTick - hostTick) * TICK_MS;
-    records.push({ ...record, expiresAt });
+    const bubbles = record.bubbles?.filter((bubble) =>
+      bubble.expiresTick > hostTick
+    ).map((bubble) => {
+      const oldBubble = old?.bubbles?.find((item) =>
+        item.expiresTick === bubble.expiresTick && item.text === bubble.text
+      );
+      return {
+        ...bubble,
+        expiresAt: oldBubble?.expiresAt ??
+          now + (bubble.expiresTick - hostTick) * TICK_MS,
+      };
+    });
+    records.push({
+      ...record,
+      ...(bubbles ? { bubbles } : {}),
+      expiresAt,
+    });
   }
   return records;
 }

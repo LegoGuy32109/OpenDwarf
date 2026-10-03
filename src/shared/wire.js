@@ -167,6 +167,19 @@ function chatRecords(value) {
     if (item.expiresTick !== undefined && !counter(item.expiresTick)) {
       return null;
     }
+    if (item.bubbles !== undefined) {
+      if (
+        item.text === undefined || !Array.isArray(item.bubbles) ||
+        item.bubbles.length > 3
+      ) return null;
+      for (const bubble of item.bubbles) {
+        if (
+          !record(bubble) || typeof bubble.text !== "string" ||
+          !bubble.text.length || bubble.text.length > 120 ||
+          !counter(bubble.expiresTick)
+        ) return null;
+      }
+    }
     if (
       item.text === undefined && item.talking !== true && item.typing !== true
     ) {
@@ -185,6 +198,14 @@ function chatRecords(value) {
     y: item.y,
     z: item.z,
     ...(item.text !== undefined ? { text: item.text } : {}),
+    ...(item.bubbles !== undefined
+      ? {
+        bubbles: item.bubbles.map((bubble) => ({
+          text: bubble.text,
+          expiresTick: bubble.expiresTick,
+        })),
+      }
+      : {}),
     ...(item.talking !== undefined ? { talking: item.talking } : {}),
     ...(item.typing !== undefined ? { typing: item.typing } : {}),
     ...(item.expiresTick !== undefined
