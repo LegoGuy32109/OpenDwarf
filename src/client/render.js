@@ -12,6 +12,7 @@ import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import { readTile } from "../shared/terrain.js";
 import { highlightedTile } from "../shared/target.js";
 import { decalFrame } from "../shared/mining.js";
+import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import {
@@ -87,7 +88,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[]}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[]}} Scene */
 
 /**
  * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
@@ -141,6 +142,7 @@ export async function createRenderer(canvas) {
     edgeImage,
     ceilingImage,
     oreImage,
+    itemImage,
   ] = /** @type {HTMLImageElement[]} */ (
     await Promise.all([
       image("/assets/floor.png"),
@@ -149,6 +151,7 @@ export async function createRenderer(canvas) {
       image("/assets/edge.png"),
       image("/assets/ceiling.png"),
       image("/assets/ores.png"),
+      image("/assets/items.png"),
     ])
   );
   const whiteImage = document.createElement("canvas");
@@ -165,6 +168,7 @@ export async function createRenderer(canvas) {
     edge: texture(gl, edgeImage),
     ceiling: texture(gl, ceilingImage),
     ores: texture(gl, oreImage),
+    items: texture(gl, itemImage),
     white: texture(gl, whiteImage),
   };
   const locationSize = gl.getUniformLocation(program, "u_size");
@@ -517,6 +521,27 @@ export async function createRenderer(canvas) {
       }
     }
     flush();
+    // Dropped items: one icon per tile, and the kinds on a tile take turns.
+    const itemTiles = (scene.items ?? []).filter((entry) =>
+      entry.z === scene.viewZ
+    );
+    const itemNow = performance.now();
+    for (const entry of itemTiles) {
+      const stack = entry.stacks[cycleIndex(entry.stacks.length, itemNow)];
+      const frame = itemInfo(stack?.kind)?.frame;
+      if (frame === undefined) continue;
+      const side = TILE * 0.625;
+      quad(
+        textures.items,
+        false,
+        entry.x * TILE + (TILE - side) / 2,
+        entry.y * TILE + (TILE - side) / 2,
+        side,
+        side,
+        [0, frame / ITEM_FRAMES, 1, 1 / ITEM_FRAMES],
+      );
+    }
+    flush();
     const players = scene.presentation.sightEntries(
       Object.values(scene.world.players),
       scene.localId,
@@ -566,6 +591,19 @@ export async function createRenderer(canvas) {
     flush();
     const scale = Math.max(1, Math.round(dpr * 1.5 * scene.uiScale));
     const bubbleScale = scale * TEXT_SIZE_SCALE[scene.textSize];
+    for (const entry of itemTiles) {
+      const stack = entry.stacks[cycleIndex(entry.stacks.length, itemNow)];
+      if (!stack || stack.count < 2) continue;
+      const label = String(stack.count);
+      text(
+        label,
+        Math.round(((entry.x + 1) * TILE - cameraX) * zoom + width / 2) -
+          label.length * 8 * scale - 2 * dpr,
+        Math.round(((entry.y + 1) * TILE - cameraY) * zoom + height / 2) -
+          16 * scale - 2 * dpr,
+        scale,
+      );
+    }
     for (const { player, pos } of players) {
       const visible = opacity.get(player.id) ?? 0;
       if (visible <= 0) continue;

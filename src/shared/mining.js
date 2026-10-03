@@ -1,5 +1,6 @@
 // @ts-check
 
+import { dropItem, PICKAXE } from "./items.js";
 import { centerTile } from "./locomotion.js";
 import { materialInfo } from "./materials.js";
 import { OPEN, readTile, WORLD_TOP, writeTile } from "./terrain.js";
@@ -23,10 +24,9 @@ import { TICK_MS } from "./world.js";
  */
 /** @typedef {{ok:true,action:MiningAction}|{ok:false,reason:string}} StartResult */
 
-/** Every entity holds a pickaxe until held items arrive. */
-export const PICKAXE = "pickaxe";
+export { PICKAXE };
 
-/** @param {Player} player */
+/** The item kind an entity holds. Every entity holds a pickaxe until #19 lets it choose. @param {Player} player */
 export function heldItem(player) {
   return /** @type {Holder} */ (player).held ?? PICKAXE;
 }
@@ -134,17 +134,17 @@ export function miningCancelReason(world, action) {
 
 /**
  * The one place the host handles a finished mining action. The tile becomes
- * air and `writeTile` queues the change for `drainTileChanges`. Dropped items
- * (#17) are added here, where the material and the tile are known.
+ * air, `writeTile` queues the change for `drainTileChanges`, and one item of
+ * the material's item kind drops on the tile, merging with a stack of that
+ * kind already there.
  * @param {World} world @param {MiningAction} action
  */
 export function completeMining(world, action) {
   writeTile(world, action.x, action.y, action.z, OPEN);
-  return {
-    playerId: action.playerId,
-    tile: { x: action.x, y: action.y, z: action.z },
-    material: action.material,
-  };
+  const tile = { x: action.x, y: action.y, z: action.z };
+  const kind = materialInfo(action.material)?.itemKind ?? null;
+  if (kind) dropItem(world, tile, kind, 1);
+  return { playerId: action.playerId, tile, material: action.material, kind };
 }
 
 /**

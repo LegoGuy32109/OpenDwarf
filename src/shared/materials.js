@@ -19,8 +19,7 @@ export const MAX_MATERIAL = EMERALD;
 
 /**
  * @typedef {{id:number,name:string,itemKind:string|null,oreFrame:number|null,miningSeconds:number|null}} MaterialInfo
- * `itemKind` is what mining the tile leaves behind; later tickets map it to
- * the item kind. `oreFrame` is the row in `public/assets/ores.png`, or null
+ * `itemKind` is the item kind (`items.js`) that mining the tile drops. `oreFrame` is the row in `public/assets/ores.png`, or null
  * when the material is drawn from the floor atlas. `miningSeconds` is how long
  * a pickaxe takes to mine the tile, or null when the tile cannot be mined.
  */

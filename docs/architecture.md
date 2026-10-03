@@ -43,7 +43,7 @@ generate. `?seed=` replays a world for tests. Joining players never generate;
 they receive generated terrain only for tiles they see. A seven-step staircase on the south edge reaches
 the top landing; a full-height pillar tests occlusion. The view can show five
 lower levels, with deeper floors turning blue before they disappear. There is no
-chunk unloading, persistence, or inventory. Players and the corner NPC use continuous x/y centers and half-tile square
+chunk unloading or persistence. Players and the corner NPC use continuous x/y centers and half-tile square
 footprints. They stop between tiles, slide along flat walls, and block one
 another when footprints overlap. A one-level climb or descent is a short
 committed step with reserved origin and landing footprints. The renderer
@@ -89,14 +89,43 @@ lies on the entity's level next to its center tile, holds a mineable material
 holds a pickaxe. The target locks at the start. Each host tick `stepMining`
 cancels an action whose target left reach, whose held item changed, or whose
 tile changed, and finishes the ones that are done. `completeMining` is the one
-place a finished action is handled: it writes air with `writeTile`, and #17 adds
-the dropped item there. The host sends the tiles `drainTileChanges` returns to
+place a finished action is handled: it writes air with `writeTile` and drops one
+item of the material's item kind on the tile. The host sends the tiles `drainTileChanges` returns to
 each peer as a small `terrain` message, only for tiles that peer sees now, and
 updates that peer's remembered terrain for them; a tile out of sight keeps its
 last observed state until seen again. A `mining` message lists the actions a
 peer can see (and its own), with elapsed and total time, so a peer draws the
 breaking decal on other players' tiles and the miner draws a growing square.
 Clients cancel when the aim changes by sending `mine-cancel`.
+
+## Items
+
+`src/shared/items.js` holds the item model. An item kind is a string from
+`ITEM_KINDS` (stone, coal, iron ore, gold ore, lapis, redstone, diamond, emerald,
+coin, pickaxe), each with a frame in the item sprite sheet
+`public/assets/items.png`, one column of 16×16 frames that
+`scripts/make-item-sheet.ts` draws; the pickaxe is cut from the dwarf mining
+frames on `main`. A stack is `{kind, count}`. Dropped items and inventories are
+both plain stack lists with one stack per kind, and `addStack` and `takeStack`
+change them, so the pickup grid (#18), the inventory panel and held item (#19),
+and the shop (#20) reuse them. `droppedItems(world)` keeps the stacks that lie
+on each tile for the session; nothing removes them but a pickup.
+`inventoryOf(player)` is an entity's inventory, which starts with one pickaxe.
+`heldItem` in `mining.js` still returns the pickaxe by default; #19 replaces it
+with the entity's chosen item.
+
+A pickup is a host decision. Interact on a highlighted tile that holds dropped
+items calls `pickUp` on the host, or sends a `pickup` request with the tile from
+a guest. The host checks the entity, the tile, and reach (the tile is on the
+entity's level, and is its own tile or a neighbor), and moves the first stack
+into the inventory. It handles requests one at a time, so the first of two
+contested requests gets the stack and the other receives "nothing to pick up".
+The host sends each peer an `items` message with only the dropped items on
+tiles that peer sees (all of them in master view) whenever that list changes,
+and an `inventory` message with only that peer's own inventory. A pickup system
+line goes to the player who picked up and nobody else, through `tell` next to
+`announce` in `network.js`. A client draws one icon per tile, cycling the kinds
+every `ICON_CYCLE_MS`.
 
 ## Why the visitor hosts the world
 
