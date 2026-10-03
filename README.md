@@ -52,6 +52,7 @@ its feature there:
 - [Sight and view modes](docs/features/sight.md)
 - [Mining and items](docs/features/mining-and-items.md)
 - [Inventory and shop](docs/features/inventory-and-shop.md)
+- [Placing](docs/features/placing.md)
 - [Chat](docs/features/chat.md)
 - [Controls and UI](docs/features/controls-and-ui.md)
 - [Networking](docs/features/networking.md)
