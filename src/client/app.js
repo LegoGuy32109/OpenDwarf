@@ -115,6 +115,8 @@ const scene = {
   /** Mining actions a guest was told about by the world host. */
   mineFeed:
     /** @type {import('./network.js').MineFeed|undefined} */ (undefined),
+  /** A short message that shows over the status line, such as a refused action. */
+  notice: /** @type {{text:string,until:number}|undefined} */ (undefined),
   sessionId: "",
   metrics:
     /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
@@ -315,6 +317,11 @@ function toggleSprint() {
   showSprint();
 }
 
+/** @param {string} text */
+function flash(text) {
+  scene.notice = { text, until: performance.now() + 2500 };
+}
+
 /** The look stick, IJKL, and controller camera input combined. */
 function cameraInput() {
   const controllerCamera = scene.chatOpen || scene.menu
@@ -333,7 +340,7 @@ function interact() {
   const player = scene.world.players[scene.localId];
   if (!player || scene.chatOpen || scene.menu) return;
   if (scene.viewMode !== "entity") {
-    notify("Switch to entity view to mine");
+    flash("Switch to entity view to mine");
     return;
   }
   // Read the aim now: a frame may not have run since the key went down.
@@ -346,14 +353,14 @@ function interact() {
     scene.world,
   );
   if (!target) {
-    notify("Nothing to mine there");
+    flash("Nothing to mine there");
     return;
   }
   mineLock = { x: scene.aim.x, y: scene.aim.y, z: scene.viewZ };
   if (isAdmin) guest?.send({ type: "mine", ...target });
   else {
     const result = startMining(scene.world, scene.localId, target);
-    if (!result.ok) notify(`Cannot mine: ${result.reason}`);
+    if (!result.ok) flash(`Cannot mine: ${result.reason}`);
   }
 }
 

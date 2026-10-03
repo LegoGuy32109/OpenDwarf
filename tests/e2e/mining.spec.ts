@@ -7,7 +7,7 @@ type Harness = {
     scene: {
       sessionId: string;
       localId: string;
-      status: string;
+      notice?: { text: string };
       mining: Entry[];
       world: {
         chunks: Map<string, Uint8Array>;
@@ -117,7 +117,9 @@ test("aiming at another tile cancels, and the host rejects bad targets", async (
   // With no aim the highlight is the entity's own tile, which is not minable.
   await page.keyboard.press("Space");
   await expect.poll(() =>
-    page.evaluate(() => (globalThis as unknown as Harness).__od.scene.status)
+    page.evaluate(() =>
+      (globalThis as unknown as Harness).__od.scene.notice?.text ?? ""
+    )
   ).toContain("aim at a neighboring tile");
   expect(await mining(page)).toEqual([]);
 });
@@ -200,7 +202,9 @@ test("a joining player sees the breaking decal and the tile change, and can mine
     })
   );
   await expect.poll(() =>
-    guest.evaluate(() => (globalThis as unknown as Harness).__od.scene.status)
+    guest.evaluate(() =>
+      (globalThis as unknown as Harness).__od.scene.notice?.text ?? ""
+    )
   ).toContain("out of reach");
   expect(await tile(host, 2)).toBe(STONE);
   await Promise.all([host.close(), guest.close()]);

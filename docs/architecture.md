@@ -80,6 +80,24 @@ view level, holding U/N lerps zoom, and touch offers pinch zoom and two-finger
 vertical drag for view levels. A brief bitmap HUD shows both values during
 changes.
 
+## Mining
+
+Interact starts a mining action in `src/shared/mining.js`. A guest sends only the
+tile it aimed at (`mine`, or `mine-cancel`); the world host checks that the tile
+lies on the entity's level next to its center tile, holds a mineable material
+(the table in `materials.js` gives each material's time), and that the entity
+holds a pickaxe. The target locks at the start. Each host tick `stepMining`
+cancels an action whose target left reach, whose held item changed, or whose
+tile changed, and finishes the ones that are done. `completeMining` is the one
+place a finished action is handled: it writes air with `writeTile`, and #17 adds
+the dropped item there. The host sends the tiles `drainTileChanges` returns to
+each peer as a small `terrain` message, only for tiles that peer sees now, and
+updates that peer's remembered terrain for them; a tile out of sight keeps its
+last observed state until seen again. A `mining` message lists the actions a
+peer can see (and its own), with elapsed and total time, so a peer draws the
+breaking decal on other players' tiles and the miner draws a growing square.
+Clients cancel when the aim changes by sending `mine-cancel`.
+
 ## Why the visitor hosts the world
 
 Each visitor can start moving before a server round trip. The visitor's browser

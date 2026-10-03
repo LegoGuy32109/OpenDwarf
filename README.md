@@ -30,6 +30,13 @@ square at one of the eight neighboring tiles. R/V selects the view level; the
 square appears at the player's level or one level above or below. In master
 view, IJKL pans the camera. Holding U/N smoothly zooms out/in. The mouse wheel
 also zooms.
+Space, gamepad button 0, or the round pickaxe button right of the left stick
+interacts: with the pickaxe every entity holds, it starts mining the
+highlighted tile. The look control points the highlight at a neighbor, and the
+entity's own tile is highlighted with no aim. Mining is not held down; it
+finishes on its own. Stone takes 1 s, coal 1.5 s, iron ore 2 s, gold ore,
+lapis, and redstone 3 s, and diamond and emerald 4.5 s. Aiming at another tile or
+walking out of reach cancels it.
 On the host, F3 toggles a small FPS, payload upload, queue, and join-failure
 panel. `T` opens chat, `/` opens a command, and Escape opens the menu. On a
 touch screen, the left stick moves the player and the right stick points at a
@@ -38,7 +45,7 @@ center deadzone and eight direction guides.
 With a gamepad connected to the device, press a button while the page is
 focused. The left stick or D-pad moves, and the right stick points at a neighbor
 in entity view or pans in master view.
-Buttons 4/5 change the view level, 6/7 zoom, and 3 opens the menu. Button 1 has
+Button 0 interacts, buttons 4/5 change the view level, 6/7 zoom, and 3 opens the menu. Button 1 has
 no chat action. The browser can report a standard layout or the raw layout of
 the Afterglow Wireless Deluxe Controller. The Afterglow Wireless
 Deluxe Controller's USB connection charges it but does not send input. Pair

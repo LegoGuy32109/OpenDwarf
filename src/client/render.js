@@ -87,7 +87,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,mining?:{id:string,x:number,y:number,z:number,progress:number}[]}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[]}} Scene */
 
 /**
  * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
@@ -95,11 +95,11 @@ function texture(gl, source) {
  * @type {readonly (readonly (readonly [number,number,number,number])[])[]}
  */
 const DECAL_PIECES = [
-  [[7, 7, 2, 2]],
-  [[5, 5, 2, 2], [9, 9, 2, 2], [7, 4, 1, 3]],
-  [[3, 8, 4, 1], [9, 3, 1, 4], [10, 11, 3, 1]],
-  [[2, 2, 3, 2], [11, 5, 3, 2], [6, 11, 2, 4], [4, 12, 2, 2]],
-  [[1, 6, 3, 1], [12, 9, 3, 1], [8, 1, 1, 5], [13, 12, 2, 2], [3, 3, 1, 5]],
+  [[7, 6, 2, 3]],
+  [[5, 4, 2, 2], [9, 9, 2, 2], [7, 3, 2, 3]],
+  [[2, 8, 5, 2], [9, 2, 2, 5], [10, 11, 4, 2]],
+  [[2, 2, 4, 2], [11, 5, 4, 2], [6, 10, 2, 5], [3, 12, 3, 2]],
+  [[1, 5, 4, 2], [11, 8, 4, 2], [8, 0, 2, 6], [13, 12, 2, 3], [3, 3, 2, 6]],
 ];
 
 /** @param {HTMLCanvasElement} canvas */
@@ -494,9 +494,14 @@ export async function createRenderer(canvas) {
         continue;
       }
       const unit = TILE / 16;
-      for (
-        const pieces of DECAL_PIECES.slice(0, decalFrame(entry.progress) + 1)
-      ) {
+      const frame = decalFrame(entry.progress);
+      quad(textures.white, false, px, py, TILE, TILE, [0, 0, 1, 1], [
+        0,
+        0,
+        0,
+        0.07 * (frame + 1),
+      ]);
+      for (const pieces of DECAL_PIECES.slice(0, frame + 1)) {
         for (const [x, y, w, h] of pieces) {
           quad(
             textures.white,
@@ -506,7 +511,7 @@ export async function createRenderer(canvas) {
             w * unit,
             h * unit,
             [0, 0, 1, 1],
-            [0, 0, 0, 0.6],
+            [0, 0, 0, 0.8],
           );
         }
       }
@@ -773,7 +778,10 @@ export async function createRenderer(canvas) {
         );
       }
     }
-    const status = scene.status.slice(0, 75);
+    const status =
+      (scene.notice && performance.now() < scene.notice.until
+        ? scene.notice.text
+        : scene.status).slice(0, 75);
     if (status) {
       rect(
         10 * dpr,

@@ -91,7 +91,7 @@ function deliver(receive, replaceable = false) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {{at:number,entries:import('../shared/mining.js').MiningEntry[]}} MineFeed */
-/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -1159,7 +1159,10 @@ export function joinWorld(scene, session) {
     }
     if (value.type === "mine-result") {
       if (typeof value.reason === "string" && value.reason.length <= 40) {
-        scene.status = `Cannot mine: ${value.reason}`;
+        scene.notice = {
+          text: `Cannot mine: ${value.reason}`,
+          until: performance.now() + 2500,
+        };
       }
       return;
     }
