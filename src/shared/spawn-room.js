@@ -1,6 +1,7 @@
 // @ts-check
 
 import { createWorld, EXPANDED_WORLD_EDGE } from "./world.js";
+import { COAL, GOLD_ORE, IRON_ORE } from "./materials.js";
 import {
   CHUNK_EDGE,
   createChunkData,
@@ -55,6 +56,16 @@ export function layoutFromParams(params) {
   return params.has("harness") ? "test" : "room";
 }
 
+/** Ore in the tunnel walls and end, so a new player finds some within a short dig. */
+export const TUNNEL_ORES = [
+  { x: 22, y: TUNNEL.y - 1, z: TUNNEL.z, material: COAL },
+  { x: 24, y: TUNNEL.y + 1, z: TUNNEL.z, material: COAL },
+  { x: 23, y: TUNNEL.y, z: TUNNEL.z - 1, material: COAL },
+  { x: 25, y: TUNNEL.y - 1, z: TUNNEL.z, material: IRON_ORE },
+  { x: 26, y: TUNNEL.y + 1, z: TUNNEL.z, material: IRON_ORE },
+  { x: TUNNEL.maxX + 1, y: TUNNEL.y, z: TUNNEL.z, material: GOLD_ORE },
+];
+
 /** Dig the room, its doorway, the stairs and the tunnel out of solid stone. @param {World} world */
 function carveSpawnRoom(world) {
   for (let y = ROOM.minY; y <= ROOM.maxY; y++) {
@@ -69,6 +80,9 @@ function carveSpawnRoom(world) {
   writeTile(world, bottom.x, bottom.y, bottom.z + 1, OPEN);
   for (let x = TUNNEL.minX; x <= TUNNEL.maxX; x++) {
     writeTile(world, x, TUNNEL.y, TUNNEL.z, OPEN);
+  }
+  for (const { x, y, z, material } of TUNNEL_ORES) {
+    writeTile(world, x, y, z, material);
   }
 }
 

@@ -10,7 +10,10 @@ import {
   SHOPKEEPER_TILE,
   STAIRS,
   TUNNEL,
+  TUNNEL_ORES,
 } from "../../src/shared/spawn-room.js";
+import { readTile } from "../../src/shared/terrain.js";
+import { GOLD_ORE } from "../../src/shared/materials.js";
 import { createCornerNpc } from "../../src/shared/npc.js";
 import {
   addPlayer,
@@ -152,4 +155,20 @@ Deno.test("harness pages keep the test layout unless they ask for the room", () 
   assertEquals(layout("harness=1"), "test");
   assertEquals(layout("harness=1&layout=room"), "room");
   assertEquals(layout("layout=test"), "test");
+});
+
+Deno.test("the tunnel walls hold coal and iron, with gold at the end", () => {
+  const world = createSpawnRoomWorld();
+  for (const { x, y, z, material } of TUNNEL_ORES) {
+    assertEquals(readTile(world, x, y, z), material);
+  }
+  assertEquals(
+    readTile(world, TUNNEL.maxX + 1, TUNNEL.y, TUNNEL.z),
+    GOLD_ORE,
+  );
+  // The tunnel itself stays open and the ore never sits in the room.
+  for (let x = TUNNEL.minX; x <= TUNNEL.maxX; x++) {
+    assert(!isSolid(world, x, TUNNEL.y, TUNNEL.z));
+  }
+  assert(TUNNEL_ORES.every((ore) => ore.x > ROOM.maxX));
 });
