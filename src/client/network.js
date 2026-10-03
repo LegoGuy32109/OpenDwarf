@@ -72,7 +72,7 @@ function deliver(receive, replaceable = false) {
 }
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -181,6 +181,18 @@ export function startHost(scene, session) {
     publishTimer = null;
     lastPublish = performance.now();
     for (const connection of peers.values()) connection.publish();
+  }
+
+  /**
+   * Adds a system line to the host's hearing log and sends it to every joined
+   * guest except `exceptId`. Features such as pickups and sales call this.
+   * @param {string} text @param {string} [exceptId]
+   */
+  function announce(text, exceptId) {
+    scene.systemLine?.(text);
+    for (const [id, connection] of peers) {
+      if (id !== exceptId) connection.system(text);
+    }
   }
 
   function publish() {
@@ -308,6 +320,7 @@ export function startHost(scene, session) {
       joined = false;
       if (established || !departedAt) departedAt = performance.now();
       scene.status = "A visitor left your world";
+      if (established) announce(`${established.name || "A visitor"} left`);
       publish();
     }
 
@@ -399,7 +412,11 @@ export function startHost(scene, session) {
         submitMessage(scene.world, playerId, String(message.text));
       }
       if (message.type === "nick") {
+        const before = scene.world.players[playerId]?.name ?? "";
         const result = setNickname(scene.world, playerId, String(message.name));
+        if (result.ok && result.name !== before) {
+          announce(`${before || "A visitor"} is now ${result.name}`);
+        }
         channel?.send(JSON.stringify({ type: "nick-result", result }));
       }
       publish();
@@ -509,9 +526,16 @@ export function startHost(scene, session) {
           deadline.complete(attempt);
           departedAt = 0;
           lastSeen = performance.now();
+          const rejoined = Boolean(rememberedPlayer);
           if (rememberedPlayer && !scene.world.players[playerId]) {
             scene.world.players[playerId] = rememberedPlayer;
           } else enableLocomotion(addPlayer(scene.world, playerId, spawn()));
+          announce(
+            `${scene.world.players[playerId]?.name || "A visitor"} ${
+              rejoined ? "rejoined" : "joined"
+            }`,
+            playerId,
+          );
           rememberedPlayer = null;
           scene.status = "A visitor joined your world";
           publish();
@@ -666,6 +690,12 @@ export function startHost(scene, session) {
       chat() {
         if (joined && scene.world.players[playerId]) chatSender?.publish();
       },
+      /** @param {string} text */
+      system(text) {
+        if (joined && channel?.readyState === "open") {
+          channel.send(JSON.stringify({ type: "system", text }));
+        }
+      },
       tick: tickPeer,
       expireIfSilent,
       expired: () =>
@@ -796,6 +826,7 @@ export function startHost(scene, session) {
   }, { once: true });
   return {
     publish,
+    announce,
     tick,
     async diagnostics() {
       const connections = await Promise.all(
@@ -984,6 +1015,12 @@ export function joinWorld(scene, session) {
 
   /** @param {Record<string,unknown>} value */
   function receiveGame(value) {
+    if (value.type === "system") {
+      if (typeof value.text === "string" && value.text.length <= 120) {
+        scene.systemLine?.(value.text);
+      }
+      return;
+    }
     if (value.type === "chat") {
       const chat = decodeChat(value);
       if (chat?.attempt === attempt && chat.tick > lastChatTick) {

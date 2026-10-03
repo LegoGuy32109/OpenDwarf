@@ -28,6 +28,11 @@ import { createCornerNpc } from "../shared/npc.js";
 import { createPresentation } from "./presentation.js";
 import { chatView } from "../shared/chat.js";
 import {
+  addSystemLine,
+  createHearingLog,
+  hearChat,
+} from "../shared/hearing-log.js";
+import {
   centerTile,
   DEFAULT_SPEED_FT,
   enableLocomotion,
@@ -42,6 +47,9 @@ const $ = (
 ) => /** @type {HTMLElement} */ (document.querySelector(selector));
 const canvas = /** @type {HTMLCanvasElement} */ ($("#world"));
 const chatInput = /** @type {HTMLInputElement} */ ($("#chat-input"));
+const logPanel = $("#hearing-log");
+const logList = $("#hearing-log-lines");
+let renderedLog = -1;
 const gamepadDebug = new URL(location.href).searchParams.has("gamepad-debug");
 const gamepadEnabled = !new URL(location.href).searchParams.has("harness") ||
   gamepadDebug;
@@ -65,6 +73,9 @@ const scene = {
   chatFeed: /** @type {import('../shared/chat.js').DisplayChatRecord[]} */ ([]),
   chatOpen: false,
   chatDraft: "",
+  hearingLog: createHearingLog(),
+  /** @param {string} text */
+  systemLine: (text) => addSystemLine(scene.hearingLog, text),
   status: "Local world",
   aim: { x: 0, y: 0 },
   sessionId: "",
@@ -174,7 +185,11 @@ function submitChat() {
     const name = text.slice(6);
     if (isAdmin) guest?.send({ type: "nick", name });
     else {
+      const before = scene.world.players[scene.localId]?.name ?? "";
       const result = setNickname(scene.world, scene.localId, name);
+      if (result.ok && result.name && result.name !== before) {
+        host?.announce(nameChangeLine(before, result.name), scene.localId);
+      }
       notify(
         result.ok
           ? `Name set to ${result.name}`
@@ -195,6 +210,50 @@ function submitChat() {
   submitMessage(scene.world, scene.localId, text);
   if (isAdmin) guest?.send({ type: "message", text });
   else host?.publish();
+}
+
+/** @param {string} before @param {string} name */
+function nameChangeLine(before, name) {
+  return `${before || "A visitor"} is now ${name}`;
+}
+
+/** @param {boolean} [open] */
+function toggleLog(open = !logPanel.classList.contains("open")) {
+  logPanel.hidden = !open;
+  logPanel.classList.toggle("open", open);
+  $("#log-button").setAttribute("aria-pressed", String(open));
+  if (open) {
+    renderedLog = -1;
+    drawLog();
+  }
+}
+
+/** @param {string} id */
+function speakerName(id) {
+  const name = scene.world.players[id]?.name;
+  if (id === scene.localId) return name || "You";
+  return name || "Visitor";
+}
+
+function drawLog() {
+  const log = scene.hearingLog;
+  if (logPanel.hidden || renderedLog === log.version) return;
+  renderedLog = log.version;
+  const atEnd = logList.scrollTop + logList.clientHeight >=
+    logList.scrollHeight - 8;
+  logList.replaceChildren(...log.lines.map((line) => {
+    const item = document.createElement("li");
+    item.className = line.kind;
+    if (line.kind === "chat") {
+      const who = document.createElement("b");
+      who.textContent = `${line.speaker}: `;
+      item.append(who, line.text ?? "");
+    } else item.textContent = line.text;
+    return item;
+  }));
+  if (atEnd || logList.scrollTop === 0) {
+    logList.scrollTop = logList.scrollHeight;
+  }
 }
 
 function showSpeed() {
@@ -577,6 +636,11 @@ function bindInput() {
     scene.inputMode = "touch";
     openChat();
   });
+  $("#log-button").addEventListener("click", () => {
+    scene.inputMode = "touch";
+    toggleLog();
+  });
+  $("#log-close").addEventListener("click", () => toggleLog(false));
   $("#menu-button").addEventListener("click", () => {
     scene.inputMode = "touch";
     scene.menu = !scene.menu;
@@ -612,6 +676,16 @@ function bindInput() {
       return;
     }
     scene.inputMode = "keyboard";
+    if (event.code === "Backquote") {
+      event.preventDefault();
+      if (!event.repeat) toggleLog();
+      return;
+    }
+    if (event.code === "Escape" && logPanel.classList.contains("open")) {
+      event.preventDefault();
+      if (!event.repeat) toggleLog(false);
+      return;
+    }
     if (event.code === "Escape") {
       event.preventDefault();
       if (!event.repeat) {
@@ -1046,6 +1120,8 @@ export async function startApp() {
     if (!isAdmin) {
       scene.chatFeed = chatView(scene.world, scene.localId, localChatBands);
     }
+    hearChat(scene.hearingLog, scene.chatFeed, speakerName);
+    drawLog();
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };
