@@ -101,10 +101,14 @@ export interface Builds {
   handles(path: string): boolean;
   /** Answers a GET for a path `handles` accepted. */
   serve(path: string): Promise<Response>;
-  /** Resolves a build name to a full commit SHA, or null when nothing has that name. */
-  resolve(name: string): Promise<string | null>;
+  /**
+   * Resolves a build name to a full commit SHA, or null when nothing has that name. With
+   * `fresh`, a branch is looked up again instead of read from the 60 s cache: a promotion
+   * right after a push must get the pushed commit.
+   */
+  resolve(name: string, options?: { fresh?: boolean }): Promise<string | null>;
   /** The latest commit of a branch, or null when the repository has no such branch. */
-  branch(name: string): Promise<string | null>;
+  branch(name: string, options?: { fresh?: boolean }): Promise<string | null>;
   /** The full SHA of a commit (full or short), or null when the repository has no such commit. */
   commit(sha: string): Promise<string | null>;
 }
@@ -117,9 +121,9 @@ export function createBuilds(options: BuildOptions): Builds {
   const pages = new Map<string, { html: string; expires: number }>();
 
   /** The commit a ref names on GitHub: a branch (`heads/<name>`) or a SHA. Null when unknown. */
-  async function github(ref: string): Promise<string | null> {
+  async function github(ref: string, fresh = false): Promise<string | null> {
     const cached = refs.get(ref);
-    if (cached && cached.expires > now()) return cached.sha;
+    if (!fresh && cached && cached.expires > now()) return cached.sha;
     const headers: Record<string, string> = {
       accept: "application/vnd.github.sha",
       "user-agent": "open-dwarf-shell",
@@ -150,21 +154,25 @@ export function createBuilds(options: BuildOptions): Builds {
     return sha;
   }
 
-  const branch = (name: string) => github(`heads/${name}`);
+  const branch = (name: string, { fresh = false } = {}) =>
+    github(`heads/${name}`, fresh);
   const commit = (sha: string) =>
     FULL_SHA.test(sha) ? Promise.resolve(sha) : github(sha);
 
-  async function resolve(name: string): Promise<string | null> {
+  async function resolve(
+    name: string,
+    { fresh = false } = {},
+  ): Promise<string | null> {
     if (!NAME.test(name)) return null;
     const label = await store.getLabel(name);
     if (label) {
       return label.kind === "branch"
-        ? branch(label.target)
+        ? branch(label.target, { fresh })
         : commit(label.target);
     }
     // A full SHA names itself; skip the branch lookup and the API.
     if (FULL_SHA.test(name)) return name;
-    const head = await branch(name);
+    const head = await branch(name, { fresh });
     if (head) return head;
     return SHORT_SHA.test(name) ? commit(name) : null;
   }

@@ -177,6 +177,18 @@ withShell(
   },
 );
 
+withShell(
+  "promote right after a push gets the pushed commit, not the cached one",
+  async (s) => {
+    // A page load caches the branch's commit for 60 seconds.
+    assertEquals(await s.builds.resolve("feature"), OLD);
+    s.refs["heads/feature"] = NEWER;
+    assertEquals(await s.builds.resolve("feature"), OLD);
+    assertEquals(await s.od([...BASE_ARGS, "promote", "feature"]), 0);
+    assertEquals((await s.store.getMain())?.commit, NEWER);
+  },
+);
+
 withShell("promote takes a label, a branch, or a short SHA", async (s) => {
   assertEquals(await s.od([...BASE_ARGS, "promote", "other"]), 0);
   assertEquals((await s.store.getMain())?.commit, NEWER);

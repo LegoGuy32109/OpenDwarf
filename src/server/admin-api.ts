@@ -96,7 +96,7 @@ export function createAdminApi(options: AdminOptions): AdminApi {
     if (!/^[^\s~^:?*\[\\]{1,200}$/.test(target)) {
       return fail("invalid branch or commit", 400);
     }
-    if (await builds.branch(target)) {
+    if (await builds.branch(target, { fresh: true })) {
       return json(
         await describe(
           await store.setLabel({ name, kind: "branch", target }),
@@ -121,7 +121,7 @@ export function createAdminApi(options: AdminOptions): AdminApi {
     if (data.note !== undefined && typeof data.note !== "string") {
       return fail("note must be text", 400);
     }
-    const commit = await builds.resolve(target);
+    const commit = await builds.resolve(target, { fresh: true });
     if (!commit) {
       return fail(`no label, branch, or commit named ${target}`, 404);
     }

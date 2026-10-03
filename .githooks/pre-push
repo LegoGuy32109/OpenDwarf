@@ -1,2 +1,13 @@
 #!/bin/sh
+# Run `deno task verify` before a push that sends code. Skip it when every ref
+# being pushed is a deletion or the `evidence` branch, which holds only
+# screenshots and videos.
+zero=0000000000000000000000000000000000000000
+needs_verify=no
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  [ "$remote_ref" = "refs/heads/evidence" ] && continue
+  needs_verify=yes
+done
+[ "$needs_verify" = no ] && exit 0
 exec deno task verify
