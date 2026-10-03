@@ -1,0 +1,164 @@
+:root {
+  color-scheme: dark;
+  --bg: #12100e;
+  --panel: #1d1a16;
+  --line: #3a342c;
+  --text: #e8e2d6;
+  --dim: #9a917f;
+  --accent: #e8a33d;
+  --bad: #d96b5a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+
+header,
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding-top: 1rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--accent);
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+#refreshed {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+#refreshed.stale {
+  color: var(--bad);
+}
+
+section {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.35rem 0.75rem 0.35rem 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  color: var(--dim);
+  font-weight: normal;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+td.num {
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 0;
+  color: var(--dim);
+}
+
+.error {
+  margin: 0;
+  color: var(--bad);
+}
+
+.tag {
+  margin-left: 0.5rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 0.75rem;
+}
+
+.dim {
+  color: var(--dim);
+}
+
+/* On a phone each row becomes a small card, so nothing scrolls sideways. */
+@media (max-width: 40rem) {
+  section {
+    padding: 0.75rem;
+  }
+
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+    width: 100%;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tr {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.1rem 0;
+    border: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--dim);
+    text-align: left;
+  }
+}

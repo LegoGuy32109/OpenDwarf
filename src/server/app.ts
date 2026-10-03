@@ -1,5 +1,6 @@
 import QRCode from "qrcode-svg";
 import { type AdminApi, createAdminApi } from "./admin-api.ts";
+import { serveAdminPage } from "./admin-page.ts";
 import { type Builds, openBuilds } from "./builds.ts";
 import {
   createSessionRoutes,
@@ -99,6 +100,10 @@ export function createApp(
     // Build pages: `/b/<name>/...`, and main at the root pages.
     if (builds.handles(url.pathname) && request.method === "GET") {
       return builds.serve(url.pathname);
+    }
+    if (request.method === "GET") {
+      const page = await serveAdminPage(url.pathname);
+      if (page) return page;
     }
     const owner = await admin.handle(request);
     if (owner) return owner;
