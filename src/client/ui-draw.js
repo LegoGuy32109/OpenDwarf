@@ -501,10 +501,10 @@ function drawRound(paint, element, ts, down) {
   disc(paint, cx, cy + (down ? 2 * ts : 0), r, edge, cell);
   disc(paint, cx, cy + (down ? 2 * ts : 0), r - cell, face, cell);
   const oy = down ? 2 * ts : 0;
-  if (element.glyph === "pickaxe") {
+  if (element.glyph === "item" && element.item) {
     const size = 16 * Math.max(1, Math.round(r * 1.1 / (16 * ts))) * ts;
     paint.item(
-      "pickaxe",
+      element.item,
       cx - size / 2,
       cy - size / 2 + oy,
       size,

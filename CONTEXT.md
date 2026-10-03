@@ -92,6 +92,10 @@ tile's item as a dropped item.
 **Additive terrain edit**: A world change that places a carried stone item into
 the terrain as a solid tile.
 
+**Place**: An additive terrain edit made by an entity. It spends one held stone
+and turns an empty tile into stone at once. See
+[docs/features/placing.md](docs/features/placing.md).
+
 **Item kind**: A type of item, such as stone, coal, iron ore, gold ore, lapis,
 redstone, diamond, emerald, or coin.
 

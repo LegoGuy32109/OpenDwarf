@@ -350,6 +350,7 @@ export function decodeControl(value) {
     case "cancel":
       return counter(value.sequence) ? value : null;
     case "mine":
+    case "place":
       return Number.isInteger(value.x) &&
           finite(value.x, -MAX_COORD, MAX_COORD) &&
           Number.isInteger(value.y) && finite(value.y, -MAX_COORD, MAX_COORD) &&

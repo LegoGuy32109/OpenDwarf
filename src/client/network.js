@@ -27,6 +27,7 @@ import {
   startMining,
   stepMining,
 } from "../shared/mining.js";
+import { placeStone, reservedTiles } from "../shared/placing.js";
 import {
   chunkCoord,
   chunkIndex,
@@ -436,6 +437,19 @@ export function startHost(scene, session) {
         if (!result.ok && channel?.readyState === "open") {
           channel.send(
             JSON.stringify({ type: "mine-result", reason: result.reason }),
+          );
+        }
+        return;
+      }
+      if (message.type === "place") {
+        const result = placeStone(scene.world, playerId, {
+          x: Number(message.x),
+          y: Number(message.y),
+          z: Number(message.z),
+        }, reservedTiles(scene.layout));
+        if (!result.ok && channel?.readyState === "open") {
+          channel.send(
+            JSON.stringify({ type: "place-result", reason: result.reason }),
           );
         }
         return;
@@ -1302,6 +1316,15 @@ export function joinWorld(scene, session) {
       if (typeof value.reason === "string" && value.reason.length <= 60) {
         scene.notice = {
           text: `Cannot sell: ${value.reason}`,
+          until: performance.now() + 2500,
+        };
+      }
+      return;
+    }
+    if (value.type === "place-result") {
+      if (typeof value.reason === "string" && value.reason.length <= 40) {
+        scene.notice = {
+          text: value.reason,
           until: performance.now() + 2500,
         };
       }
