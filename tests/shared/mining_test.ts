@@ -36,6 +36,8 @@ import {
   startMining,
   stepMining,
 } from "../../src/shared/mining.js";
+import { setHeldItem } from "../../src/shared/held-item.js";
+import { addStack, inventoryOf } from "../../src/shared/items.js";
 import { highlightedTile } from "../../src/shared/target.js";
 import {
   decodeControl,
@@ -58,6 +60,7 @@ function miner() {
   const player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
   writeTile(world, 6, 5, 1, STONE);
   drainTileChanges(world);
+  addStack(inventoryOf(player), "coal", 1);
   return { world, player };
 }
 
@@ -99,7 +102,7 @@ Deno.test("reach is a neighboring tile on the same level, never the entity's own
 });
 
 Deno.test("the host rejects mining that is out of reach or not solid", () => {
-  const { world, player } = miner();
+  const { world } = miner();
   const reason = (x: number, y: number, z: number) => {
     const result = startMining(world, "self", { x, y, z });
     return result.ok ? "ok" : result.reason;
@@ -115,10 +118,10 @@ Deno.test("the host rejects mining that is out of reach or not solid", () => {
     ok: false,
     reason: "unknown player",
   });
-  (player as { held?: string }).held = "bucket";
+  setHeldItem(world, "self", "coal");
   assertEquals(reason(6, 5, 1), "no pickaxe");
   assertEquals(miningActions(world).size, 0);
-  delete (player as { held?: string }).held;
+  setHeldItem(world, "self", "pickaxe");
   assertEquals(reason(6, 5, 1), "ok");
   assertEquals(miningActions(world).size, 1);
 });
@@ -205,7 +208,8 @@ Deno.test("moving out of reach cancels", () => {
 Deno.test("a changed held item cancels", () => {
   const { world, player } = miner();
   startMining(world, "self", { x: 6, y: 5, z: 1 });
-  (player as { held?: string }).held = "bucket";
+  // Set the field directly: `setHeldItem` would cancel the action itself.
+  (player as { held?: string }).held = "coal";
   assertEquals(
     miningCancelReason(world, miningActions(world).get("self")!),
     "held item changed",

@@ -11,6 +11,7 @@
       content="black-translucent">
     <title>Open Dwarf</title>
     <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/inventory-panel.css">
     <script type="module" src="/js/app.js"></script>
   </head>
   <body>
@@ -66,6 +67,14 @@
               aria-pressed="false">L</button>
             <button class="action" id="menu-button" type="button"
               aria-label="Open menu">B</button>
+            <button class="action" id="bag-button" type="button"
+              aria-label="Open inventory" aria-controls="inventory-panel"
+              aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
+                stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+                stroke-linejoin="round"><path
+                  d="M8 7V5.5A2.5 2.5 0 0 1 10.5 3h3A2.5 2.5 0 0 1 16 5.5V7M6 7h12l1 13H5z" /></svg>
+            </button>
           </span>
         </section>
       </div>

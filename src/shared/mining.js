@@ -1,6 +1,6 @@
 // @ts-check
 
-import { dropItem, PICKAXE } from "./items.js";
+import { dropItem, inventoryOf, PICKAXE } from "./items.js";
 import { centerTile } from "./locomotion.js";
 import { materialInfo } from "./materials.js";
 import { OPEN, readTile, WORLD_TOP, writeTile } from "./terrain.js";
@@ -26,9 +26,16 @@ import { TICK_MS } from "./world.js";
 
 export { PICKAXE };
 
-/** The item kind an entity holds. Every entity holds a pickaxe until #19 lets it choose. @param {Player} player */
+/**
+ * The item kind an entity holds. A new entity holds its pickaxe, and `setHeldItem`
+ * changes it. An item that left the inventory is no longer held.
+ * @param {Player} player
+ */
 export function heldItem(player) {
-  return /** @type {Holder} */ (player).held ?? PICKAXE;
+  const kind = /** @type {Holder} */ (player).held;
+  return kind && inventoryOf(player).some((stack) => stack.kind === kind)
+    ? kind
+    : PICKAXE;
 }
 
 /** Mining time in simulation ticks, or null when the material cannot be mined. @param {number} material */

@@ -56,7 +56,15 @@ import {
 } from "../shared/locomotion.js";
 import { createStamina, setSprint, stepStamina } from "../shared/stamina.js";
 import { highlightedTile } from "../shared/target.js";
-import { cancelMining, miningEntries, startMining } from "../shared/mining.js";
+import {
+  cancelMining,
+  heldItem,
+  miningEntries,
+  PICKAXE,
+  startMining,
+} from "../shared/mining.js";
+import { setHeldItem } from "../shared/held-item.js";
+import { createInventoryPanel } from "./inventory-panel.js";
 import {
   droppedAt,
   droppedItems,
@@ -72,6 +80,12 @@ const $ = (
 const canvas = /** @type {HTMLCanvasElement} */ ($("#world"));
 const chatInput = /** @type {HTMLInputElement} */ ($("#chat-input"));
 const logPanel = $("#hearing-log");
+/** The inventory panel and the held item icon. While it is open, interact and the look control drive it. */
+const bag = createInventoryPanel({
+  parent: $("#game"),
+  onHold: (kind) => holdItem(kind),
+  onOpenChange: () => typing(),
+});
 const logList = $("#hearing-log-lines");
 let renderedLog = -1;
 const gamepadDebug = new URL(location.href).searchParams.has("gamepad-debug");
@@ -131,6 +145,8 @@ const scene = {
     /** @type {import('../shared/items.js').DroppedEntry[]|undefined} */ (undefined),
   inventoryFeed:
     /** @type {import('../shared/items.js').Stack[]|undefined} */ (undefined),
+  /** The held item kind a guest was told about by the world host. */
+  heldFeed: /** @type {string|undefined} */ (undefined),
   /** A short message that shows over the status line, such as a refused action. */
   notice: /** @type {{text:string,until:number}|undefined} */ (undefined),
   sessionId: "",
@@ -206,7 +222,8 @@ function notify(text) {
 
 function typing() {
   const value = scene.chatDraft.trim();
-  const next = scene.chatOpen && value.length > 0 && !value.startsWith("/");
+  const next = bag.isOpen ||
+    scene.chatOpen && value.length > 0 && !value.startsWith("/");
   if (next === lastTyping) return;
   lastTyping = next;
   setTyping(scene.world, scene.localId, next);
@@ -216,6 +233,7 @@ function typing() {
 
 /** @param {string} [prefill] */
 function openChat(prefill = "") {
+  bag.toggle(false);
   scene.menu = false;
   scene.menuPage = "root";
   scene.chatOpen = true;
@@ -388,8 +406,37 @@ function inventoryDisplay() {
   return player ? inventoryOf(player) : [];
 }
 
+/** Choose the held item. The host checks the inventory and cancels mining. @param {string} kind */
+function holdItem(kind) {
+  if (isAdmin) {
+    guest?.send({ type: "hold", kind });
+    return;
+  }
+  const result = setHeldItem(scene.world, scene.localId, kind);
+  if (!result.ok) flash(`Cannot hold: ${result.reason}`);
+  else host?.publish();
+}
+
+/** The item kind the local player holds. */
+function heldDisplay() {
+  if (isAdmin) return scene.heldFeed ?? PICKAXE;
+  const player = scene.world.players[scene.localId];
+  return player ? heldItem(player) : PICKAXE;
+}
+
+/** Open or close the inventory panel. Menu, chat, and master view keep it shut. @param {boolean} [open] */
+function toggleBag(open = !bag.isOpen) {
+  if (open && (scene.chatOpen || scene.menu)) return;
+  bag.toggle(open);
+  $("#bag-button").setAttribute("aria-pressed", String(bag.isOpen));
+}
+
 /** Interact on the highlighted tile: pick up dropped items, or start mining it. The host checks everything. */
 function interact() {
+  if (bag.isOpen) {
+    bag.confirm();
+    return;
+  }
   const player = scene.world.players[scene.localId];
   if (!player || scene.chatOpen || scene.menu) return;
   if (scene.viewMode !== "entity") {
@@ -477,7 +524,10 @@ function toggleJoinPanel() {
 /** @returns {{x:number,y:number}} */
 function inputDirection() {
   if (joystick.x || joystick.y) return joystick;
-  if (gamepadDirection.x || gamepadDirection.y) return gamepadDirection;
+  // The D-pad and left stick steer the open inventory panel instead of walking.
+  if (!bag.isOpen && (gamepadDirection.x || gamepadDirection.y)) {
+    return gamepadDirection;
+  }
   return {
     x: Number(held.has("KeyF") || pressed.has("KeyF")) -
       Number(held.has("KeyS") || pressed.has("KeyS")),
@@ -587,8 +637,12 @@ function pollGamepad() {
     gamepadCamera.x || gamepadCamera.y ||
     buttons.size
   ) scene.inputMode = "gamepad";
+  if (newlyPressed(2)) toggleBag();
+  if (newlyPressed(1) && bag.isOpen) toggleBag(false);
+  if (bag.isOpen) bag.steer(gamepadDirection, performance.now());
   if (newlyPressed(3)) {
     if (scene.chatOpen) closeChat();
+    toggleBag(false);
     scene.menu = !scene.menu;
     scene.menuPage = "root";
   }
@@ -826,8 +880,13 @@ function bindInput() {
     toggleLog();
   });
   $("#log-close").addEventListener("click", () => toggleLog(false));
+  $("#bag-button").addEventListener("click", () => {
+    scene.inputMode = "touch";
+    toggleBag();
+  });
   $("#menu-button").addEventListener("click", () => {
     scene.inputMode = "touch";
+    toggleBag(false);
     scene.menu = !scene.menu;
     scene.menuPage = "root";
   });
@@ -866,6 +925,16 @@ function bindInput() {
       if (!event.repeat) toggleLog();
       return;
     }
+    if (event.code === "KeyB" && !event.repeat) {
+      event.preventDefault();
+      toggleBag();
+      return;
+    }
+    if (event.code === "Escape" && bag.isOpen) {
+      event.preventDefault();
+      if (!event.repeat) toggleBag(false);
+      return;
+    }
     if (event.code === "Escape" && logPanel.classList.contains("open")) {
       event.preventDefault();
       if (!event.repeat) toggleLog(false);
@@ -895,6 +964,14 @@ function bindInput() {
       return;
     }
     held.add(event.code);
+    if (
+      bag.isOpen && ["KeyI", "KeyJ", "KeyK", "KeyL"].includes(event.code) &&
+      !event.repeat
+    ) {
+      // Step on the key press itself, so a tap shorter than a frame still counts.
+      const look = cameraInput();
+      bag.steer(stickDirection(look.x, look.y, 0.18), performance.now());
+    }
     if (
       ["KeyE", "KeyS", "KeyD", "KeyF"].includes(event.code) && !event.repeat
     ) pressed.add(event.code);
@@ -1292,7 +1369,10 @@ export async function startApp() {
     scene.renderOffset.x *= correctionDecay;
     scene.renderOffset.y *= correctionDecay;
     scene.renderOffset.z *= correctionDecay;
-    const { x: cameraX, y: cameraY } = cameraInput();
+    const look = cameraInput();
+    // The look control steers the open inventory panel, not the aim or camera.
+    bag.steer(stickDirection(look.x, look.y, 0.18), now);
+    const { x: cameraX, y: cameraY } = bag.isOpen ? { x: 0, y: 0 } : look;
     if (scene.viewMode === "master") {
       scene.camera.x += cameraX * dt * 0.48;
       scene.camera.y += cameraY * dt * 0.48;
@@ -1333,6 +1413,7 @@ export async function startApp() {
     scene.mining = miningDisplay(accumulator / TICK_MS);
     scene.items = itemsDisplay();
     scene.inventory = inventoryDisplay();
+    bag.update(scene.inventory, heldDisplay());
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };
