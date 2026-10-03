@@ -54,6 +54,16 @@ The wider talking range may show only a talking indicator.
 A `:0` bubble attached to a speaker whose active message is too far away to
 read but close enough to notice. Sight does not control the indicator.
 
+**Hearing log**:
+The scrolling panel of every message text the player's entity heard in this
+session, plus system lines. It never holds messages outside chat hearing range.
+A log button on touch and the backquote key open it.
+
+**System line**:
+A log line from the game rather than a speaker, such as a player joining,
+leaving, or changing names. Features add one through the shared system-line
+function.
+
 **Master view**:
 An unrestricted view of the world used to inspect development. Every player
 can choose it in the current demo.

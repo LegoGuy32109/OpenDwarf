@@ -49,11 +49,21 @@
           <span class="actions">
             <button class="action" id="chat-button" type="button"
               aria-label="Open chat">A</button>
+            <button class="action" id="log-button" type="button"
+              aria-label="Open hearing log" aria-controls="hearing-log"
+              aria-pressed="false">L</button>
             <button class="action" id="menu-button" type="button"
               aria-label="Open menu">B</button>
           </span>
         </section>
       </div>
+      <aside id="hearing-log" hidden aria-label="Hearing log">
+        <header>
+          <h2>Hearing log</h2>
+          <button id="log-close" type="button" aria-label="Close hearing log">×</button>
+        </header>
+        <ol id="hearing-log-lines" tabindex="0"></ol>
+      </aside>
       <input id="chat-input" maxlength="120" autocomplete="off"
         autocapitalize="sentences" aria-label="Chat message or slash command">
       <aside id="admin" hidden>

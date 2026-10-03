@@ -259,6 +259,62 @@ input {
 #chat-input.open {
   pointer-events: auto;
 }
+#hearing-log {
+  position: absolute;
+  z-index: 7;
+  top: calc(var(--safe-top) + 62px);
+  left: calc(var(--safe-left) + 12px);
+  display: flex;
+  width: min(420px, calc(100% - var(--safe-left) - var(--safe-right) - 24px));
+  max-height: min(38vh, 300px);
+  flex-direction: column;
+  border: 1px solid #706958;
+  background: #1e2024ee;
+  color: #f3e7c9;
+}
+#hearing-log[hidden] {
+  display: none;
+}
+#hearing-log header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid #706958;
+}
+#hearing-log h2 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+#log-close {
+  min-width: 36px;
+  min-height: 32px;
+  border: 1px solid #706958;
+  background: #333438;
+  color: inherit;
+  font-size: 18px;
+}
+#hearing-log-lines {
+  margin: 0;
+  padding: 6px 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: var(--chat-text-size, 14px);
+  line-height: 1.4;
+  list-style: none;
+  overflow-wrap: anywhere;
+  touch-action: pan-y;
+}
+#hearing-log-lines li.system {
+  color: #e4a34a;
+  font-style: italic;
+}
+#hearing-log-lines li.chat b {
+  color: #9ec7e8;
+  font-weight: 600;
+}
 #admin {
   position: absolute;
   z-index: 7;

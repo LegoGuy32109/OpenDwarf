@@ -42,7 +42,10 @@ message text reaches a player within five horizontal blocks and four levels;
 from five to twelve horizontal blocks the feed carries only a `:0` talking
 indicator. Typing shows `...` only within five blocks. Bubbles can be heard
 through walls and outside sight without exposing the speaker's sprite or name.
-Visibility and memory use fixed-size bit masks in network
+The hearing log keeps each message text it receives once, so unheard messages
+never enter it. The world host adds join, leave, and name change system lines
+to its own log and sends them to guests as `system` packets on the reliable
+channel. Visibility and memory use fixed-size bit masks in network
 snapshots. The host skips superseded snapshots while a guest's data channel is
 backed up, then sends the current state when that channel drains. R/V changes
 view level, holding U/N lerps zoom, and touch offers pinch zoom and two-finger
