@@ -94,6 +94,7 @@ export const noMainPage = () =>
   );
 
 export interface Builds {
+  readonly store: Store;
   /** True when the working tree is a build, so the shell also serves its files from disk. */
   readonly local: boolean;
   /** True when the shell serves this path as a build page or a build error. */
@@ -102,6 +103,10 @@ export interface Builds {
   serve(path: string): Promise<Response>;
   /** Resolves a build name to a full commit SHA, or null when nothing has that name. */
   resolve(name: string): Promise<string | null>;
+  /** The latest commit of a branch, or null when the repository has no such branch. */
+  branch(name: string): Promise<string | null>;
+  /** The full SHA of a commit (full or short), or null when the repository has no such commit. */
+  commit(sha: string): Promise<string | null>;
 }
 
 export function createBuilds(options: BuildOptions): Builds {
@@ -213,7 +218,10 @@ export function createBuilds(options: BuildOptions): Builds {
   }
 
   return {
+    store,
     local: options.localBuild === true,
+    branch,
+    commit,
     handles: (path) => split(path) !== null,
     resolve,
     async serve(path) {

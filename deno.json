@@ -34,6 +34,7 @@
     "evidence:publish": "deno run --allow-run --allow-read --allow-write scripts/publish-evidence.ts",
     "capture:sync": "deno run -A scripts/capture-visual-sync.ts",
     "verify": "deno task fmt:check && deno task lint && deno task check && deno task test",
+    "od": "deno run --allow-net --allow-read --allow-env=OD_OWNER_TOKEN scripts/od.ts",
     "deploy": "deno run --allow-run --allow-read --allow-write=deno.json --allow-net --allow-env scripts/deploy.ts",
     "db:migrate": "deno run --env-file=.env --allow-env=TURSO_DB_URL,TURSO_DB_TOKEN --allow-net --allow-read scripts/migrate.ts",
     "db:migrate:prod": "deno run --env-file=.env.prod --allow-env=TURSO_DB_URL,TURSO_DB_TOKEN --allow-net --allow-read scripts/migrate.ts",

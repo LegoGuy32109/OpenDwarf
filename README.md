@@ -195,6 +195,28 @@ manifest under ignored `exports/visual-sync/`. Pass
 `--url=http://127.0.0.1:8000` for a server already running locally or
 `--delay=<milliseconds>` to change the per-message application delay.
 
+## Owner CLI
+
+`deno task od <command>` manages labels and main on a shell through `/api/v1`.
+It talks to `http://localhost:8000` by default, to another shell with
+`--base-url`, and to `https://od.joshhale.me` with `--prod`.
+
+```sh
+deno task od label set <name> <branch|sha>   # a branch label follows the branch
+deno task od label rename <old> <new>
+deno task od label rm <name>
+deno task od labels
+deno task od promote <label|branch|sha> [--note "why"]   # saves the resolved commit
+deno task od promotions
+deno task od status                          # main, labels, live sessions
+```
+
+Every command has `--help`. Reads are public. Writes need `OD_OWNER_TOKEN`: set
+the same value in the shell's environment (the shell keeps only its SHA-256
+hash) and in `.env` for the CLI, or in `.env.prod` for `--prod`. A shell without
+`OD_OWNER_TOKEN` answers every write with 403, and a wrong or missing token
+gets 401.
+
 ## Deploy
 
 Only the shell is deployed, and only when its own code changes. A client change
