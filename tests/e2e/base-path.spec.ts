@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { evidenceShot } from "./evidence.ts";
+import { hasUi, qrUrl, ready, uiState } from "./ui.ts";
 
 const GAME_ORIGIN = `http://127.0.0.1:${process.env.PORT ?? "8000"}`;
 const TYPES: Record<string, string> = {
@@ -109,14 +110,13 @@ test("a build under /b/test/ loads its files from another origin and joins by ba
       }
     });
     await host.goto(`${PAGE_ORIGIN}/b/test/?harness=1`);
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const { sessionId } = await sceneOf(host);
     // Only the page itself comes from the page origin; the files do not.
     expect(pageOrigin).toEqual(["/b/test/"]);
     // The join link carries the build path, and the QR code encodes it.
     const joinLink = `${PAGE_ORIGIN}/b/test/join/${sessionId}`;
-    await expect(host.locator("#join-code")).toHaveAttribute(
-      "src",
+    expect(await qrUrl(host)).toBe(
       `${PAGE_ORIGIN}/api/v1/qr/${sessionId}?link=${
         encodeURIComponent(joinLink)
       }`,
@@ -129,7 +129,7 @@ test("a build under /b/test/ loads its files from another origin and joins by ba
     expect(qr.status()).toBe(200);
     const guest = await context.newPage();
     await guest.goto(`${joinLink}?harness=1`);
-    await expect(guest.locator("#loading")).toBeHidden();
+    await ready(guest);
     await expect.poll(async () => (await sceneOf(guest)).localId).toMatch(
       /^peer-/,
     );
@@ -156,15 +156,12 @@ test("the build under /b/test/ shows its join QR code", async ({ browser }) => {
   });
   try {
     const page = await context.newPage();
-    await page.goto(`${PAGE_ORIGIN}/b/test/`);
-    await expect(page.locator("#loading")).toBeHidden();
+    await page.goto(`${PAGE_ORIGIN}/b/test/?harness=1&tools=1`);
+    await ready(page);
     await page.keyboard.press("q");
-    await expect(page.locator("#join-panel")).toBeVisible();
-    await expect.poll(() =>
-      page.locator("#join-code").evaluate((image: HTMLImageElement) =>
-        image.complete && image.naturalWidth > 0
-      )
-    ).toBe(true);
+    await expect.poll(() => hasUi(page, "panel:join")).toBe(true);
+    await expect.poll(async () => (await uiState(page)).qrReady).toBe(true);
+    await page.waitForTimeout(300);
     await evidenceShot(page, "base-path-test-qr");
   } finally {
     await context.close();

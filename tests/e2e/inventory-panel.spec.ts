@@ -1,5 +1,15 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import {
+  clickUi,
+  hasUi,
+  heldSlot,
+  ready,
+  selectedSlot,
+  slots,
+  tapUi,
+  uiRect,
+} from "./ui.ts";
 
 type Stack = { kind: string; count: number };
 type Harness = {
@@ -72,10 +82,8 @@ const give = (host: Page, playerId: string, kind: string, count: number) =>
 
 async function startHost(page: Page) {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
 }
-
-const panel = (page: Page) => page.locator("#inventory-panel");
 
 /**
  * Hold a look key until the selection reaches `kind`, then let go. A fixed hold
@@ -84,15 +92,9 @@ const panel = (page: Page) => page.locator("#inventory-panel");
  */
 async function step(page: Page, key: string, kind: string) {
   await page.keyboard.down(key);
-  await expect(page.locator(".slot.is-selected")).toHaveAttribute(
-    "data-kind",
-    kind,
-  );
+  await expect.poll(() => selectedSlot(page)).toBe(kind);
   await page.keyboard.up(key);
-  await expect(page.locator(".slot.is-selected")).toHaveAttribute(
-    "data-kind",
-    kind,
-  );
+  await expect.poll(() => selectedSlot(page)).toBe(kind);
 }
 
 test("B opens the panel, IJKL moves the selection, and interact holds an item", async ({ page }) => {
@@ -102,7 +104,7 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
   await give(page, me, "coal", 12);
   await give(page, me, "diamond", 3);
   await give(page, me, "gold ore", 2);
-  await expect(panel(page)).toBeHidden();
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);
   // Closed, the panel does not block walking.
   const yOf = () =>
     page.evaluate(
@@ -116,9 +118,9 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
 
   await placeAt(page, 2, 2);
   await page.keyboard.press("b");
-  await expect(panel(page)).toBeVisible();
-  await expect(page.locator("#inventory-grid .slot")).toHaveCount(4);
-  await expect(page.locator("#held-hud")).toBeVisible();
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
+  expect(await slots(page)).toHaveLength(4);
+  expect(await hasUi(page, "icon:held")).toBe(true);
   // Others see the typing bubble while the panel is open.
   expect(
     await page.evaluate(
@@ -131,24 +133,18 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
   await evidenceShot(page, "inventory-desktop");
 
   // The selection starts on the held pickaxe; L steps right, J back.
-  await expect(page.locator(".slot.is-selected")).toHaveAttribute(
-    "data-kind",
-    "pickaxe",
-  );
+  await expect.poll(() => selectedSlot(page)).toBe("pickaxe");
   await step(page, "l", "coal");
   await step(page, "l", "diamond");
   await step(page, "l", "gold ore");
   await step(page, "j", "diamond");
   await page.keyboard.press("Space"); // interact holds diamond
   await expect.poll(() => held(page)).toBe("diamond");
-  await expect(page.locator(".slot.is-held")).toHaveAttribute(
-    "data-kind",
-    "diamond",
-  );
+  await expect.poll(() => heldSlot(page)).toBe("diamond");
   await evidenceShot(page, "inventory-diamond-held");
 
   await page.keyboard.press("b");
-  await expect(panel(page)).toBeHidden();
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);
   expect(
     await page.evaluate(
       (id) =>
@@ -167,17 +163,12 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
   // Switch back to the pickaxe: Escape closes the panel, not the menu.
   await page.keyboard.press("b");
   await page.keyboard.press("Escape");
-  await expect(panel(page)).toBeHidden();
-  expect(
-    await page.evaluate(() =>
-      document.querySelector("#inventory-panel")?.hasAttribute("hidden")
-    ),
-  ).toBe(true);
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);
   await page.keyboard.press("b");
   await page.keyboard.down("k");
   await page.waitForTimeout(100);
   await page.keyboard.up("k"); // already on row 0: stays
-  await page.locator('.slot[data-kind="pickaxe"]').click(); // a tap holds it
+  await clickUi(page, "slot:pickaxe"); // a tap holds it
   await expect.poll(() => held(page)).toBe("pickaxe");
   await page.keyboard.press("b");
   await page.keyboard.down("i");
@@ -216,7 +207,7 @@ test("a joining player holds an item through the host and others see its bubble"
     (globalThis as unknown as Harness).__od.scene.sessionId
   );
   await guest.goto(`/join/${session}?harness=1`);
-  await expect(guest.locator("#loading")).toBeHidden();
+  await ready(guest);
   await expect.poll(() => od(guest)).toMatch(/^peer-/);
   const guestId = await od(guest);
   await give(host, guestId, "iron ore", 5);
@@ -232,7 +223,7 @@ test("a joining player holds an item through the host and others see its bubble"
       guestId,
     );
   await guest.keyboard.press("b");
-  await expect(panel(guest)).toBeVisible();
+  await expect.poll(() => hasUi(guest, "panel:bag")).toBe(true);
   await expect.poll(hostSeesTyping).toBe(true);
   await expect.poll(() =>
     host.evaluate(() =>
@@ -269,7 +260,7 @@ test("a joining player holds an item through the host and others see its bubble"
     ),
   ).toBe("iron ore");
   await guest.keyboard.press("b");
-  await expect(panel(guest)).toBeHidden();
+  await expect.poll(() => hasUi(guest, "panel:bag")).toBe(false);
   await expect.poll(hostSeesTyping).toBe(false);
   await Promise.all([host.close(), guest.close()]);
 });
@@ -287,21 +278,21 @@ test("the bag button opens the panel on a phone and a tap holds an item", async 
   const me = await od(page);
   await give(page, me, "coal", 12);
   await give(page, me, "diamond", 3);
-  await expect(page.locator("#bag-button")).toBeVisible();
+  await uiRect(page, "btn:bag");
   await evidenceShot(page, "inventory-phone-closed");
-  await page.locator("#bag-button").tap();
-  await expect(panel(page)).toBeVisible();
+  await tapUi(page, "btn:bag");
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
   await page.waitForTimeout(300);
   await evidenceShot(page, "inventory-phone");
-  await page.locator('.slot[data-kind="diamond"]').tap();
+  await tapUi(page, "slot:diamond");
   await expect.poll(() => held(page)).toBe("diamond");
   await page.waitForTimeout(300);
   await evidenceShot(page, "inventory-phone-held");
-  await page.locator("#inventory-close").tap();
-  await expect(panel(page)).toBeHidden();
+  await tapUi(page, "btn:bag-close");
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);
   // The interact button drives the panel while it is open, then mines again.
-  await page.locator("#bag-button").tap();
-  await page.locator('.slot[data-kind="pickaxe"]').tap();
+  await tapUi(page, "btn:bag");
+  await tapUi(page, "slot:pickaxe");
   await expect.poll(() => held(page)).toBe("pickaxe");
   await context.close();
 });

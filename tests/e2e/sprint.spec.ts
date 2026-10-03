@@ -1,19 +1,23 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { hasUi, ready, sprintState, tapUi, type UiRect, uiRect } from "./ui.ts";
 
 type Hook = {
   __od: { scene: { world: { players: { self: { x: number } } } } };
 };
 
-const staminaValue = (page: Page) =>
-  page.locator("#sprint-button").evaluate((button) =>
-    Number(getComputedStyle(button).getPropertyValue("--stamina"))
-  );
+const staminaValue = async (page: Page) => (await sprintState(page)).stamina;
 
 async function expectClearOfLookStick(page: Page) {
-  const sprint = (await page.locator("#sprint-button").boundingBox())!;
-  const look = (await page.locator("[data-stick=camera]").boundingBox())!;
-  const move = (await page.locator("[data-stick=move]").boundingBox())!;
+  const toBox = ({ x, y, w, h }: UiRect) => ({
+    x,
+    y,
+    width: w,
+    height: h,
+  });
+  const sprint = toBox(await uiRect(page, "btn:sprint"));
+  const look = toBox(await uiRect(page, "stick:look"));
+  const move = toBox(await uiRect(page, "stick:move"));
   const view = page.viewportSize()!;
   // The look stick is a circle: its box may overlap, but its edge must not.
   const radius = look.width / 2;
@@ -47,8 +51,8 @@ test.describe("phone sprint button", () => {
 
   test("fits portrait and landscape and shows stamina", async ({ page }) => {
     await page.goto("/?harness=1");
-    await expect(page.locator("#loading")).toBeHidden();
-    await expect(page.locator("#speed-button")).toHaveCount(0);
+    await ready(page);
+    expect(await hasUi(page, "btn:speed")).toBe(false);
     await expectClearOfLookStick(page);
     await evidenceShot(page, "sprint-portrait");
     await page.setViewportSize({ width: 844, height: 390 });
@@ -59,46 +63,41 @@ test.describe("phone sprint button", () => {
   test("stamina line drains, locks, and refills", async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto("/?harness=1");
-    await expect(page.locator("#loading")).toBeHidden();
-    const button = page.locator("#sprint-button");
+    await ready(page);
     expect(await staminaValue(page)).toBe(1);
-    await button.tap();
-    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await tapUi(page, "btn:sprint");
+    await expect.poll(async () => (await sprintState(page)).on).toBe(true);
     await evidenceShot(page, "sprint-on");
     await expect.poll(() => staminaValue(page)).toBeLessThan(0.6);
-    await expect(button).toHaveClass(/is-locked/, { timeout: 8000 });
-    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(async () => (await sprintState(page)).locked, {
+      timeout: 8000,
+    }).toBe(true);
+    await expect.poll(async () => (await sprintState(page)).on).toBe(false);
     await evidenceShot(page, "sprint-locked");
-    await button.tap();
-    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await tapUi(page, "btn:sprint");
+    await expect.poll(async () => (await sprintState(page)).on).toBe(false);
     await expect.poll(() => staminaValue(page), { timeout: 20_000 })
       .toBeGreaterThan(0.99);
-    await expect(button).not.toHaveClass(/is-locked/);
-    await button.tap();
-    await expect(button).toHaveAttribute("aria-pressed", "true");
-    await button.tap();
-    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(async () => (await sprintState(page)).locked).toBe(false);
+    await tapUi(page, "btn:sprint");
+    await expect.poll(async () => (await sprintState(page)).on).toBe(true);
+    await tapUi(page, "btn:sprint");
+    await expect.poll(async () => (await sprintState(page)).on).toBe(false);
   });
 });
 
 test("H toggles sprint and G does nothing", async ({ page }) => {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   await page.locator("#world").click();
   await page.keyboard.press("KeyH");
-  await expect(page.locator("#sprint-button")).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect.poll(async () => (await sprintState(page)).on).toBe(true);
   await page.keyboard.press("KeyH");
-  await expect(page.locator("#sprint-button")).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
+  await expect.poll(async () => (await sprintState(page)).on).toBe(false);
   const before = await page.evaluate(() =>
     (globalThis as unknown as Hook).__od.scene.world.players.self.x
   );
   await page.keyboard.press("KeyG");
-  await expect(page.locator("#display-status")).not.toContainText("ft");
+  await expect(page.locator("#live-status")).not.toContainText("ft");
   expect(before).toBeGreaterThan(0);
 });

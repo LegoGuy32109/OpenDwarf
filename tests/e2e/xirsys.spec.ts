@@ -1,5 +1,6 @@
 import process from "node:process";
 import { expect, test } from "@playwright/test";
+import { ready } from "./ui.ts";
 
 const configured = Boolean(
   process.env.XIRSYS_IDENT && process.env.XIRSYS_SECRET &&
@@ -20,7 +21,7 @@ test("a host and a guest connect through real Xirsys", async ({ browser }) => {
   guest.on("websocket", (socket) => sockets.push(socket.url()));
   try {
     await host.goto(`${base}/?harness=1`);
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const session = await host.evaluate(() =>
       (globalThis as unknown as {
         __od: { scene: { sessionId: string } };

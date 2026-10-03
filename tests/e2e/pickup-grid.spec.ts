@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready, tapUi } from "./ui.ts";
 
 type Stack = { kind: string; count: number };
 type Cell = {
@@ -88,7 +89,7 @@ const drop = (page: Page, x: number, y: number, kind: string, count = 1) =>
 
 async function startHost(page: Page, query = "") {
   await page.goto(`/?harness=1${query}`);
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
 }
 
 /** A tile south of the player holds the given kinds. */
@@ -279,7 +280,7 @@ test.describe("touch", () => {
       await drop(page, 4, 2, kind, i + 1);
     }
     // No aim: the player's own tile holds the stacks, so the interact button opens the grid.
-    await page.locator("#interact-button").tap();
+    await tapUi(page, "btn:interact");
     await expect.poll(async () => (await cells(page)).length).toBe(6);
     await page.waitForTimeout(500);
     const target = (await cells(page)).find((cell) => cell.index === 4)!;
@@ -297,7 +298,7 @@ test.describe("touch", () => {
     await expect.poll(() => selected(page)).toBe(4);
     await page.waitForTimeout(400);
     await evidenceShot(page, "grid-touch-selected");
-    await page.locator("#interact-button").tap();
+    await tapUi(page, "btn:interact");
     await expect.poll(() => inventory(page)).toEqual([
       { kind: "pickaxe", count: 1 },
       { kind: "lapis", count: 5 },

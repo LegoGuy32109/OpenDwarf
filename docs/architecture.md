@@ -155,6 +155,46 @@ the inventory panel; there is no separate readout. While the panel is open,
 interact and the look controls drive it instead of mining and aiming, and
 movement input is ignored.
 
+## The UI layer
+
+The page holds one canvas, a hidden live region that repeats the status text for
+a screen reader, and the build config. Every part of the game UI is drawn by the
+WebGL renderer in the bitmap font: the touch controls, chat line and keyboard,
+hearing log, inventory and shop panels, host tools and join QR code,
+diagnostics, status, loading screen, menu, and the `/host` world list. The admin
+dashboard at `/admin` stays HTML because it is a shell page, not the game.
+
+Three client modules make the layer, and `render.js` keeps the one draw path:
+
+- `src/client/ui.js` is pure. `layoutUi(view)` takes the canvas size, the
+  safe-area insets, the UI scale, and a plain description of what is open, and
+  returns every element as a rectangle in CSS pixels, in draw order. Text scale
+  snaps to a whole number of device pixels per font pixel. `hitTest` finds the
+  last element under a point, and a panel hides what lies under it. The touch
+  controls scale with the UI scale as far as the screen has room; panels sit in
+  the space above them.
+- `src/client/ui-pointer.js` routes pointer events over a layout. Each pointer
+  is tracked on its own, so several fingers work at once. Buttons and keys act
+  on pointer down, because iOS sends no click while another finger is down; rows
+  in a scrolling list act on release without a drag; the fullscreen button acts
+  on release, because the browser starts fullscreen only from one. Each stick
+  follows one pointer. A pointer that starts on no element belongs to the world,
+  and only those pointers join a pinch or a two-finger level drag.
+- `src/client/ui-draw.js` draws a layout through a painter that `render.js`
+  provides (rectangles, text, item icons, the QR texture).
+
+`app.js` builds the view from the scene each frame, calls `layoutUi`, hands the
+result to the renderer as `scene.ui`, and turns element actions into the same
+functions the keys call. `inventory-panel.js` and `shop-panel.js` hold only the
+selection and scroll state. The in-game keyboard types into `scene.chatDraft`; a
+physical keyboard types through `keydown`. No element has focus, so the system
+keyboard never opens. The loading screen draws as soon as the font loads, and
+`canvas[data-ready]` marks that the world's textures are ready.
+
+With `?harness`, `window.__od.ui` gives specs the current layout, so a spec taps
+an element by its rectangle. `?safe=top,right,bottom,left` simulates safe-area
+insets in CSS pixels.
+
 ## Why the visitor hosts the world
 
 Each visitor can start moving before a server round trip. The visitor's browser

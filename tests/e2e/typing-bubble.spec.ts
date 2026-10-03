@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready } from "./ui.ts";
 
 type Od = {
   scene: {
@@ -12,7 +13,7 @@ type Od = {
 
 test("other players see the typing bubble while a player types", async ({ page, context }) => {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   const session = await page.evaluate(() =>
     (globalThis as unknown as { __od: Od }).__od.scene.sessionId
   );
@@ -36,7 +37,9 @@ test("other players see the typing bubble while a player types", async ({ page, 
   await page.waitForTimeout(1500);
   await evidenceShot(page, "typing-bubble");
 
-  await guest.locator("#chat-input").fill("");
+  for (let i = 0; i < "hello".length; i++) {
+    await guest.keyboard.press("Backspace");
+  }
   await expect.poll(typingRecords).toBe(0);
 
   await guest.keyboard.type("again");

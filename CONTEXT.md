@@ -60,6 +60,17 @@ hearing range. A log button on touch and the backquote key open it.
 player joining, leaving, or changing names. Features add one through the shared
 system-line function.
 
+**UI layer**: The client module that lays out every UI element in CSS pixels
+inside the safe area, scales it with the UI scale setting, draws it through the
+renderer in the bitmap font, and routes pointer events. The game page holds a
+canvas and nothing else visible.
+
+**In-game keyboard**: The keyboard the game draws at the bottom of the safe area
+on touch while chat is open. It has QWERTY letters, shift, a page of numbers and
+symbols, space, backspace, send, and close, and holds the 120 characters a
+message may have. The system keyboard never opens. _Avoid_: On-screen keyboard,
+when the system's keyboard is meant
+
 **Master view**: An unrestricted view of the world used to inspect development.
 Every player can choose it in the current demo.
 

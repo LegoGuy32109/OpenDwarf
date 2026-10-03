@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { evidenceShot } from "./evidence.ts";
+import { hasUi, ready } from "./ui.ts";
 
 const GAME_ORIGIN = `http://127.0.0.1:${process.env.PORT ?? "8000"}`;
 const TYPES: Record<string, string> = {
@@ -114,7 +115,7 @@ test("a guest opening a join link on another build lands on the host's build", a
   try {
     const host = await context.newPage();
     await host.goto(`${origin}/b/${ALPHA}/?harness=1`);
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const { sessionId } = await sceneOf(host);
     // The shell recorded the session with the host's build.
     await expect.poll(async () => {
@@ -130,7 +131,7 @@ test("a guest opening a join link on another build lands on the host's build", a
     await expect(guest).toHaveURL(
       `${origin}/b/${ALPHA}/join/${sessionId}?harness=1`,
     );
-    await expect(guest.locator("#loading")).toBeHidden();
+    await ready(guest);
     await expect.poll(async () => (await sceneOf(guest)).localId).toMatch(
       /^peer-/,
     );
@@ -149,7 +150,7 @@ test("a guest on the host's own build stays where it is", async ({ browser }) =>
   try {
     const host = await context.newPage();
     await host.goto(`${origin}/b/${ALPHA}/?harness=1`);
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const { sessionId } = await sceneOf(host);
     const guest = await context.newPage();
     await guest.goto(`${origin}/b/${ALPHA}/join/${sessionId}?harness=1`);
@@ -170,7 +171,7 @@ test("a world is a live session until its host leaves, then it is history", asyn
   try {
     const host = await context.newPage();
     await host.goto(`${origin}/b/${ALPHA}/?harness=1`);
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const { sessionId } = await sceneOf(host);
     const listed = async (path: string) =>
       ((await (await request.get(`${GAME_ORIGIN}/api/v1/${path}`)).json())
@@ -178,10 +179,11 @@ test("a world is a live session until its host leaves, then it is history", asyn
     await expect.poll(() => listed("sessions")).toBe(true);
     // The /host page lists it as a world to join.
     const lobby = await context.newPage();
-    await lobby.goto(`${origin}/b/${BRAVO}/host`);
-    await expect(
-      lobby.locator(`button[data-session-id="${sessionId}"]`),
-    ).toBeVisible();
+    await lobby.goto(`${origin}/b/${BRAVO}/host?harness=1`);
+    await ready(lobby);
+    await expect.poll(() => hasUi(lobby, `btn:session:${sessionId}`), {
+      timeout: 10_000,
+    }).toBe(true);
     await host.close({ runBeforeUnload: true });
     await expect.poll(() => listed("sessions")).toBe(false);
     await expect.poll(() => listed("sessions/recent")).toBe(true);

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { displayStatus, hasUi, logLines, ready, tapUi, uiRect } from "./ui.ts";
 
 test("the hearing log opens by touch beside the move stick and lists chat and system lines", async ({ browser }) => {
   const context = await browser.newContext({
@@ -12,15 +13,15 @@ test("the hearing log opens by touch beside the move stick and lists chat and sy
   const guest = await browser.newPage();
   try {
     await phone.goto("/?harness=1");
-    await expect(phone.locator("#loading")).toBeHidden();
+    await ready(phone);
     const session = await phone.evaluate(() =>
       (globalThis as unknown as {
         __od: { scene: { sessionId: string } };
       }).__od.scene.sessionId
     );
     await guest.goto(`/join/${session}?harness=1`);
-    await expect(guest.locator("#loading")).toBeHidden();
-    await expect(guest.locator("#display-status")).toBeHidden();
+    await ready(guest);
+    expect(await displayStatus(guest)).toBe("");
     await expect.poll(() =>
       guest.evaluate(() =>
         (globalThis as unknown as {
@@ -43,41 +44,36 @@ test("the hearing log opens by touch beside the move stick and lists chat and sy
         __od: { scene: { systemLine: (text: string) => void } };
       }).__od.scene.systemLine("You picked up 3 coal")
     );
-    await expect(phone.locator("#hearing-log")).toBeHidden();
-    await phone.locator("#log-button").tap();
-    const log = phone.locator("#hearing-log");
-    await expect(log).toBeVisible();
-    await expect(log.locator("li.system")).toContainText([
-      "A visitor joined",
+    expect(await hasUi(phone, "panel:log")).toBe(false);
+    await tapUi(phone, "btn:log");
+    await expect.poll(() => hasUi(phone, "panel:log")).toBe(true);
+    await expect.poll(async () => (await logLines(phone)).sort()).toEqual([
       "A visitor is now Ada",
+      "A visitor joined",
+      "Ada: hello dwarf",
       "You picked up 3 coal",
     ]);
-    await expect(log.locator("li.chat")).toHaveText("Ada: hello dwarf");
-    const logBox = await log.boundingBox();
-    const stick = await phone.locator("[data-stick=move]").boundingBox();
-    expect(logBox!.y + logBox!.height).toBeLessThan(stick!.y);
-    await expect(phone.locator("[data-stick=move]")).toBeInViewport();
+    const logBox = await uiRect(phone, "panel:log");
+    const stick = await uiRect(phone, "stick:move");
+    expect(logBox.y + logBox.h).toBeLessThan(stick.y);
     await evidenceShot(phone, "hearing-log-phone");
-    await phone.locator("#log-close").tap();
-    await expect(log).toBeHidden();
+    await tapUi(phone, "btn:log-close");
+    await expect.poll(() => hasUi(phone, "panel:log")).toBe(false);
     await guest.evaluate(() =>
       (globalThis as unknown as {
         __od: { send: (m: Record<string, unknown>) => boolean };
       }).__od.send({ type: "message", text: "second" })
     );
-    await phone.locator("#log-button").tap();
-    await expect(log.locator("li.chat")).toHaveText([
-      "Ada: hello dwarf",
-      "Ada: second",
-    ]);
+    await tapUi(phone, "btn:log");
+    await expect.poll(async () =>
+      (await logLines(phone)).filter((line) => line.startsWith("Ada:"))
+    ).toEqual(["Ada: hello dwarf", "Ada: second"]);
     // The guest hears the host-sent system lines too.
     await guest.keyboard.press("Backquote");
-    await expect(guest.locator("#hearing-log")).toBeVisible();
-    await expect(guest.locator("#hearing-log li.system")).toContainText([
-      "A visitor is now Ada",
-    ]);
+    await expect.poll(() => hasUi(guest, "panel:log")).toBe(true);
+    await expect.poll(() => logLines(guest)).toContain("A visitor is now Ada");
     await guest.keyboard.press("Backquote");
-    await expect(guest.locator("#hearing-log")).toBeHidden();
+    await expect.poll(() => hasUi(guest, "panel:log")).toBe(false);
   } finally {
     await guest.close();
     await context.close();
@@ -86,11 +82,11 @@ test("the hearing log opens by touch beside the move stick and lists chat and sy
 
 test("the backquote key toggles the log and Escape closes it before the menu", async ({ page }) => {
   await page.goto("/?harness=1");
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
   await page.keyboard.press("Backquote");
-  await expect(page.locator("#hearing-log")).toBeVisible();
+  await expect.poll(() => hasUi(page, "panel:log")).toBe(true);
   await page.keyboard.press("Escape");
-  await expect(page.locator("#hearing-log")).toBeHidden();
+  await expect.poll(() => hasUi(page, "panel:log")).toBe(false);
   expect(
     await page.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { menu: boolean } } }).__od
@@ -98,7 +94,7 @@ test("the backquote key toggles the log and Escape closes it before the menu", a
     ),
   ).toBe(false);
   await page.keyboard.press("Backquote");
-  await expect(page.locator("#hearing-log")).toBeVisible();
+  await expect.poll(() => hasUi(page, "panel:log")).toBe(true);
   await page.keyboard.press("Backquote");
-  await expect(page.locator("#hearing-log")).toBeHidden();
+  await expect.poll(() => hasUi(page, "panel:log")).toBe(false);
 });

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { ready, shopOpen, shopRow, tapUi, uiRect } from "./ui.ts";
 
 type Stack = { kind: string; count: number };
 type Harness = {
@@ -68,7 +69,7 @@ const placeAt = (page: Page, x: number, y: number) =>
 
 async function startHost(page: Page, query = "") {
   await page.goto(`/?harness=1&layout=room${query}`);
-  await expect(page.locator("#loading")).toBeHidden();
+  await ready(page);
 }
 
 /** Hold a key until the local player satisfies the condition. */
@@ -115,9 +116,6 @@ async function mineAiming(page: Page, key: string, ms: number) {
   await page.waitForTimeout(300);
 }
 
-const row = (page: Page, name: string) =>
-  page.locator(`#shop-panel .shop-row[data-row="${name}"]`);
-
 test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ page }) => {
   test.setTimeout(120_000);
   await startHost(page);
@@ -148,19 +146,26 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   // Back up the stairs to the shopkeeper, who stands on the north wall.
   await holdUntil(page, "s", (p) => p.z === 4 && p.x <= 17.2);
   await interactAiming(page, ...(await aimAtShopkeeper(page)));
-  await expect(page.locator("#shop-panel")).toBeVisible();
-  await expect(row(page, "all")).toContainText("Sell all ore");
-  await expect(row(page, "all")).toContainText("4 coins");
-  await expect(row(page, "pickaxe")).toHaveClass(/dimmed/);
-  await expect(row(page, "iron ore")).toContainText("3 each");
+  await expect.poll(() => shopOpen(page)).toBe(true);
+  expect((await shopRow(page, "all"))?.text).toBe("Sell all ore");
+  expect((await shopRow(page, "all"))?.price).toBe("4 coins");
+  await expect.poll(async () => (await shopRow(page, "pickaxe"))?.dim).toBe(
+    true,
+  );
+  expect((await shopRow(page, "iron ore"))?.price).toBe("3 each");
   await page.waitForTimeout(300);
   await evidenceShot(page, "shop-open");
   // IJKL choose a row and interact sells it.
   await page.keyboard.press("k");
-  await expect(row(page, "all")).not.toHaveClass(/selected/);
-  await expect(row(page, "coal")).toHaveClass(/selected/);
+  await expect.poll(async () => (await shopRow(page, "all"))?.selected).toBe(
+    false,
+  );
+  await expect.poll(async () => (await shopRow(page, "coal"))?.selected).toBe(
+    true,
+  );
   await page.keyboard.press("k");
-  await expect(row(page, "iron ore")).toHaveClass(/selected/);
+  await expect.poll(async () => (await shopRow(page, "iron ore"))?.selected)
+    .toBe(true);
   await page.keyboard.press("Space");
   await expect.poll(() => coins(page)).toBe(3);
   await expect.poll(() => coins(page)).toBe(3);
@@ -168,7 +173,9 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await evidenceShot(page, "shop-sold-iron");
   // The sell all row takes the rest, and the coins follow.
   // The sold row is gone, so the selection falls back to the first row.
-  await expect(row(page, "all")).toHaveClass(/selected/);
+  await expect.poll(async () => (await shopRow(page, "all"))?.selected).toBe(
+    true,
+  );
   await page.keyboard.press("Space");
   await expect.poll(() => coins(page)).toBe(4);
   await expect.poll(() => coins(page)).toBe(4);
@@ -177,7 +184,7 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await evidenceShot(page, "shop-score");
   // Escape closes the panel and the player can walk again.
   await page.keyboard.press("Escape");
-  await expect(page.locator("#shop-panel")).toBeHidden();
+  await expect.poll(() => shopOpen(page)).toBe(false);
   expect(await inventory(page)).toEqual([
     { kind: "pickaxe", count: 1 },
     { kind: "coin", count: 4 },
@@ -193,7 +200,7 @@ test("a guest sells through the host, and the host rejects what it does not hold
       (globalThis as unknown as Harness).__od.scene.sessionId
     );
     await guest.goto(`/join/${session}?harness=1&layout=room`);
-    await expect(guest.locator("#loading")).toBeHidden();
+    await ready(guest);
     await expect.poll(async () => (await position(guest))?.z).toBe(4);
     const id = await guest.evaluate(() =>
       (globalThis as unknown as Harness).__od.scene.localId
@@ -236,8 +243,10 @@ test("a guest sells through the host, and the host rejects what it does not hold
     expect(await inventory(guest)).toContainEqual({ kind: "coal", count: 3 });
     // Aim at the shopkeeper from wherever the guest stands.
     await interactAiming(guest, ...(await aimAtShopkeeper(guest)));
-    await expect(guest.locator("#shop-panel")).toBeVisible();
-    await expect(row(guest, "stone")).toHaveClass(/dimmed/);
+    await expect.poll(() => shopOpen(guest)).toBe(true);
+    await expect.poll(async () => (await shopRow(guest, "stone"))?.dim).toBe(
+      true,
+    );
     await guest.keyboard.press("k"); // sell all -> first ore row
     await guest.keyboard.press("Space");
     await expect.poll(() => coins(guest)).toBe(3);
@@ -266,25 +275,26 @@ test("the shop works by touch on a phone", async ({ browser }) => {
     await give(phone, "stone", 5);
     // Standing on the shopkeeper's tile highlights it with no aim.
     await placeAt(phone, SHOP.x, SHOP.y);
-    await phone.locator("#interact-button").tap();
-    await expect(phone.locator("#shop-panel")).toBeVisible();
-    await expect(row(phone, "stone")).toHaveClass(/dimmed/);
-    await expect(phone.locator("[data-stick=move]")).toBeInViewport();
-    const panel = await phone.locator("#shop-panel").boundingBox();
-    const stick = await phone.locator("[data-stick=move]").boundingBox();
-    expect(panel!.y + panel!.height).toBeLessThan(stick!.y);
+    await tapUi(phone, "btn:interact");
+    await expect.poll(() => shopOpen(phone)).toBe(true);
+    await expect.poll(async () => (await shopRow(phone, "stone"))?.dim).toBe(
+      true,
+    );
+    const panel = await uiRect(phone, "panel:shop");
+    const stick = await uiRect(phone, "stick:move");
+    expect(panel.y + panel.h).toBeLessThan(stick.y);
     await evidenceShot(phone, "shop-phone");
     // A tap on a dimmed row sells nothing; a tap on a stack sells it.
-    await row(phone, "stone").tap({ force: true });
+    await tapUi(phone, "row:stone");
     expect(await coins(phone)).toBe(0);
-    await row(phone, "gold ore").tap();
+    await tapUi(phone, "row:gold ore");
     await expect.poll(() => coins(phone)).toBe(16);
     await expect.poll(() => coins(phone)).toBe(16);
-    await phone.locator("#interact-button").tap(); // sells the selected row
+    await tapUi(phone, "btn:interact"); // sells the selected row
     await expect.poll(() => coins(phone)).toBe(20);
     await evidenceShot(phone, "shop-phone-sold");
-    await phone.locator(".shop-close").tap();
-    await expect(phone.locator("#shop-panel")).toBeHidden();
+    await tapUi(phone, "btn:shop-close");
+    await expect.poll(() => shopOpen(phone)).toBe(false);
   } finally {
     await context.close();
   }
@@ -321,20 +331,25 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
     await page.waitForTimeout(300);
   };
   await press(0); // interact opens the shop
-  await expect(page.locator("#shop-panel")).toBeVisible();
-  await expect(row(page, "all")).toHaveClass(/selected/);
+  await expect.poll(() => shopOpen(page)).toBe(true);
+  await expect.poll(async () => (await shopRow(page, "all"))?.selected).toBe(
+    true,
+  );
   await press(13); // D-pad down
-  await expect(row(page, "coal")).toHaveClass(/selected/);
+  await expect.poll(async () => (await shopRow(page, "coal"))?.selected).toBe(
+    true,
+  );
   // The look stick moves the selection too.
   await page.evaluate(() => {
     (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 1;
   });
-  await expect(row(page, "diamond")).toHaveClass(/selected/);
+  await expect.poll(async () => (await shopRow(page, "diamond"))?.selected)
+    .toBe(true);
   await page.evaluate(() => {
     (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
   });
   await press(0); // sells the diamond
   await expect.poll(() => coins(page)).toBe(20);
   await press(1); // button 1 closes
-  await expect(page.locator("#shop-panel")).toBeHidden();
+  await expect.poll(() => shopOpen(page)).toBe(false);
 });

@@ -1,29 +1,26 @@
 import process from "node:process";
 import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { clickUi, hasUi, qrUrl, ready, say, uiRect, uiState } from "./ui.ts";
 
 test("the host opens the small join QR from the QR button", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.locator("#loading")).toBeHidden();
-  await expect(page.locator("#join-panel")).toBeHidden();
-  await page.locator("#join-toggle").click();
-  await expect(page.locator("#join-panel")).toBeVisible();
-  await expect(page.locator("#join-toggle")).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await expect.poll(() =>
-    page.locator("#join-code").evaluate((image: HTMLImageElement) =>
-      image.complete && image.naturalWidth > 0
-    )
-  ).toBe(true);
+  await page.goto("/?harness=1&tools=1");
+  await ready(page);
+  await expect.poll(() => hasUi(page, "panel:join")).toBe(false);
+  await clickUi(page, "btn:qr");
+  await expect.poll(() => hasUi(page, "panel:join")).toBe(true);
+  // The code loads as a texture the renderer draws.
+  await expect.poll(async () => (await uiState(page)).qrReady).toBe(true);
+  await expect.poll(() => hasUi(page, "image:qr")).toBe(true);
+  await page.waitForTimeout(300);
   await evidenceShot(page, "join-qr-popover");
-  const box = await page.locator("#join-code").boundingBox();
-  expect(box?.width).toBeLessThanOrEqual(144);
-  await page.locator("#join-toggle").click();
-  await expect(page.locator("#join-panel")).toBeHidden();
+  const box = await uiRect(page, "image:qr");
+  expect(box.w).toBeLessThanOrEqual(168);
+  expect(box.w).toBeGreaterThanOrEqual(120);
+  await clickUi(page, "btn:qr");
+  await expect.poll(() => hasUi(page, "panel:join")).toBe(false);
   await page.keyboard.press("q");
-  await expect(page.locator("#join-panel")).toBeVisible();
+  await expect.poll(() => hasUi(page, "panel:join")).toBe(true);
 });
 
 test("a phone link joins the expanded authored world directly", async ({ browser }) => {
@@ -31,14 +28,13 @@ test("a phone link joins the expanded authored world directly", async ({ browser
   const guest = await browser.newPage();
   try {
     await host.goto("/?harness=1&world=32");
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const session = await host.evaluate(() =>
       (globalThis as unknown as {
         __od: { scene: { sessionId: string } };
       }).__od.scene.sessionId
     );
-    await expect(host.locator("#join-code")).toHaveAttribute(
-      "src",
+    expect(await qrUrl(host)).toMatch(
       new RegExp(
         `^http://127\\.0\\.0\\.1:${
           process.env.PORT ?? "8000"
@@ -50,7 +46,7 @@ test("a phone link joins the expanded authored world directly", async ({ browser
       ),
     );
     await guest.goto(`/join/${session}?harness=1`);
-    await expect(guest.locator("#loading")).toBeHidden();
+    await ready(guest);
     await expect.poll(() =>
       guest.evaluate(() => {
         const scene = (globalThis as unknown as {
@@ -80,13 +76,13 @@ test("guest receives talking activity before nearby message text", async ({ brow
   const guest = await browser.newPage();
   try {
     await host.goto("/?harness=1");
-    await expect(host.locator("#loading")).toBeHidden();
+    await ready(host);
     const session = await host.evaluate(() =>
       (globalThis as unknown as { __od: { scene: { sessionId: string } } })
         .__od.scene.sessionId
     );
     await guest.goto(`/join/${session}?harness=1`);
-    await expect(guest.locator("#loading")).toBeHidden();
+    await ready(guest);
     await expect.poll(
       () =>
         guest.evaluate(() =>
@@ -101,9 +97,7 @@ test("guest receives talking activity before nearby message text", async ({ brow
       }).__od.scene.world;
       world.players.self.x = 14;
     });
-    await host.keyboard.press("t");
-    await host.locator("#chat-input").fill("range secret");
-    await host.locator("#chat-input").press("Enter");
+    await say(host, "range secret");
     await expect.poll(() =>
       guest.evaluate(() => {
         const scene = (globalThis as unknown as {

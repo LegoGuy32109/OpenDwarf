@@ -3,7 +3,6 @@
 import {
   liveBubbles,
   TEXT_SIZE_SCALE,
-  TEXT_SIZES,
   THOUGHT_DOTS_WIDTH,
   thoughtDotLifts,
 } from "../shared/chat.js";
@@ -15,6 +14,7 @@ import { decalFrame } from "../shared/mining.js";
 import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
 import { SHOP_TILE } from "../shared/shop.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
+import { drawUi } from "./ui-draw.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import {
   ceilingMask,
@@ -91,7 +91,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,chatLift:number,safe?:{top:number,right:number,bottom:number,left:number},status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},ui?:{layout:import('./ui.js').UiLayout,state:import('./ui-draw.js').DrawState},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
 
 /**
  * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
@@ -138,25 +138,8 @@ export async function createRenderer(canvas) {
   gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  const [
-    floorImage,
-    spriteImage,
-    fontImage,
-    edgeImage,
-    ceilingImage,
-    oreImage,
-    itemImage,
-  ] = /** @type {HTMLImageElement[]} */ (
-    await Promise.all([
-      image("assets/floor.png"),
-      image("assets/dwarf.png"),
-      image("assets/font.png"),
-      image("assets/edge.png"),
-      image("assets/ceiling.png"),
-      image("assets/ores.png"),
-      image("assets/items.png"),
-    ])
-  );
+  // The font loads first, so the loading screen can draw text while the rest loads.
+  const fontImage = await image("assets/font.png");
   const whiteImage = document.createElement("canvas");
   whiteImage.width = whiteImage.height = 1;
   const whiteContext = whiteImage.getContext("2d");
@@ -164,16 +147,33 @@ export async function createRenderer(canvas) {
     whiteContext.fillStyle = "#ffffff";
     whiteContext.fillRect(0, 0, 1, 1);
   }
+  /** @type {Record<string,WebGLTexture>} */
   const textures = {
-    floor: texture(gl, floorImage),
-    sprite: texture(gl, spriteImage),
     font: texture(gl, fontImage),
-    edge: texture(gl, edgeImage),
-    ceiling: texture(gl, ceilingImage),
-    ores: texture(gl, oreImage),
-    items: texture(gl, itemImage),
     white: texture(gl, whiteImage),
   };
+  let loaded = false;
+  /** Resolves when the world's textures are ready; rejects when one cannot load. */
+  const ready = Promise.all([
+    image("assets/floor.png"),
+    image("assets/dwarf.png"),
+    image("assets/edge.png"),
+    image("assets/ceiling.png"),
+    image("assets/ores.png"),
+    image("assets/items.png"),
+  ]).then((images) => {
+    const [floor, sprite, edge, ceiling, ores, items] =
+      /** @type {HTMLImageElement[]} */ (images);
+    textures.floor = texture(gl, floor);
+    textures.sprite = texture(gl, sprite);
+    textures.edge = texture(gl, edge);
+    textures.ceiling = texture(gl, ceiling);
+    textures.ores = texture(gl, ores);
+    textures.items = texture(gl, items);
+    loaded = true;
+  });
+  /** The join QR code, drawn by the UI layer. @type {WebGLTexture|null} */
+  let qrTexture = null;
   const locationSize = gl.getUniformLocation(program, "u_size");
   const locationCamera = gl.getUniformLocation(program, "u_camera");
   const locationZoom = gl.getUniformLocation(program, "u_zoom");
@@ -242,6 +242,61 @@ export async function createRenderer(canvas) {
     }
   }
 
+  /** @param {Scene} scene @param {number} dpr */
+  function drawInterface(scene, dpr) {
+    if (!scene.ui) return;
+    const toDevice = (/** @type {number} */ value) => Math.round(value * dpr);
+    /** @type {import('./ui-draw.js').Painter} */
+    const paint = {
+      rect(x, y, w, h, color) {
+        const x0 = toDevice(x);
+        const y0 = toDevice(y);
+        rect(x0, y0, toDevice(x + w) - x0, toDevice(y + h) - y0, color);
+      },
+      text(value, x, y, textScale, color) {
+        text(
+          value,
+          toDevice(x),
+          toDevice(y),
+          Math.max(1, Math.round(textScale * dpr)),
+          color,
+        );
+      },
+      item(kind, x, y, size, alpha) {
+        const frame = itemInfo(kind)?.frame;
+        if (frame === undefined) return;
+        const x0 = toDevice(x);
+        const y0 = toDevice(y);
+        quad(
+          textures.items,
+          true,
+          x0,
+          y0,
+          toDevice(x + size) - x0,
+          toDevice(y + size) - y0,
+          [0, frame / ITEM_FRAMES, 1, 1 / ITEM_FRAMES],
+          [1, 1, 1, alpha],
+        );
+      },
+      qr(x, y, size) {
+        if (!qrTexture) return;
+        const x0 = toDevice(x);
+        const y0 = toDevice(y);
+        quad(
+          qrTexture,
+          true,
+          x0,
+          y0,
+          toDevice(x + size) - x0,
+          toDevice(y + size) - y0,
+          [0, 0, 1, 1],
+        );
+      },
+    };
+    drawUi(paint, scene.ui.layout, scene.ui.state);
+    flush();
+  }
+
   /** @param {Scene} scene @param {number} alpha */
   function render(scene, alpha) {
     const dpr = globalThis.devicePixelRatio || 1;
@@ -258,9 +313,18 @@ export async function createRenderer(canvas) {
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.uniform2f(locationSize, width, height);
+    if (!loaded) {
+      drawInterface(scene, dpr);
+      return;
+    }
     const zoom = dpr * scene.zoom;
     const cameraX = scene.camera.x;
-    const cameraY = scene.camera.y;
+    // The in-game keyboard covers the bottom of the screen: center on what is above it.
+    const chatTop = scene.ui?.layout.chatTop;
+    const lift = chatTop === null || chatTop === undefined
+      ? 0
+      : (canvas.clientHeight - chatTop) * dpr / 2;
+    const cameraY = scene.camera.y + lift / zoom;
     gl.uniform2f(locationCamera, cameraX, cameraY);
     gl.uniform1f(locationZoom, zoom);
     // Sprites start on a whole device pixel relative to the camera. At a
@@ -964,127 +1028,17 @@ export async function createRenderer(canvas) {
         );
       }
     }
-    const status =
-      (scene.notice && performance.now() < scene.notice.until
-        ? scene.notice.text
-        : scene.status).slice(0, 75);
-    // Text the canvas draws stays inside the safe area, clear of a notch.
-    const safe = scene.safe ?? { top: 0, right: 0, bottom: 0, left: 0 };
-    const edgeLeft = (10 + safe.left) * dpr;
-    const edgeTop = (10 + safe.top) * dpr;
-    const edgeRight = (10 + safe.right) * dpr;
-    if (status) {
-      rect(
-        edgeLeft,
-        edgeTop,
-        Math.min(
-          width - edgeLeft - edgeRight,
-          (status.length * 8 + 12) * scale,
-        ),
-        20 * scale,
-        [0.05, 0.05, 0.05, 0.75],
-      );
-      text(status, edgeLeft + 6 * dpr, edgeTop + 2 * dpr, scale);
-    }
-    if (scene.touchGesture || performance.now() < scene.hudUntil) {
-      const value = `Z ${scene.viewZ}  ZOOM ${scene.zoom.toFixed(2)}`;
-      const hudWidth = (value.length * 8 + 16) * scale;
-      const x = Math.max(edgeLeft, width - hudWidth - edgeRight);
-      rect(x, edgeTop, hudWidth, 20 * scale, [0.06, 0.08, 0.12, 0.75]);
-      text(value, x + 8 * scale, edgeTop + 2 * dpr, scale, [1, 0.86, 0.56, 1]);
-    }
-    if (scene.chatOpen) {
-      const barX = (12 + safe.left) * dpr;
-      // The keyboard lift already clears the home indicator; without it, the inset does.
-      const lift = scene.chatLift || safe.bottom;
-      const barY = height - (54 + lift) * dpr;
-      rect(
-        barX,
-        barY,
-        width - barX - (12 + safe.right) * dpr,
-        30 * dpr,
-        [0.1, 0.1, 0.1, 0.9],
-      );
-      text(`> ${scene.chatDraft}_`, barX + 8 * dpr, barY + 3 * dpr, scale);
-    }
-    if (scene.menu) {
-      rect(0, 0, width, height, [0, 0, 0, 0.55]);
-      const panelWidth = Math.min(320, canvas.clientWidth - 20) * dpr;
-      const panelHeight = Math.min(300, canvas.clientHeight - 20) * dpr;
-      const x = (width - panelWidth) / 2;
-      const y = (height - panelHeight) / 2;
-      rect(x, y, panelWidth, panelHeight, [0.08, 0.09, 0.1, 0.96]);
-      rect(
-        x + 2 * dpr,
-        y + 2 * dpr,
-        panelWidth - 4 * dpr,
-        panelHeight - 4 * dpr,
-        [0.2, 0.21, 0.22, 0.85],
-      );
-      const menuScale = Math.max(1, Math.round(dpr * 1.25));
-      /** @param {string} value @param {number} row */
-      const centerText = (value, row) =>
-        text(
-          value,
-          width / 2 - value.length * 4 * menuScale,
-          y + row * dpr,
-          menuScale,
-        );
-      if (scene.menuPage === "settings") {
-        centerText("Settings", 16);
-        centerText("UI Scale", 56);
-        centerText(`-   ${scene.uiScale.toFixed(2)}   +`, 96);
-        centerText("Text Size", 136);
-        for (const [index, size] of TEXT_SIZES.entries()) {
-          const label = size[0].toUpperCase() + size.slice(1);
-          text(
-            label,
-            width / 2 + (index - 1) * 90 * dpr - label.length * 4 * menuScale,
-            y + 168 * dpr,
-            menuScale,
-            size === scene.textSize ? [1, 0.78, 0.37, 1] : [0.6, 0.58, 0.52, 1],
-          );
-        }
-        centerText("Back", 212);
-      } else {
-        centerText("Open Dwarf", 12);
-        centerText("Resume", 45);
-        centerText("Settings", 78);
-        centerText("Leave Game", 111);
-        rect(x + 12 * dpr, y + 145 * dpr, panelWidth - 24 * dpr, 1 * dpr, [
-          0.58,
-          0.55,
-          0.47,
-          0.7,
-        ]);
-        const hints = scene.inputMode === "gamepad"
-          ? [
-            "LEFT STICK MOVE",
-            "RIGHT STICK CAMERA",
-            "4 5 LEVEL  6 7 ZOOM",
-            "3 MENU",
-          ]
-          : scene.inputMode === "touch"
-          ? [
-            "LEFT STICK MOVE",
-            "RIGHT STICK CAMERA",
-            "PINCH TO ZOOM",
-            "TWO FINGERS DRAG Z",
-            "A CHAT  B MENU",
-          ]
-          : [
-            "ESDF MOVE  IJKL LOOK",
-            "R V LEVEL  U N ZOOM",
-            "T CHAT  / COMMAND",
-            "ESC MENU",
-          ];
-        for (let i = 0; i < hints.length; i++) {
-          centerText(hints[i], 157 + i * 25);
-        }
-      }
-    }
+    drawInterface(scene, dpr);
     flush();
   }
 
-  return { render };
+  return {
+    render,
+    ready,
+    /** The image to draw as the join QR code, or null to remove it. @param {TexImageSource|null} source */
+    setQr(source) {
+      if (qrTexture) gl.deleteTexture(qrTexture);
+      qrTexture = source ? texture(gl, source) : null;
+    },
+  };
 }
