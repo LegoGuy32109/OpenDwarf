@@ -1,9 +1,11 @@
 # Open Dwarf
 
 Read `README.md` and `docs/architecture.md` before changing the client or
-network code. This branch is the client first Deno demo. The detached
-`webgl-version` worktree may be used for comparison, but the Rust engine stays
-on that branch.
+network code, then the `docs/features/` file for your area. A ticket documents
+its feature in its own `docs/features/` file (and adds one line to the README
+index for a new file); it does not extend `README.md` or `docs/architecture.md`.
+This branch is the client first Deno demo. The detached `webgl-version` worktree
+may be used for comparison, but the Rust engine stays on that branch.
 
 Keep browser code in plain JavaScript with JSDoc types. Keep server code in Deno
 TypeScript. Serve browser files without a build step. Use custom CSS and keep
