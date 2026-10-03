@@ -411,7 +411,7 @@ test("phone controls fit safe area and move", async ({ browser }) => {
 });
 
 test("view commands, layer keys and held zoom work in the rendered world", async ({ page }) => {
-  await page.goto("/?harness=1");
+  await page.goto("/?harness=1&seed=snapshot");
   await expect(page.locator("#loading")).toBeHidden();
   const scene = () =>
     page.evaluate(() =>

@@ -31,11 +31,19 @@ a chunk that does not exist reads as solid stone. Materials and their stable ids
 live in `src/shared/materials.js`: air, stone, then coal, iron ore, gold ore,
 lapis, redstone, diamond, and emerald. Every material except air is solid. The
 chunk wire accepts ids up to `MAX_MATERIAL`, and the renderer draws an ore from
-`public/assets/ores.png`. A test row of each ore sits in the authored area. There is no distance-based
-chunk creation yet. A seven-step staircase on the south edge reaches
+`public/assets/ores.png`. A test row of each ore sits in the authored area.
+The world host creates generated terrain from the session seed in
+`src/shared/generation.js`: every chunk within one chunk of any player is
+created, at most two per 50 ms tick, nearest first, and an existing chunk,
+including the authored area, is never replaced. A chunk is solid stone with
+noise caves that continue across chunk borders, and ore clusters by depth band:
+coal and iron at z 5–7, gold, lapis, redstone and some iron at z 2–4, and
+diamond and emerald at z 0–1. A chunk takes well under one millisecond to
+generate. `?seed=` replays a world for tests. Joining players never generate;
+they receive generated terrain only for tiles they see. A seven-step staircase on the south edge reaches
 the top landing; a full-height pillar tests occlusion. The view can show five
 lower levels, with deeper floors turning blue before they disappear. There is no
-world generation, chunk loading, persistence, or inventory. Players and the corner NPC use continuous x/y centers and half-tile square
+chunk unloading, persistence, or inventory. Players and the corner NPC use continuous x/y centers and half-tile square
 footprints. They stop between tiles, slide along flat walls, and block one
 another when footprints overlap. A one-level climb or descent is a short
 committed step with reserved origin and landing footprints. The renderer
