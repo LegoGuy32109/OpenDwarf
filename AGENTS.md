@@ -16,6 +16,13 @@ needs a browser check. When several worktrees run e2e at once, set a distinct
 `PORT` for each, such as `PORT=8112 deno task e2e`, because Playwright reuses
 any server already on its port.
 
+## Deploy
+
+Client changes never need a deploy. Deploy only when shell code changes, with
+`deno task deploy` (try `--dry-run` first). It refuses on a dirty tree or a
+pending `od-prod` migration, and it records a Shell deploy. Never deploy from a
+worker without being asked.
+
 ## Evidence
 
 A ticket with a visible change needs screenshots, and an interaction needs a

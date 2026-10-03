@@ -198,6 +198,28 @@ manifest under ignored `exports/visual-sync/`. Pass
 
 ## Deploy
 
+Only the shell is deployed, and only when its own code changes. A client change
+needs a push, not a deploy (see
+[ADR 0004](docs/adr/0004-shell-serves-builds-from-commits.md)).
+
+```sh
+deno task deploy --dry-run   # checks the rules, prints the upload and the record
+deno task deploy --note "why"
+```
+
+`deno task deploy` deploys the working tree to the `opendwarf` app in
+`legoguy32109` as production, with `jsr:@deno/deploy` and `--prod`. It restores
+the `deno.json` bytes the CLI rewrites. It refuses when the working tree is
+dirty, or when `od-prod` has a pending migration (run
+`deno task db:migrate:prod` first). After the CLI succeeds it records a Shell
+deploy (commit, Deno revision from the CLI's `--json` output, time, note) in
+`od-prod`. A failed deploy records nothing. It needs `DENO_DEPLOY_TOKEN` in the
+environment and `TURSO_DB_URL` and `TURSO_DB_TOKEN` in `.env.prod`. Do not print
+them.
+
+The shell still serves the client from disk, so the upload keeps `public/`,
+`src/client/`, and `src/shared/`. A later ticket decides when to exclude them.
+
 The `deploy` section in `deno.json` uses a dynamic Deno Deploy app with
 `main.ts` as its entrypoint. The `opendwarf` app has a Deno KV database
 assigned. Deno Deploy supplies that database to `Deno.openKv()`. Set
