@@ -40,7 +40,9 @@ test("a phone link joins the expanded authored world directly", async ({ browser
     await expect(host.locator("#join-code")).toHaveAttribute(
       "src",
       new RegExp(
-        `^/api/v1/qr/${session}\\?link=${
+        `^http://127\\.0\\.0\\.1:${
+          process.env.PORT ?? "8000"
+        }/api/v1/qr/${session}\\?link=${
           encodeURIComponent(
             `http://127.0.0.1:${process.env.PORT ?? "8000"}/join/${session}`,
           )

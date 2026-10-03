@@ -1407,8 +1407,11 @@ export async function startApp() {
   let accumulator = 0;
   /** @type {number[]} */
   const frameMs = [];
-  if (new URL(location.href).searchParams.get("telemetry") === "1") {
-    const test = new URL(location.href).searchParams.get("test") === "1";
+  const params = new URL(location.href).searchParams;
+  // Telemetry is on by default so the admin dashboard shows how sessions run; `?telemetry=0`
+  // turns it off. Test pages mark their reports so they can be told apart.
+  if (params.get("telemetry") !== "0") {
+    const test = params.get("test") === "1" || params.has("harness");
     /** @param {"summary"|"connection"|"error"} kind @param {Record<string,unknown>} fields */
     const report = (kind, fields = {}) => {
       if (!scene.sessionId) return;
