@@ -9,15 +9,13 @@ export const PLAYER_SIZE = 0.5;
 /** One tile is a 5 ft square and a D&D round is 6 seconds. */
 export const FEET_PER_TILE = 5;
 export const ROUND_SECONDS = 6;
-/** D&D speeds in feet per round that the speed button cycles through. */
-export const SPEED_STEPS_FT = [30, 50, 60];
-export const DEFAULT_SPEED_FT = SPEED_STEPS_FT[0];
+/** Walk speed in feet per round. */
+export const WALK_SPEED_FT = 30;
 
-/** Convert a D&D speed to tiles per second. Sprint is the Dash action: it doubles the speed. */
-/** @param {number} [feet] @param {boolean} [sprint] */
-export function speedTilesPerSecond(feet = DEFAULT_SPEED_FT, sprint = false) {
-  const safeFeet = SPEED_STEPS_FT.includes(feet) ? feet : DEFAULT_SPEED_FT;
-  return safeFeet / FEET_PER_TILE / ROUND_SECONDS * (sprint ? 2 : 1);
+/** Convert the walk speed to tiles per second. Sprint doubles it. */
+/** @param {boolean} [sprint] */
+export function speedTilesPerSecond(sprint = false) {
+  return WALK_SPEED_FT / FEET_PER_TILE / ROUND_SECONDS * (sprint ? 2 : 1);
 }
 
 export const WALK_SPEED = speedTilesPerSecond();
