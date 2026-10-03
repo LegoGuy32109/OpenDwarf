@@ -11,8 +11,10 @@
     <meta name="theme-color" content="#17191c">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent">
+    <!-- Not black-translucent: in an iOS 26 Home Screen app the translucent bar
+      makes the viewport short by the status bar's height, and iOS leaves the
+      strip at the bottom unpainted. No CSS or script recovers it. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>Open Dwarf</title>
     <link rel="stylesheet" href="css/app.css">
     <link rel="stylesheet" href="css/inventory-panel.css">

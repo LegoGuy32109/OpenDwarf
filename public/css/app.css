@@ -35,19 +35,6 @@ input {
   isolation: isolate;
   touch-action: none;
 }
-/* A Home Screen app on iOS can start with a viewport shorter than the screen
-   until it rotates, which leaves a strip under the translucent status bar or
-   home indicator uncovered. The large viewport unit is the full screen there. */
-@media (display-mode: standalone) {
-  #game {
-    bottom: auto;
-    height: 100lvh;
-  }
-}
-:root.standalone #game {
-  bottom: auto;
-  height: 100lvh;
-}
 #world {
   display: block;
   width: 100%;
