@@ -9,6 +9,7 @@ Keep browser code in plain JavaScript with JSDoc types. Keep server code in
 Deno TypeScript. Serve browser files without a build step. Use custom CSS and
 keep runtime dependencies small.
 
-Run `deno task verify` before pushing. Run `deno task e2e` after changes to
-rendering, controls, or networking. The local pre-push hook can be installed
-with `deno task hooks`.
+Run `deno task verify` before pushing. The local pre-push hook can be installed
+with `deno task hooks`. `deno task e2e` is optional and takes about two
+minutes. Run it only when asked, or when a change to rendering, controls, or
+networking needs a browser check.
