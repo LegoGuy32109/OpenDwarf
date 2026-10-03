@@ -9,6 +9,29 @@ import {
   STONE,
   WORLD_TOP,
 } from "./terrain.js";
+import {
+  COAL,
+  DIAMOND,
+  EMERALD,
+  GOLD_ORE,
+  IRON_ORE,
+  LAPIS,
+  REDSTONE,
+} from "./materials.js";
+
+/** A test row of stone and each ore at level 0, drawn left to right from x 2. */
+export const ORE_ROW_Y = 1;
+export const ORE_ROW_X = 2;
+export const ORE_ROW = [
+  STONE,
+  COAL,
+  IRON_ORE,
+  GOLD_ORE,
+  LAPIS,
+  REDSTONE,
+  DIAMOND,
+  EMERALD,
+];
 
 /** The authored map is loaded only by a host. Guests receive discovered chunks. */
 /** @param {number} [edge] */
@@ -27,9 +50,11 @@ export function createAuthoredWorld(edge = WORLD_EDGE) {
           Math.floor(y / CHUNK_EDGE),
         );
         if (!chunk) continue;
-        chunk[chunkIndex(x % CHUNK_EDGE, y % CHUNK_EDGE, z)] = solid
-          ? STONE
-          : OPEN;
+        const ore = y === ORE_ROW_Y && z === 0
+          ? ORE_ROW[x - ORE_ROW_X]
+          : undefined;
+        chunk[chunkIndex(x % CHUNK_EDGE, y % CHUNK_EDGE, z)] = ore ??
+          (solid ? STONE : OPEN);
       }
     }
   }

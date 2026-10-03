@@ -33,6 +33,12 @@ A playable area whose terrain is deliberately placed rather than generated.
 A 16×16 horizontal region of world tiles across the world view levels. The
 first expanded authored area contains four chunks.
 
+**Material**:
+What a terrain tile is made of: air, stone, or one of seven ores (coal, iron
+ore, gold ore, lapis, redstone, diamond, emerald). Every material except air is
+solid and blocks movement like stone. Mining a tile leaves a dropped item of the
+matching item kind.
+
 **Spawn chunk**:
 The authored chunk where joining players first appear. Multiple players may
 appear on the same tile.

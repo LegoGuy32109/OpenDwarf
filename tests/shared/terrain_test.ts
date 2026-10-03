@@ -21,6 +21,7 @@ import {
   encodeChunk,
   encodeChunks,
 } from "../../src/shared/chunk-wire.js";
+import { MAX_MATERIAL } from "../../src/shared/materials.js";
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import {
   addPlayer,
@@ -285,8 +286,8 @@ Deno.test("a chunk survives the wire and bad chunks are rejected", () => {
   for (const bad of [null, 5, "", "!!!!", "AQE=", encodeChunk(data).slice(4)]) {
     assertEquals(decodeChunk(bad), null);
   }
-  const material3 = new Uint8Array(CHUNK_CELLS).fill(3);
-  assertEquals(decodeChunk(encodeChunk(material3)), null);
+  const unassigned = new Uint8Array(CHUNK_CELLS).fill(MAX_MATERIAL + 1);
+  assertEquals(decodeChunk(encodeChunk(unassigned)), null);
   const chunks = new Map([["-1,4", data], ["0,0", uniform]]);
   assertEquals(decodeChunks(encodeChunks(chunks)), chunks);
   assertEquals(decodeChunks({ "1,1": 5 }), null);
