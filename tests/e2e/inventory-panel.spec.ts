@@ -88,11 +88,12 @@ async function startHost(page: Page) {
 /**
  * Hold a look key until the selection reaches `kind`, then let go. A fixed hold
  * time misses the step when no frame runs during it, or steps twice when one
- * long frame passes the panel's 180 ms key repeat.
+ * long frame passes the panel's 180 ms key repeat; slow polling misses it too.
  */
 async function step(page: Page, key: string, kind: string) {
   await page.keyboard.down(key);
-  await expect.poll(() => selectedSlot(page)).toBe(kind);
+  // Poll faster than the 180 ms repeat, or a held key runs past `kind`.
+  await expect.poll(() => selectedSlot(page), { intervals: [20] }).toBe(kind);
   await page.keyboard.up(key);
   await expect.poll(() => selectedSlot(page)).toBe(kind);
 }

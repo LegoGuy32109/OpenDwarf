@@ -5,6 +5,9 @@
  *   playerCount: number }} LiveSession
  * @typedef {{ id: string }} SessionId
  * @typedef {{ name: string, kind: string, target: string, commit: string | null }} LabelRow
+ * @typedef {{ name: string, commit: string, main: boolean, labels: string[],
+ *   pull: { number: number, title: string, url: string } | null }} BranchRow
+ * @typedef {{ branches: BranchRow[], pullsAvailable: boolean }} BuildIndex
  * @typedef {{ commit: string, label: string, at: number, note: string }} PromotionRow
  * @typedef {{ commit: string, denoRevision: string, at: number, note: string }} DeployRow
  * @typedef {{ promotions: PromotionRow[] }} Promotions
@@ -139,14 +142,49 @@ function liveSessions(sessions, now) {
   );
 }
 
+/** The build names the shell can serve: no slash, as in the shell's own check. */
+const SERVABLE = /^[a-zA-Z0-9._-]{1,100}$/;
+
+/** @param {BuildIndex} index */
+function buildIndex(index) {
+  if (!index.branches.length) return null;
+  const list = table(
+    ["Branch", "Commit", "Pull request", "Labels"],
+    index.branches.map((branch) => [
+      el("span", { class: "wrap" }, [
+        SERVABLE.test(branch.name)
+          ? link(branch.name, buildPath(branch.name))
+          : branch.name,
+        ...(branch.main ? [el("span", { class: "tag" }, ["main"])] : []),
+      ]),
+      el("span", { class: "sha" }, [
+        link(short(branch.commit), buildPath(short(branch.commit))),
+      ]),
+      branch.pull
+        ? link(`#${branch.pull.number} ${branch.pull.title}`, branch.pull.url)
+        : "–",
+      branch.labels.length ? branch.labels.join(", ") : "–",
+    ]),
+  );
+  if (index.pullsAvailable) return list;
+  return el("div", {}, [
+    el("p", { class: "error" }, [
+      "Pull requests could not be loaded; the branches are still listed.",
+    ]),
+    list,
+  ]);
+}
+
 /** @param {LabelRow[]} labels */
 function labelList(labels) {
-  if (!labels.length) return null;
+  // Labels on a branch show on its row above; these point at one commit.
+  const commits = labels.filter((label) => label.kind === "commit");
+  if (!commits.length) return null;
   return table(
     ["Label", "Points to", "Commit", "Build"],
-    labels.map((label) => [
-      label.name,
-      `${label.kind} ${short(label.target)}`,
+    commits.map((label) => [
+      el("span", { class: "wrap" }, [label.name]),
+      el("span", { class: "wrap" }, [`${label.kind} ${short(label.target)}`]),
       label.commit ? short(label.commit) : "unresolved",
       link(`/b/${label.name}`, buildPath(label.name)),
     ]),
@@ -267,8 +305,14 @@ async function refresh() {
       async () => liveSessions(await live, Date.now()),
     ),
     section(
+      "builds",
+      "No branches found.",
+      async () =>
+        buildIndex(/** @type {BuildIndex} */ (await read("/api/v1/builds"))),
+    ),
+    section(
       "labels",
-      "No labels yet.",
+      "No labels on commits.",
       async () => labelList((await status).labels),
     ),
     section("main", "Nothing is promoted yet, so main is empty.", async () => {

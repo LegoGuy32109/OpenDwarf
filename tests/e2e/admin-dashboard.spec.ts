@@ -32,7 +32,10 @@ test("the dashboard shows an empty state for every section", async ({ page }) =>
   try {
     await page.goto(`${origin}/admin`);
     await expect(page.locator("#live")).toContainText("No live sessions.");
-    await expect(page.locator("#labels")).toContainText("No labels yet.");
+    await expect(page.locator("#builds")).toContainText("No branches found.");
+    await expect(page.locator("#labels")).toContainText(
+      "No labels on commits.",
+    );
     await expect(page.locator("#main")).toContainText("Nothing is promoted");
     await expect(page.locator("#deploys")).toContainText(
       "No shell deploys recorded.",
@@ -109,6 +112,23 @@ for (
       await expect(page.locator("#labels")).toContainText("a1b2c3d");
       await expect(page.locator('#labels a[href="/b/seeded-chunk-gen/"]'))
         .toHaveCount(1);
+      // Every stubbed branch but `evidence` is listed, with its build link, pull request, and labels.
+      const builds = page.locator("#builds");
+      await expect(builds.locator('a[href="/b/t62-build-index/"]')).toHaveCount(
+        1,
+      );
+      await expect(builds.locator('a[href="/b/client-first-deno/"]'))
+        .toHaveCount(1);
+      await expect(builds.locator('a[href="/b/mining-feel/"]')).toHaveCount(1);
+      await expect(builds.locator('a[href="/b/evidence/"]')).toHaveCount(0);
+      await expect(builds.locator('a[href="/b/1111111/"]')).toHaveCount(1);
+      await expect(builds).toContainText("#71 Admin dashboard indexes");
+      await expect(builds).not.toContainText("fork is not listed");
+      await expect(builds.locator('a[href$="/pull/71"]')).toHaveCount(1);
+      await expect(builds.locator("tbody tr").first()).toContainText("main");
+      await expect(
+        builds.locator("tr", { hasText: "mining-feel" }),
+      ).toContainText("mining-demo");
       await expect(page.locator("#main")).toContainText("Main is b2c3d4e");
       await expect(page.locator("#main")).toContainText("first demo build");
       await expect(page.locator("#main")).toContainText("adds the dashboard");
