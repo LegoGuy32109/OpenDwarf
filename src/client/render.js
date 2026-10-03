@@ -68,6 +68,8 @@ function compile(gl, kind, source) {
 function image(src) {
   return new Promise((resolve, reject) => {
     const result = new Image();
+    // Builds load assets from another origin (jsDelivr), which WebGL needs CORS for.
+    result.crossOrigin = "anonymous";
     result.onload = () => resolve(result);
     result.onerror = () => reject(new Error(`Cannot load ${src}`));
     result.src = src;
@@ -146,13 +148,13 @@ export async function createRenderer(canvas) {
     itemImage,
   ] = /** @type {HTMLImageElement[]} */ (
     await Promise.all([
-      image("/assets/floor.png"),
-      image("/assets/dwarf.png"),
-      image("/assets/font.png"),
-      image("/assets/edge.png"),
-      image("/assets/ceiling.png"),
-      image("/assets/ores.png"),
-      image("/assets/items.png"),
+      image("assets/floor.png"),
+      image("assets/dwarf.png"),
+      image("assets/font.png"),
+      image("assets/edge.png"),
+      image("assets/ceiling.png"),
+      image("assets/ores.png"),
+      image("assets/items.png"),
     ])
   );
   const whiteImage = document.createElement("canvas");

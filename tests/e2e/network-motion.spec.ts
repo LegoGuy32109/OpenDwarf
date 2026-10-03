@@ -74,7 +74,7 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
       .scene.sessionId
   );
   for (const guest of [first, second]) {
-    await guest.goto("/admin?harness=1");
+    await guest.goto("/host?harness=1");
     await expect(guest.locator("#loading")).toBeHidden();
     await guest.locator(`[data-session-id="${session}"]`).click();
     await expect.poll(
@@ -184,7 +184,7 @@ test("held and reversed guest movement converges in host and two joining tabs", 
       .scene.sessionId
   );
   for (const guest of [first, second]) {
-    await guest.goto("/admin?harness=1");
+    await guest.goto("/host?harness=1");
     await expect(guest.locator("#loading")).toBeHidden();
     await guest.locator(`[data-session-id="${session}"]`).click();
     await expect.poll(() =>
@@ -316,7 +316,7 @@ test("a guest circles the pillar without leaving a remote sprite behind", async 
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
-  await guest.goto("/admin?harness=1");
+  await guest.goto("/host?harness=1");
   await expect(guest.locator("#loading")).toBeHidden();
   await guest.locator(`[data-session-id="${session}"]`).click();
   await expect.poll(() =>
@@ -385,7 +385,7 @@ test("a guest sees the host move and fade behind the pillar", async ({ browser }
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
-  await guest.goto("/admin?harness=1");
+  await guest.goto("/host?harness=1");
   await expect(guest.locator("#loading")).toBeHidden();
   await guest.locator(`[data-session-id="${session}"]`).click();
   await expect.poll(() =>
@@ -506,7 +506,7 @@ test("guest master mode receives full terrain and entity mode restores only disc
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
-  await guest.goto("/admin?harness=1");
+  await guest.goto("/host?harness=1");
   await expect(guest.locator("#loading")).toBeHidden();
   await guest.locator(`[data-session-id="${session}"]`).click();
   await expect.poll(() =>

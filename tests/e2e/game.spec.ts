@@ -589,7 +589,7 @@ test("joining player connects over WebRTC and moves in the host world", async ({
     (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
       .scene.sessionId
   );
-  await admin.goto("/admin?harness=1");
+  await admin.goto("/host?harness=1");
   await expect(admin.locator("#loading")).toBeHidden();
   await expect(admin.locator('[data-transport="sse"]')).toHaveCount(0);
   const join = admin.locator(
@@ -642,106 +642,4 @@ test("joining player connects over WebRTC and moves in the host world", async ({
     { timeout: 8_000 },
   ).toBe("Visitor left. World ended.");
   await admin.close();
-});
-
-test("opt-in phone test drops and rejoins the same player", async ({ browser }) => {
-  const host = await browser.newPage();
-  const phone = await browser.newPage();
-  await host.goto("/?harness=1");
-  await expect(host.locator("#loading")).toBeHidden();
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-      .scene.sessionId
-  );
-  await phone.goto(`/phone-test?harness=1&session=${session}`);
-  const code = await phone.locator("#phone-test-code").textContent();
-  expect(code).toMatch(/^[a-f0-9]{32}$/);
-  await expect.poll(() =>
-    phone.evaluate(() =>
-      (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-        .scene.localId
-    )
-  ).toMatch(/^peer-/);
-  const guestId = await phone.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-      .scene.localId
-  );
-  await expect.poll(() => phone.locator("#phone-test-status").textContent(), {
-    timeout: 8_000,
-  }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay).*RTT median \d+ ms/);
-  await phone.keyboard.press("/");
-  await phone.locator("#chat-input").fill("/nick RejoinTest");
-  await phone.keyboard.press("Enter");
-  await expect.poll(() =>
-    host.evaluate((id) =>
-      (globalThis as unknown as {
-        __od: {
-          scene: { world: { players: Record<string, { name: string }> } };
-        };
-      }).__od.scene.world.players[id]?.name, guestId)
-  ).toBe("RejoinTest");
-  const command = await phone.request.post(`/api/phone-test/${code}/command`, {
-    data: { kind: "drop" },
-  });
-  expect(command.ok()).toBeTruthy();
-  const commandId = (await command.json()).command.id;
-  await expect.poll(async () => {
-    const response = await phone.request.get(`/api/phone-test/${code}/state`);
-    const state = await response.json();
-    return state.command?.id === commandId && state.result?.dropped === true;
-  }).toBe(true);
-  await expect.poll(
-    () =>
-      phone.evaluate(() =>
-        (globalThis as unknown as { __od: { scene: { status: string } } }).__od
-          .scene.status
-      ),
-    { timeout: 20_000 },
-  ).toBe("Visitor world");
-  await expect.poll(() =>
-    host.evaluate((id) =>
-      (globalThis as unknown as {
-        __od: {
-          scene: { world: { players: Record<string, { name: string }> } };
-        };
-      }).__od.scene.world.players[id]?.name, guestId)
-  ).toBe("RejoinTest");
-  const longDrop = await phone.request.post(`/api/phone-test/${code}/command`, {
-    data: { kind: "drop", data: "6500" },
-  });
-  expect(longDrop.ok()).toBeTruthy();
-  await expect.poll(() =>
-    host.evaluate((id) =>
-      (globalThis as unknown as {
-        __od: {
-          scene: { world: { players: Record<string, { name: string }> } };
-        };
-      }).__od.scene.world.players[id]?.name, guestId), { timeout: 8_000 })
-    .toBeUndefined();
-  await expect.poll(() =>
-    host.evaluate((id) =>
-      (globalThis as unknown as {
-        __od: {
-          scene: { world: { players: Record<string, { name: string }> } };
-        };
-      }).__od.scene.world.players[id]?.name, guestId), { timeout: 12_000 })
-    .toBe("RejoinTest");
-  await phone.close();
-  await host.close();
-});
-
-test("phone test keeps its code when switching to forced relay", async ({ page }) => {
-  await page.goto("/phone-test?harness=1");
-  const code = await page.locator("#phone-test-code").textContent();
-  expect(code).toMatch(/^[a-f0-9]{32}$/);
-  await expect.poll(async () =>
-    (await page.request.get(`/api/phone-test/${code}/state`)).status()
-  ).toBe(200);
-  const command = await page.request.post(`/api/phone-test/${code}/command`, {
-    data: { kind: "relay", data: "1" },
-  });
-  expect(command.ok()).toBeTruthy();
-  await expect(page).toHaveURL(/relay=1/);
-  await expect(page.locator("#phone-test-code")).toHaveText(code!);
-  await expect.poll(() => page.url()).toContain("relay=1");
 });

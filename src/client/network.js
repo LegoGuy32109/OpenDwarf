@@ -9,6 +9,7 @@ import {
   setTyping,
   submitMessage,
 } from "../shared/world.js";
+import { build } from "./build.js";
 import { acceptMoveIntent } from "../shared/protocol.js";
 import {
   droppedEntries,
@@ -111,7 +112,7 @@ function deliver(receive, replaceable = false) {
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
 async function signal(session, recipient, kind, data, from) {
-  const response = await fetch(`/api/signal/${session}/${recipient}`, {
+  const response = await fetch(build.apiUrl(`signal/${session}/${recipient}`), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id: crypto.randomUUID(), from, kind, data }),
@@ -121,7 +122,9 @@ async function signal(session, recipient, kind, data, from) {
 
 /** @param {string} session @param {string} recipient @param {(signal:Signal)=>void} receive */
 function inbox(session, recipient, receive) {
-  const events = new EventSource(`/api/signal/${session}/${recipient}`);
+  const events = new EventSource(
+    build.apiUrl(`signal/${session}/${recipient}`),
+  );
   /** @type {Set<string>} */
   const seen = new Set();
   events.onmessage = (event) => {
@@ -142,7 +145,7 @@ function inbox(session, recipient, receive) {
 }
 
 async function ice() {
-  const response = await fetch("/api/ice");
+  const response = await fetch(build.apiUrl("ice"));
   if (!response.ok) throw new Error("ICE configuration unavailable");
   const data = await response.json();
   return /** @type {RTCIceServer[]} */ (data.iceServers);
@@ -204,7 +207,7 @@ export function startHost(scene, session) {
   let publishTimer = null;
   let lastPublish = 0;
   const heartbeat = () => {
-    void fetch("/api/presence", {
+    void fetch(build.apiUrl("presence"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: session }),
@@ -1020,7 +1023,7 @@ export function startHost(scene, session) {
   globalThis.addEventListener("pagehide", () => {
     for (const playerId of peers.keys()) {
       navigator.sendBeacon(
-        "/api/signal/" + session + "/" + playerId,
+        build.apiUrl("signal/" + session + "/" + playerId),
         new Blob([
           JSON.stringify({
             id: crypto.randomUUID(),
@@ -1031,7 +1034,7 @@ export function startHost(scene, session) {
         ], { type: "application/json" }),
       );
     }
-    void fetch("/api/presence/" + session, {
+    void fetch(build.apiUrl("presence/" + session), {
       method: "DELETE",
       keepalive: true,
     });

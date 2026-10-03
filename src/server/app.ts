@@ -142,14 +142,41 @@ async function iceServers(): Promise<Response> {
   return json({ iceServers: response.v?.iceServers ?? [] });
 }
 
+/**
+ * The address a QR code opens. A build under a base path sends its own join
+ * link; accept it only when it is a web address that ends in this session's
+ * join path, so the endpoint cannot encode arbitrary URLs.
+ */
+export function joinLink(
+  request: Request,
+  session: string,
+  requested: string | null,
+): string {
+  if (requested) {
+    try {
+      const link = new URL(requested);
+      if (
+        (link.protocol === "http:" || link.protocol === "https:") &&
+        new RegExp(`^(/[a-zA-Z0-9._~-]+)*/join/${session}$`).test(link.pathname)
+      ) {
+        return `${link.origin}${link.pathname}`;
+      }
+    } catch {
+      // Fall through to this server's own join link.
+    }
+  }
+  return new URL(`/join/${session}`, request.url).href;
+}
+
 export function createApp(
   kv: Deno.Kv,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
-    const path = url.pathname;
+    // `/api/v1/*` is the client's API; the unversioned paths stay as aliases.
+    const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
     if (
-      (path === "/" || path === "/admin" || path === "/phone-test" ||
+      (path === "/" || path === "/host" ||
         /^\/join\/[a-zA-Z0-9_-]{8,80}$/.test(path)) &&
       request.method === "GET"
     ) {
@@ -157,7 +184,7 @@ export function createApp(
     }
     const qrPath = /^\/api\/qr\/([a-zA-Z0-9_-]{8,80})$/.exec(path);
     if (qrPath && request.method === "GET") {
-      const link = new URL(`/join/${qrPath[1]}`, request.url).href;
+      const link = joinLink(request, qrPath[1], url.searchParams.get("link"));
       const svg = new QRCode({
         content: link,
         width: 384,
@@ -172,57 +199,6 @@ export function createApp(
           "x-content-type-options": "nosniff",
         },
       });
-    }
-    const testPath =
-      /^\/api\/phone-test\/([a-f0-9]{32})\/(register|command|result|state)$/
-        .exec(path);
-    if (testPath) {
-      const [, code, action] = testPath;
-      const key = ["phone-test", code];
-      const entry = await kv.get<{
-        command?: { id: string; kind: string; data?: string };
-        result?: unknown;
-        updated: number;
-      }>(key);
-      if (action === "register" && request.method === "POST") {
-        const value = entry.value ?? { updated: Date.now() };
-        await kv.set(key, { ...value, updated: Date.now() }, {
-          expireIn: 30 * 60_000,
-        });
-        return json({ ok: true });
-      }
-      if (!entry.value) return json({ error: "test session missing" }, 404);
-      if (action === "state" && request.method === "GET") {
-        return json(entry.value);
-      }
-      if (action === "command" && request.method === "POST") {
-        const data = await body(request);
-        if (
-          typeof data.kind !== "string" ||
-          !["sample", "join", "relay", "drop"].includes(data.kind) ||
-          (data.data !== undefined && typeof data.data !== "string")
-        ) return json({ error: "invalid test command" }, 400);
-        const command = {
-          id: crypto.randomUUID(),
-          kind: data.kind,
-          data: typeof data.data === "string" ? data.data : undefined,
-        };
-        await kv.set(key, { ...entry.value, command, result: null }, {
-          expireIn: 30 * 60_000,
-        });
-        return json({ command });
-      }
-      if (action === "result" && request.method === "POST") {
-        const data = await body(request);
-        if (data.id !== entry.value.command?.id) {
-          return json({ error: "stale test command" }, 409);
-        }
-        await kv.set(key, { ...entry.value, result: data.result }, {
-          expireIn: 30 * 60_000,
-        });
-        return json({ ok: true });
-      }
-      return json({ error: "invalid test request" }, 405);
     }
     if (path === "/api/presence" && request.method === "POST") {
       const data = await body(request);

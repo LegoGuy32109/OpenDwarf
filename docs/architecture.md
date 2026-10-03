@@ -160,7 +160,7 @@ ignored.
 Each visitor can start moving before a server round trip. The visitor's browser
 owns the world state. Deno Deploy serves code and relays small signaling
 messages through KV, so isolated server instances do not need a shared in memory
-game loop. The admin route lists recent visitor heartbeats and joins through a
+game loop. The `/host` route lists recent visitor heartbeats and joins through a
 WebRTC data channel. HTTP POST and SSE carry connection signaling; they do not
 carry game updates. The host displays a session-specific QR code for
 `/join/<session>`. The Deno server generates its SVG with one server-side
@@ -202,16 +202,14 @@ expires a silent connection. The corner NPC follows an E, S, W, N loop and
 pauses one second after every two loops. It uses the same move rules as players.
 
 The admin panel records join time, selected ICE candidate types, and the last 32
-ping round trips. It shows their median and 95th percentile. `/admin?relay=1`
+ping round trips. It shows their median and 95th percentile. `/host?relay=1`
 forces a TURN relay for a WebRTC diagnostic. Compare direct and relay paths on
 one network and again with a phone on cellular service. Browser tests cover
 function and screenshots; they do not substitute for those device measurements.
-An opt-in `/phone-test` route accepts a small set of scripted commands through
-Deno KV. Its random code expires 30 minutes after the phone stops polling.
 
 ## Current limits
 
-- `/admin` and its APIs have no authentication. Anyone who knows the route can
+- `/host` and its APIs have no authentication. Anyone who knows the route can
   list and join active worlds in this stage.
 - A world has one browser host and currently has no fixed joining cap. Host
   upload and browser performance set the practical limit. It ends when the host
@@ -225,14 +223,6 @@ Deno KV. Its random code expires 30 minutes after the phone stops polling.
 - Terrain memory and view mode live in the browser host; closing that world
   discards them. Guest packet filtering is not an anti-cheat boundary.
 - Offline caching is deferred. A visitor needs the website to load the game.
-
-## Next experiment
-
-Test a direct join and forced relay from `/phone-test` on a phone, with a
-desktop hosting the world. Repeat on Wi-Fi and cellular. Record the candidate
-route, join time, median RTT, 95th percentile RTT, and whether a move visibly
-snaps after correction. Use the same devices and world for each path. That
-evidence can guide TURN configuration and future server-owned world experiments.
 
 ## Shell database
 
@@ -250,3 +240,25 @@ Turso when both variables are set and the memory store otherwise. Main is the
 latest promotion. The shared cases in `tests/server/store_cases.ts` run against
 both stores; the Turso run is skipped without credentials and needs a scratch
 database, because the cases leave rows behind.
+
+## Build base path
+
+A build can be served under a path such as `/b/test/`, with its files on another
+origin ([ADR 0004](adr/0004-shell-serves-builds-from-commits.md)), so the client
+assumes neither. `public/index.html` names its CSS and scripts with relative
+paths. A `<base href>` in the page says where they live; the Deno server serves
+them from `/`, and the shell sets it to the build's file origin. The shell also
+fills `<script id="od-build" type="application/json">` with
+`{"base", "api", "label", "commit"}`. `src/client/build.js` reads it: `base` is
+the page's path prefix and `api` is the API origin. Without that script the base
+is `/` and the API is the page's own origin.
+
+Routes are read under the base: `<base>` starts a world host, `<base>host` lists
+worlds to join, and `<base>join/<session>` joins one. A join link and its QR
+code carry the base, so a guest opens the host's build. The client calls
+`<api>/api/v1/...`; the Deno server answers the same routes at `/api/v1/` and at
+their older `/api/` paths. `/api/v1/qr/<session>` encodes the `link` query
+parameter when it ends in `/join/<session>`, and its own `/join/<session>`
+otherwise. Browser code names no absolute `/css`, `/js`, `/src`, `/assets`, or
+`/api` path except through this config. `tests/e2e/base-path.spec.ts` serves the
+page at `/b/test/` with its files from a second local port.
