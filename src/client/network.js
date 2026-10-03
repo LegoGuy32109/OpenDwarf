@@ -165,6 +165,8 @@ export function startHost(scene, session) {
   const peers = new Map();
   let joinFailures = 0;
   let spawnOrdinal = 0;
+  // Generated chunks appear later, so count the authored area before any exist.
+  const authoredChunks = scene.world.chunks.size;
   /** @type {ReturnType<typeof setTimeout>|null} */
   let publishTimer = null;
   let lastPublish = 0;
@@ -210,7 +212,7 @@ export function startHost(scene, session) {
 
   function spawn() {
     if (scene.layout === "room") return roomSpawnTile(++spawnOrdinal);
-    if (scene.world.chunks.size === 1 && spawnOrdinal < 8) {
+    if (authoredChunks === 1 && spawnOrdinal < 8) {
       const position = { x: 8 + spawnOrdinal, y: 7, z: 0 };
       spawnOrdinal++;
       return position;

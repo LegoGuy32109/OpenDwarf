@@ -21,6 +21,11 @@ import {
 } from "../shared/visibility.js";
 import { clampCameraAxis, playerOccluded } from "../shared/surface.js";
 import { terrainExtent } from "../shared/terrain.js";
+import {
+  createChunkGenerator,
+  generateAround,
+  seedFromText,
+} from "../shared/generation.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { createRenderer } from "./render.js";
@@ -923,6 +928,11 @@ export async function startApp() {
         ? createCornerNpc(scene.world, NPC_ORIGIN)
         : createCornerNpc(scene.world);
       host = startHost(scene, scene.sessionId);
+      // Only the host generates terrain. `?seed=` replays a world for tests.
+      scene.world.generateChunk = createChunkGenerator(seedFromText(
+        new URL(location.href).searchParams.get("seed") ?? scene.sessionId,
+      ));
+      generateAround(scene.world, Object.values(scene.world.players), 9);
       const hostTools = $("#host-tools");
       const code = /** @type {HTMLImageElement} */ ($("#join-code"));
       code.src = `/api/qr/${scene.sessionId}`;
@@ -1067,6 +1077,7 @@ export async function startApp() {
       advanceTicks(scene.world);
       tickNpc?.();
       host?.tick();
+      generateAround(scene.world, Object.values(scene.world.players));
       move();
       if (!isAdmin) {
         for (const player of Object.values(scene.world.players)) {
