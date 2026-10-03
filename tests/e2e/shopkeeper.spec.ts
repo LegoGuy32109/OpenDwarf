@@ -118,10 +118,10 @@ async function mineAiming(page: Page, key: string, ms: number) {
 const row = (page: Page, name: string) =>
   page.locator(`#shop-panel .shop-row[data-row="${name}"]`);
 
-test("the host mines ore, sells it to the shopkeeper, and the score changes", async ({ page }) => {
+test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ page }) => {
   test.setTimeout(120_000);
   await startHost(page);
-  await expect(page.locator("#score")).toContainText("Coins 0");
+  await expect.poll(() => coins(page)).toBe(0);
   // Down the stairs into the tunnel, then mine coal and iron ore.
   await holdUntil(page, "e", (p) => p.y <= 12.1);
   await holdUntil(page, "f", (p) => p.z === 2 && p.x >= 21.2);
@@ -163,15 +163,15 @@ test("the host mines ore, sells it to the shopkeeper, and the score changes", as
   await expect(row(page, "iron ore")).toHaveClass(/selected/);
   await page.keyboard.press("Space");
   await expect.poll(() => coins(page)).toBe(3);
-  await expect(page.locator("#score")).toContainText("Coins 3");
+  await expect.poll(() => coins(page)).toBe(3);
   expect(await systemLines(page)).toContain("Sold iron ore ×1 for 3 coins");
   await evidenceShot(page, "shop-sold-iron");
-  // The sell all row takes the rest, and the score follows.
+  // The sell all row takes the rest, and the coins follow.
   // The sold row is gone, so the selection falls back to the first row.
   await expect(row(page, "all")).toHaveClass(/selected/);
   await page.keyboard.press("Space");
   await expect.poll(() => coins(page)).toBe(4);
-  await expect(page.locator("#score")).toContainText("Coins 4");
+  await expect.poll(() => coins(page)).toBe(4);
   expect(await systemLines(page)).toContain("Sold coal ×1 for 1 coin");
   await page.waitForTimeout(600);
   await evidenceShot(page, "shop-score");
@@ -241,7 +241,7 @@ test("a guest sells through the host, and the host rejects what it does not hold
     await guest.keyboard.press("k"); // sell all -> first ore row
     await guest.keyboard.press("Space");
     await expect.poll(() => coins(guest)).toBe(3);
-    await expect(guest.locator("#score")).toContainText("Coins 3");
+    await expect.poll(() => coins(guest)).toBe(3);
     expect(await systemLines(guest)).toContain("Sold coal ×3 for 3 coins");
     // The sale line belongs to the seller alone.
     expect(await systemLines(host)).not.toContain("Sold coal ×3 for 3 coins");
@@ -279,7 +279,7 @@ test("the shop works by touch on a phone", async ({ browser }) => {
     expect(await coins(phone)).toBe(0);
     await row(phone, "gold ore").tap();
     await expect.poll(() => coins(phone)).toBe(16);
-    await expect(phone.locator("#score")).toContainText("Coins 16");
+    await expect.poll(() => coins(phone)).toBe(16);
     await phone.locator("#interact-button").tap(); // sells the selected row
     await expect.poll(() => coins(phone)).toBe(20);
     await evidenceShot(phone, "shop-phone-sold");

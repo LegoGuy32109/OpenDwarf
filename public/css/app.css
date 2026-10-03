@@ -8,6 +8,9 @@
 * {
   box-sizing: border-box;
 }
+html {
+  background: #17191c;
+}
 html,
 body,
 #game {
@@ -307,7 +310,7 @@ input {
 #chat-input {
   position: absolute;
   z-index: 8;
-  bottom: calc(var(--safe-bottom) + 22px);
+  bottom: calc(var(--safe-bottom) + 22px + var(--chat-lift, 0px));
   left: 12px;
   width: calc(100% - 24px);
   height: 34px;
@@ -415,6 +418,15 @@ input {
     display: block;
   }
 }
+/* A Home Screen app already fills the screen, so only a browser tab offers fullscreen. */
+@media (display-mode: standalone) {
+  #fullscreen-toggle {
+    display: none;
+  }
+}
+:root.standalone #fullscreen-toggle {
+  display: none;
+}
 @media (orientation: portrait) {
   .stick {
     bottom: calc(var(--safe-bottom) + clamp(54px, 10vh, 94px));
@@ -456,28 +468,7 @@ input {
   }
 }
 
-/* Shop panel and score readout (src/client/shop-panel.js). */
-#score {
-  position: absolute;
-  z-index: 6;
-  top: calc(var(--safe-top) + 56px);
-  left: calc(var(--safe-left) + 12px);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 6px;
-  border: 1px solid #706958;
-  background: #1e2024dd;
-  color: #f3e7c9;
-  font-size: 13px;
-  pointer-events: none;
-}
-#score[hidden] {
-  display: none;
-}
-#score b {
-  color: #f2c14e;
-}
+/* Shop panel (src/client/shop-panel.js). */
 .shop-icon {
   flex: none;
   width: 24px;

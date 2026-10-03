@@ -44,6 +44,7 @@ import {
   TEXT_SIZE_KEY,
   TEXT_SIZES,
 } from "../shared/chat.js";
+import { keyboardInset } from "./chat-bar.js";
 import {
   addSystemLine,
   createHearingLog,
@@ -91,7 +92,7 @@ import {
   pickupLine,
 } from "../shared/items.js";
 import { sellItems, SHOP_TILE } from "../shared/shop.js";
-import { createScoreReadout, createShopPanel } from "./shop-panel.js";
+import { createShopPanel } from "./shop-panel.js";
 
 /** @param {string} selector */
 const $ = (
@@ -108,13 +109,12 @@ const bag = createInventoryPanel({
 });
 const logList = $("#hearing-log-lines");
 let renderedLog = -1;
-/** The shop panel and the score readout; both are drawn by `shop-panel.js`. */
+/** The shop panel, drawn by `shop-panel.js`. */
 const shop = createShopPanel({
   root: $("#game"),
   sell: (request) => sellRequest(request),
   flash: (text) => flash(text),
 });
-const score = createScoreReadout($("#game"));
 const gamepadDebug = new URL(location.href).searchParams.has("gamepad-debug");
 const gamepadEnabled = !new URL(location.href).searchParams.has("harness") ||
   gamepadDebug;
@@ -155,6 +155,9 @@ const scene = {
   hearingLog: createHearingLog(),
   /** @param {string} text */
   systemLine: (text) => addSystemLine(scene.hearingLog, text),
+  chatLift: 0,
+  /** The screen's safe-area insets in CSS pixels (the notch, the home indicator). */
+  safe: { top: 0, right: 0, bottom: 0, left: 0 },
   status: "Local world",
   aim: { x: 0, y: 0 },
   /** Mining actions to draw, with progress from 0 to 1. */
@@ -263,6 +266,38 @@ function typing() {
   else host?.publish();
 }
 
+/**
+ * Measure the safe-area insets: the canvas draws its own text, so it needs them as numbers.
+ * CSS cannot hand `env()` to script, so a hidden element padded by it is read instead.
+ */
+const safeProbe = document.createElement("div");
+safeProbe.style.cssText =
+  "position:fixed;inset:0;visibility:hidden;pointer-events:none;" +
+  "padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) " +
+  "env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)";
+document.body.append(safeProbe);
+function measureSafeArea() {
+  const style = getComputedStyle(safeProbe);
+  scene.safe = {
+    top: parseFloat(style.paddingTop) || 0,
+    right: parseFloat(style.paddingRight) || 0,
+    bottom: parseFloat(style.paddingBottom) || 0,
+    left: parseFloat(style.paddingLeft) || 0,
+  };
+}
+measureSafeArea();
+globalThis.addEventListener("resize", measureSafeArea);
+globalThis.addEventListener("orientationchange", measureSafeArea);
+
+/** Lift the chat bar above the on-screen keyboard while chat is open. */
+function placeChatBar() {
+  const visual = globalThis.visualViewport;
+  scene.chatLift = scene.chatOpen && visual
+    ? keyboardInset(globalThis.innerHeight, visual)
+    : 0;
+  chatInput.style.setProperty("--chat-lift", `${scene.chatLift}px`);
+}
+
 /** @param {string} [prefill] */
 function openChat(prefill = "") {
   bag.toggle(false);
@@ -274,6 +309,7 @@ function openChat(prefill = "") {
   chatInput.value = prefill;
   chatInput.classList.add("open");
   chatInput.focus();
+  placeChatBar();
   typing();
 }
 
@@ -283,6 +319,7 @@ function closeChat() {
   chatInput.value = "";
   chatInput.classList.remove("open");
   chatInput.blur();
+  placeChatBar();
   typing();
 }
 
@@ -636,15 +673,17 @@ function tapPickupGrid(clientX, clientY) {
 }
 
 /**
- * The target locks when mining starts, so walking while the aim holds does not
- * cancel (the host cancels when the target leaves reach). A new aim direction
- * or view level means aiming at another tile, which cancels.
+ * The target locks when mining starts, so walking does not cancel (the host
+ * cancels when the target leaves reach), and neither does letting the aim go
+ * back to rest: on a phone the thumb leaves the look stick to tap interact.
+ * Aiming in another direction or changing the view level cancels.
  */
 function checkMineLock() {
   if (!mineLock) return;
+  const resting = scene.aim.x === 0 && scene.aim.y === 0;
   if (
-    scene.viewMode === "entity" && scene.aim.x === mineLock.x &&
-    scene.aim.y === mineLock.y && scene.viewZ === mineLock.z
+    scene.viewMode === "entity" && scene.viewZ === mineLock.z &&
+    (resting || (scene.aim.x === mineLock.x && scene.aim.y === mineLock.y))
   ) return;
   mineLock = null;
   if (isAdmin) guest?.send({ type: "mine-cancel" });
@@ -1000,7 +1039,32 @@ function bindTouchGesture() {
   }, { passive: false });
 }
 
+/**
+ * Runs `action` when a touch on `element` goes down. iOS sends no click while another finger
+ * is on the screen, so a click handler misses taps made while a stick is held. A mouse or
+ * keyboard click still works.
+ * @param {HTMLElement} element @param {()=>void} action
+ */
+function bindPress(element, action) {
+  let touchedAt = -Infinity;
+  element.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse") return;
+    event.preventDefault();
+    touchedAt = performance.now();
+    scene.inputMode = "touch";
+    action();
+  });
+  element.addEventListener("click", () => {
+    if (performance.now() - touchedAt < 1000) return;
+    action();
+  });
+}
+
 function bindInput() {
+  // iOS reports a Home Screen app through navigator.standalone.
+  if (/** @type {{standalone?:boolean}} */ (navigator).standalone) {
+    document.documentElement.classList.add("standalone");
+  }
   const fullscreenButton = $("#fullscreen-toggle");
   const displayStatus = $("#display-status");
   const updateFullscreen = () => {
@@ -1033,34 +1097,24 @@ function bindInput() {
     scene.inputMode = "touch";
     cameraStick = { x, y };
   });
-  $("#sprint-button").addEventListener("click", () => {
-    scene.inputMode = "touch";
-    toggleSprint();
-  });
-  $("#interact-button").addEventListener("click", () => {
-    scene.inputMode = "touch";
-    interact();
-  });
+  bindPress($("#sprint-button"), toggleSprint);
+  bindPress($("#interact-button"), interact);
   $("#chat-button").addEventListener("click", () => {
     scene.inputMode = "touch";
     openChat();
   });
-  $("#log-button").addEventListener("click", () => {
-    scene.inputMode = "touch";
-    toggleLog();
-  });
+  bindPress($("#log-button"), () => toggleLog());
   $("#log-close").addEventListener("click", () => toggleLog(false));
-  $("#bag-button").addEventListener("click", () => {
-    scene.inputMode = "touch";
-    toggleBag();
-  });
-  $("#menu-button").addEventListener("click", () => {
-    scene.inputMode = "touch";
+  bindPress($("#bag-button"), () => toggleBag());
+  bindPress($("#menu-button"), () => {
     toggleBag(false);
     shop.close();
     scene.menu = !scene.menu;
     scene.menuPage = "root";
   });
+  const visual = globalThis.visualViewport;
+  visual?.addEventListener("resize", placeChatBar);
+  visual?.addEventListener("scroll", placeChatBar);
   chatInput.addEventListener("input", () => {
     scene.chatDraft = chatInput.value;
     typing();
@@ -1581,8 +1635,6 @@ export async function startApp() {
     updatePickupGrid();
     scene.inventory = inventoryDisplay();
     bag.update(scene.inventory, heldDisplay());
-    score.show(scene.layout === "room");
-    score.update(scene.inventory);
     shop.update(scene.inventory);
     shop.steer(shopDirection(), now);
     renderer?.render(scene, accumulator / TICK_MS);

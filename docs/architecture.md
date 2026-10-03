@@ -151,9 +151,9 @@ that the inventory holds the count, and that the coin stack has room. A failed
 check changes nothing and a guest gets `sell-result` with the reason. A sale
 removes the items, adds coins to the inventory's coin stack, and adds the sale
 line through `tell`, so only the seller sees it. The score is the coin count in
-the inventory the client already receives. While the panel is open, interact and
-the look controls drive it instead of mining and aiming, and movement input is
-ignored.
+the inventory panel; there is no separate readout. While the panel is open,
+interact and the look controls drive it instead of mining and aiming, and
+movement input is ignored.
 
 ## Why the visitor hosts the world
 

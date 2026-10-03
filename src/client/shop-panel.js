@@ -1,7 +1,7 @@
 // @ts-check
 
 import { itemInfo } from "../shared/items.js";
-import { coinsIn, rowRequest, shopRows } from "../shared/shop.js";
+import { rowRequest, shopRows } from "../shared/shop.js";
 
 /** @typedef {import('../shared/items.js').Stack} Stack */
 /** @typedef {import('../shared/shop.js').ShopRow} ShopRow */
@@ -202,29 +202,4 @@ export function createShopPanel({ root, sell, flash }) {
     },
   };
   return api;
-}
-
-/**
- * The score readout: a small HUD element with the player's coins. It stays
- * hidden until `show` is called, so a layout without a shop shows nothing.
- * @param {HTMLElement} root
- */
-export function createScoreReadout(root) {
-  const value = el("b", "", ["0"]);
-  const readout = el("output", "", [icon("coin"), "Coins ", value]);
-  readout.id = "score";
-  readout.setAttribute("aria-label", "Score in coins");
-  readout.hidden = true;
-  root.append(readout);
-  return {
-    /** @param {boolean} shown */
-    show(shown) {
-      readout.hidden = !shown;
-    },
-    /** @param {readonly Stack[]} inventory */
-    update(inventory) {
-      const text = String(coinsIn(inventory));
-      if (value.textContent !== text) value.textContent = text;
-    },
-  };
 }

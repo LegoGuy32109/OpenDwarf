@@ -263,4 +263,39 @@ test.describe("phone interact button", () => {
     await expect.poll(() => tile(page, 3), { timeout: 5000 }).toBe(OPEN);
     await page.keyboard.up("i");
   });
+
+  test("a tap mines while a thumb holds the look stick, and letting go keeps mining", async ({ page }) => {
+    await startHost(page);
+    await placeAt(page, 4, 2);
+    expect(await tile(page, 4)).not.toBe(OPEN);
+    const look = (await page.locator("[data-stick=camera]").boundingBox())!;
+    const button = (await page.locator("#interact-button").boundingBox())!;
+    // Aim north: one finger near the top of the look stick.
+    const aim = {
+      x: look.x + look.width / 2,
+      y: look.y + look.height * 0.15,
+      id: 1,
+    };
+    const tap = {
+      x: button.x + button.width / 2,
+      y: button.y + button.height / 2,
+      id: 2,
+    };
+    const touch = await page.context().newCDPSession(page);
+    const send = (
+      type: "touchStart" | "touchEnd",
+      points: typeof aim[],
+    ) => touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    await send("touchStart", [aim]);
+    await page.waitForTimeout(150);
+    // A second finger taps interact while the first still holds the stick.
+    await send("touchStart", [aim, tap]);
+    await send("touchEnd", [aim]);
+    await expect.poll(async () => (await mining(page)).length).toBe(1);
+    // The aim thumb lifts: the aim rests, and mining goes on.
+    await send("touchEnd", []);
+    await page.waitForTimeout(300);
+    expect((await mining(page)).length).toBe(1);
+    await expect.poll(() => tile(page, 4), { timeout: 6000 }).toBe(OPEN);
+  });
 });

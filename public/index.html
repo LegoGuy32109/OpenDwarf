@@ -11,8 +11,10 @@
     <meta name="theme-color" content="#17191c">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent">
+    <!-- Not black-translucent: in an iOS 26 Home Screen app the translucent bar
+      makes the viewport short by the status bar's height, and iOS leaves the
+      strip at the bottom unpainted. No CSS or script recovers it. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>Open Dwarf</title>
     <link rel="stylesheet" href="css/app.css">
     <link rel="stylesheet" href="css/inventory-panel.css">
@@ -90,7 +92,8 @@
         <ol id="hearing-log-lines" tabindex="0"></ol>
       </aside>
       <input id="chat-input" maxlength="120" autocomplete="off"
-        autocapitalize="sentences" aria-label="Chat message or slash command">
+        autocorrect="off" autocapitalize="off" spellcheck="false"
+        enterkeyhint="send" aria-label="Chat message or slash command">
       <aside id="admin" hidden>
         <h1>Active worlds</h1>
         <p id="admin-status">Looking for visitors…</p>
