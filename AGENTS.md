@@ -42,3 +42,23 @@ deno task evidence:publish <issue>-<slug> exports/evidence/<name>.png \
 
 The script commits the files to the orphan `evidence` branch, adds a GIF preview
 for each video, and prints Markdown to paste into the issue and pull request.
+
+## Orchestration
+
+Tickets run as Orca workers. Workers read `docs/worker-primer.md`; the brief
+they get is `docs/orca/worker-brief.md`. The coordinator uses:
+
+```sh
+export ORCA_RUN=<run id>
+deno task orca start --issue <n> --slug <slug> --title "<title>" [--base <branch>] [--notes notes.md]
+deno task orca wait     # one waiter per run; returns only worker reports
+deno task orca merge --pr <n> [--comment "..."] [--map <n> --decision "- [Title](url) — gist"]
+```
+
+`merge` squash-merges, deletes the branch, releases the worker, removes its
+worktree, pulls, and adds the decision to the map.
+
+Write contracts before starting parallel workers. When several tickets share a
+module or an API, the coordinator first commits the interface (types, route
+shapes, empty test files), so the tickets can run at the same time instead of
+waiting on each other. Keep a ticket to one session; split anything larger.
