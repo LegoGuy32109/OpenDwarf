@@ -233,3 +233,20 @@ desktop hosting the world. Repeat on Wi-Fi and cellular. Record the candidate
 route, join time, median RTT, 95th percentile RTT, and whether a move visibly
 snaps after correction. Use the same devices and world for each path. That
 evidence can guide TURN configuration and future server-owned world experiments.
+
+## Shell database
+
+The shell keeps labels, promotions, shell deploys, sessions, and telemetry
+summaries in Turso (see ADR 0004). `migrations/` holds numbered SQL files.
+`deno task db:migrate` applies the pending ones to the database named by
+`TURSO_DB_URL` and `TURSO_DB_TOKEN` in `.env`, and `deno task db:migrate:prod`
+reads `.env.prod`. Each applied file is recorded with its checksum in
+`schema_migrations`, so a second run changes nothing and an edited migration is
+refused. Add a schema change as a new numbered file.
+
+`src/server/store.ts` is the one interface the shell uses. `createTursoStore`
+talks to Turso, `createMemoryStore` serves unit tests, and `openStore()` picks
+Turso when both variables are set and the memory store otherwise. Main is the
+latest promotion. The shared cases in `tests/server/store_cases.ts` run against
+both stores; the Turso run is skipped without credentials and needs a scratch
+database, because the cases leave rows behind.
