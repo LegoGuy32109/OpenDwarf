@@ -34,11 +34,14 @@
     "evidence:publish": "deno run --allow-run --allow-read --allow-write scripts/publish-evidence.ts",
     "capture:sync": "deno run -A scripts/capture-visual-sync.ts",
     "verify": "deno task fmt:check && deno task lint && deno task check && deno task test",
+    "db:migrate": "deno run --env-file=.env --allow-env=TURSO_DB_URL,TURSO_DB_TOKEN --allow-net --allow-read scripts/migrate.ts",
+    "db:migrate:prod": "deno run --env-file=.env.prod --allow-env=TURSO_DB_URL,TURSO_DB_TOKEN --allow-net --allow-read scripts/migrate.ts",
     "hooks": "git config core.hooksPath .githooks"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1.0.19",
     "@playwright/test": "npm:@playwright/test@1.63.0",
+    "@tursodatabase/serverless/compat": "npm:@tursodatabase/serverless@1.4.0/compat",
     "qrcode-svg": "npm:qrcode-svg@1.1.0"
   },
   "deploy": {
