@@ -2,6 +2,7 @@
 
 import { WORLD_TOP } from "./terrain.js";
 import { decodeChunks, encodeChunks } from "./chunk-wire.js";
+import { MAX_MATERIAL } from "./materials.js";
 import { unpackVisibility } from "./visibility-wire.js";
 
 /** @typedef {import('./world.js').Player} Player */
@@ -347,6 +348,15 @@ export function decodeControl(value) {
         : null;
     case "cancel":
       return counter(value.sequence) ? value : null;
+    case "mine":
+      return Number.isInteger(value.x) &&
+          finite(value.x, -MAX_COORD, MAX_COORD) &&
+          Number.isInteger(value.y) && finite(value.y, -MAX_COORD, MAX_COORD) &&
+          Number.isInteger(value.z) && finite(value.z, 0, WORLD_TOP)
+        ? value
+        : null;
+    case "mine-cancel":
+      return value;
     case "mode":
       return value.mode === "entity" || value.mode === "master" ? value : null;
     case "typing":
@@ -367,4 +377,75 @@ export function decodeControl(value) {
     default:
       return null;
   }
+}
+
+/** Most tile changes one terrain message may carry. */
+export const MAX_TERRAIN_CHANGES = 256;
+
+/**
+ * Host to guest: tiles that changed. Only tiles the guest can see, or all of
+ * them in master view. Returns null for anything malformed.
+ * @param {unknown} value @returns {import('./terrain.js').TileChange[]|null}
+ */
+export function decodeTerrainChanges(value) {
+  if (
+    !record(value) || value.type !== "terrain" ||
+    !Array.isArray(value.changes) ||
+    value.changes.length > MAX_TERRAIN_CHANGES
+  ) return null;
+  /** @type {import('./terrain.js').TileChange[]} */
+  const changes = [];
+  for (const change of value.changes) {
+    if (
+      !record(change) || !Number.isInteger(change.x) ||
+      !finite(change.x, -MAX_COORD, MAX_COORD) || !Number.isInteger(change.y) ||
+      !finite(change.y, -MAX_COORD, MAX_COORD) || !Number.isInteger(change.z) ||
+      !finite(change.z, 0, WORLD_TOP) || !Number.isInteger(change.material) ||
+      !finite(change.material, 0, MAX_MATERIAL)
+    ) return null;
+    changes.push({
+      x: change.x,
+      y: change.y,
+      z: change.z,
+      material: change.material,
+    });
+  }
+  return changes;
+}
+
+/** Most mining entries one message may carry. */
+export const MAX_MINING_ENTRIES = 256;
+
+/**
+ * Host to guest: the mining actions the guest can see, replacing the earlier
+ * list. Returns null for anything malformed.
+ * @param {unknown} value @returns {import('./mining.js').MiningEntry[]|null}
+ */
+export function decodeMining(value) {
+  if (
+    !record(value) || value.type !== "mining" ||
+    !Array.isArray(value.entries) ||
+    value.entries.length > MAX_MINING_ENTRIES
+  ) return null;
+  /** @type {import('./mining.js').MiningEntry[]} */
+  const entries = [];
+  for (const entry of value.entries) {
+    if (
+      !record(entry) || !identifier(entry.id) ||
+      !finite(entry.x, -MAX_COORD, MAX_COORD) || !Number.isInteger(entry.x) ||
+      !finite(entry.y, -MAX_COORD, MAX_COORD) || !Number.isInteger(entry.y) ||
+      !finite(entry.z, 0, WORLD_TOP) || !Number.isInteger(entry.z) ||
+      !finite(entry.elapsedMs, 0, 60_000) ||
+      !finite(entry.totalMs, 1, 60_000)
+    ) return null;
+    entries.push({
+      id: entry.id,
+      x: entry.x,
+      y: entry.y,
+      z: entry.z,
+      elapsedMs: entry.elapsedMs,
+      totalMs: entry.totalMs,
+    });
+  }
+  return entries;
 }

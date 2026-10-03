@@ -10,7 +10,8 @@ import {
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import { readTile } from "../shared/terrain.js";
-import { adjacentTarget } from "../shared/target.js";
+import { highlightedTile } from "../shared/target.js";
+import { decalFrame } from "../shared/mining.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import {
@@ -86,7 +87,20 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[]}} Scene */
+
+/**
+ * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
+ * in 16×16 pixel units; frame n draws the pieces of frames 0 through n.
+ * @type {readonly (readonly (readonly [number,number,number,number])[])[]}
+ */
+const DECAL_PIECES = [
+  [[7, 6, 2, 3]],
+  [[5, 4, 2, 2], [9, 9, 2, 2], [7, 3, 2, 3]],
+  [[2, 8, 5, 2], [9, 2, 2, 5], [10, 11, 4, 2]],
+  [[2, 2, 4, 2], [11, 5, 4, 2], [6, 10, 2, 5], [3, 12, 3, 2]],
+  [[1, 5, 4, 2], [11, 8, 4, 2], [8, 0, 2, 6], [13, 12, 2, 3], [3, 3, 2, 6]],
+];
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -414,7 +428,7 @@ export async function createRenderer(canvas) {
     flush();
     const localPlayer = scene.world.players[scene.localId];
     if (scene.viewMode === "entity" && localPlayer) {
-      const target = adjacentTarget(
+      const target = highlightedTile(
         localPlayer,
         scene.aim,
         scene.viewZ,
@@ -460,6 +474,49 @@ export async function createRenderer(canvas) {
         flush();
       }
     }
+    for (const entry of scene.mining ?? []) {
+      if (entry.z !== scene.viewZ) continue;
+      const px = entry.x * TILE;
+      const py = entry.y * TILE;
+      if (entry.id === scene.localId) {
+        // A square grows from the tile's center inside the orange outline.
+        const side = Math.max(2, (TILE - 12) * entry.progress);
+        quad(
+          textures.white,
+          false,
+          px + (TILE - side) / 2,
+          py + (TILE - side) / 2,
+          side,
+          side,
+          [0, 0, 1, 1],
+          [1, 0.55, 0.12, 0.85],
+        );
+        continue;
+      }
+      const unit = TILE / 16;
+      const frame = decalFrame(entry.progress);
+      quad(textures.white, false, px, py, TILE, TILE, [0, 0, 1, 1], [
+        0,
+        0,
+        0,
+        0.07 * (frame + 1),
+      ]);
+      for (const pieces of DECAL_PIECES.slice(0, frame + 1)) {
+        for (const [x, y, w, h] of pieces) {
+          quad(
+            textures.white,
+            false,
+            px + x * unit,
+            py + y * unit,
+            w * unit,
+            h * unit,
+            [0, 0, 1, 1],
+            [0, 0, 0, 0.8],
+          );
+        }
+      }
+    }
+    flush();
     const players = scene.presentation.sightEntries(
       Object.values(scene.world.players),
       scene.localId,
@@ -721,7 +778,10 @@ export async function createRenderer(canvas) {
         );
       }
     }
-    const status = scene.status.slice(0, 75);
+    const status =
+      (scene.notice && performance.now() < scene.notice.until
+        ? scene.notice.text
+        : scene.status).slice(0, 75);
     if (status) {
       rect(
         10 * dpr,

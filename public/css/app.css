@@ -234,6 +234,17 @@ input {
   width: clamp(56px, 13vw, 68px);
   --stamina: 1;
 }
+/* The interact button mirrors sprint: right of the move stick, never over it. */
+#interact-button {
+  position: absolute;
+  z-index: 1;
+  left: calc(100% + 6px);
+  bottom: 18px;
+  width: clamp(56px, 13vw, 68px);
+}
+#interact-button svg {
+  width: 56%;
+}
 #sprint-button svg {
   width: 56%;
   margin-top: -6px;
@@ -448,6 +459,11 @@ input {
   .stick-hit {
     width: clamp(120px, 32vw, 190px);
   }
+  /* Two buttons share the gap between the sticks on a narrow phone. */
+  #sprint-button,
+  #interact-button {
+    width: clamp(44px, 11.5vw, 56px);
+  }
 }
 @media (orientation: landscape) {
   .stick {
@@ -460,7 +476,8 @@ input {
   .action {
     width: clamp(38px, 8vh, 46px);
   }
-  #sprint-button {
+  #sprint-button,
+  #interact-button {
     width: clamp(52px, 12vh, 64px);
   }
 }
