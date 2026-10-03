@@ -108,12 +108,13 @@ export function copyStacks(stacks) {
 }
 
 /**
- * The stack an interact picks up: the first one on the tile. #18 replaces this
- * with the pickup grid's choice.
- * @param {Stack[]} stacks
+ * The index of the stack of one kind in a list, or -1. A pickup names the kind
+ * rather than a position, because another entity's pickup can shift the list
+ * between the pickup grid's choice and the world host's check.
+ * @param {Stack[]} stacks @param {unknown} kind
  */
-export function firstStackIndex(stacks) {
-  return stacks.length ? 0 : -1;
+export function stackIndexOfKind(stacks, kind) {
+  return stacks.findIndex((stack) => stack.kind === kind);
 }
 
 /**
@@ -200,18 +201,20 @@ export function inPickupReach(player, tile) {
 /**
  * Pick up a whole stack from a tile into an entity's inventory, on the world
  * host. The host checks the entity, the tile, and reach; a guest only names the
- * tile it aimed at. The host handles requests one at a time, so when two
- * entities ask for one stack, the first request gets it and the second one is
- * refused with "nothing to pick up".
- * @param {World} world @param {string} playerId @param {Tile} tile @returns {PickupResult}
+ * tile it aimed at and the kind of the stack it chose in the pickup grid. The
+ * host handles requests one at a time, so when two entities ask for one stack,
+ * the first request gets it and the second one is refused with "nothing to
+ * pick up".
+ * @param {World} world @param {string} playerId @param {Tile} tile @param {unknown} kind @returns {PickupResult}
  */
-export function pickUp(world, playerId, tile) {
+export function pickUp(world, playerId, tile, kind) {
   const player = world.players[playerId];
   if (!player) return { ok: false, reason: "unknown player" };
   if (
     !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
     !Number.isInteger(tile.z) || tile.z < 0 || tile.z > WORLD_TOP
   ) return { ok: false, reason: "invalid tile" };
+  if (!isItemKind(kind)) return { ok: false, reason: "unknown item" };
   if (!inPickupReach(player, tile)) {
     return {
       ok: false,
@@ -221,7 +224,7 @@ export function pickUp(world, playerId, tile) {
   const store = droppedItems(world);
   const key = tileKey(tile);
   const entry = store.tiles.get(key);
-  const index = entry ? firstStackIndex(entry.stacks) : -1;
+  const index = entry ? stackIndexOfKind(entry.stacks, kind) : -1;
   if (!entry || index < 0) return { ok: false, reason: "nothing to pick up" };
   const stack = entry.stacks[index];
   // Check room first so a full inventory stack leaves the dropped stack in place.

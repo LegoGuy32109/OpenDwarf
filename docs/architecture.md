@@ -116,16 +116,23 @@ with the entity's chosen item.
 
 A pickup is a host decision. Interact on a highlighted tile that holds dropped
 items calls `pickUp` on the host, or sends a `pickup` request with the tile from
-a guest. The host checks the entity, the tile, and reach (the tile is on the
-entity's level, and is its own tile or a neighbor), and moves the first stack
-into the inventory. It handles requests one at a time, so the first of two
+a guest, both naming the item kind of the chosen stack. The host checks the
+entity, the tile, the kind, and reach (the tile is on the entity's level, and is
+its own tile or a neighbor), and moves that whole stack into the inventory. A
+request names a kind rather than a list position because another pickup can
+shift the list in between. It handles requests one at a time, so the first of two
 contested requests gets the stack and the other receives "nothing to pick up".
 The host sends each peer an `items` message with only the dropped items on
 tiles that peer sees (all of them in master view) whenever that list changes,
 and an `inventory` message with only that peer's own inventory. A pickup system
 line goes to the player who picked up and nobody else, through `tell` next to
 `announce` in `network.js`. A client draws one icon per tile, cycling the kinds
-every `ICON_CYCLE_MS`.
+every `ICON_CYCLE_MS`. Interact on a tile with several stacks opens the pickup
+grid instead, whose state and geometry live in `src/client/pickup-grid.js`.
+`app.js` calls it each frame to close the grid when the entity leaves reach or
+the tile empties, to move the selector, and to hand `scene.pickupCells` to the
+renderer. While the grid is open, the look control and D-pad drive it, not the
+aim or movement.
 
 ## Why the visitor hosts the world
 

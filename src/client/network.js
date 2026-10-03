@@ -460,7 +460,7 @@ export function startHost(scene, session) {
           x: Number(message.x),
           y: Number(message.y),
           z: Number(message.z),
-        });
+        }, message.kind);
         if (result.ok) tell(playerId, pickupLine(result.kind, result.count));
         else if (channel?.readyState === "open") {
           channel.send(

@@ -88,7 +88,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[]}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[]}} Scene */
 
 /**
  * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
@@ -431,7 +431,9 @@ export async function createRenderer(canvas) {
     }
     flush();
     const localPlayer = scene.world.players[scene.localId];
-    if (scene.viewMode === "entity" && localPlayer) {
+    if (
+      scene.viewMode === "entity" && localPlayer && !scene.pickupCells?.length
+    ) {
       const target = highlightedTile(
         localPlayer,
         scene.aim,
@@ -589,6 +591,100 @@ export async function createRenderer(canvas) {
       );
     }
     flush();
+    // Pickup grid: dark squares with one stack each; the selector is the orange outline.
+    for (const cell of scene.pickupCells ?? []) {
+      quad(textures.white, false, cell.x, cell.y, cell.size, cell.size, [
+        0,
+        0,
+        1,
+        1,
+      ], [0.06, 0.06, 0.08, 0.88 * cell.alpha]);
+      const side = cell.size * 0.625;
+      quad(
+        textures.items,
+        false,
+        cell.x + (cell.size - side) / 2,
+        cell.y + (cell.size - side) / 2,
+        side,
+        side,
+        [0, cell.frame / ITEM_FRAMES, 1, 1 / ITEM_FRAMES],
+        [1, 1, 1, cell.alpha],
+      );
+      if (cell.more) {
+        // A small gray plus in the corner: more stacks lie below.
+        const arm = cell.size * 0.26;
+        const thick = Math.max(2, cell.size * 0.05);
+        const cx = cell.x + cell.size - 10 - arm / 2;
+        const cy = cell.y + 10 + arm / 2;
+        const gray = /** @type {[number,number,number,number]} */ ([
+          0.72,
+          0.72,
+          0.74,
+          cell.alpha,
+        ]);
+        quad(textures.white, false, cx - arm / 2, cy - thick / 2, arm, thick, [
+          0,
+          0,
+          1,
+          1,
+        ], gray);
+        quad(textures.white, false, cx - thick / 2, cy - arm / 2, thick, arm, [
+          0,
+          0,
+          1,
+          1,
+        ], gray);
+      }
+      if (cell.selected) {
+        const orange = /** @type {[number,number,number,number]} */ ([
+          1,
+          0.38,
+          0.04,
+          0.95,
+        ]);
+        quad(
+          textures.white,
+          false,
+          cell.x,
+          cell.y,
+          cell.size,
+          3,
+          [0, 0, 1, 1],
+          orange,
+        );
+        quad(
+          textures.white,
+          false,
+          cell.x,
+          cell.y + cell.size - 3,
+          cell.size,
+          3,
+          [0, 0, 1, 1],
+          orange,
+        );
+        quad(
+          textures.white,
+          false,
+          cell.x,
+          cell.y,
+          3,
+          cell.size,
+          [0, 0, 1, 1],
+          orange,
+        );
+        quad(
+          textures.white,
+          false,
+          cell.x + cell.size - 3,
+          cell.y,
+          3,
+          cell.size,
+          [0, 0, 1, 1],
+          orange,
+        );
+      }
+    }
+    flush();
     const scale = Math.max(1, Math.round(dpr * 1.5 * scene.uiScale));
     const bubbleScale = scale * TEXT_SIZE_SCALE[scene.textSize];
     for (const entry of itemTiles) {
@@ -600,6 +696,18 @@ export async function createRenderer(canvas) {
         Math.round(((entry.x + 1) * TILE - cameraX) * zoom + width / 2) -
           label.length * 8 * scale - 2 * dpr,
         Math.round(((entry.y + 1) * TILE - cameraY) * zoom + height / 2) -
+          16 * scale - 2 * dpr,
+        scale,
+      );
+    }
+    for (const cell of scene.pickupCells ?? []) {
+      if (cell.count < 2 || cell.alpha < 1) continue;
+      const label = String(cell.count);
+      text(
+        label,
+        Math.round((cell.x + cell.size - cameraX) * zoom + width / 2) -
+          label.length * 8 * scale - 4 * dpr,
+        Math.round((cell.y + cell.size - cameraY) * zoom + height / 2) -
           16 * scale - 2 * dpr,
         scale,
       );

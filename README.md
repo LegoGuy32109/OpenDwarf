@@ -39,9 +39,15 @@ lapis, and redstone 3 s, and diamond and emerald 4.5 s. Aiming at another tile o
 walking out of reach cancels it. A finished tile drops its item, such as stone
 or coal, on that tile. Several kinds on one tile take turns showing their icon
 about once a second, and a number marks a stack of more than one. Interact on a
-highlighted tile that holds dropped items picks up the first stack into your
-inventory instead of mining, and the hearing log says "Picked up coal ×1" to you
-alone. Every player starts with one pickaxe.
+highlighted tile that holds one stack picks it up into your inventory instead of
+mining, and the hearing log says "Picked up coal ×1" to you alone. A tile with
+several stacks opens the pickup grid: dark squares unfold into the 3×3 tiles
+around you, one per stack with its icon and count. IJKL, the look stick, or the
+D-pad moves the orange selector (the D-pad does not walk you while the grid is
+open), and a tap on a square selects it. Interact picks up the selected stack.
+With more than nine stacks a small gray plus shows in the bottom-right square,
+and moving down scrolls. Escape, or walking out of reach, closes the grid. Every
+player starts with one pickaxe.
 B, gamepad button 2, or the bag button beside B opens the inventory panel: one
 icon and count per stack. IJKL, the look stick, or the D-pad moves the
 selection, and interact or a tap makes that stack the held item. A small icon

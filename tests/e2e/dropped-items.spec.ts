@@ -211,6 +211,7 @@ test("a joining player sees drops, and two pickups give the stack to one player"
       x: 2,
       y: 2,
       z: 0,
+      kind: "coal",
     })
   );
   await expect.poll(() => notice(guest)).toContain("out of reach");
