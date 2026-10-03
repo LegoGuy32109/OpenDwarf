@@ -120,6 +120,24 @@ async function start(flags: Record<string, string | undefined>) {
   if (!/^[a-z0-9-]+$/.test(slug)) {
     throw new Error("--slug must be lowercase words and dashes");
   }
+  // A pull request shares the issue numbering, so check the number names an open issue.
+  const target = JSON.parse(
+    await run("gh", [
+      "issue",
+      "view",
+      String(issue),
+      "-R",
+      REPO,
+      "--json",
+      "url,state,title",
+    ]),
+  ) as { url: string; state: string; title: string };
+  if (!target.url.includes("/issues/") || target.state !== "OPEN") {
+    throw new Error(
+      `#${issue} is not an open issue: ${target.url} (${target.state})`,
+    );
+  }
+  console.log(`Issue #${issue}: ${target.title}`);
   const base = flags.base ?? "client-first-deno";
   const port = Number(flags.port ?? 8100 + (issue % 100));
   const notes = flags.notes ? await Deno.readTextFile(flags.notes) : "";
