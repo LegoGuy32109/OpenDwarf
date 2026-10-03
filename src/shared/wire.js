@@ -365,6 +365,8 @@ export function decodeControl(value) {
           Number.isInteger(value.z) && finite(value.z, 0, WORLD_TOP)
         ? value
         : null;
+    case "hold":
+      return isItemKind(value.kind) ? value : null;
     case "mode":
       return value.mode === "entity" || value.mode === "master" ? value : null;
     case "typing":
@@ -516,4 +518,14 @@ export function decodeItems(value) {
 export function decodeInventory(value) {
   if (!record(value) || value.type !== "inventory") return null;
   return decodeStacks(value.stacks);
+}
+
+/**
+ * Host to its owner only: the item kind the entity holds. Returns null for
+ * anything malformed.
+ * @param {unknown} value @returns {string|null}
+ */
+export function decodeHeld(value) {
+  if (!record(value) || value.type !== "held") return null;
+  return isItemKind(value.kind) ? /** @type {string} */ (value.kind) : null;
 }

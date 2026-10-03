@@ -17,8 +17,10 @@ import {
   pickUp,
   pickupLine,
 } from "../shared/items.js";
+import { setHeldItem } from "../shared/held-item.js";
 import {
   cancelMining,
+  heldItem,
   miningEntries,
   startMining,
   stepMining,
@@ -53,6 +55,7 @@ import { createRevisionOrder } from "./revision-order.js";
 import {
   decodeChat,
   decodeControl,
+  decodeHeld,
   decodeInventory,
   decodeItems,
   decodeMining,
@@ -102,7 +105,7 @@ function deliver(receive, replaceable = false) {
 /** @typedef {{at:number,entries:import('../shared/mining.js').MiningEntry[]}} MineFeed */
 /** @typedef {import('../shared/items.js').DroppedEntry} DroppedEntry */
 /** @typedef {import('../shared/items.js').Stack} Stack */
-/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],heldFeed?:string,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -304,6 +307,8 @@ export function startHost(scene, session) {
     /** What this peer was last told about dropped items and its inventory. */
     let lastItems = "";
     let lastInventory = "";
+    /** The held item this peer was last told about. */
+    let lastHeld = "";
     let direction = { x: 0, y: 0 };
     /** The host tracks stamina, so a guest cannot sprint without it. */
     let stamina = createStamina();
@@ -445,6 +450,11 @@ export function startHost(scene, session) {
         cancelMining(scene.world, playerId);
         return;
       }
+      if (message.type === "hold") {
+        // The host checks the inventory; a refused choice changes nothing.
+        setHeldItem(scene.world, playerId, String(message.kind));
+        return;
+      }
       if (message.type === "pickup") {
         const result = pickUp(scene.world, playerId, {
           x: Number(message.x),
@@ -539,7 +549,11 @@ export function startHost(scene, session) {
       deadline.start(attempt);
       joined = true;
       lastSequence = 0;
-      lastMining = lastItems = lastInventory = "";
+      lastMining =
+        lastItems =
+        lastInventory =
+        lastHeld =
+          "";
       direction = { x: 0, y: 0 };
       stamina = createStamina();
       pendingMoves.length = 0;
@@ -754,6 +768,11 @@ export function startHost(scene, session) {
       if (stacks !== lastInventory) {
         lastInventory = stacks;
         channel.send(`{"type":"inventory","stacks":${stacks}}`);
+      }
+      const held = heldItem(player);
+      if (held !== lastHeld) {
+        lastHeld = held;
+        channel.send(JSON.stringify({ type: "held", kind: held }));
       }
     }
 
@@ -1092,7 +1111,7 @@ export function joinWorld(scene, session) {
     lastChatTick = -1;
     scene.chatFeed = [];
     scene.mineFeed = undefined;
-    scene.itemFeed = scene.inventoryFeed = undefined;
+    scene.itemFeed = scene.inventoryFeed = scene.heldFeed = undefined;
     attempt = crypto.randomUUID();
     attemptStarted = performance.now();
     lastPong = attemptStarted;
@@ -1232,6 +1251,11 @@ export function joinWorld(scene, session) {
     if (value.type === "inventory") {
       const stacks = decodeInventory(value);
       if (stacks) scene.inventoryFeed = stacks;
+      return;
+    }
+    if (value.type === "held") {
+      const kind = decodeHeld(value);
+      if (kind) scene.heldFeed = kind;
       return;
     }
     if (value.type === "pickup-result") {
@@ -1400,7 +1424,7 @@ export function joinWorld(scene, session) {
     if (message.kind === "leave") {
       scene.world = createWorld();
       scene.mineFeed = undefined;
-      scene.itemFeed = scene.inventoryFeed = undefined;
+      scene.itemFeed = scene.inventoryFeed = scene.heldFeed = undefined;
       scene.chatFeed = [];
       scene.status = "Visitor left. World ended.";
       connected = false;

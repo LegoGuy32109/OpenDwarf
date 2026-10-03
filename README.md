@@ -42,6 +42,15 @@ about once a second, and a number marks a stack of more than one. Interact on a
 highlighted tile that holds dropped items picks up the first stack into your
 inventory instead of mining, and the hearing log says "Picked up coal ×1" to you
 alone. Every player starts with one pickaxe.
+B, gamepad button 2, or the bag button beside B opens the inventory panel: one
+icon and count per stack. IJKL, the look stick, or the D-pad moves the
+selection, and interact or a tap makes that stack the held item. A small icon
+at the top right always shows the held item. Only a held pickaxe lets interact
+mine, and any held item still allows pickup. Choosing another item cancels
+mining. While the panel is open, interact and the look control drive the panel
+and others see your typing bubble. B, Escape, gamepad button 1, or the close
+button closes it. The world host stores the held item and checks that the
+inventory holds it.
 On the host, F3 toggles a small FPS, payload upload, queue, and join-failure
 panel. `T` opens chat, `/` opens a command, and Escape opens the menu. On a
 touch screen, the left stick moves the player and the right stick points at a
