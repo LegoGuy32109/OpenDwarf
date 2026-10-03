@@ -1268,6 +1268,8 @@ function bindInput() {
     "lostpointercapture",
     (event) => finish(event, true),
   );
+  // A long press must not open the browser's menu over a stick or a key.
+  canvas.addEventListener("contextmenu", (event) => event.preventDefault());
   canvas.addEventListener("touchmove", (event) => {
     if (event.touches.length > 1) event.preventDefault();
   }, { passive: false });
