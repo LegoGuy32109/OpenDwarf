@@ -169,10 +169,11 @@ function sameText(a: string, b: string): boolean {
 export function createSessionRoutes(options: SessionRoutesOptions = {}) {
   const relay = options.relay ?? createRelay();
   const provider = options.provider ?? signalingFromEnv(relay);
+  // Phones at a live session often share one Wi-Fi address, so the limit allows a full room.
   const startLimiter = options.startLimiter ??
-    createRateLimiter({ limit: 30, windowMs: 60_000 });
+    createRateLimiter({ limit: 120, windowMs: 60_000 });
   const iceLimiter = options.iceLimiter ??
-    createRateLimiter({ limit: 60, windowMs: 60_000 });
+    createRateLimiter({ limit: 240, windowMs: 60_000 });
   const secret = options.secret ?? Deno.env.get("XIRSYS_SECRET") ??
     crypto.randomUUID();
   const store = options.store ?? openStore();

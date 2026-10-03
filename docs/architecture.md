@@ -258,7 +258,8 @@ outlives it, so when a socket closes the client asks the shell for a new token.
 `src/server/relay.ts` is the local relay: a WebSocket endpoint on the shell at
 `/v2/<token>` that issues its own tokens and speaks the same frames. The shell
 uses it when the Xirsys values are missing. Session starts and joins are limited
-per IP in memory (30 a minute; ICE requests 60 a minute).
+per IP in memory (120 a minute, so a room of phones on one Wi-Fi address fits;
+ICE requests 240 a minute).
 
 ## Live sessions
 
