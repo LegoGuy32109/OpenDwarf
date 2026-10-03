@@ -72,6 +72,10 @@ a {
   overflow-wrap: anywhere;
 }
 
+.sha a {
+  overflow-wrap: normal;
+}
+
 .scroll {
   overflow-x: auto;
 }
@@ -94,6 +98,19 @@ th {
   font-weight: normal;
   font-size: 0.8rem;
   white-space: nowrap;
+}
+
+td {
+  overflow-wrap: anywhere;
+}
+
+.sha {
+  white-space: nowrap;
+}
+
+.wrap {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 td.num {
@@ -153,6 +170,10 @@ td.num {
     border: 0;
     text-align: right;
     overflow-wrap: anywhere;
+  }
+
+  td > * {
+    min-width: 0;
   }
 
   td::before {

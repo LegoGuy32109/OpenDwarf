@@ -1,4 +1,4 @@
-// The shell's owner API under `/api/v1`: label and promotion writes, and public reads (labels, promotions, shell deploys, status). A write
+// The shell's owner API under `/api/v1`: label and promotion writes, and public reads (labels, promotions, shell deploys, status, the build index). A write
 // needs the owner token (`OD_OWNER_TOKEN`). The shell keeps only a SHA-256 hash of it, compares
 // hashes in constant time, and never logs or returns it. Without a token set, writes answer 403.
 // Terms follow CONTEXT.md: Label, Main, Promotion, Session.
@@ -6,6 +6,7 @@ import type { Builds } from "./builds.ts";
 import type { Label, Store } from "./store.ts";
 
 const LABEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const INTEGRATION_BRANCH = "client-first-deno";
 const SHA = /^[0-9a-f]{7,40}$/;
 const encoder = new TextEncoder();
 
@@ -155,6 +156,40 @@ export function createAdminApi(options: AdminOptions): AdminApi {
     });
   }
 
+  /** Every branch with its preview inputs: open pull request, labels, and whether main is at its head. */
+  async function buildIndex() {
+    const [branches, labels, main, pulls] = await Promise.all([
+      builds.branches(),
+      store.listLabels(),
+      store.getMain(),
+      // The branch list stays useful without pull requests, so a failure here only sets a flag.
+      builds.pulls().then((value) => ({ value }), () => null),
+    ]);
+    const rows = branches.map((branch) => {
+      const pull = pulls?.value.find((item) => item.branch === branch.name);
+      return {
+        name: branch.name,
+        commit: branch.commit,
+        pull: pull
+          ? { number: pull.number, title: pull.title, url: pull.url }
+          : null,
+        labels: labels
+          .filter((label) =>
+            label.kind === "branch" && label.target === branch.name
+          )
+          .map((label) => label.name),
+        main: main?.commit === branch.commit,
+      };
+    });
+    // No commit time is cheap to get, so branches sort by name with the integration branch first.
+    rows.sort((a, b) =>
+      Number(b.name === INTEGRATION_BRANCH) -
+        Number(a.name === INTEGRATION_BRANCH) ||
+      (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+    );
+    return { branches: rows, pullsAvailable: pulls !== null };
+  }
+
   async function route(request: Request, path: string): Promise<Response> {
     const method = request.method;
     const read = method === "GET";
@@ -169,6 +204,7 @@ export function createAdminApi(options: AdminOptions): AdminApi {
       return json({ deploys: await store.listShellDeploys(50) });
     }
     if (path === "/status" && read) return status();
+    if (path === "/builds" && read) return json(await buildIndex());
     const named = /^\/labels\/([^/]+)(\/rename)?$/.exec(path);
     const writes = (path === "/promotions" && method === "POST") ||
       (named &&
@@ -199,7 +235,7 @@ export function createAdminApi(options: AdminOptions): AdminApi {
   return {
     async handle(request) {
       const path =
-        /^\/api\/v1(\/(?:labels|promotions|shell-deploys|status)(?:\/.*)?)$/
+        /^\/api\/v1(\/(?:labels|promotions|shell-deploys|status|builds)(?:\/.*)?)$/
           .exec(
             new URL(request.url).pathname,
           )?.[1];
