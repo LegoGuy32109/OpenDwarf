@@ -1,5 +1,6 @@
 /// <reference lib="deno.unstable" />
 import QRCode from "qrcode-svg";
+import { type AdminApi, createAdminApi } from "./admin-api.ts";
 import { type Builds, openBuilds } from "./builds.ts";
 import { openStore } from "./store.ts";
 const ROOT = new URL("../../", import.meta.url);
@@ -173,6 +174,11 @@ export function joinLink(
 export function createApp(
   kv: Deno.Kv,
   builds: Builds = openBuilds(openStore()),
+  admin: AdminApi = createAdminApi({
+    store: builds.store,
+    builds,
+    ownerToken: Deno.env.get("OD_OWNER_TOKEN"),
+  }),
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
@@ -182,6 +188,8 @@ export function createApp(
     if (builds.handles(url.pathname) && request.method === "GET") {
       return builds.serve(url.pathname);
     }
+    const owner = await admin.handle(request);
+    if (owner) return owner;
     const qrPath = /^\/api\/qr\/([a-zA-Z0-9_-]{8,80})$/.exec(path);
     if (qrPath && request.method === "GET") {
       const link = joinLink(request, qrPath[1], url.searchParams.get("link"));
