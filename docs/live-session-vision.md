@@ -79,13 +79,15 @@ the next stage for a Thursday, October 8, 2026 demo:
   coins. Coins are the score for now.
 - An entity that holds a pickaxe mines a highlighted tile. Mining drops the
   tile's item on the tile, Dwarf Fortress style, and interact picks it up.
+- An entity that holds stone places it on an empty tile, which adds terrain. See
+  [placing](features/placing.md).
 - The phone controls get an interact button, an inventory button, and a sprint
   button with stamina.
 - Chat gets stacked speech bubbles, an animated typing bubble, a hearing log,
   and a chat bar that stays visible above the iOS keyboard.
 
 The terms are in [CONTEXT.md](../CONTEXT.md). The work is tracked as a wayfinder
-map with child tickets on GitHub Issues. Placing stone back into the terrain
+map with child tickets on GitHub Issues. Placing ore items as their own material
 remains a later step.
 
 ## Status
