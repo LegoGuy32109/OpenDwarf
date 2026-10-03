@@ -106,6 +106,14 @@ test("a joining player receives generated chunks only as it reaches and sees the
   await guest.goto(`/join/${session}?harness=1`);
   await expect(guest.locator("#loading")).toBeHidden();
   await expect.poll(() => chunkKeys(guest)).toContain("0,0");
+  // The guest's own world already holds the authored chunk, so wait until the
+  // host has accepted the guest's player.
+  await expect.poll(() =>
+    host.evaluate(() =>
+      Object.keys((globalThis as unknown as Harness).__od.scene.world.players)
+        .some((id) => id.startsWith("peer-"))
+    )
+  ).toBe(true);
   // The guest never generates; it holds only chunks it has seen.
   expect(
     await guest.evaluate(() =>

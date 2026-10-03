@@ -93,24 +93,25 @@ player's field of view. Master travel does not add tiles to entity-view memory.
 - `src/client/`: browser input, WebGL2 rendering, and WebRTC networking.
 - `src/shared/`: world rules and move intent validation. Plain JavaScript with
   JSDoc types runs in the browser without compilation.
-- `src/server/`: Deno TypeScript routes for static files, presence, ICE
-  configuration, and a KV signal mailbox.
+- `src/server/`: Deno TypeScript routes for static files, presence, session
+  channels for signaling, ICE servers, and the local signaling relay.
 - `public/`: HTML, custom CSS, browser entrypoint, and texture atlases.
 
 Each visitor owns their world in the browser. Movement begins locally on the
 next 50 ms simulation tick. Joining tabs connect as players through WebRTC. Deno
-KV stores short lived presence and signaling messages. It does not run the
-world. The host sends a view filtered for each joining tab every 500 ms, and
-when that player's sight moves to another tile. Visibility uses compact
-per-chunk bit masks on the wire, and terrain travels as run-length encoded 16×16
-chunks. When a WebRTC channel backs up, the host coalesces unsent snapshots and
-sends the newest state after the channel drains. Movement also coalesces to the
-newest unsent state and sends a 300 ms settling tail after a stop. An incomplete
-join expires after ten seconds. Entity view contains currently visible players
-and NPCs plus last observed terrain; undiscovered terrain is unknown. Master
-view contains the full world. Each joining tab also receives chat by distance
-from its character: message text within five horizontal blocks and four levels,
-a `:0` talking indicator from five through twelve blocks, and no bubble beyond
+KV stores short lived presence. Peers exchange offers and answers through a
+Xirsys session channel (see `docs/architecture.md`). Neither runs the world. The
+host sends a view filtered for each joining tab every 500 ms, and when that
+player's sight moves to another tile. Visibility uses compact per-chunk bit
+masks on the wire, and terrain travels as run-length encoded 16×16 chunks. When
+a WebRTC channel backs up, the host coalesces unsent snapshots and sends the
+newest state after the channel drains. Movement also coalesces to the newest
+unsent state and sends a 300 ms settling tail after a stop. An incomplete join
+expires after ten seconds. Entity view contains currently visible players and
+NPCs plus last observed terrain; undiscovered terrain is unknown. Master view
+contains the full world. Each joining tab also receives chat by distance from
+its character: message text within five horizontal blocks and four levels, a
+`:0` talking indicator from five through twelve blocks, and no bubble beyond
 that range. Typing appears as `...` within five blocks. Speech passes through
 walls and sight boundaries. Chat uses the reliable `world` channel with
 snapshots and player input. Replaceable movement uses a separate unordered
@@ -134,9 +135,13 @@ For a TURN diagnostic, open `/host?relay=1` and join a world. That join forces
 relay candidates on both browsers and shows the selected candidate types in the
 admin panel. A working TURN configuration is required. Normal WebRTC joins allow
 a direct route. The Xirsys values belong in the server environment; the browser
-receives temporary ICE credentials. For local testing, put `XIRSYS_IDENT`,
-`XIRSYS_SECRET`, and `XIRSYS_CHANNEL` in an ignored `.env` file and run
-`deno task start:env`.
+receives a short lived signaling token and temporary ICE credentials. Without
+`XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL`, the server runs a local
+relay that speaks the Xirsys frames, so `deno task start`, development, and e2e
+need no internet (`SIGNALING=local` forces the relay even with credentials). To
+use real Xirsys, put the values in an ignored `.env` file and run
+`deno task start:env`. `tests/e2e/xirsys.spec.ts` connects a host and a guest
+through real Xirsys and skips without the values in the environment.
 
 The floor, edges, ceilings, depth tint, visibility, and player sprite come from
 the WebGL experiment. The bitmap font and Escape menu labels come from the

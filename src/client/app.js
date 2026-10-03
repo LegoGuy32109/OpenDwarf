@@ -1595,6 +1595,7 @@ export async function startApp() {
       send: (message) => guest?.send(message) ?? false,
       hostStats: () => host?.diagnostics() ?? null,
       wireDebug: () => guest?.wireDebug() ?? null,
+      dropSignaling: () => guest?.dropSignaling(),
       resetNetworkStats: () => guest?.resetDiagnostics(),
       /** @param {unknown} value @param {boolean} [replaceable] */
       injectPacket: (value, replaceable = false) =>
