@@ -8,23 +8,23 @@ full reliable terrain payload or eliminate reliable motion queueing.
 Baseline: `a015db9`. Comparison: entity filtering extraction, send/build timing,
 and incomplete join deadline. Each run used 20 guests, host plus four rendered
 guests, entity view, 10 Hz motion, 50 ms application delivery delay in both
-browsers, no loss/jitter, seed 9, and a 60-second sustained movement hold.
-All 20 peers moved in every run. All three chat checks passed with no page
-errors, join failures, or connection losses.
+browsers, no loss/jitter, seed 9, and a 60-second sustained movement hold. All
+20 peers moved in every run. All three chat checks passed with no page errors,
+join failures, or connection losses.
 
-| Build | World | Payload MB/s | Host rolling mean frame p95 ms | Peak queued KB |
-| --- | --- | ---: | ---: | ---: |
-| Baseline | 16×16 | 2.597 | 52.7 | 415 |
-| Filtering | 16×16 | 2.886 | 43.8 | 404 |
-| Baseline | 32×32 | 2.554 | 91.3 | 550 |
-| Filtering | 32×32 | 2.925 | 87.3 | 647 |
+| Build     | World | Payload MB/s | Host rolling mean frame p95 ms | Peak queued KB |
+| --------- | ----- | -----------: | -----------------------------: | -------------: |
+| Baseline  | 16×16 |        2.597 |                           52.7 |            415 |
+| Filtering | 16×16 |        2.886 |                           43.8 |            404 |
+| Baseline  | 32×32 |        2.554 |                           91.3 |            550 |
+| Filtering | 32×32 |        2.925 |                           87.3 |            647 |
 
 These are single matched runs on one machine using software WebGL. Frame p95 is
 an aggregate of rolling mean frame durations, not the percentile of individual
-frames. Payload is aggregate data-channel bytes, not physical network upload.
-A faster host can send more updates under the same wall-clock workload, which
-can increase payload. Repeat measurements before claiming a stable percentage
-gain. Reliable queue pressure remains substantial.
+frames. Payload is aggregate data-channel bytes, not physical network upload. A
+faster host can send more updates under the same wall-clock workload, which can
+increase payload. Repeat measurements before claiming a stable percentage gain.
+Reliable queue pressure remains substantial.
 
 The older stress runner counts committed tile steps and does not detect current
 continuous x/y movement. The new `scripts/benchmark-motion.ts` uses actual x/y

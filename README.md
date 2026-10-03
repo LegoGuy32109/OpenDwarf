@@ -18,76 +18,72 @@ another browser to see active worlds and join one. A corner NPC loops around
 four tiles. The `/admin` route has no access control in this demo. Joining has
 no fixed cap for stress testing; the practical limit is still being measured.
 The host's QR code opens `/join/<session>` so a phone joins that world directly.
-The code is hidden at start. Press Q on the host or use the QR button to show
-it in the top right corner.
+The code is hidden at start. Press Q on the host or use the QR button to show it
+in the top right corner.
 
 On a keyboard, ESDF moves the player continuously in eight directions. Keyboard
-diagonals and the left stick share the same full walking speed, 30 ft or 1 tile per
-second by default; release a direction to stop between tile centers. G cycles the
-speed through 30, 50, and 60 ft, and H toggles sprint, which doubles it. On a
-touch screen, the two buttons under the left stick do the same. In entity view, IJKL points an orange
-square at one of the eight neighboring tiles. R/V selects the view level; the
-square appears at the player's level or one level above or below. In master
-view, IJKL pans the camera. Holding U/N smoothly zooms out/in. The mouse wheel
-also zooms.
-Space, gamepad button 0, or the round pickaxe button right of the left stick
-interacts: with the pickaxe every entity holds, it starts mining the
-highlighted tile. The look control points the highlight at a neighbor, and the
-entity's own tile is highlighted with no aim. Mining is not held down; it
-finishes on its own. Stone takes 1 s, coal 1.5 s, iron ore 2 s, gold ore,
-lapis, and redstone 3 s, and diamond and emerald 4.5 s. Aiming at another tile or
-walking out of reach cancels it. A finished tile drops its item, such as stone
-or coal, on that tile. Several kinds on one tile take turns showing their icon
-about once a second, and a number marks a stack of more than one. Interact on a
-highlighted tile that holds one stack picks it up into your inventory instead of
-mining, and the hearing log says "Picked up coal ×1" to you alone. A tile with
-several stacks opens the pickup grid: dark squares unfold into the 3×3 tiles
-around you, one per stack with its icon and count. IJKL, the look stick, or the
-D-pad moves the orange selector (the D-pad does not walk you while the grid is
-open), and a tap on a square selects it. Interact picks up the selected stack.
-With more than nine stacks a small gray plus shows in the bottom-right square,
-and moving down scrolls. Escape, or walking out of reach, closes the grid. Every
-player starts with one pickaxe.
-B, gamepad button 2, or the bag button beside B opens the inventory panel: one
-icon and count per stack. IJKL, the look stick, or the D-pad moves the
-selection, and interact or a tap makes that stack the held item. A small icon
-at the top right always shows the held item. Only a held pickaxe lets interact
-mine, and any held item still allows pickup. Choosing another item cancels
-mining. While the panel is open, interact and the look control drive the panel
-and others see your typing bubble. B, Escape, gamepad button 1, or the close
-button closes it. The world host stores the held item and checks that the
-inventory holds it.
-In the spawn room a gold-tinted shopkeeper stands on the north wall. Interact
-with that tile highlighted (or standing on it) opens the shop panel: every stack
-you carry with its count and unit price, and a "Sell all ore" row. IJKL, the look
-stick, or the D-pad move the selection, and interact (or a tap on a row) sells
-it; Escape, gamepad button 1, or the × button closes the panel. Prices: coal 1,
-iron ore 3, lapis 4, redstone 4, gold ore 8, emerald 15, diamond 20. Stone, the
-pickaxe, and coins show dimmed. Coins are an item and the score, which a small
-readout under the status text shows. Each sale adds a line such as "Sold coal ×3
-for 3 coins" to the seller's hearing log.
-On the host, F3 toggles a small FPS, payload upload, queue, and join-failure
-panel. `T` opens chat, `/` opens a command, and Escape opens the menu. On a
-touch screen, the left stick moves the player and the right stick points at a
-neighbor in entity view or pans in master view. Both sticks have a visible
-center deadzone and eight direction guides.
-With a gamepad connected to the device, press a button while the page is
-focused. The left stick or D-pad moves, and the right stick points at a neighbor
-in entity view or pans in master view.
-Button 0 interacts, buttons 4/5 change the view level, 6/7 zoom, and 3 opens the menu. Button 1 has
-no chat action. The browser can report a standard layout or the raw layout of
-the Afterglow Wireless Deluxe Controller. The Afterglow Wireless
-Deluxe Controller's USB connection charges it but does not send input. Pair
-that model over Bluetooth to play.
+diagonals and the left stick share the same full walking speed, 30 ft or 1 tile
+per second by default; release a direction to stop between tile centers. G
+cycles the speed through 30, 50, and 60 ft, and H toggles sprint, which doubles
+it. On a touch screen, the two buttons under the left stick do the same. In
+entity view, IJKL points an orange square at one of the eight neighboring tiles.
+R/V selects the view level; the square appears at the player's level or one
+level above or below. In master view, IJKL pans the camera. Holding U/N smoothly
+zooms out/in. The mouse wheel also zooms. Space, gamepad button 0, or the round
+pickaxe button right of the left stick interacts: with the pickaxe every entity
+holds, it starts mining the highlighted tile. The look control points the
+highlight at a neighbor, and the entity's own tile is highlighted with no aim.
+Mining is not held down; it finishes on its own. Stone takes 1 s, coal 1.5 s,
+iron ore 2 s, gold ore, lapis, and redstone 3 s, and diamond and emerald 4.5 s.
+Aiming at another tile or walking out of reach cancels it. A finished tile drops
+its item, such as stone or coal, on that tile. Several kinds on one tile take
+turns showing their icon about once a second, and a number marks a stack of more
+than one. Interact on a highlighted tile that holds one stack picks it up into
+your inventory instead of mining, and the hearing log says "Picked up coal ×1"
+to you alone. A tile with several stacks opens the pickup grid: dark squares
+unfold into the 3×3 tiles around you, one per stack with its icon and count.
+IJKL, the look stick, or the D-pad moves the orange selector (the D-pad does not
+walk you while the grid is open), and a tap on a square selects it. Interact
+picks up the selected stack. With more than nine stacks a small gray plus shows
+in the bottom-right square, and moving down scrolls. Escape, or walking out of
+reach, closes the grid. Every player starts with one pickaxe. B, gamepad button
+2, or the bag button beside B opens the inventory panel: one icon and count per
+stack. IJKL, the look stick, or the D-pad moves the selection, and interact or a
+tap makes that stack the held item. A small icon at the top right always shows
+the held item. Only a held pickaxe lets interact mine, and any held item still
+allows pickup. Choosing another item cancels mining. While the panel is open,
+interact and the look control drive the panel and others see your typing bubble.
+B, Escape, gamepad button 1, or the close button closes it. The world host
+stores the held item and checks that the inventory holds it. In the spawn room a
+gold-tinted shopkeeper stands on the north wall. Interact with that tile
+highlighted (or standing on it) opens the shop panel: every stack you carry with
+its count and unit price, and a "Sell all ore" row. IJKL, the look stick, or the
+D-pad move the selection, and interact (or a tap on a row) sells it; Escape,
+gamepad button 1, or the × button closes the panel. Prices: coal 1, iron ore 3,
+lapis 4, redstone 4, gold ore 8, emerald 15, diamond 20. Stone, the pickaxe, and
+coins show dimmed. Coins are an item and the score, which a small readout under
+the status text shows. Each sale adds a line such as "Sold coal ×3 for 3 coins"
+to the seller's hearing log. On the host, F3 toggles a small FPS, payload
+upload, queue, and join-failure panel. `T` opens chat, `/` opens a command, and
+Escape opens the menu. On a touch screen, the left stick moves the player and
+the right stick points at a neighbor in entity view or pans in master view. Both
+sticks have a visible center deadzone and eight direction guides. With a gamepad
+connected to the device, press a button while the page is focused. The left
+stick or D-pad moves, and the right stick points at a neighbor in entity view or
+pans in master view. Button 0 interacts, buttons 4/5 change the view level, 6/7
+zoom, and 3 opens the menu. Button 1 has no chat action. The browser can report
+a standard layout or the raw layout of the Afterglow Wireless Deluxe Controller.
+The Afterglow Wireless Deluxe Controller's USB connection charges it but does
+not send input. Pair that model over Bluetooth to play.
 
 The fullscreen button uses the browser API when available; on Safari, adding the
 page to the Home Screen can hide browser controls. Pinch to zoom or drag two
 fingers vertically to change view levels. The on-screen A button opens the chat
 bar, and the on-screen B button opens the menu. Use `/nick Josh
-Hale` to set a name. Names are
-unique within a world. Any player can use `/master` for an unrestricted camera
-and the complete world view, then `/entity` to return to the player's field of
-view. Master travel does not add tiles to entity-view memory.
+Hale` to set a
+name. Names are unique within a world. Any player can use `/master` for an
+unrestricted camera and the complete world view, then `/entity` to return to the
+player's field of view. Master travel does not add tiles to entity-view memory.
 
 ## Code
 
@@ -102,35 +98,34 @@ Each visitor owns their world in the browser. Movement begins locally on the
 next 50 ms simulation tick. Joining tabs connect as players through WebRTC. Deno
 KV stores short lived presence and signaling messages. It does not run the
 world. The host sends a view filtered for each joining tab every 500 ms, and
-when that player's sight moves to another tile. Visibility uses compact per-chunk bit
-masks on the wire, and terrain travels as run-length encoded 16×16 chunks. When a WebRTC channel backs up, the host coalesces unsent
-snapshots and sends the newest state after the channel drains. Movement also
-coalesces to the newest unsent state and sends a 300 ms settling tail after a
-stop. An incomplete join expires after ten seconds. Entity view
-contains currently visible players and NPCs plus last observed terrain;
-undiscovered terrain is unknown. Master view contains the full world. Each
-joining tab also receives chat by distance from its character: message text
-within five horizontal blocks and four levels, a `:0` talking indicator from
-five through twelve blocks, and no bubble beyond that range. Typing appears as
-`...` within five blocks. Speech passes through walls and sight boundaries.
-Chat uses the reliable `world` channel with snapshots and player input.
-Replaceable movement uses a separate unordered `motion` channel with zero
-retransmissions. Both channels must open to complete a join. Motion packets
-carry attempt, view, and sight revisions so delayed updates cannot restore an
-older view. The wire uses validated JSON and rejects incompatible versions
-with a refresh instruction. Each snapshot acknowledges that recipient's latest
-received input sequence.
-Each joining tab predicts its own position, and the host sends movement positions
-about every 100 ms for smooth remote interpolation. Meaningful corrections ease
-back toward the host position. The
-admin panel shows connection time, selected ICE route, and recent round trip
-times.
+when that player's sight moves to another tile. Visibility uses compact
+per-chunk bit masks on the wire, and terrain travels as run-length encoded 16×16
+chunks. When a WebRTC channel backs up, the host coalesces unsent snapshots and
+sends the newest state after the channel drains. Movement also coalesces to the
+newest unsent state and sends a 300 ms settling tail after a stop. An incomplete
+join expires after ten seconds. Entity view contains currently visible players
+and NPCs plus last observed terrain; undiscovered terrain is unknown. Master
+view contains the full world. Each joining tab also receives chat by distance
+from its character: message text within five horizontal blocks and four levels,
+a `:0` talking indicator from five through twelve blocks, and no bubble beyond
+that range. Typing appears as `...` within five blocks. Speech passes through
+walls and sight boundaries. Chat uses the reliable `world` channel with
+snapshots and player input. Replaceable movement uses a separate unordered
+`motion` channel with zero retransmissions. Both channels must open to complete
+a join. Motion packets carry attempt, view, and sight revisions so delayed
+updates cannot restore an older view. The wire uses validated JSON and rejects
+incompatible versions with a refresh instruction. Each snapshot acknowledges
+that recipient's latest received input sequence. Each joining tab predicts its
+own position, and the host sends movement positions about every 100 ms for
+smooth remote interpolation. Meaningful corrections ease back toward the host
+position. The admin panel shows connection time, selected ICE route, and recent
+round trip times.
 
 Each joining tab automatically rejoins after a connection drop. The host holds
 its sprite for up to five seconds and keeps its name and tile for a later rejoin
 while the world remains open. View mode and discovered terrain also survive that
-rejoin. Remote player and NPC sprites interpolate recent host positions with a 150 ms
-presentation delay.
+rejoin. Remote player and NPC sprites interpolate recent host positions with a
+150 ms presentation delay.
 
 For a TURN diagnostic, open `/admin?relay=1` and join a world. That join forces
 relay candidates on both browsers and shows the selected candidate types in the
@@ -176,14 +171,14 @@ deno run -A scripts/benchmark-motion.ts --url=http://127.0.0.1:8000 --count=20 -
 
 The benchmark measures actual x/y movement, both channel queues and payload,
 frame timing, prediction corrections, and chat delivery. The URL is required;
-the script does not start a server. `--duration=900` gives a 15-minute hold.
-The host and four guests render WebGL. Other guests connect without rendering.
-Use `--rendered=19` for host plus 19 rendered guests, `--world=32` for the larger
+the script does not start a server. `--duration=900` gives a 15-minute hold. The
+host and four guests render WebGL. Other guests connect without rendering. Use
+`--rendered=19` for host plus 19 rendered guests, `--world=32` for the larger
 world, or `--view=master` to compare master view. `--rate=20` is a harness-only
 experiment. The live default remains 10 Hz pending the rate review.
 
-By default each browser delays game-message delivery by 50 ms, approximating
-100 ms round trip without changing ICE or physical packet delay. Add
+By default each browser delays game-message delivery by 50 ms, approximating 100
+ms round trip without changing ICE or physical packet delay. Add
 `--jitter=20 --loss=0.01` for jitter and 1% replaceable motion-message loss.
 Reliable state/chat/input are not dropped. These conditions do not simulate
 physical SCTP loss. Reports and traces land under ignored `exports/benchmarks/`.

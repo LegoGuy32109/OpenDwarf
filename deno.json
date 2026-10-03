@@ -8,6 +8,10 @@
   "fmt": {
     "include": [
       "main.ts",
+      "AGENTS.md",
+      "CONTEXT.md",
+      "README.md",
+      "docs/",
       "src/",
       "public/js/",
       "public/css/",

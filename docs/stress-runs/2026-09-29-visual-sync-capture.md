@@ -16,8 +16,8 @@ All 20 peers and the host had **nine accepted moves each** during the movement
 window. Playwright recorded each view, then the last five seconds of both
 recordings were aligned at their common end. Each MP4 has 100 frames at 20 fps,
 1280×800 pixels. The labeled side-by-side file is 2560×800 pixels with the same
-five-second duration. The endings are approximately aligned by simultaneous
-page closure; this is not hardware frame synchronization.
+five-second duration. The endings are approximately aligned by simultaneous page
+closure; this is not hardware frame synchronization.
 
 The reviewed clips are tracked in the repository:
 

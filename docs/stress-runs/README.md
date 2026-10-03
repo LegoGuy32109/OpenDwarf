@@ -33,12 +33,12 @@ drafts. Review the app's Logs page or capture a bounded log window with:
   --once --json --non-interactive)
 ```
 
-The direct CLI invocation avoids a duplicate-argument error from the `deno
+The direct CLI invocation avoids a duplicate-argument error from the
+`deno
 deploy` wrapper in local Deno 2.9.6. Running from `/tmp` keeps the CLI's
 context selection and dependencies out of this project's config and lockfile.
-Use the session ID and `test`
-marker to separate stress traffic from device reports.
-See
+Use the session ID and `test` marker to separate stress traffic from device
+reports. See
 [Deno's log reference](https://docs.deno.com/deploy/reference/observability/)
 for dashboard filters and the
 [CLI reference](https://docs.deno.com/runtime/reference/cli/deploy/) for

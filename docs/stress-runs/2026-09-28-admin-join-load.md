@@ -9,9 +9,9 @@ separately and leaves local prediction lead as its own metric.
 - Profile: 16×16, 20 guests joined through `/admin`, five WebGL pages including
   host, 50 ms game-message delivery delay each way, 900-second hold.
 - All 20 peers used local `host/host` ICE routes. There were no join or page
-  failures; 92 of 92 chat checks passed. Accepted guest moves occurred throughout
-  the hold. The generated `16/15` minute count included an extra terminal bucket;
-  the runner now excludes that bucket.
+  failures; 92 of 92 chat checks passed. Accepted guest moves occurred
+  throughout the hold. The generated `16/15` minute count included an extra
+  terminal bucket; the runner now excludes that bucket.
 - Host data-channel payload: 1.98 GB total, 2.28 MB/s average during the hold,
   7.05 MB/s sampled peak. Per-peer payload was 87.8–107.3 MB. Queued bytes
   peaked at 492 KB.

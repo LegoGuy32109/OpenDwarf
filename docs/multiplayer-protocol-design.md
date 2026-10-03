@@ -6,8 +6,8 @@ comparisons passed. Josh selected 10 Hz after reviewing the comparison. The
 20/20 peers moving in every minute. Josh reports that the build looks right
 while testing phone and host/controller responsiveness.
 
-See [the comparison report](stress-runs/2026-09-30-protocol-split.md).
-Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
+See [the comparison report](stress-runs/2026-09-30-protocol-split.md). Source:
+[GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
 
 ## Settled decisions
 
@@ -27,16 +27,16 @@ Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
 - Keep chat text, typing, hearing-range changes, expiry, and bubble positions
   reliable. Update active chat about every 100 ms. Reconsider replaceable bubble
   positions only if measurements justify the extra coordination.
-- Defer input replay until stop, reversal, collision, and elevation tests show
-  a correction problem. First improve snapshot delivery and measure corrections.
+- Defer input replay until stop, reversal, collision, and elevation tests show a
+  correction problem. First improve snapshot delivery and measure corrections.
 - Fence motion by connection, view, and sight revisions plus the authoritative
   tick. Reject older revisions. Retain only the newest motion packet awaiting
   its reliable sight update, then apply it when that update is available.
 - When motion samples run out, hold the last known remote position. Resume with
   presentation smoothing rather than extrapolating through unknown collisions.
-- Compare 10 and 20 motion updates per second during implementation with
-  20 connected peers before selecting a rate. Keep 150 ms presentation delay
-  for the initial comparison.
+- Compare 10 and 20 motion updates per second during implementation with 20
+  connected peers before selecting a rate. Keep 150 ms presentation delay for
+  the initial comparison.
 - Incomplete connection attempts expire after 10 seconds, independently of
   player creation. Replacement attempts close older attempt resources. Timeout
   callbacks cannot close a newer attempt. Preserve the existing one-minute
@@ -44,9 +44,9 @@ Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
 - Defer terrain and visibility payload optimization. Preserve existing full
   payload behavior for this implementation, and revisit issue #9's terrain
   proposal after measuring the other changes.
-- Keep JSON with explicit validated fields. Remove unnecessary simulation
-  fields from motion records. Defer binary encoding and coordinate quantization
-  until packet-size evidence supports a separate decision.
+- Keep JSON with explicit validated fields. Remove unnecessary simulation fields
+  from motion records. Defer binary encoding and coordinate quantization until
+  packet-size evidence supports a separate decision.
 - Discard malformed motion. Validate complete reliable snapshots before scene
   mutation. Request a full resync for malformed snapshots or missing required
   revisions. Repeated recovery failures end the connection with a clear error.
@@ -75,8 +75,8 @@ Source: [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
   unreliable game position updates alongside reliable control and chat data.
   Channels in one SCTP association share congestion control.
 - [Snapshot Interpolation](https://www.gafferongames.com/post/snapshot_interpolation/)
-  describes discarding older snapshots and interpolating newer ones. Packet
-  loss tolerance depends on update rate and presentation delay.
+  describes discarding older snapshots and interpolating newer ones. Packet loss
+  tolerance depends on update rate and presentation delay.
 - [WebRTC](https://www.w3.org/TR/webrtc/) exposes ordering and retransmission
   limits separately. Unordered delivery alone still permits reliable delivery.
 
@@ -124,4 +124,5 @@ push with the commit, implemented scope, results, and remaining work.
 - Motion deltas, binary encoding, and coordinate quantization.
 - Input replay and replacement-input transport.
 
-The first measurements are recorded in [the stage 1 report](stress-runs/2026-09-30-protocol-stage1.md).
+The first measurements are recorded in
+[the stage 1 report](stress-runs/2026-09-30-protocol-stage1.md).
