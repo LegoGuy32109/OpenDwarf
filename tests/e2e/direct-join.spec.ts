@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { evidenceShot } from "./evidence.ts";
 
 test("the host opens the small join QR from the QR button", async ({ page }) => {
   await page.goto("/");
@@ -15,6 +16,7 @@ test("the host opens the small join QR from the QR button", async ({ page }) => 
       image.complete && image.naturalWidth > 0
     )
   ).toBe(true);
+  await evidenceShot(page, "join-qr-popover");
   const box = await page.locator("#join-code").boundingBox();
   expect(box?.width).toBeLessThanOrEqual(144);
   await page.locator("#join-toggle").click();

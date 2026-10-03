@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import { existsSync } from "node:fs";
+import process from "node:process";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -19,8 +20,12 @@ export default defineConfig({
     browserName: "chromium",
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 1,
+    // EVIDENCE=1 records a video of every test for publish-evidence.ts.
+    video: process.env.EVIDENCE ? "on" : "off",
     launchOptions: {
-      executablePath: existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined,
+      executablePath: existsSync("/usr/bin/chromium")
+        ? "/usr/bin/chromium"
+        : undefined,
       args: ["--use-gl=angle", "--use-angle=swiftshader"],
     },
   },
