@@ -142,10 +142,14 @@ test("an incompatible join ends with a refresh instruction", async ({ browser })
     (globalThis as unknown as { __od: { scene: { sessionId: string } } })
       .__od.scene.sessionId
   );
-  await guest.route("**/api/v1/signal/**/host", async (route) => {
-    const packet = route.request().postDataJSON();
-    if (packet.kind === "join") packet.data.version = 1;
-    await route.continue({ postData: JSON.stringify(packet) });
+  await guest.routeWebSocket(/\/v2\//, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((message) => {
+      const frame = JSON.parse(String(message));
+      if (frame.p?.kind === "join") frame.p.data.version = 1;
+      server.send(JSON.stringify(frame));
+    });
+    server.onMessage((message) => socket.send(message));
   });
   await guest.goto(`/join/${session}?harness=1`);
   await guest.waitForFunction(() =>

@@ -5,6 +5,12 @@ import process from "node:process";
 // Parallel worktrees set PORT so each runs specs against its own server.
 const port = process.env.PORT ?? "8000";
 
+const xirsysPort = Number(port) + 1;
+const realXirsys = Boolean(
+  process.env.XIRSYS_IDENT && process.env.XIRSYS_SECRET &&
+    process.env.XIRSYS_CHANNEL,
+);
+
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
@@ -12,14 +18,27 @@ export default defineConfig({
   reporter: "list",
   outputDir: "exports/playwright-results",
   snapshotPathTemplate: "{testDir}/snapshots/{arg}-{projectName}{ext}",
-  webServer: {
-    command: "deno task start",
-    // The shell serves the working tree only as the local build.
-    env: { OD_LOCAL_BUILD: "1" },
-    url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: true,
-    timeout: 30_000,
-  },
+  webServer: [
+    {
+      command: "deno task start",
+      url: `http://127.0.0.1:${port}`,
+      reuseExistingServer: true,
+      timeout: 30_000,
+      // The shell serves the working tree only as the local build, and the
+      // local relay carries signaling, so specs need no internet.
+      env: { OD_LOCAL_BUILD: "1", SIGNALING: "local" },
+    },
+    // A second shell talks to real Xirsys, only when its credentials are set.
+    ...(realXirsys
+      ? [{
+        command: "deno task start",
+        url: `http://127.0.0.1:${xirsysPort}`,
+        reuseExistingServer: true,
+        timeout: 30_000,
+        env: { OD_LOCAL_BUILD: "1", PORT: String(xirsysPort) },
+      }]
+      : []),
+  ],
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     browserName: "chromium",

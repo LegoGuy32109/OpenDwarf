@@ -158,13 +158,13 @@ ignored.
 ## Why the visitor hosts the world
 
 Each visitor can start moving before a server round trip. The visitor's browser
-owns the world state. Deno Deploy serves code and relays small signaling
-messages through KV, so isolated server instances do not need a shared in memory
-game loop. The `/host` route lists recent visitor heartbeats and joins through a
-WebRTC data channel. HTTP POST and SSE carry connection signaling; they do not
-carry game updates. The host displays a session-specific QR code for
-`/join/<session>`. The Deno server generates its SVG with one server-side
-dependency; guest browser code still has no build step.
+owns the world state. Deno Deploy serves code and hands out signaling
+credentials, so isolated server instances do not need a shared in memory game
+loop. The `/host` route lists recent visitor heartbeats and joins through a
+WebRTC data channel. A Xirsys session channel carries connection signaling (see
+Signaling); it does not carry game updates. The host displays a session-specific
+QR code for `/join/<session>`. The Deno server generates its SVG with one
+server-side dependency; guest browser code still has no build step.
 
 The browser host applies each joining player's eight-direction input on its 20
 Hz simulation tick. The joining browser predicts its own movement immediately.
@@ -192,7 +192,7 @@ after ten seconds independently of player creation.
 This is not rollback netcode. Input acknowledgments indicate the latest received
 direction, not completed movement. Input replay remains deferred. WebRTC uses
 direct connectivity when ICE can establish it; Xirsys TURN credentials supply a
-relay when needed. The signaling route uses Deno KV as a mailbox.
+relay when needed.
 
 Each joining tab keeps a session token while its tab exists. If its WebRTC
 connection drops, it sends a fresh join request. The host keeps its sprite for
@@ -215,14 +215,45 @@ function and screenshots; they do not substitute for those device measurements.
   upload and browser performance set the practical limit. It ends when the host
   closes the page. A missed close signal leaves presence until the 30 second TTL
   ends.
-- The KV mailbox is bounded to 32 recent signals. It suits this small demo, but
-  it is not a general game message bus.
+- A signal for a peer that is not connected to its session channel is dropped. A
+  guest asks again when the host's `peer_connected` frame arrives, and otherwise
+  retries its join after eight seconds.
 - Joining players receive filtered state snapshots in `/entity` and can see
   brief corrections when the host rejects a predicted move. There is no clock
   synchronization, input replay, or authoritative server.
 - Terrain memory and view mode live in the browser host; closing that world
   discards them. Guest packet filtering is not an anti-cheat boundary.
 - Offline caching is deferred. A visitor needs the website to load the game.
+
+## Signaling
+
+Peers exchange offers, answers, and the leave notice through a Xirsys session
+channel, the sub-channel `<XIRSYS_CHANNEL>/<session>`
+([ADR 0004](adr/0004-shell-serves-builds-from-commits.md)). The shell holds the
+Xirsys credentials. `src/server/session-routes.ts` answers:
+
+- `POST /api/v1/sessions` with `{id, hostKey?}` creates the channel and returns
+  the host's `channel`, `token`, `host`, `signalUrl`, `iceServers`, and a
+  `hostKey`. The host sends its `hostKey` back to get a fresh token for the same
+  channel. The key is an HMAC of the session id, so the shell stores nothing;
+  `session-routes.ts` marks where the session store (S06) will record a live
+  session.
+- `POST /api/v1/sessions/<id>/join` with `{peer}` returns the same for a guest.
+- `GET /api/v1/sessions/<id>/ice` returns fresh ICE servers, because TURN
+  credentials last 60 seconds.
+- `DELETE /api/v1/sessions/<id>` with the `x-host-key` header deletes the
+  channel. The host calls it when it leaves.
+
+The client (`src/client/signaling.js`) opens `signalUrl`
+(`wss://<host>/v2/<token>`) and sends
+`{t:"u", m:{f, o:"message", t:<peer>}, p:<signal>}`
+(`src/shared/signal-frame.js`). It names the sender from the frame's `f`, which
+the channel sets. A token must be used before it expires, but an open socket
+outlives it, so when a socket closes the client asks the shell for a new token.
+`src/server/relay.ts` is the local relay: a WebSocket endpoint on the shell at
+`/v2/<token>` that issues its own tokens and speaks the same frames. The shell
+uses it when the Xirsys values are missing. Session starts and joins are limited
+per IP in memory (30 a minute; ICE requests 60 a minute).
 
 ## Shell database
 

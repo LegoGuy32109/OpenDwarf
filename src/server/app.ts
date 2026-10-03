@@ -2,6 +2,10 @@
 import QRCode from "qrcode-svg";
 import { type AdminApi, createAdminApi } from "./admin-api.ts";
 import { type Builds, openBuilds } from "./builds.ts";
+import {
+  createSessionRoutes,
+  type SessionRoutesOptions,
+} from "./session-routes.ts";
 import { openStore } from "./store.ts";
 const ROOT = new URL("../../", import.meta.url);
 const CONTENT_TYPES: Record<string, string> = {
@@ -11,13 +15,6 @@ const CONTENT_TYPES: Record<string, string> = {
   ".png": "image/png",
 };
 const SESSION_TTL_MS = 30_000;
-type Signal = {
-  id: string;
-  from: string;
-  kind: string;
-  data: unknown;
-};
-
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {
     status,
@@ -58,93 +55,6 @@ async function file(path: string): Promise<Response> {
   }
 }
 
-async function appendSignal(
-  kv: Deno.Kv,
-  session: string,
-  recipient: string,
-  signal: Signal,
-) {
-  const key = ["mailbox", session, recipient];
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const entry = await kv.get<Signal[]>(key);
-    const updated = [...(entry.value ?? []), signal].slice(-32);
-    const result = await kv.atomic().check(entry).set(key, updated, {
-      expireIn: 60_000,
-    }).commit();
-    if (result.ok) return true;
-  }
-  return false;
-}
-
-function signalStream(
-  kv: Deno.Kv,
-  session: string,
-  recipient: string,
-): Response {
-  const key = ["mailbox", session, recipient];
-  const encoder = new TextEncoder();
-  const watcher = kv.watch([key]);
-  const reader = watcher.getReader();
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const seen = new Set<string>();
-      void (async () => {
-        try {
-          while (true) {
-            const next = await reader.read();
-            if (next.done) break;
-            const [entry] = next.value;
-            for (const signal of (entry.value as Signal[] | null) ?? []) {
-              if (seen.has(signal.id)) continue;
-              seen.add(signal.id);
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify(signal)}\n\n`),
-              );
-            }
-          }
-        } catch (error) {
-          if (!(error instanceof TypeError)) {
-            console.error("Signal stream ended", error);
-          }
-        } finally {
-          try {
-            controller.close();
-          } catch { /* Browser closed the stream. */ }
-        }
-      })();
-    },
-    cancel() {
-      void reader.cancel();
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache, no-transform",
-      "connection": "keep-alive",
-    },
-  });
-}
-
-async function iceServers(): Promise<Response> {
-  const ident = Deno.env.get("XIRSYS_IDENT");
-  const secret = Deno.env.get("XIRSYS_SECRET");
-  const channel = Deno.env.get("XIRSYS_CHANNEL");
-  if (!ident || !secret || !channel) return json({ iceServers: [] });
-  const result = await fetch(
-    `https://global.xirsys.net/_turn/${
-      encodeURIComponent(channel)
-    }?webrtc=1&expire=60`,
-    {
-      method: "PUT",
-      headers: { authorization: `Basic ${btoa(`${ident}:${secret}`)}` },
-    },
-  );
-  if (!result.ok) return json({ error: "ICE credentials unavailable" }, 502);
-  const response = await result.json() as { v?: { iceServers?: unknown } };
-  return json({ iceServers: response.v?.iceServers ?? [] });
-}
-
 /**
  * The address a QR code opens. A build under a base path sends its own join
  * link; accept it only when it is on this request's own origin and ends in this
@@ -179,8 +89,13 @@ export function createApp(
     builds,
     ownerToken: Deno.env.get("OD_OWNER_TOKEN"),
   }),
-): (request: Request) => Promise<Response> {
-  return async (request) => {
+  options: SessionRoutesOptions = {},
+): (
+  request: Request,
+  info?: { remoteAddr?: { hostname?: string } },
+) => Promise<Response> {
+  const sessions = createSessionRoutes(options);
+  return async (request, info) => {
     const url = new URL(request.url);
     // `/api/v1/*` is the client's API; the unversioned paths stay as aliases.
     const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
@@ -237,7 +152,6 @@ export function createApp(
       }
       return json({ sessions });
     }
-    if (path === "/api/ice" && request.method === "GET") return iceServers();
     if (path === "/api/telemetry" && request.method === "POST") {
       if (Number(request.headers.get("content-length") ?? 0) > 4096) {
         return json({ error: "telemetry too large" }, 413);
@@ -284,34 +198,8 @@ export function createApp(
       console.log(JSON.stringify(safe));
       return json({ ok: true });
     }
-    const signalPath =
-      /^\/api\/signal\/([a-zA-Z0-9_-]{8,80})\/(host|peer-[a-f0-9-]{36})$/
-        .exec(path);
-    if (signalPath && request.method === "GET") {
-      return signalStream(kv, signalPath[1], signalPath[2]);
-    }
-    if (signalPath && request.method === "POST") {
-      const data = await body(request);
-      if (
-        typeof data.kind !== "string" || typeof data.id !== "string" ||
-        typeof data.from !== "string" ||
-        (signalPath[2] === "host"
-          ? !/^peer-[a-f0-9-]{36}$/.test(data.from)
-          : data.from !== "host")
-      ) {
-        return json({ error: "invalid signal" }, 400);
-      }
-      const signal: Signal = {
-        id: data.id,
-        from: data.from,
-        kind: data.kind,
-        data: data.data,
-      };
-      const ok = await appendSignal(kv, signalPath[1], signalPath[2], signal);
-      return ok
-        ? json({ ok: true })
-        : json({ error: "signal contention" }, 503);
-    }
+    const sessionResponse = await sessions.handle(request, path, info);
+    if (sessionResponse) return sessionResponse;
     if (request.method !== "GET") {
       return new Response("Method not allowed", { status: 405 });
     }

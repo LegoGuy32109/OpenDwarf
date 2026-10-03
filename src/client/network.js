@@ -43,6 +43,7 @@ import {
   visibilityPosition,
 } from "../shared/visibility.js";
 import { entityPlayers, entityView } from "../shared/view.js";
+import { createSignaling } from "./signaling.js";
 import { unpackVisibility } from "../shared/visibility-wire.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
 import {
@@ -108,44 +109,28 @@ function deliver(receive, replaceable = false) {
 /** @typedef {import('../shared/items.js').DroppedEntry} DroppedEntry */
 /** @typedef {import('../shared/items.js').Stack} Stack */
 /** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],heldFeed?:string,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
-/** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
+/** @typedef {import('../shared/signal-frame.js').Signal} Signal */
 
-/** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
-async function signal(session, recipient, kind, data, from) {
-  const response = await fetch(build.apiUrl(`signal/${session}/${recipient}`), {
+/**
+ * Ask the shell for a credentials ticket: a signaling address with a fresh token.
+ * @param {string} path @param {Record<string,unknown>} body
+ * @returns {Promise<{signalUrl:string,channel:string,hostKey?:string}>}
+ */
+async function ticket(path, body) {
+  const response = await fetch(build.apiUrl(path), {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ id: crypto.randomUUID(), from, kind, data }),
+    body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`Signaling failed: ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Signaling unavailable: ${response.status}`);
+  }
+  return await response.json();
 }
 
-/** @param {string} session @param {string} recipient @param {(signal:Signal)=>void} receive */
-function inbox(session, recipient, receive) {
-  const events = new EventSource(
-    build.apiUrl(`signal/${session}/${recipient}`),
-  );
-  /** @type {Set<string>} */
-  const seen = new Set();
-  events.onmessage = (event) => {
-    try {
-      const message = /** @type {Signal} */ (JSON.parse(event.data));
-      if (seen.has(message.id)) return;
-      seen.add(message.id);
-      if (seen.size > 64) {
-        const oldest = seen.values().next().value;
-        if (oldest) seen.delete(oldest);
-      }
-      receive(message);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-  return () => events.close();
-}
-
-async function ice() {
-  const response = await fetch(build.apiUrl("ice"));
+/** Fresh ICE servers for a session; TURN credentials expire quickly. @param {string} session */
+async function ice(session) {
+  const response = await fetch(build.apiUrl(`sessions/${session}/ice`));
   if (!response.ok) throw new Error("ICE configuration unavailable");
   const data = await response.json();
   return /** @type {RTCIceServer[]} */ (data.iceServers);
@@ -551,10 +536,10 @@ export function startHost(scene, session) {
         ? request.attempt
         : "";
       if (request.version !== PROTOCOL_VERSION) {
-        await signal(session, playerId, "incompatible", {
+        await signaling.send(playerId, "incompatible", {
           attempt,
           version: PROTOCOL_VERSION,
-        }, "host");
+        });
         scene.status =
           "Visitor uses a different game version. Refresh both pages.";
         return;
@@ -586,7 +571,7 @@ export function startHost(scene, session) {
       viewRevision = sightRevision = 0;
       lastSight = "";
       try {
-        const iceServers = await ice();
+        const iceServers = await ice(session);
         if (activeAttempt !== attempt) return;
         const nextPeer = new RTCPeerConnection({
           iceServers,
@@ -710,11 +695,11 @@ export function startHost(scene, session) {
         await nextPeer.setLocalDescription(await nextPeer.createOffer());
         await gathered(nextPeer);
         if (peer === nextPeer) {
-          await signal(session, playerId, "offer", {
+          await signaling.send(playerId, "offer", {
             description: nextPeer.localDescription,
             attempt,
             version: PROTOCOL_VERSION,
-          }, "host");
+          });
         }
       } catch (error) {
         if (activeAttempt !== attempt) return;
@@ -950,7 +935,8 @@ export function startHost(scene, session) {
     };
   }
 
-  const closeInbox = inbox(session, "host", (message) => {
+  /** @param {Signal} message */
+  const receiveSignal = (message) => {
     if (message.kind === "join") {
       const request =
         /** @type {{playerId?:string,relay?:boolean,token?:string,attempt?:string,version?:number}} */ (message
@@ -965,10 +951,10 @@ export function startHost(scene, session) {
         !request.token || request.token.length > 128
       ) return;
       if (request.version !== PROTOCOL_VERSION) {
-        void signal(session, playerId, "incompatible", {
+        void signaling.send(playerId, "incompatible", {
           attempt: request.attempt,
           version: PROTOCOL_VERSION,
-        }, "host").catch(console.error);
+        }).catch(console.error);
         scene.status =
           "Visitor uses a different game version. Refresh both pages.";
         return;
@@ -986,6 +972,16 @@ export function startHost(scene, session) {
           .data);
       peers.get(answer.playerId)?.acceptAnswer(answer);
     }
+  };
+  let hostKey = "";
+  const signaling = createSignaling({
+    self: "host",
+    receive: receiveSignal,
+    credentials: async () => {
+      const result = await ticket("sessions", { id: session, hostKey });
+      hostKey = result.hostKey ?? hostKey;
+      return result;
+    },
   });
   const syncTimer = setInterval(publish, 500);
   let motionUntil = 0;
@@ -1020,20 +1016,22 @@ export function startHost(scene, session) {
       }
     }
   }, 500);
-  globalThis.addEventListener("pagehide", () => {
+  let ended = false;
+  /** Tell each guest the host left, then delete the session channel. */
+  function endSession() {
+    if (ended) return;
+    ended = true;
     for (const playerId of peers.keys()) {
-      navigator.sendBeacon(
-        build.apiUrl("signal/" + session + "/" + playerId),
-        new Blob([
-          JSON.stringify({
-            id: crypto.randomUUID(),
-            from: "host",
-            kind: "leave",
-            data: {},
-          }),
-        ], { type: "application/json" }),
-      );
+      void signaling.send(playerId, "leave", {}).catch(() => {});
     }
+    void fetch(build.apiUrl("sessions/" + session), {
+      method: "DELETE",
+      headers: { "x-host-key": hostKey },
+      keepalive: true,
+    }).catch(() => {});
+  }
+  globalThis.addEventListener("pagehide", () => {
+    endSession();
     void fetch(build.apiUrl("presence/" + session), {
       method: "DELETE",
       keepalive: true,
@@ -1062,7 +1060,8 @@ export function startHost(scene, session) {
       clearInterval(syncTimer);
       clearInterval(motionTimer);
       clearInterval(chatTimer);
-      closeInbox();
+      endSession();
+      signaling.close();
       for (const connection of peers.values()) connection.close();
     },
   };
@@ -1146,13 +1145,13 @@ export function joinWorld(scene, session) {
       scene.metrics.rttMs = [];
     }
     scene.status = "Reconnecting to visitor…";
-    void signal(session, "host", "join", {
+    void signaling.send("host", "join", {
       playerId,
       relay: forceRelay,
       token,
       attempt,
       version: PROTOCOL_VERSION,
-    }, playerId).catch((error) => {
+    }).catch((error) => {
       scene.status = "Join request failed; retrying…";
       scene.telemetry?.("error", { status: "signal-failed" });
       console.error(error);
@@ -1455,7 +1454,8 @@ export function joinWorld(scene, session) {
     }
   }
 
-  const closeInbox = inbox(session, playerId, (message) => {
+  /** @param {Signal} message */
+  const receiveSignal = (message) => {
     if (message.kind === "leave") {
       scene.world = createWorld();
       scene.mineFeed = undefined;
@@ -1486,7 +1486,7 @@ export function joinWorld(scene, session) {
     void (async () => {
       try {
         const nextPeer = new RTCPeerConnection({
-          iceServers: await ice(),
+          iceServers: await ice(session),
           iceTransportPolicy: forceRelay ? "relay" : "all",
         });
         if (closed || offer.attempt !== attempt) {
@@ -1531,11 +1531,11 @@ export function joinWorld(scene, session) {
         await nextPeer.setLocalDescription(await nextPeer.createAnswer());
         await gathered(nextPeer);
         if (peer === nextPeer && offer.attempt === attempt) {
-          await signal(session, "host", "answer", {
+          await signaling.send("host", "answer", {
             playerId,
             description: nextPeer.localDescription,
             attempt,
-          }, playerId);
+          });
         }
       } catch (error) {
         scene.status = "Join failed";
@@ -1543,6 +1543,15 @@ export function joinWorld(scene, session) {
         scheduleRetry();
       }
     })();
+  };
+  const signaling = createSignaling({
+    self: playerId,
+    receive: receiveSignal,
+    // A join sent before the host connected was dropped; ask again.
+    onPeer: (peer) => {
+      if (peer === "host" && !connected) requestJoin();
+    },
+    credentials: () => ticket(`sessions/${session}/join`, { peer: playerId }),
   });
   requestJoin();
   const watchdog = setInterval(() => {
@@ -1596,6 +1605,10 @@ export function joinWorld(scene, session) {
         corrections.count = corrections.totalGap = corrections.maxGap = 0;
       }
     },
+    /** Test hook: lose the signaling socket as a network failure would. */
+    dropSignaling() {
+      signaling.drop();
+    },
     wireDebug() {
       return harnessParams.has("harness")
         ? {
@@ -1626,7 +1639,7 @@ export function joinWorld(scene, session) {
       clearInterval(watchdog);
       if (retryTimer) clearTimeout(retryTimer);
       clearInterval(pingTimer);
-      closeInbox();
+      signaling.close();
       channel?.close();
       motionChannel?.close();
       peer?.close();

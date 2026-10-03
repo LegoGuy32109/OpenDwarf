@@ -7,21 +7,32 @@ test("unanswered offer expires without leaving a player or connection record", a
     (globalThis as unknown as { __od: { scene: { sessionId: string } } })
       .__od.scene.sessionId
   );
-  const playerId = `peer-${crypto.randomUUID()}`;
-  const response = await page.request.post(`/api/v1/signal/${session}/host`, {
-    data: {
-      id: crypto.randomUUID(),
-      from: playerId,
-      kind: "join",
-      data: {
-        playerId,
-        token: crypto.randomUUID(),
-        attempt: crypto.randomUUID(),
-        version: 3,
+  // Join through the relay as a peer that never answers the host's offer.
+  await page.evaluate(async (session) => {
+    const playerId = `peer-${crypto.randomUUID()}`;
+    const ticket = await (await fetch(`/api/v1/sessions/${session}/join`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ peer: playerId }),
+    })).json();
+    const socket = new WebSocket(ticket.signalUrl);
+    await new Promise((resolve) => socket.addEventListener("open", resolve));
+    socket.send(JSON.stringify({
+      t: "u",
+      m: { f: `${ticket.channel}/${playerId}`, o: "message", t: "host" },
+      p: {
+        id: crypto.randomUUID(),
+        from: playerId,
+        kind: "join",
+        data: {
+          playerId,
+          token: crypto.randomUUID(),
+          attempt: crypto.randomUUID(),
+          version: 3,
+        },
       },
-    },
-  });
-  expect(response.ok()).toBe(true);
+    }));
+  }, session);
   const stats = () =>
     page.evaluate(async () => {
       const game = (globalThis as unknown as {
