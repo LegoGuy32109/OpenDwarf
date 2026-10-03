@@ -258,29 +258,21 @@ Deno.test("only the shell's own origin may set a join link", () => {
 });
 
 Deno.test("the app serves build pages, and disk files only for the local build", async () => {
-  const kv = await Deno.openKv(":memory:");
-  try {
-    const shell = setup({}, {}, { localBuild: false });
-    const app = createApp(kv, shell.builds);
-    assertEquals(
-      (await app(new Request("https://x.example/js/app.js"))).status,
-      404,
-    );
-    assertEquals(
-      (await app(new Request("https://x.example/src/client/app.js"))).status,
-      404,
-    );
-    const nope = await app(new Request("https://x.example/b/nope"));
-    assertEquals(nope.status, 404);
-    await nope.body?.cancel();
-    const local = createApp(
-      kv,
-      setup({}, {}, { localBuild: true }).builds,
-    );
-    const script = await local(new Request("https://x.example/js/app.js"));
-    assertEquals(script.status, 200);
-    await script.body?.cancel();
-  } finally {
-    kv.close();
-  }
+  const shell = setup({}, {}, { localBuild: false });
+  const app = createApp(shell.builds);
+  assertEquals(
+    (await app(new Request("https://x.example/js/app.js"))).status,
+    404,
+  );
+  assertEquals(
+    (await app(new Request("https://x.example/src/client/app.js"))).status,
+    404,
+  );
+  const nope = await app(new Request("https://x.example/b/nope"));
+  assertEquals(nope.status, 404);
+  await nope.body?.cancel();
+  const local = createApp(setup({}, {}, { localBuild: true }).builds);
+  const script = await local(new Request("https://x.example/js/app.js"));
+  assertEquals(script.status, 200);
+  await script.body?.cancel();
 });

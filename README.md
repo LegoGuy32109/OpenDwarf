@@ -93,37 +93,37 @@ player's field of view. Master travel does not add tiles to entity-view memory.
 - `src/client/`: browser input, WebGL2 rendering, and WebRTC networking.
 - `src/shared/`: world rules and move intent validation. Plain JavaScript with
   JSDoc types runs in the browser without compilation.
-- `src/server/`: Deno TypeScript routes for static files, presence, session
+- `src/server/`: Deno TypeScript routes for static files, live sessions, session
   channels for signaling, ICE servers, and the local signaling relay.
 - `public/`: HTML, custom CSS, browser entrypoint, and texture atlases.
 
 Each visitor owns their world in the browser. Movement begins locally on the
-next 50 ms simulation tick. Joining tabs connect as players through WebRTC. Deno
-KV stores short lived presence. Peers exchange offers and answers through a
-Xirsys session channel (see `docs/architecture.md`). Neither runs the world. The
-host sends a view filtered for each joining tab every 500 ms, and when that
-player's sight moves to another tile. Visibility uses compact per-chunk bit
-masks on the wire, and terrain travels as run-length encoded 16×16 chunks. When
-a WebRTC channel backs up, the host coalesces unsent snapshots and sends the
-newest state after the channel drains. Movement also coalesces to the newest
-unsent state and sends a 300 ms settling tail after a stop. An incomplete join
-expires after ten seconds. Entity view contains currently visible players and
-NPCs plus last observed terrain; undiscovered terrain is unknown. Master view
-contains the full world. Each joining tab also receives chat by distance from
-its character: message text within five horizontal blocks and four levels, a
-`:0` talking indicator from five through twelve blocks, and no bubble beyond
-that range. Typing appears as `...` within five blocks. Speech passes through
-walls and sight boundaries. Chat uses the reliable `world` channel with
-snapshots and player input. Replaceable movement uses a separate unordered
-`motion` channel with zero retransmissions. Both channels must open to complete
-a join. Motion packets carry attempt, view, and sight revisions so delayed
-updates cannot restore an older view. The wire uses validated JSON and rejects
-incompatible versions with a refresh instruction. Each snapshot acknowledges
-that recipient's latest received input sequence. Each joining tab predicts its
-own position, and the host sends movement positions about every 100 ms for
-smooth remote interpolation. Meaningful corrections ease back toward the host
-position. The admin panel shows connection time, selected ICE route, and recent
-round trip times.
+next 50 ms simulation tick. Joining tabs connect as players through WebRTC. The
+shell records live sessions and telemetry summaries in Turso. Peers exchange
+offers and answers through a Xirsys session channel (see
+`docs/architecture.md`). Neither runs the world. The host sends a view filtered
+for each joining tab every 500 ms, and when that player's sight moves to another
+tile. Visibility uses compact per-chunk bit masks on the wire, and terrain
+travels as run-length encoded 16×16 chunks. When a WebRTC channel backs up, the
+host coalesces unsent snapshots and sends the newest state after the channel
+drains. Movement also coalesces to the newest unsent state and sends a 300 ms
+settling tail after a stop. An incomplete join expires after ten seconds. Entity
+view contains currently visible players and NPCs plus last observed terrain;
+undiscovered terrain is unknown. Master view contains the full world. Each
+joining tab also receives chat by distance from its character: message text
+within five horizontal blocks and four levels, a `:0` talking indicator from
+five through twelve blocks, and no bubble beyond that range. Typing appears as
+`...` within five blocks. Speech passes through walls and sight boundaries. Chat
+uses the reliable `world` channel with snapshots and player input. Replaceable
+movement uses a separate unordered `motion` channel with zero retransmissions.
+Both channels must open to complete a join. Motion packets carry attempt, view,
+and sight revisions so delayed updates cannot restore an older view. The wire
+uses validated JSON and rejects incompatible versions with a refresh
+instruction. Each snapshot acknowledges that recipient's latest received input
+sequence. Each joining tab predicts its own position, and the host sends
+movement positions about every 100 ms for smooth remote interpolation.
+Meaningful corrections ease back toward the host position. The admin panel shows
+connection time, selected ICE route, and recent round trip times.
 
 Each joining tab automatically rejoins after a connection drop. The host holds
 its sprite for up to five seconds and keeps its name and tile for a later rejoin
@@ -247,10 +247,9 @@ The shell still serves the client from disk, so the upload keeps `public/`,
 `src/client/`, and `src/shared/`. A later ticket decides when to exclude them.
 
 The `deploy` section in `deno.json` uses a dynamic Deno Deploy app with
-`main.ts` as its entrypoint. The `opendwarf` app has a Deno KV database
-assigned. Deno Deploy supplies that database to `Deno.openKv()`. Set
-`XIRSYS_IDENT`, `XIRSYS_SECRET`, and `XIRSYS_CHANNEL` so WebRTC can use TURN
-when a direct connection is unavailable.
+`main.ts` as its entrypoint. Set `TURSO_DB_URL` and `TURSO_DB_TOKEN` so the
+shell keeps sessions and telemetry, and `XIRSYS_IDENT`, `XIRSYS_SECRET`, and
+`XIRSYS_CHANNEL` so WebRTC can use TURN when a direct connection is unavailable.
 
 For CLI access to the existing `opendwarf` app, load `DENO_DEPLOY_TOKEN` from
 `~/Projects/work-portal/.env` into the command environment. Do not copy the
@@ -261,5 +260,5 @@ branch triggers a Deno Deploy build; verify the served client files and CI after
 the push. `opendwarf.joshhale.me` is already configured. Add any extra domains
 in Deno Deploy and DNS manually; the code does not register domains.
 
-See the [Deno Deploy KV guide](https://docs.deno.com/deploy/reference/deno_kv/)
-and [build configuration](https://docs.deno.com/deploy/reference/builds/).
+See the Deno Deploy
+[build configuration](https://docs.deno.com/deploy/reference/builds/).

@@ -90,3 +90,74 @@ Deno.test("join links and API URLs carry the build's base and origin", () => {
     `https://od.example.me/api/v1/signal/${session}/host`,
   );
 });
+
+Deno.test("a build reports its commit and label for a session, and the working tree reports local", () => {
+  const remote = createBuild(
+    parseBuildConfig(JSON.stringify({ commit: "abc1234", label: "demo" })),
+  );
+  assertEquals(remote.identity, { commit: "abc1234", label: "demo" });
+  const local = createBuild(parseBuildConfig(null));
+  assertEquals(local.identity, { commit: "local", label: null });
+});
+
+Deno.test("a guest on another build is sent to the host's build, and a guest on the same build stays", () => {
+  const session = "abcdefgh-1234";
+  const origin = "https://od.example.me";
+  const hostBuild = {
+    commit: "a".repeat(40),
+    label: "demo",
+    path: `/b/${"a".repeat(40)}/`,
+  };
+  const guest = createBuild(
+    parseBuildConfig(
+      JSON.stringify({ base: "/b/other/", commit: "b".repeat(40) }),
+    ),
+  );
+  assertEquals(
+    guest.joinRedirect(hostBuild, session, origin),
+    `${origin}/b/${"a".repeat(40)}/join/${session}`,
+  );
+  const same = createBuild(
+    parseBuildConfig(
+      JSON.stringify({ base: "/b/demo/", commit: "a".repeat(40) }),
+    ),
+  );
+  assertEquals(same.joinRedirect(hostBuild, session, origin), null);
+  // The working tree is the commit "local" on both sides.
+  const local = createBuild(parseBuildConfig(null));
+  assertEquals(
+    local.joinRedirect(
+      { commit: "local", label: null, path: "/b/local/" },
+      session,
+      origin,
+    ),
+    null,
+  );
+  assertEquals(
+    guest.joinRedirect(
+      { commit: "local", label: null, path: "/b/local/" },
+      session,
+      origin,
+    ),
+    `${origin}/b/local/join/${session}`,
+  );
+});
+
+Deno.test("a join response with no build, or a build path that is not a build path, never redirects", () => {
+  const guest = createBuild(
+    parseBuildConfig(JSON.stringify({ commit: "b".repeat(40) })),
+  );
+  const origin = "https://od.example.me";
+  for (
+    const host of [
+      undefined,
+      null,
+      "x",
+      {},
+      { commit: "a".repeat(40) },
+      { commit: "a", path: "//evil.example/" },
+      { commit: "a", path: "https://evil.example/b/a/" },
+      { commit: "a", path: "/elsewhere/" },
+    ]
+  ) assertEquals(guest.joinRedirect(host, "abcdefgh-1234", origin), null);
+});

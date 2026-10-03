@@ -1,4 +1,3 @@
-/// <reference lib="deno.unstable" />
 import QRCode from "qrcode-svg";
 import { type AdminApi, createAdminApi } from "./admin-api.ts";
 import { type Builds, openBuilds } from "./builds.ts";
@@ -14,7 +13,6 @@ const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".png": "image/png",
 };
-const SESSION_TTL_MS = 30_000;
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {
     status,
@@ -82,7 +80,6 @@ export function joinLink(
 }
 
 export function createApp(
-  kv: Deno.Kv,
   builds: Builds = openBuilds(openStore()),
   admin: AdminApi = createAdminApi({
     store: builds.store,
@@ -94,7 +91,7 @@ export function createApp(
   request: Request,
   info?: { remoteAddr?: { hostname?: string } },
 ) => Promise<Response> {
-  const sessions = createSessionRoutes(options);
+  const sessions = createSessionRoutes({ store: builds.store, ...options });
   return async (request, info) => {
     const url = new URL(request.url);
     // `/api/v1/*` is the client's API; the unversioned paths stay as aliases.
@@ -123,35 +120,6 @@ export function createApp(
         },
       });
     }
-    if (path === "/api/presence" && request.method === "POST") {
-      const data = await body(request);
-      const id = data.id;
-      if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(id)) {
-        return json({ error: "invalid session" }, 400);
-      }
-      await kv.set(["presence", id], { id, lastSeen: Date.now() }, {
-        expireIn: SESSION_TTL_MS,
-      });
-      return json({ ok: true });
-    }
-    const presencePath = /^\/api\/presence\/([a-zA-Z0-9_-]{8,80})$/.exec(path);
-    if (presencePath && request.method === "DELETE") {
-      await kv.delete(["presence", presencePath[1]]);
-      return json({ ok: true });
-    }
-    if (path === "/api/admin/sessions" && request.method === "GET") {
-      const sessions = [];
-      for await (
-        const entry of kv.list<{ id: string; lastSeen: number }>({
-          prefix: ["presence"],
-        })
-      ) {
-        if (Date.now() - entry.value.lastSeen <= SESSION_TTL_MS) {
-          sessions.push(entry.value);
-        }
-      }
-      return json({ sessions });
-    }
     if (path === "/api/telemetry" && request.method === "POST") {
       if (Number(request.headers.get("content-length") ?? 0) > 4096) {
         return json({ error: "telemetry too large" }, 413);
@@ -168,6 +136,14 @@ export function createApp(
         typeof value === "number" && Number.isFinite(value)
           ? Math.round(value * 100) / 100
           : null;
+      const nonNegative = (value: unknown) => {
+        const rounded = number(value);
+        return rounded !== null && rounded >= 0 ? rounded : null;
+      };
+      const count = (value: unknown) => {
+        const rounded = nonNegative(value);
+        return rounded === null ? null : Math.round(rounded);
+      };
       const safe = {
         event: "open-dwarf-client",
         at: new Date().toISOString(),
@@ -177,7 +153,7 @@ export function createApp(
             /^(self|peer-[a-f0-9-]{36})$/.test(data.participant)
           ? data.participant
           : "unknown",
-        role: data.role === "host" ? "host" : "guest",
+        role: data.role === "host" ? "host" as const : "guest" as const,
         test: data.test === true,
         route: typeof data.route === "string" &&
             /^(host|srflx|relay|prflx|\?|none|connecting)(\/(host|srflx|relay|prflx|\?))?$/
@@ -196,6 +172,25 @@ export function createApp(
         queuedBytes: number(data.queuedBytes),
       };
       console.log(JSON.stringify(safe));
+      // Only a summary is kept, and for 30 days; connection and error events stay in the log.
+      if (kind === "summary") {
+        try {
+          await builds.store.recordTelemetry({
+            session: safe.session,
+            route: safe.route,
+            role: safe.role,
+            players: count(data.players),
+            frameMeanMs: nonNegative(data.frameMeanMs),
+            frameMaxMs: nonNegative(data.frameMaxMs),
+            rttMs: nonNegative(data.rttMs),
+            bytes: count(data.bytesSent),
+            test: safe.test,
+          });
+        } catch (error) {
+          console.error("Could not store telemetry", error);
+          return json({ error: "the shell could not store telemetry" }, 502);
+        }
+      }
       return json({ ok: true });
     }
     const sessionResponse = await sessions.handle(request, path, info);

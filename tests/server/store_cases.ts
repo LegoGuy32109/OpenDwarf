@@ -289,46 +289,62 @@ export const cases: Record<string, Case> = {
     await h.store.recordTelemetry({
       session,
       route: "direct",
+      role: "guest",
+      players: 3,
       frameMeanMs: 8.5,
       frameMaxMs: 40.25,
       rttMs: 103.4,
       bytes: 12345,
+      test: false,
     });
     h.setNow(2000);
+    // A host has no round trip time, and a test run is marked.
     await h.store.recordTelemetry({
       session,
       route: "relay",
+      role: "host",
+      players: null,
       frameMeanMs: 9,
       frameMaxMs: 30,
-      rttMs: 150,
+      rttMs: null,
       bytes: 99,
+      test: true,
     });
     await h.store.recordTelemetry({
       session: `other-${tag}`,
       route: "direct",
+      role: "guest",
+      players: 1,
       frameMeanMs: 1,
       frameMaxMs: 2,
       rttMs: 3,
       bytes: 4,
+      test: false,
     });
     assertEquals(await h.store.listTelemetry(session), [
       {
         session,
         at: 1000,
         route: "direct",
+        role: "guest",
+        players: 3,
         frameMeanMs: 8.5,
         frameMaxMs: 40.25,
         rttMs: 103.4,
         bytes: 12345,
+        test: false,
       },
       {
         session,
         at: 2000,
         route: "relay",
+        role: "host",
+        players: null,
         frameMeanMs: 9,
         frameMaxMs: 30,
-        rttMs: 150,
+        rttMs: null,
         bytes: 99,
+        test: true,
       },
     ]);
     assertEquals(await h.store.listTelemetry(`none-${tag}`), []);
@@ -336,11 +352,120 @@ export const cases: Record<string, Case> = {
       h.store.recordTelemetry({
         session,
         route: "direct",
+        role: "guest",
+        players: 1,
         frameMeanMs: NaN,
         frameMaxMs: 1,
         rttMs: 1,
         bytes: 1,
+        test: false,
       })
     );
+  },
+
+  async "telemetry older than the cutoff is pruned and counted"(h, tag) {
+    const session = `prune-${tag}`;
+    const summary = {
+      session,
+      route: "direct",
+      role: "guest" as const,
+      players: 2,
+      frameMeanMs: 8,
+      frameMaxMs: 9,
+      rttMs: 10,
+      bytes: 11,
+      test: false,
+    };
+    for (const at of [1000, 2000, 3000]) {
+      h.setNow(at);
+      await h.store.recordTelemetry(summary);
+    }
+    // Rows from other tests may be older still, so count only this session's.
+    await h.store.pruneTelemetry(2000);
+    assertEquals(
+      (await h.store.listTelemetry(session)).map((row) => row.at),
+      [2000, 3000],
+    );
+    await h.store.pruneTelemetry(4000);
+    assertEquals(await h.store.listTelemetry(session), []);
+  },
+
+  async "a local build session is stored with the commit local"(h, tag) {
+    const id = `loc-${tag}`;
+    h.setNow(1000);
+    const session = await h.store.startSession({
+      id,
+      buildCommit: "local",
+      hostPeer: "host",
+    });
+    assertEquals(session.buildCommit, "local");
+    assertEquals((await h.store.getSession(id))?.buildCommit, "local");
+  },
+
+  async "ended sessions list newest first, with when each ended"(h, tag) {
+    // The cases' stores use a 10 second heartbeat timeout.
+    const [done, quiet, live] = [`done-${tag}`, `quiet-${tag}`, `up-${tag}`];
+    for (const [i, id] of [done, quiet, live].entries()) {
+      h.setNow(100_000 + i * 1000);
+      await h.store.startSession({ id, buildCommit: hex(40), hostPeer: "p" });
+    }
+    h.setNow(103_000);
+    await h.store.endSession(done);
+    await h.store.heartbeatSession(live, 2);
+    h.setNow(113_500);
+    const ended = (await h.store.listEndedSessions(1000))
+      .filter((s) => s.id.endsWith(tag));
+    // `quiet` last beat at its start, 101 s, so it timed out at 111 s. `live` beat at 103 s and
+    // timed out at 113 s: no longer live now, so it counts as ended with that time.
+    assertEquals(ended.map((s) => [s.id, s.ended]), [
+      [live, 113_000],
+      [quiet, 111_000],
+      [done, 103_000],
+    ]);
+    assertEquals(
+      (await h.store.listLiveSessions()).some((s) => s.id.endsWith(tag)),
+      false,
+    );
+  },
+
+  async "a sweep lease goes to one caller until it runs out"(h, tag) {
+    const id = `sw-${tag}`;
+    h.setNow(10_000);
+    await h.store.startSession({ id, buildCommit: hex(40), hostPeer: "p" });
+    // A live session is not swept.
+    assertEquals(await h.store.claimSessionSweep(id, 5000), false);
+    assertEquals(
+      (await h.store.listSessionsToSweep(1000)).some((s) => s.id === id),
+      false,
+    );
+    await h.store.endSession(id);
+    assertEquals(
+      (await h.store.listSessionsToSweep(1000)).some((s) => s.id === id),
+      true,
+    );
+    assertEquals(await h.store.claimSessionSweep(id, 5000), true);
+    assertEquals(await h.store.claimSessionSweep(id, 5000), false);
+    h.setNow(14_000);
+    assertEquals(await h.store.claimSessionSweep(id, 5000), false);
+    h.setNow(15_000);
+    assertEquals(await h.store.claimSessionSweep(id, 5000), true);
+    await h.store.markChannelDeleted(id);
+    h.setNow(60_000);
+    assertEquals(await h.store.claimSessionSweep(id, 5000), false);
+    assertEquals(
+      (await h.store.listSessionsToSweep(1000)).some((s) => s.id === id),
+      false,
+    );
+    // A session whose heartbeat timed out is swept too.
+    const quiet = `swq-${tag}`;
+    h.setNow(70_000);
+    await h.store.startSession({
+      id: quiet,
+      buildCommit: hex(40),
+      hostPeer: "p",
+    });
+    assertEquals(await h.store.claimSessionSweep(quiet, 5000), false);
+    h.setNow(81_000);
+    assertEquals(await h.store.claimSessionSweep(quiet, 5000), true);
   },
 };

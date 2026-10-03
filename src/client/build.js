@@ -67,16 +67,43 @@ export function routeOf(pathname, base) {
   return join ? { kind: "join", session: join[1] } : { kind: "play" };
 }
 
+/** The commit the working tree reports: it has no commit of its own. */
+export const LOCAL_COMMIT = "local";
+
+/**
+ * What a session's host reports about its build, and where a guest on another build goes.
+ * @typedef {{commit:string,label:string|null,path:string}} SessionBuild
+ */
+
 /** @param {BuildConfig} config */
 export function createBuild(config) {
+  const commit = config.commit || LOCAL_COMMIT;
   return {
     ...config,
+    /** The build this page runs, as the shell records it for a session. */
+    identity: { commit, label: config.label || null },
+    /**
+     * Where a guest should join `session`: null when the host runs this build (or the shell
+     * named no build), else the join link on the host's build path.
+     * @param {unknown} host the `build` of a join response @param {string} session @param {string} origin
+     * @param {string} [search] the query to carry over, such as `?relay=1`
+     * @returns {string|null}
+     */
+    joinRedirect: (host, session, origin, search = "") => {
+      const target = /** @type {Partial<SessionBuild>|null} */ (host);
+      if (
+        !target || typeof target.commit !== "string" ||
+        typeof target.path !== "string" || target.commit === commit ||
+        !/^\/b\/[a-zA-Z0-9._-]+\/$/.test(target.path)
+      ) return null;
+      return new URL(`${target.path}join/${session}${search}`, origin).href;
+    },
     /** @param {string} pathname */
     route: (pathname) => routeOf(pathname, config.base),
     /** The address of a world's join page. @param {string} session @param {string} origin */
     joinLink: (session, origin) =>
       new URL(`${config.base}join/${session}`, origin).href,
-    /** An API URL. @param {string} path such as `presence` or `signal/<id>/host` */
+    /** An API URL. @param {string} path such as `sessions` or `sessions/<id>/ice` */
     apiUrl: (path) => `${config.api}/api/v1/${path}`,
   };
 }

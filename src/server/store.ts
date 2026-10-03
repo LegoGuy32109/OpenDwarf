@@ -60,14 +60,18 @@ export interface Session {
   ended: number | null;
 }
 
-/** Numbers one peer reports about a session. */
+/** What one peer reports about a session. A number is null when the peer had none to report. */
 export interface TelemetrySummary {
   session: string;
   route: string;
-  frameMeanMs: number;
-  frameMaxMs: number;
-  rttMs: number;
-  bytes: number;
+  role: "host" | "guest";
+  players: number | null;
+  frameMeanMs: number | null;
+  frameMaxMs: number | null;
+  rttMs: number | null;
+  bytes: number | null;
+  /** From a test run, so a dashboard can leave it out. */
+  test: boolean;
 }
 
 export interface RecordedTelemetry extends TelemetrySummary {
@@ -120,10 +124,26 @@ export interface Store {
   getSession(id: string): Promise<Session | null>;
   /** Not ended, and a heartbeat within the timeout. Newest first. */
   listLiveSessions(): Promise<Session[]>;
+  /**
+   * Sessions that have ended, or whose heartbeat timed out, newest first. `ended` is when the host
+   * ended the session, or when its heartbeat timed out.
+   */
+  listEndedSessions(limit?: number): Promise<Session[]>;
+  /** Ended sessions whose channel is not deleted, oldest first. */
+  listSessionsToSweep(limit?: number): Promise<Session[]>;
+  /**
+   * Takes the lease to delete an ended session's channel for `leaseMs`. True for exactly one caller
+   * at a time, so several isolates never delete the same channel.
+   */
+  claimSessionSweep(id: string, leaseMs: number): Promise<boolean>;
+  /** Records that the session's channel is deleted, so no sweep takes it again. */
+  markChannelDeleted(id: string): Promise<void>;
 
   recordTelemetry(summary: TelemetrySummary): Promise<void>;
   /** Oldest first. */
   listTelemetry(session: string): Promise<RecordedTelemetry[]>;
+  /** Deletes summaries recorded before `before`. Returns how many. */
+  pruneTelemetry(before: number): Promise<number>;
 }
 
 export interface StoreOptions {
@@ -133,7 +153,11 @@ export interface StoreOptions {
   heartbeatTimeoutMs?: number;
 }
 
-const DEFAULT_HEARTBEAT_TIMEOUT_MS = 45_000;
+export const DEFAULT_HEARTBEAT_TIMEOUT_MS = 45_000;
+/** Telemetry summaries are kept this long. */
+export const TELEMETRY_RETENTION_MS = 30 * 24 * 60 * 60_000;
+/** The build commit of a session whose host runs the working tree. */
+export const LOCAL_COMMIT = "local";
 const DEFAULT_LIMIT = 50;
 
 // ---- Validation, shared so both implementations accept the same input. ----
@@ -152,6 +176,10 @@ function checkLabelName(name: string): void {
 
 function checkCommit(commit: string): void {
   check(COMMIT.test(commit), "a commit is 7 to 40 lowercase hex digits");
+}
+
+function checkBuildCommit(commit: string): void {
+  if (commit !== LOCAL_COMMIT) checkCommit(commit);
 }
 
 function checkTarget(kind: LabelTargetKind, target: string): void {
@@ -175,10 +203,19 @@ function checkNumber(value: number, what: string): void {
 function checkTelemetry(summary: TelemetrySummary): void {
   checkId(summary.session, "session");
   checkId(summary.route, "route");
-  checkNumber(summary.frameMeanMs, "frameMeanMs");
-  checkNumber(summary.frameMaxMs, "frameMaxMs");
-  checkNumber(summary.rttMs, "rttMs");
-  checkCount(summary.bytes, "bytes");
+  check(
+    summary.role === "host" || summary.role === "guest",
+    "role is host or guest",
+  );
+  if (summary.players !== null) checkCount(summary.players, "players");
+  if (summary.frameMeanMs !== null) {
+    checkNumber(summary.frameMeanMs, "frameMeanMs");
+  }
+  if (summary.frameMaxMs !== null) {
+    checkNumber(summary.frameMaxMs, "frameMaxMs");
+  }
+  if (summary.rttMs !== null) checkNumber(summary.rttMs, "rttMs");
+  if (summary.bytes !== null) checkCount(summary.bytes, "bytes");
 }
 
 function limitOf(limit: number | undefined): number {
@@ -215,6 +252,16 @@ function memoryStore(options: StoreOptions): Store {
   const deploys: ShellDeploy[] = [];
   const sessions = new Map<string, Session>();
   const telemetry: RecordedTelemetry[] = [];
+  /** Sweep lease start and channel deletion time, by session id. */
+  const claims = new Map<string, number>();
+  const deleted = new Set<string>();
+  const timedOut = (s: Session) =>
+    s.ended !== null || s.lastHeartbeat < now() - timeout;
+  /** The session as it ended: a timed out heartbeat ends it when the timeout passed. */
+  const asEnded = (s: Session): Session => ({
+    ...s,
+    ended: s.ended ?? s.lastHeartbeat + timeout,
+  });
 
   return {
     setLabel(input) {
@@ -343,7 +390,7 @@ function memoryStore(options: StoreOptions): Store {
 
     startSession(input) {
       checkId(input.id, "session id");
-      checkCommit(input.buildCommit);
+      checkBuildCommit(input.buildCommit);
       checkId(input.hostPeer, "hostPeer");
       const playerCount = input.playerCount ?? 1;
       checkCount(playerCount, "playerCount");
@@ -392,6 +439,38 @@ function memoryStore(options: StoreOptions): Store {
       );
     },
 
+    listEndedSessions(limit) {
+      return Promise.resolve(
+        [...sessions.values()].filter(timedOut)
+          .sort((a, b) => b.started - a.started)
+          .slice(0, limitOf(limit))
+          .map(asEnded),
+      );
+    },
+    listSessionsToSweep(limit) {
+      return Promise.resolve(
+        [...sessions.values()]
+          .filter((s) => timedOut(s) && !deleted.has(s.id))
+          .sort((a, b) => a.started - b.started)
+          .slice(0, limitOf(limit))
+          .map(asEnded),
+      );
+    },
+    claimSessionSweep(id, leaseMs) {
+      const session = sessions.get(id);
+      const claimed = claims.get(id);
+      if (
+        !session || !timedOut(session) || deleted.has(id) ||
+        (claimed !== undefined && claimed > now() - leaseMs)
+      ) return Promise.resolve(false);
+      claims.set(id, now());
+      return Promise.resolve(true);
+    },
+    markChannelDeleted(id) {
+      if (sessions.has(id)) deleted.add(id);
+      return Promise.resolve();
+    },
+
     recordTelemetry(summary) {
       checkTelemetry(summary);
       telemetry.push({ ...summary, at: now() });
@@ -402,6 +481,12 @@ function memoryStore(options: StoreOptions): Store {
         telemetry.filter((row) => row.session === session)
           .map((row) => ({ ...row })),
       );
+    },
+    pruneTelemetry(before) {
+      const kept = telemetry.filter((row) => row.at >= before);
+      const count = telemetry.length - kept.length;
+      telemetry.splice(0, telemetry.length, ...kept);
+      return Promise.resolve(count);
     },
   };
 }
@@ -447,6 +532,17 @@ function sessionOf(row: Row): Session {
     lastHeartbeat: int(row.last_heartbeat_at),
     playerCount: int(row.player_count),
     ended: row.ended_at === null ? null : int(row.ended_at),
+  };
+}
+
+/** A session row read as an ended one: `ended` falls back to when its heartbeat timed out. */
+function endedOf(timeout: number): (row: Row) => Session {
+  return (row) => {
+    const session = sessionOf(row);
+    return {
+      ...session,
+      ended: session.ended ?? session.lastHeartbeat + timeout,
+    };
   };
 }
 
@@ -636,7 +732,7 @@ export function createTursoStore(
 
     async startSession(input) {
       checkId(input.id, "session id");
-      checkCommit(input.buildCommit);
+      checkBuildCommit(input.buildCommit);
       checkId(input.hostPeer, "hostPeer");
       const playerCount = input.playerCount ?? 1;
       checkCount(playerCount, "playerCount");
@@ -694,22 +790,58 @@ export function createTursoStore(
       )).map(sessionOf);
     },
 
+    async listEndedSessions(limit) {
+      const cutoff = now() - timeout;
+      return (await rows(
+        "SELECT * FROM sessions WHERE ended_at IS NOT NULL OR last_heartbeat_at < ? ORDER BY started_at DESC, id LIMIT ?",
+        [cutoff, limitOf(limit)],
+      )).map(endedOf(timeout));
+    },
+    async listSessionsToSweep(limit) {
+      return (await rows(
+        "SELECT * FROM sessions WHERE channel_deleted_at IS NULL AND (ended_at IS NOT NULL OR last_heartbeat_at < ?) ORDER BY started_at, id LIMIT ?",
+        [now() - timeout, limitOf(limit)],
+      )).map(endedOf(timeout));
+    },
+    async claimSessionSweep(id, leaseMs) {
+      const at = now();
+      // One statement decides, so of several isolates exactly one sees a changed row.
+      const result = await db.execute({
+        sql:
+          "UPDATE sessions SET sweep_claimed_at = ? WHERE id = ? AND channel_deleted_at IS NULL " +
+          "AND (ended_at IS NOT NULL OR last_heartbeat_at < ?) " +
+          "AND (sweep_claimed_at IS NULL OR sweep_claimed_at <= ?)",
+        args: [at, id, at - timeout, at - leaseMs],
+      });
+      return result.rowsAffected > 0;
+    },
+    async markChannelDeleted(id) {
+      await rows(
+        "UPDATE sessions SET channel_deleted_at = ? WHERE id = ? AND channel_deleted_at IS NULL",
+        [now(), id],
+      );
+    },
+
     async recordTelemetry(summary) {
       checkTelemetry(summary);
       await rows(
-        "INSERT INTO telemetry_summaries(session_id, recorded_at, route, frame_mean_ms, frame_max_ms, rtt_ms, bytes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO telemetry_summaries(session_id, recorded_at, route, role, players, frame_mean_ms, frame_max_ms, rtt_ms, bytes, is_test) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           summary.session,
           now(),
           summary.route,
+          summary.role,
+          summary.players,
           summary.frameMeanMs,
           summary.frameMaxMs,
           summary.rttMs,
           summary.bytes,
+          summary.test ? 1 : 0,
         ],
       );
     },
     async listTelemetry(session) {
+      const maybe = (value: unknown) => value === null ? null : Number(value);
       return (await rows(
         "SELECT * FROM telemetry_summaries WHERE session_id = ? ORDER BY id",
         [session],
@@ -717,11 +849,21 @@ export function createTursoStore(
         session: String(row.session_id),
         at: int(row.recorded_at),
         route: String(row.route),
-        frameMeanMs: Number(row.frame_mean_ms),
-        frameMaxMs: Number(row.frame_max_ms),
-        rttMs: Number(row.rtt_ms),
-        bytes: int(row.bytes),
+        role: String(row.role) === "host" ? "host" : "guest",
+        players: maybe(row.players),
+        frameMeanMs: maybe(row.frame_mean_ms),
+        frameMaxMs: maybe(row.frame_max_ms),
+        rttMs: maybe(row.rtt_ms),
+        bytes: maybe(row.bytes),
+        test: Number(row.is_test) === 1,
       }));
+    },
+    async pruneTelemetry(before) {
+      const result = await db.execute({
+        sql: "DELETE FROM telemetry_summaries WHERE recorded_at < ?",
+        args: [before],
+      });
+      return result.rowsAffected;
     },
   };
 }
