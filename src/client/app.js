@@ -89,6 +89,8 @@ import {
   pickUp,
   pickupLine,
 } from "../shared/items.js";
+import { sellItems, SHOP_TILE } from "../shared/shop.js";
+import { createScoreReadout, createShopPanel } from "./shop-panel.js";
 
 /** @param {string} selector */
 const $ = (
@@ -105,6 +107,13 @@ const bag = createInventoryPanel({
 });
 const logList = $("#hearing-log-lines");
 let renderedLog = -1;
+/** The shop panel and the score readout; both are drawn by `shop-panel.js`. */
+const shop = createShopPanel({
+  root: $("#game"),
+  sell: (request) => sellRequest(request),
+  flash: (text) => flash(text),
+});
+const score = createScoreReadout($("#game"));
 const gamepadDebug = new URL(location.href).searchParams.has("gamepad-debug");
 const gamepadEnabled = !new URL(location.href).searchParams.has("harness") ||
   gamepadDebug;
@@ -256,6 +265,7 @@ function typing() {
 /** @param {string} [prefill] */
 function openChat(prefill = "") {
   bag.toggle(false);
+  shop.close();
   scene.menu = false;
   scene.menuPage = "root";
   scene.chatOpen = true;
@@ -378,8 +388,13 @@ function flash(text) {
   scene.notice = { text, until: performance.now() + 2500 };
 }
 
-/** The look stick, IJKL, and controller camera input combined. */
+/** The aim input, held still while the shop panel uses the look controls. */
 function cameraInput() {
+  return shop.isOpen() ? { x: 0, y: 0 } : lookInput();
+}
+
+/** The look stick, IJKL, and controller camera input combined. */
+function lookInput() {
   const controllerCamera = scene.chatOpen || scene.menu
     ? { x: 0, y: 0 }
     : gamepadCamera;
@@ -448,9 +463,41 @@ function heldDisplay() {
 
 /** Open or close the inventory panel. Menu, chat, and master view keep it shut. @param {boolean} [open] */
 function toggleBag(open = !bag.isOpen) {
-  if (open && (scene.chatOpen || scene.menu)) return;
+  if (open && (scene.chatOpen || scene.menu || shop.isOpen())) return;
   bag.toggle(open);
   $("#bag-button").setAttribute("aria-pressed", String(bag.isOpen));
+}
+
+/** Up or down on the look stick or the D-pad, for the shop panel. IJKL act on key presses. */
+function shopDirection() {
+  return stickDirection(
+    cameraStick.x + gamepadCamera.x,
+    cameraStick.y + gamepadCamera.y,
+    0.18,
+  ).y || gamepadDirection.y;
+}
+
+/**
+ * Ask for a sale. A guest sends the request and the world host checks it; the
+ * host's own player goes through the same `sellItems` check.
+ * @param {import('../shared/shop.js').SaleRequest} request
+ */
+function sellRequest(request) {
+  if (isAdmin) {
+    guest?.send({ type: "sell", ...request });
+    return;
+  }
+  const result = scene.layout === "room"
+    ? sellItems(scene.world, scene.localId, request)
+    : { ok: /** @type {const} */ (false), reason: "no shop here" };
+  if (result.ok) scene.systemLine(result.line);
+  else flash(`Cannot sell: ${result.reason}`);
+}
+
+/** Whether the highlighted tile holds the shopkeeper. @param {{x:number,y:number,z:number}} target */
+function isShopkeeper(target) {
+  return scene.layout === "room" && target.x === SHOP_TILE.x &&
+    target.y === SHOP_TILE.y && target.z === SHOP_TILE.z;
 }
 
 /** Interact on the highlighted tile: pick up dropped items, or start mining it. The host checks everything. */
@@ -463,6 +510,10 @@ function interact() {
   if (!player || scene.chatOpen || scene.menu) return;
   if (isPickupGridOpen(pickupGrid)) {
     confirmPickupGrid();
+    return;
+  }
+  if (shop.isOpen()) {
+    shop.confirm();
     return;
   }
   if (scene.viewMode !== "entity") {
@@ -480,6 +531,10 @@ function interact() {
   );
   if (!target) {
     flash("Nothing to mine there");
+    return;
+  }
+  if (isShopkeeper(target)) {
+    shop.open(shopDirection());
     return;
   }
   const stacks = droppedHere(target);
@@ -755,6 +810,7 @@ function pollGamepad() {
   if (newlyPressed(3)) {
     if (scene.chatOpen) closeChat();
     toggleBag(false);
+    shop.close();
     scene.menu = !scene.menu;
     scene.menuPage = "root";
   }
@@ -763,11 +819,12 @@ function pollGamepad() {
     if (newlyPressed(5)) changeLayer(1);
     if (newlyPressed(0)) interact();
   }
+  if (newlyPressed(1)) shop.close();
   gamepadButtons = buttons;
 }
 
 function move() {
-  const direction = scene.chatOpen || scene.menu
+  const direction = scene.chatOpen || scene.menu || shop.isOpen()
     ? { x: 0, y: 0 }
     : inputDirection();
   pressed.clear();
@@ -999,6 +1056,7 @@ function bindInput() {
   $("#menu-button").addEventListener("click", () => {
     scene.inputMode = "touch";
     toggleBag(false);
+    shop.close();
     scene.menu = !scene.menu;
     scene.menuPage = "root";
   });
@@ -1052,6 +1110,11 @@ function bindInput() {
       if (!event.repeat) closePickupGrid(pickupGrid);
       return;
     }
+    if (event.code === "Escape" && shop.isOpen()) {
+      event.preventDefault();
+      if (!event.repeat) shop.close();
+      return;
+    }
     if (event.code === "Escape" && logPanel.classList.contains("open")) {
       event.preventDefault();
       if (!event.repeat) toggleLog(false);
@@ -1078,6 +1141,15 @@ function bindInput() {
     if (event.code === "Space") {
       event.preventDefault();
       if (!event.repeat) interact();
+      return;
+    }
+    if (
+      shop.isOpen() && ["KeyI", "KeyK", "KeyJ", "KeyL"].includes(event.code)
+    ) {
+      // IJKL choose a row in the shop panel; a held key repeats in `shop.steer`.
+      event.preventDefault();
+      if (!event.repeat && event.code === "KeyI") shop.move(-1);
+      if (!event.repeat && event.code === "KeyK") shop.move(1);
       return;
     }
     gridKey(event.code, event.repeat);
@@ -1538,6 +1610,10 @@ export async function startApp() {
     updatePickupGrid();
     scene.inventory = inventoryDisplay();
     bag.update(scene.inventory, heldDisplay());
+    score.show(scene.layout === "room");
+    score.update(scene.inventory);
+    shop.update(scene.inventory);
+    shop.steer(shopDirection(), now);
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };

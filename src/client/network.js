@@ -18,6 +18,7 @@ import {
   pickupLine,
 } from "../shared/items.js";
 import { setHeldItem } from "../shared/held-item.js";
+import { sellItems } from "../shared/shop.js";
 import {
   cancelMining,
   heldItem,
@@ -238,6 +239,18 @@ export function startHost(scene, session) {
   function tell(id, text) {
     if (id === scene.localId) scene.systemLine?.(text);
     else peers.get(id)?.system(text);
+  }
+
+  /**
+   * The host's check of a sale: only in the room layout, where the shopkeeper
+   * stands. A guest names an item kind and a count, or all.
+   * @param {string} id @param {unknown} request
+   */
+  function sellAt(id, request) {
+    if (scene.layout !== "room") {
+      return /** @type {const} */ ({ ok: false, reason: "no shop here" });
+    }
+    return sellItems(scene.world, id, request);
   }
 
   function publish() {
@@ -465,6 +478,16 @@ export function startHost(scene, session) {
         else if (channel?.readyState === "open") {
           channel.send(
             JSON.stringify({ type: "pickup-result", reason: result.reason }),
+          );
+        }
+        return;
+      }
+      if (message.type === "sell") {
+        const result = sellAt(playerId, message);
+        if (result.ok) tell(playerId, result.line);
+        else if (channel?.readyState === "open") {
+          channel.send(
+            JSON.stringify({ type: "sell-result", reason: result.reason }),
           );
         }
         return;
@@ -1262,6 +1285,15 @@ export function joinWorld(scene, session) {
       if (typeof value.reason === "string" && value.reason.length <= 40) {
         scene.notice = {
           text: `Cannot pick up: ${value.reason}`,
+          until: performance.now() + 2500,
+        };
+      }
+      return;
+    }
+    if (value.type === "sell-result") {
+      if (typeof value.reason === "string" && value.reason.length <= 60) {
+        scene.notice = {
+          text: `Cannot sell: ${value.reason}`,
           until: performance.now() + 2500,
         };
       }

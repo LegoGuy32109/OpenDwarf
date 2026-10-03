@@ -134,6 +134,24 @@ the tile empties, to move the selector, and to hand `scene.pickupCells` to the
 renderer. While the grid is open, the look control and D-pad drive it, not the
 aim or movement.
 
+## Shop
+
+`src/shared/shop.js` holds the price table (`PRICES`, one place) and `sellItems`,
+the one sale rule. The shopkeeper stands on `SHOPKEEPER_TILE` in the room layout
+only and is a drawn fixture, not an entity: it does not block movement. A sale
+is a host decision. Interact on the shopkeeper's tile opens the panel
+(`src/client/shop-panel.js`), which only asks. The host's own player calls
+`sellItems`; a guest sends `sell` with an item kind and a count, or `all`. The
+host checks the entity, that its tile is the shopkeeper's or a neighbor on the
+same level, that the kind has a price (stone, the pickaxe, and coins do not),
+that the inventory holds the count, and that the coin stack has room. A failed
+check changes nothing and a guest gets `sell-result` with the reason. A sale
+removes the items, adds coins to the inventory's coin stack, and adds the sale
+line through `tell`, so only the seller sees it. The score is the coin count in
+the inventory the client already receives. While the panel is open, interact and
+the look controls drive it instead of mining and aiming, and movement input is
+ignored.
+
 ## Why the visitor hosts the world
 
 Each visitor can start moving before a server round trip. The visitor's browser

@@ -205,3 +205,10 @@ _Avoid_: Presentation buffer
 **Phone test code**:
 A temporary code that lets a test runner send predefined diagnostic commands
 to a phone using the test route.
+
+**Shopkeeper**:
+A fixed character on the reserved tile in the spawn room who buys ore for coins
+at fixed prices. It sells nothing yet. Interact on its tile opens the shop panel.
+
+**Coin**:
+The item the shopkeeper pays in. A player's coin count is the score.
