@@ -2,12 +2,17 @@ import { assert, assertEquals } from "@std/assert";
 import {
   chatBand,
   chatView,
+  liveBubbles,
+  parseTextSize,
   receiveChat,
+  TEXT_SIZE_SCALE,
   thoughtDotLifts,
   withoutChat,
 } from "../../src/shared/chat.js";
 import {
   addPlayer,
+  advanceTicks,
+  bubbleTicks,
   createWorld,
   submitMessage,
 } from "../../src/shared/world.js";
@@ -91,4 +96,89 @@ Deno.test("thought bubble dots rise in turn and loop", () => {
       assertEquals(lift >= 0 && lift <= 1, true);
     }
   }
+});
+
+Deno.test("a speaker keeps the three newest bubbles, each lasting five seconds plus long-message time", () => {
+  const world = createWorld();
+  addPlayer(world, "speaker", { x: 0, y: 0, z: 0 });
+  const long = "x".repeat(100);
+  for (const text of ["one", "two", "three", "four"]) {
+    submitMessage(world, "speaker", text);
+  }
+  const speaker = world.players.speaker;
+  assertEquals(speaker.messages?.map((bubble) => bubble.text), [
+    "two",
+    "three",
+    "four",
+  ]);
+  assertEquals(speaker.message, "four");
+  assertEquals(speaker.messages?.[2].until, 100);
+  submitMessage(world, "speaker", long);
+  assertEquals(speaker.messages?.[2].until, 160);
+  assertEquals(bubbleTicks("short"), 100);
+  assertEquals(bubbleTicks(long), 160);
+});
+
+Deno.test("older bubbles expire first and chat view lists them oldest to newest", () => {
+  const world = createWorld();
+  addPlayer(world, "listener", { x: 0, y: 0, z: 0 });
+  addPlayer(world, "speaker", { x: 2, y: 0, z: 0 });
+  submitMessage(world, "speaker", "first");
+  world.tick = 30;
+  submitMessage(world, "speaker", "second");
+  world.tick = 31;
+  submitMessage(world, "speaker", "third");
+  const [record] = chatView(world, "listener", new Map());
+  assertEquals(record.bubbles?.map((bubble) => bubble.text), [
+    "first",
+    "second",
+    "third",
+  ]);
+  assertEquals(record.text, "third");
+  world.tick = 100;
+  advanceTicks(world);
+  assertEquals(world.players.speaker.messages?.map((b) => b.text), [
+    "second",
+    "third",
+  ]);
+});
+
+Deno.test("talking records and far speakers carry no bubble text", () => {
+  const world = createWorld();
+  addPlayer(world, "listener", { x: 0, y: 0, z: 0 });
+  addPlayer(world, "speaker", { x: 8, y: 0, z: 0 });
+  submitMessage(world, "speaker", "private");
+  const [record] = chatView(world, "listener", new Map());
+  assertEquals(record.talking, true);
+  assertEquals(record.bubbles, undefined);
+  assertEquals(liveBubbles(record, 0), []);
+});
+
+Deno.test("receiveChat times each bubble and liveBubbles drops expired ones", () => {
+  const incoming = [{
+    id: "a",
+    x: 0,
+    y: 0,
+    z: 0,
+    text: "new",
+    expiresTick: 40,
+    bubbles: [
+      { text: "old", expiresTick: 10 },
+      { text: "new", expiresTick: 40 },
+    ],
+  }];
+  const [record] = receiveChat([], incoming, 0, 1000);
+  assertEquals(liveBubbles(record, 1100), ["old", "new"]);
+  assertEquals(liveBubbles(record, 1600), ["new"]);
+  assertEquals(liveBubbles(record, 3100), []);
+});
+
+Deno.test("text size parses stored values and defaults to medium at two thirds", () => {
+  assertEquals(parseTextSize("small"), "small");
+  assertEquals(parseTextSize("large"), "large");
+  assertEquals(parseTextSize(null), "medium");
+  assertEquals(parseTextSize("huge"), "medium");
+  assert(TEXT_SIZE_SCALE.small < TEXT_SIZE_SCALE.medium);
+  assert(TEXT_SIZE_SCALE.medium < TEXT_SIZE_SCALE.large);
+  assertEquals(TEXT_SIZE_SCALE.medium, 2 / 3);
 });

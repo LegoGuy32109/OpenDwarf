@@ -26,7 +26,12 @@ import { createRenderer } from "./render.js";
 import { joinWorld, startHost } from "./network.js";
 import { createCornerNpc } from "../shared/npc.js";
 import { createPresentation } from "./presentation.js";
-import { chatView } from "../shared/chat.js";
+import {
+  chatView,
+  parseTextSize,
+  TEXT_SIZE_KEY,
+  TEXT_SIZES,
+} from "../shared/chat.js";
 import {
   addSystemLine,
   createHearingLog,
@@ -52,12 +57,22 @@ let renderedLog = -1;
 const gamepadDebug = new URL(location.href).searchParams.has("gamepad-debug");
 const gamepadEnabled = !new URL(location.href).searchParams.has("harness") ||
   gamepadDebug;
+/** Private browsing can block storage; the default size then applies. */
+function storedTextSize() {
+  try {
+    return localStorage.getItem(TEXT_SIZE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 const scene = {
   world: createWorld(),
   localId: "self",
   menu: false,
   menuPage: "root",
   uiScale: 1,
+  textSize: parseTextSize(storedTextSize()),
   zoom: 1,
   zoomTarget: 1,
   viewZ: 0,
@@ -748,8 +763,15 @@ function bindInput() {
       return;
     }
     if (scene.menuPage === "settings") {
-      if (y >= 132 && y < 166) scene.menuPage = "root";
-      else if (y >= 88 && y < 126 && x < 0) {
+      if (y >= 208 && y < 244) scene.menuPage = "root";
+      else if (y >= 164 && y < 202) {
+        scene.textSize = TEXT_SIZES[x < -45 ? 0 : x > 45 ? 2 : 1];
+        try {
+          localStorage.setItem(TEXT_SIZE_KEY, scene.textSize);
+        } catch {
+          // The choice still applies for this visit.
+        }
+      } else if (y >= 88 && y < 126 && x < 0) {
         scene.uiScale = clamp(scene.uiScale - 0.25, 1, 2);
       } else if (y >= 88 && y < 126) {
         scene.uiScale = clamp(scene.uiScale + 0.25, 1, 2);

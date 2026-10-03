@@ -1,6 +1,12 @@
 // @ts-check
 
-import { THOUGHT_DOTS_WIDTH, thoughtDotLifts } from "../shared/chat.js";
+import {
+  liveBubbles,
+  TEXT_SIZE_SCALE,
+  TEXT_SIZES,
+  THOUGHT_DOTS_WIDTH,
+  thoughtDotLifts,
+} from "../shared/chat.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { adjacentTarget } from "../shared/target.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
@@ -78,7 +84,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],chatOpen:boolean,chatDraft:string,status:string}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string}} Scene */
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -484,6 +490,7 @@ export async function createRenderer(canvas) {
     }
     flush();
     const scale = Math.max(1, Math.round(dpr * 1.5 * scene.uiScale));
+    const bubbleScale = scale * TEXT_SIZE_SCALE[scene.textSize];
     for (const { player, pos } of players) {
       const visible = opacity.get(player.id) ?? 0;
       if (visible <= 0) continue;
@@ -509,6 +516,7 @@ export async function createRenderer(canvas) {
       }
     }
     const local = scene.world.players[scene.localId];
+    const now = performance.now();
     const chat = scene.chatFeed.filter((record) =>
       record.expiresAt === undefined || performance.now() < record.expiresAt
     );
@@ -520,6 +528,9 @@ export async function createRenderer(canvas) {
           y: local.y,
           z: local.z,
           text: local.message,
+          bubbles: (local.messages ?? []).filter((bubble) =>
+            scene.world.tick < bubble.until
+          ).map((bubble) => ({ text: bubble.text, expiresTick: bubble.until })),
         });
       } else if (local.typing) {
         chat.push({
@@ -540,7 +551,10 @@ export async function createRenderer(canvas) {
       const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
       const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
       const level = record.z - listener.z;
-      const content = record.text ?? (record.talking ? ":0" : "");
+      const lines = liveBubbles(record, now);
+      const contents = lines.length
+        ? lines
+        : [record.text ?? (record.talking ? ":0" : "")];
       const direction = sx < 0
         ? "<"
         : sx > width
@@ -550,29 +564,33 @@ export async function createRenderer(canvas) {
         : sy > height
         ? "v"
         : "";
-      const label = `${direction}${direction ? " " : ""}${
-        level ? `  ${Math.abs(level)} ` : ""
-      }${content}`;
       const maxChars = Math.max(
         2,
-        Math.floor((width - 32 * dpr) / (8 * scale)) - 2,
+        Math.floor((width - 32 * dpr) / (8 * bubbleScale)) - 2,
       );
-      const value = label.slice(0, maxChars);
-      const dotsW = record.typing ? THOUGHT_DOTS_WIDTH * scale : 0;
+      const rows = contents.map((content) =>
+        `${direction}${direction ? " " : ""}${
+          level ? `  ${Math.abs(level)} ` : ""
+        }${content}`.slice(0, maxChars)
+      );
+      const dotsW = record.typing ? THOUGHT_DOTS_WIDTH * bubbleScale : 0;
       const w = Math.min(
         width - 16 * dpr,
-        (value.length * 8 + 16) * scale + dotsW,
+        (Math.max(...rows.map((row) => row.length)) * 8 + 16) * bubbleScale +
+          dotsW,
       );
+      const h = (rows.length * 22 - 2) * bubbleScale;
       const rawX = sx - w / 2;
-      const rawY = sy - 28 * scale;
+      const rawY = sy - 28 * bubbleScale - (rows.length - 1) * 22 * bubbleScale;
       const x = Math.max(8 * dpr, Math.min(width - w - 8 * dpr, rawX));
-      const y = Math.max(8 * dpr, Math.min(height - 22 * scale, rawY));
+      const y = Math.max(8 * dpr, Math.min(height - h - 2 * bubbleScale, rawY));
       return {
         record,
-        value,
+        rows,
         x,
         y,
         w,
+        h,
         direction,
         level,
         distance: Math.hypot(record.x - listener.x, record.y - listener.y),
@@ -589,62 +607,88 @@ export async function createRenderer(canvas) {
             ? item.direction === candidate.direction
             : !item.direction && candidate.x < item.x + item.w &&
               candidate.x + candidate.w > item.x &&
-              candidate.y < item.y + 20 * scale &&
-              candidate.y + 20 * scale > item.y
+              candidate.y < item.y + item.h &&
+              candidate.y + candidate.h > item.y
         )
       );
       if (group) group.push(candidate);
       else groups.push([candidate]);
     }
     for (const group of groups) {
-      for (const [index, candidate] of group.slice(0, 3).entries()) {
-        const y = Math.max(
+      let offset = 0;
+      for (const candidate of group.slice(0, 3)) {
+        const top = Math.max(
           8 * dpr,
-          Math.min(height - 22 * scale, candidate.y + index * 22 * scale),
+          Math.min(
+            height - candidate.h - 2 * bubbleScale,
+            candidate.y + offset,
+          ),
         );
-        rect(candidate.x, y, candidate.w, 20 * scale, [0.06, 0.06, 0.06, 0.85]);
-        text(candidate.value, candidate.x + 8 * scale, y + 2 * scale, scale);
-        if (candidate.record.typing) {
-          const dotsX = candidate.x + (8 + candidate.value.length * 8) * scale;
-          thoughtDots(dotsX, y, scale, performance.now());
-          if (index === 0) {
-            const tailX = candidate.x + candidate.w / 2;
-            const color = /** @type {[number,number,number,number]} */ ([
-              0.06,
-              0.06,
-              0.06,
-              0.85,
-            ]);
-            rect(
-              tailX - 3 * scale,
-              y + 21 * scale,
-              4 * scale,
-              4 * scale,
-              color,
-            );
-            rect(
-              tailX - 6 * scale,
-              y + 26 * scale,
-              2 * scale,
-              2 * scale,
-              color,
-            );
+        offset += candidate.h + 2 * bubbleScale;
+        for (const [index, row] of candidate.rows.entries()) {
+          const y = top + index * 22 * bubbleScale;
+          rect(candidate.x, y, candidate.w, 20 * bubbleScale, [
+            0.06,
+            0.06,
+            0.06,
+            0.85,
+          ]);
+          text(
+            row,
+            candidate.x + 8 * bubbleScale,
+            y + 2 * bubbleScale,
+            bubbleScale,
+          );
+          if (candidate.record.typing) {
+            const dotsX = candidate.x + (8 + row.length * 8) * bubbleScale;
+            thoughtDots(dotsX, y, bubbleScale, performance.now());
+            if (group[0] === candidate) {
+              const tailX = candidate.x + candidate.w / 2;
+              const color = /** @type {[number,number,number,number]} */ ([
+                0.06,
+                0.06,
+                0.06,
+                0.85,
+              ]);
+              rect(
+                tailX - 3 * bubbleScale,
+                y + 21 * bubbleScale,
+                4 * bubbleScale,
+                4 * bubbleScale,
+                color,
+              );
+              rect(
+                tailX - 6 * bubbleScale,
+                y + 26 * bubbleScale,
+                2 * bubbleScale,
+                2 * bubbleScale,
+                color,
+              );
+            }
           }
-        }
-        if (candidate.level) {
-          const arrowX = candidate.x + (candidate.direction ? 24 : 8) * scale;
-          const arrowY = y + 5 * scale;
-          const gold =
-            /** @type {[number,number,number,number]} */ ([1, 0.78, 0.37, 1]);
-          rect(arrowX + 2 * scale, arrowY + 2 * scale, scale, 8 * scale, gold);
-          for (let n = 0; n < 3; n++) {
+          if (candidate.level) {
+            const arrowX = candidate.x +
+              (candidate.direction ? 24 : 8) * bubbleScale;
+            const arrowY = y + 5 * bubbleScale;
+            const gold =
+              /** @type {[number,number,number,number]} */ ([1, 0.78, 0.37, 1]);
             rect(
-              arrowX + n * 2 * scale,
-              arrowY + (candidate.level > 0 ? n * 2 : 6 - n * 2) * scale,
-              2 * scale,
-              2 * scale,
+              arrowX + 2 * bubbleScale,
+              arrowY + 2 * bubbleScale,
+              bubbleScale,
+              8 * bubbleScale,
               gold,
             );
+            for (let n = 0; n < 3; n++) {
+              rect(
+                arrowX + n * 2 * bubbleScale,
+                arrowY +
+                  (candidate.level > 0 ? n * 2 : 6 - n * 2) * bubbleScale,
+                2 * bubbleScale,
+                2 * bubbleScale,
+                gold,
+              );
+            }
           }
         }
       }
@@ -653,8 +697,8 @@ export async function createRenderer(canvas) {
         text(
           `+${group.length - 3}`,
           item.x,
-          Math.min(height - 18 * scale, item.y + 66 * scale),
-          scale,
+          Math.min(height - 18 * bubbleScale, item.y + offset),
+          bubbleScale,
           [1, 0.58, 0.2, 1],
         );
       }
@@ -710,7 +754,18 @@ export async function createRenderer(canvas) {
         centerText("Settings", 16);
         centerText("UI Scale", 56);
         centerText(`-   ${scene.uiScale.toFixed(2)}   +`, 96);
-        centerText("Back", 136);
+        centerText("Text Size", 136);
+        for (const [index, size] of TEXT_SIZES.entries()) {
+          const label = size[0].toUpperCase() + size.slice(1);
+          text(
+            label,
+            width / 2 + (index - 1) * 90 * dpr - label.length * 4 * menuScale,
+            y + 168 * dpr,
+            menuScale,
+            size === scene.textSize ? [1, 0.78, 0.37, 1] : [0.6, 0.58, 0.52, 1],
+          );
+        }
+        centerText("Back", 212);
       } else {
         centerText("Open Dwarf", 12);
         centerText("Resume", 45);
