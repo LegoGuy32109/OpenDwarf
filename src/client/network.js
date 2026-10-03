@@ -11,6 +11,13 @@ import {
 } from "../shared/world.js";
 import { acceptMoveIntent } from "../shared/protocol.js";
 import {
+  droppedEntries,
+  droppedItems,
+  inventoryOf,
+  pickUp,
+  pickupLine,
+} from "../shared/items.js";
+import {
   cancelMining,
   miningEntries,
   startMining,
@@ -46,6 +53,8 @@ import { createRevisionOrder } from "./revision-order.js";
 import {
   decodeChat,
   decodeControl,
+  decodeInventory,
+  decodeItems,
   decodeMining,
   decodeMotion,
   decodeState,
@@ -91,7 +100,9 @@ function deliver(receive, replaceable = false) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {{at:number,entries:import('../shared/mining.js').MiningEntry[]}} MineFeed */
-/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {import('../shared/items.js').DroppedEntry} DroppedEntry */
+/** @typedef {import('../shared/items.js').Stack} Stack */
+/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -216,6 +227,16 @@ export function startHost(scene, session) {
     }
   }
 
+  /**
+   * Adds a system line for one player only: the host's own log for the host,
+   * or a `system` message to that guest.
+   * @param {string} id @param {string} text
+   */
+  function tell(id, text) {
+    if (id === scene.localId) scene.systemLine?.(text);
+    else peers.get(id)?.system(text);
+  }
+
   function publish() {
     if (publishTimer) return;
     publishTimer = setTimeout(
@@ -280,6 +301,9 @@ export function startHost(scene, session) {
     let lastSequence = 0;
     /** What this peer was last told about visible mining, to send only changes. */
     let lastMining = "";
+    /** What this peer was last told about dropped items and its inventory. */
+    let lastItems = "";
+    let lastInventory = "";
     let direction = { x: 0, y: 0 };
     /** The host tracks stamina, so a guest cannot sprint without it. */
     let stamina = createStamina();
@@ -421,6 +445,20 @@ export function startHost(scene, session) {
         cancelMining(scene.world, playerId);
         return;
       }
+      if (message.type === "pickup") {
+        const result = pickUp(scene.world, playerId, {
+          x: Number(message.x),
+          y: Number(message.y),
+          z: Number(message.z),
+        });
+        if (result.ok) tell(playerId, pickupLine(result.kind, result.count));
+        else if (channel?.readyState === "open") {
+          channel.send(
+            JSON.stringify({ type: "pickup-result", reason: result.reason }),
+          );
+        }
+        return;
+      }
       if (message.type === "move") {
         // Only the latest direction is useful while a previous step is finishing.
         // A queued step must not run after the visitor has turned elsewhere.
@@ -501,7 +539,7 @@ export function startHost(scene, session) {
       deadline.start(attempt);
       joined = true;
       lastSequence = 0;
-      lastMining = "";
+      lastMining = lastItems = lastInventory = "";
       direction = { x: 0, y: 0 };
       stamina = createStamina();
       pendingMoves.length = 0;
@@ -694,6 +732,32 @@ export function startHost(scene, session) {
     }
 
     /**
+     * Tell the peer which dropped items lie on tiles it can see, and its own
+     * inventory, when either changes. No other peer's inventory is sent.
+     */
+    function sendItems() {
+      if (!joined || channel?.readyState !== "open") return;
+      const player = scene.world.players[playerId];
+      if (!player) return;
+      const entries = droppedItems(scene.world).tiles.size
+        ? droppedEntries(scene.world).filter((entry) =>
+          mode === "master" ||
+          sight.visible.has(tileKey(entry.x, entry.y, entry.z))
+        )
+        : [];
+      const items = JSON.stringify(entries);
+      if (items !== lastItems) {
+        lastItems = items;
+        channel.send(`{"type":"items","entries":${items}}`);
+      }
+      const stacks = JSON.stringify(inventoryOf(player));
+      if (stacks !== lastInventory) {
+        lastInventory = stacks;
+        channel.send(`{"type":"inventory","stacks":${stacks}}`);
+      }
+    }
+
+    /**
      * Send the changed tiles this peer can see. Remembered terrain follows only
      * what the peer sees; a tile out of sight keeps its last observed state.
      * @param {import('../shared/terrain.js').TileChange[]} changes
@@ -737,6 +801,7 @@ export function startHost(scene, session) {
 
     function tickPeer() {
       sendMining();
+      sendItems();
       drainMoves();
       moveEntity(
         scene.world,
@@ -932,6 +997,7 @@ export function startHost(scene, session) {
   return {
     publish,
     announce,
+    tell,
     tick,
     async diagnostics() {
       const connections = await Promise.all(
@@ -1026,6 +1092,7 @@ export function joinWorld(scene, session) {
     lastChatTick = -1;
     scene.chatFeed = [];
     scene.mineFeed = undefined;
+    scene.itemFeed = scene.inventoryFeed = undefined;
     attempt = crypto.randomUUID();
     attemptStarted = performance.now();
     lastPong = attemptStarted;
@@ -1155,6 +1222,25 @@ export function joinWorld(scene, session) {
     if (value.type === "mining") {
       const entries = decodeMining(value);
       if (entries) scene.mineFeed = { at: performance.now(), entries };
+      return;
+    }
+    if (value.type === "items") {
+      const entries = decodeItems(value);
+      if (entries) scene.itemFeed = entries;
+      return;
+    }
+    if (value.type === "inventory") {
+      const stacks = decodeInventory(value);
+      if (stacks) scene.inventoryFeed = stacks;
+      return;
+    }
+    if (value.type === "pickup-result") {
+      if (typeof value.reason === "string" && value.reason.length <= 40) {
+        scene.notice = {
+          text: `Cannot pick up: ${value.reason}`,
+          until: performance.now() + 2500,
+        };
+      }
       return;
     }
     if (value.type === "mine-result") {
@@ -1314,6 +1400,7 @@ export function joinWorld(scene, session) {
     if (message.kind === "leave") {
       scene.world = createWorld();
       scene.mineFeed = undefined;
+      scene.itemFeed = scene.inventoryFeed = undefined;
       scene.chatFeed = [];
       scene.status = "Visitor left. World ended.";
       connected = false;

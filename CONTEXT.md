@@ -101,12 +101,24 @@ tile.
 A type of item, such as stone, coal, iron ore, gold ore, lapis, redstone,
 diamond, emerald, or coin.
 
+**Stack**:
+Items of one item kind with a count. A tile's dropped items and an entity's
+inventory each hold at most one stack per item kind.
+
 **Dropped item**:
 Items of one item kind that lie on a whole tile. Several kinds can lie on the
-same tile, and items of one kind on a tile form one stack with a count.
+same tile, and items of one kind on a tile form one stack with a count. Their
+icons take turns about once a second. They stay until picked up or the session
+ends.
+
+**Pickup**:
+Moving a whole stack of dropped items from a highlighted tile into an entity's
+inventory. The world host checks reach and gives a contested stack to the first
+request. Its system line goes only to the player who picked up.
 
 **Inventory**:
-The items an entity carries, as stacks with counts.
+The items an entity carries, as stacks with counts. Every entity starts with
+one pickaxe. Only its owner receives it.
 
 **Coin**:
 An item kind received for selling items. For now the number of coins a player

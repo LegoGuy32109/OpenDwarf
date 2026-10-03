@@ -36,7 +36,12 @@ highlighted tile. The look control points the highlight at a neighbor, and the
 entity's own tile is highlighted with no aim. Mining is not held down; it
 finishes on its own. Stone takes 1 s, coal 1.5 s, iron ore 2 s, gold ore,
 lapis, and redstone 3 s, and diamond and emerald 4.5 s. Aiming at another tile or
-walking out of reach cancels it.
+walking out of reach cancels it. A finished tile drops its item, such as stone
+or coal, on that tile. Several kinds on one tile take turns showing their icon
+about once a second, and a number marks a stack of more than one. Interact on a
+highlighted tile that holds dropped items picks up the first stack into your
+inventory instead of mining, and the hearing log says "Picked up coal ×1" to you
+alone. Every player starts with one pickaxe.
 On the host, F3 toggles a small FPS, payload upload, queue, and join-failure
 panel. `T` opens chat, `/` opens a command, and Escape opens the menu. On a
 touch screen, the left stick moves the player and the right stick points at a

@@ -57,6 +57,13 @@ import {
 import { createStamina, setSprint, stepStamina } from "../shared/stamina.js";
 import { highlightedTile } from "../shared/target.js";
 import { cancelMining, miningEntries, startMining } from "../shared/mining.js";
+import {
+  droppedAt,
+  droppedItems,
+  inventoryOf,
+  pickUp,
+  pickupLine,
+} from "../shared/items.js";
 
 /** @param {string} selector */
 const $ = (
@@ -115,6 +122,15 @@ const scene = {
   /** Mining actions a guest was told about by the world host. */
   mineFeed:
     /** @type {import('./network.js').MineFeed|undefined} */ (undefined),
+  /** Dropped items to draw: the tiles the local player can see. */
+  items: /** @type {import('../shared/items.js').DroppedEntry[]} */ ([]),
+  /** The local player's inventory, for the panel and shop tickets. */
+  inventory: /** @type {import('../shared/items.js').Stack[]} */ ([]),
+  /** Dropped items and the inventory a guest was told about by the world host. */
+  itemFeed:
+    /** @type {import('../shared/items.js').DroppedEntry[]|undefined} */ (undefined),
+  inventoryFeed:
+    /** @type {import('../shared/items.js').Stack[]|undefined} */ (undefined),
   /** A short message that shows over the status line, such as a refused action. */
   notice: /** @type {{text:string,until:number}|undefined} */ (undefined),
   sessionId: "",
@@ -335,12 +351,49 @@ function cameraInput() {
   };
 }
 
-/** Start mining the highlighted tile. The host checks reach, material, and the pickaxe. */
+/** The stacks of dropped items on a tile, as this client knows them. @param {{x:number,y:number,z:number}} tile */
+function droppedHere(tile) {
+  if (!isAdmin) return droppedAt(scene.world, tile);
+  return scene.itemFeed?.find((entry) =>
+    entry.x === tile.x && entry.y === tile.y && entry.z === tile.z
+  )?.stacks ?? [];
+}
+
+/** Pick up the first stack of dropped items on a tile. The host checks reach and who asked first. @param {{x:number,y:number,z:number}} target */
+function pickUpAt(target) {
+  if (isAdmin) {
+    guest?.send({ type: "pickup", ...target });
+    return;
+  }
+  const result = pickUp(scene.world, scene.localId, target);
+  if (result.ok) scene.systemLine(pickupLine(result.kind, result.count));
+  else flash(`Cannot pick up: ${result.reason}`);
+}
+
+/** The dropped items to draw this frame: tiles in sight, or all in master view. */
+function itemsDisplay() {
+  if (isAdmin) return scene.itemFeed ?? [];
+  const store = droppedItems(scene.world).tiles;
+  if (!store.size) return [];
+  return [...store.values()].filter((entry) =>
+    scene.viewMode === "master" ||
+    tileVisibility(scene.visibility, entry.x, entry.y, entry.z) === "visible"
+  );
+}
+
+/** The local player's inventory. */
+function inventoryDisplay() {
+  if (isAdmin) return scene.inventoryFeed ?? [];
+  const player = scene.world.players[scene.localId];
+  return player ? inventoryOf(player) : [];
+}
+
+/** Interact on the highlighted tile: pick up dropped items, or start mining it. The host checks everything. */
 function interact() {
   const player = scene.world.players[scene.localId];
   if (!player || scene.chatOpen || scene.menu) return;
   if (scene.viewMode !== "entity") {
-    flash("Switch to entity view to mine");
+    flash("Switch to entity view to interact");
     return;
   }
   // Read the aim now: a frame may not have run since the key went down.
@@ -354,6 +407,10 @@ function interact() {
   );
   if (!target) {
     flash("Nothing to mine there");
+    return;
+  }
+  if (droppedHere(target).length) {
+    pickUpAt(target);
     return;
   }
   mineLock = { x: scene.aim.x, y: scene.aim.y, z: scene.viewZ };
@@ -1274,6 +1331,8 @@ export async function startApp() {
     hearChat(scene.hearingLog, scene.chatFeed, speakerName);
     drawLog();
     scene.mining = miningDisplay(accumulator / TICK_MS);
+    scene.items = itemsDisplay();
+    scene.inventory = inventoryDisplay();
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };
