@@ -25,8 +25,7 @@ type Harness = {
     chatFeed?: ChatRecord[];
     world: {
       tick: number;
-      edge: number;
-      terrain: number[];
+      chunks: Map<string, Uint8Array>;
       players: Record<string, Position & Record<string, unknown>>;
     };
   };
@@ -279,7 +278,8 @@ try {
         let safe = true;
         for (let cy = Math.floor(y - .25); cy <= Math.ceil(y + 1.4); cy++) {
           for (let cx = Math.floor(x - .25); cx <= Math.ceil(x + 1.4); cx++) {
-            if (world.terrain[cy * world.edge + cx] !== 1) safe = false;
+            // The search stays inside chunk 0,0, level 0.
+            if (world.chunks.get("0,0")?.[cy * 16 + cx] !== 1) safe = false;
           }
         }
         if (!safe) continue;

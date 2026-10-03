@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { addPlayer, createWorld } from "../../src/shared/world.js";
+import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { createVisibility } from "../../src/shared/visibility.js";
 import { packVisibility } from "../../src/shared/visibility-wire.js";
 import {
@@ -8,6 +9,7 @@ import {
   decodeMotion,
   decodeState,
   encodeMotionPlayers,
+  encodeWorld,
   MAX_PACKET_BYTES,
   parsePacket,
 } from "../../src/shared/wire.js";
@@ -29,7 +31,7 @@ Deno.test("wire parser rejects malformed, non-string and UTF8 oversized payloads
 });
 
 function snapshot(edge = 16) {
-  const world = createWorld(edge);
+  const world = createAuthoredWorld(edge);
   addPlayer(world, "guest");
   return {
     type: "state" as const,
@@ -39,8 +41,8 @@ function snapshot(edge = 16) {
     acknowledgedSequence: 0,
     mode: "entity" as "entity" | "master",
     playerId: "guest",
-    world,
-    visibility: packVisibility(createVisibility(), edge) as
+    world: encodeWorld(world),
+    visibility: packVisibility(createVisibility()) as
       | ReturnType<typeof packVisibility>
       | null,
     chat: [] as Array<{
@@ -67,15 +69,19 @@ Deno.test("wire snapshots validate both authored areas and master mode", () => {
 
 Deno.test("wire full-state rejection is atomic for terrain, masks and entities", () => {
   const valid = snapshot();
+  const chunk = valid.world.chunks["0,0"];
   const invalid = [
-    { ...valid, world: { ...valid.world, terrain: [1] } },
+    { ...valid, world: { ...valid.world, chunks: { "0,0": "AQE=" } } },
+    { ...valid, world: { ...valid.world, chunks: { "0,0": "AwD/" } } },
+    { ...valid, world: { ...valid.world, chunks: { "00,0": chunk } } },
+    { ...valid, world: { ...valid.world, chunks: { "-0,0": chunk } } },
+    { ...valid, world: { ...valid.world, chunks: { "9999999,0": chunk } } },
+    { ...valid, world: { ...valid.world, chunks: ["0,0"] } },
+    { ...valid, visibility: { ...valid.visibility, memory: "broken mask" } },
     {
       ...valid,
-      world: { ...valid.world, terrain: valid.world.terrain.map(() => 3) },
+      visibility: { ...valid.visibility, memory: { "0,0": "AA==" } },
     },
-    { ...valid, visibility: { ...valid.visibility, memory: "broken mask" } },
-    { ...valid, visibility: { ...valid.visibility, edge: 32 } },
-    { ...valid, world: { ...valid.world, chunks: ["9,9"] } },
     { ...valid, playerId: "missing" },
     {
       ...valid,
@@ -115,7 +121,7 @@ Deno.test("wire rejects coercion, nonfinite positions and unsafe counters", () =
   for (const tick of [Infinity, NaN, -1, 1.5, "100", 2 ** 53]) {
     assertEquals(decodeMotion({ ...motion, tick }), null);
   }
-  for (const x of [Infinity, NaN, "7", -2, 33]) {
+  for (const x of [Infinity, NaN, "7", -(2 ** 24) - 1, 2 ** 24 + 1]) {
     assertEquals(
       decodeMotion({
         ...motion,

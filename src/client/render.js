@@ -400,7 +400,7 @@ export async function createRenderer(canvas) {
         localPlayer,
         scene.aim,
         scene.viewZ,
-        scene.world.edge,
+        scene.world,
       );
       if (target) {
         const px = target.x * TILE;

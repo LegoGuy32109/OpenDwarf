@@ -1,8 +1,20 @@
 // @ts-check
 
-export const WORLD_EDGE = 16;
+import {
+  CHUNK_EDGE,
+  chunkIndex,
+  createChunkData,
+  getChunk,
+  OPEN,
+  setChunk,
+  UNKNOWN,
+  WORLD_TOP,
+} from "./terrain.js";
+
+export { WORLD_TOP };
+/** Edge of one chunk, and of the default authored area. */
+export const WORLD_EDGE = CHUNK_EDGE;
 export const EXPANDED_WORLD_EDGE = 32;
-export const WORLD_TOP = 7;
 export const Z_LEVELS_BELOW = 5;
 export const TICK_MS = 50;
 export const MAX_BUBBLES = 3;
@@ -20,40 +32,42 @@ export const MOVE_TICKS = 10;
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
 /** @typedef {{text:string,until:number}} Bubble */
 /** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number}} Player */
-/** @typedef {{tick:number,edge:number,chunks:string[],players:Record<string,Player>,terrain:number[]}} World */
+/** @typedef {import('./terrain.js').ChunkData} ChunkData */
+/** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>}} World */
 
-/** @param {number} x @param {number} y @param {number} z @param {number} [edge] */
-export function terrainIndex(x, y, z, edge = WORLD_EDGE) {
-  return z * edge * edge + y * edge + x;
-}
-
-/** Unknown terrain blocks local prediction until the host reveals it. */
-/** @param {World} world @param {number} x @param {number} y @param {number} z */
+/**
+ * A tile blocks movement and sight unless its material is open. Unknown
+ * terrain blocks local prediction until the host reveals it. A missing chunk is
+ * solid stone at every level.
+ * @param {World} world @param {number} x @param {number} y @param {number} z
+ */
 export function isSolid(world, x, y, z) {
-  if (x < 0 || x >= world.edge || y < 0 || y >= world.edge) return true;
   if (z < 0) return true;
+  // Tile coordinates are integers, so shifts and masks equal floor and modulo.
+  const chunk = getChunk(world, x >> 4, y >> 4);
+  if (!chunk) return true;
   if (z > WORLD_TOP) return false;
-  return world.terrain[terrainIndex(x, y, z, world.edge)] !== 1;
+  return chunk[chunkIndex(x & 15, y & 15, z)] !== OPEN;
 }
 
-/** @param {number} [edge] @returns {World} */
+/**
+ * Create a world whose authored area has `edge`×`edge` tiles of unknown terrain.
+ * Tiles outside it read as solid stone until a chunk is created.
+ * @param {number} [edge]
+ * @returns {World}
+ */
 export function createWorld(edge = WORLD_EDGE) {
   if (edge !== WORLD_EDGE && edge !== EXPANDED_WORLD_EDGE) {
     throw new RangeError("unsupported authored area size");
   }
-  return {
-    tick: 0,
-    edge,
-    chunks: Array.from(
-      { length: (edge / WORLD_EDGE) ** 2 },
-      (_, index) =>
-        `${index % (edge / WORLD_EDGE)},${
-          Math.floor(index / (edge / WORLD_EDGE))
-        }`,
-    ),
-    players: {},
-    terrain: Array((WORLD_TOP + 1) * edge * edge).fill(0),
-  };
+  /** @type {World} */
+  const world = { tick: 0, chunks: new Map(), players: {} };
+  for (let cy = 0; cy < edge / CHUNK_EDGE; cy++) {
+    for (let cx = 0; cx < edge / CHUNK_EDGE; cx++) {
+      setChunk(world, cx, cy, createChunkData(UNKNOWN));
+    }
+  }
+  return world;
 }
 
 /** @param {World} world @param {string} id @param {Tile} [spawn] */

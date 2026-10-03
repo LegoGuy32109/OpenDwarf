@@ -47,9 +47,7 @@ Deno.test("one authored chunk has eight reachable levels and solid unknown XY", 
 
 Deno.test("expanded authored area has four fixed chunks and solid outer stone", () => {
   const world = createAuthoredWorld(32);
-  assertEquals(world.edge, 32);
-  assertEquals(world.chunks, ["0,0", "1,0", "0,1", "1,1"]);
-  assertEquals(world.terrain.length, 32 * 32 * 8);
+  assertEquals([...world.chunks.keys()], ["0,0", "1,0", "0,1", "1,1"]);
   assertEquals(isSolid(world, 20, 7, 0), false);
   assertEquals(isSolid(world, 20, 20, 0), false);
   assertEquals(isSolid(world, 23, 23, 0), true);

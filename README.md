@@ -66,8 +66,8 @@ Each visitor owns their world in the browser. Movement begins locally on the
 next 50 ms simulation tick. Joining tabs connect as players through WebRTC. Deno
 KV stores short lived presence and signaling messages. It does not run the
 world. The host sends a view filtered for each joining tab every 500 ms, and
-when that player's sight moves to another tile. Visibility uses compact bit
-masks on the wire. When a WebRTC channel backs up, the host coalesces unsent
+when that player's sight moves to another tile. Visibility uses compact per-chunk bit
+masks on the wire, and terrain travels as run-length encoded 16×16 chunks. When a WebRTC channel backs up, the host coalesces unsent
 snapshots and sends the newest state after the channel drains. Movement also
 coalesces to the newest unsent state and sends a 300 ms settling tail after a
 stop. An incomplete join expires after ten seconds. Entity view

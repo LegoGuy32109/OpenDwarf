@@ -35,6 +35,7 @@ import {
   decodeMotion,
   decodeState,
   encodeMotionPlayers,
+  encodeWorld,
   parsePacket,
   PROTOCOL_VERSION,
 } from "../shared/wire.js";
@@ -207,7 +208,7 @@ export function startHost(scene, session) {
   }
 
   function spawn() {
-    if (scene.world.edge === 16 && spawnOrdinal < 8) {
+    if (scene.world.chunks.size === 1 && spawnOrdinal < 8) {
       const position = { x: 8 + spawnOrdinal, y: 7, z: 0 };
       spawnOrdinal++;
       return position;
@@ -267,7 +268,8 @@ export function startHost(scene, session) {
     const sight = createVisibility();
     /** @type {Map<string,import('../shared/chat.js').ChatBand>} */
     const chatBands = new Map();
-    const rememberedTerrain = scene.world.terrain.map(() => 0);
+    /** @type {import('../shared/view.js').RememberedTerrain} */
+    const rememberedTerrain = new Map();
     /** @type {"entity"|"master"} */
     let mode = "entity";
     const deadline = createAttemptDeadline((attempt) => {
@@ -477,10 +479,7 @@ export function startHost(scene, session) {
             type: "state",
             ...stamp(),
             ...view,
-            world: {
-              ...view.world,
-              players: encodeMotionPlayers(view.world.players),
-            },
+            world: encodeWorld(view.world),
             chat: chatView(scene.world, playerId, chatBands),
             mode,
             playerId,
@@ -877,7 +876,8 @@ export function joinWorld(scene, session) {
   let resyncFailures = 0;
   const corrections = { count: 0, totalGap: 0, maxGap: 0 };
   let lastResync = -Infinity;
-  /** @type {import('../shared/wire.js').StatePacket|null} */
+  /** The last state as sent: chunks are run-length strings. */
+  /** @type {(Omit<import('../shared/wire.js').StatePacket,'world'> & {world:ReturnType<typeof encodeWorld>})|null} */
   let debugState = null;
   /** @type {import('../shared/wire.js').MotionPacket|null} */
   let debugMotion = null;
@@ -1039,7 +1039,9 @@ export function joinWorld(scene, session) {
       const ordering = revisions.reliable({ ...decoded, tick: snapshot.tick });
       if (!ordering) return;
       resyncFailures = 0;
-      if (harnessParams.has("harness")) debugState = decoded;
+      if (harnessParams.has("harness")) {
+        debugState = { ...decoded, world: encodeWorld(decoded.world) };
+      }
       const visibility = decoded.mode === "entity"
         ? unpackVisibility(
           /** @type {import('../shared/visibility-wire.js').WireVisibility} */ (decoded

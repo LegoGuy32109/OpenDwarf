@@ -1,11 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
-import {
-  addPlayer,
-  isSolid,
-  startMove,
-  terrainIndex,
-} from "../../src/shared/world.js";
+import { addPlayer, isSolid, startMove } from "../../src/shared/world.js";
 import {
   boundaryOpacity,
   createVisibility,
@@ -28,6 +23,31 @@ import {
   viewMotionPosition,
 } from "../../src/shared/view.js";
 import { unpackVisibility } from "../../src/shared/visibility-wire.js";
+import {
+  chunkCoord,
+  chunkIndex,
+  chunkKey,
+  localCoord,
+  OPEN,
+  STONE,
+  UNKNOWN,
+  writeTile,
+} from "../../src/shared/terrain.js";
+
+/** Material a snapshot's chunks hold for a tile; UNKNOWN when the chunk was never sent. */
+function seenMaterial(
+  world: { chunks: Map<string, Uint8Array> },
+  x: number,
+  y: number,
+  z: number,
+) {
+  const chunk = world.chunks.get(chunkKey(chunkCoord(x), chunkCoord(y)));
+  return chunk?.[chunkIndex(localCoord(x), localCoord(y), z)] ?? UNKNOWN;
+}
+
+function snapshotChunks(chunks: Map<string, Uint8Array>) {
+  return [...chunks].map(([key, data]) => [key, [...data]]);
+}
 
 Deno.test("same-level sight is reciprocal and every legal next tile is visible", () => {
   const world = createAuthoredWorld();
@@ -81,13 +101,13 @@ Deno.test("guest snapshot excludes hidden entities and undiscovered terrain", ()
   addPlayer(world, "hidden", { x: 9, y: 8, z: 0 }).name = "secret";
   addPlayer(world, "seen", { x: 6, y: 8, z: 0 });
   const sight = createVisibility();
-  const remembered = world.terrain.map(() => 0);
+  const remembered = new Map();
   const snapshot = entityView(world, "viewer", sight, remembered);
   assertEquals(snapshot.world.players.hidden, undefined);
   assert(snapshot.world.players.viewer);
   assert(snapshot.world.players.seen);
-  assertEquals(snapshot.world.terrain[terrainIndex(9, 8, 0)], 0);
-  assertEquals(snapshot.world.terrain[terrainIndex(6, 8, 0)], 1);
+  assertEquals(seenMaterial(snapshot.world, 9, 8, 0), UNKNOWN);
+  assertEquals(seenMaterial(snapshot.world, 6, 8, 0), OPEN);
   assert(!JSON.stringify(snapshot).includes("secret"));
 });
 
@@ -96,7 +116,7 @@ Deno.test("a crossing entity never sends a hidden move endpoint", () => {
   addPlayer(world, "viewer", { x: 6, y: 6, z: 0 });
   const crossing = addPlayer(world, "crossing", { x: 9, y: 7, z: 0 });
   const sight = createVisibility();
-  const remembered = world.terrain.map(() => 0);
+  const remembered = new Map();
   crossing.move = {
     origin: { x: 9, y: 7, z: 0 },
     target: { x: 9, y: 8, z: 0 },
@@ -145,24 +165,23 @@ Deno.test("remembered terrain stays stale until seen again, including after mast
   const world = createAuthoredWorld();
   const viewer = addPlayer(world, "viewer", { x: 7, y: 8, z: 0 });
   const sight = createVisibility();
-  const remembered = world.terrain.map(() => 0);
+  const remembered = new Map();
   entityView(world, "viewer", sight, remembered);
   const knownBeforeMaster = new Set(sight.visible);
-  const rememberedBeforeMaster = [...remembered];
+  const rememberedBeforeMaster = snapshotChunks(remembered);
   viewer.x = 9;
   viewer.y = 8;
   // Master mode sends the full world but does not call entityView.
   viewer.x = 10;
   viewer.y = 8;
-  assertEquals([...remembered], rememberedBeforeMaster);
+  assertEquals(snapshotChunks(remembered), rememberedBeforeMaster);
   assertEquals([...sight.visible], [...knownBeforeMaster]);
-  const oldTile = terrainIndex(6, 8, 0);
-  assertEquals(remembered[oldTile], 1);
-  world.terrain[oldTile] = 2;
+  assertEquals(seenMaterial({ chunks: remembered }, 6, 8, 0), OPEN);
+  writeTile(world, 6, 8, 0, STONE);
   const afterReturn = entityView(world, "viewer", sight, remembered);
-  assertEquals(afterReturn.world.terrain[oldTile], 1);
+  assertEquals(seenMaterial(afterReturn.world, 6, 8, 0), OPEN);
   assert(unpackVisibility(afterReturn.visibility).memory.has(tileKey(6, 8, 0)));
   viewer.x = 7;
   const afterSeeingAgain = entityView(world, "viewer", sight, remembered);
-  assertEquals(afterSeeingAgain.world.terrain[oldTile], 2);
+  assertEquals(seenMaterial(afterSeeingAgain.world, 6, 8, 0), STONE);
 });

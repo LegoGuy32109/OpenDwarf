@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 import type { StatePacket } from "../../src/shared/wire.js";
 
+/** The state packet as sent: chunks are run-length strings. */
+type WireState = Omit<StatePacket, "world"> & {
+  world: Omit<StatePacket["world"], "chunks"> & {
+    chunks: Record<string, string>;
+  };
+};
+
 test("unordered motion waits for sight, rejects old attempts, and survives older state", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
@@ -23,7 +30,7 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
       __od: {
         scene: { world: StatePacket["world"]; status: string };
         wireDebug: () => {
-          state: StatePacket;
+          state: WireState;
           pending: { tick: number } | null;
           ordered: boolean;
           maxRetransmits: number;
@@ -80,12 +87,12 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
       tick: future.tick + 1,
     }, true);
     const oldAttempt = game.scene.world.players[probe.id].x;
-    const beforeTerrain = game.scene.world.terrain[0];
+    const beforeTerrain = game.scene.world.chunks.get("0,0")?.[0];
     const invalid = structuredClone(base);
     invalid.world.tick += 20;
-    invalid.world.terrain[0] = 99;
+    invalid.world.chunks["0,0"] = "AAAA";
     game.injectPacket(invalid);
-    const afterTerrain = game.scene.world.terrain[0];
+    const afterTerrain = game.scene.world.chunks.get("0,0")?.[0];
     game.injectPacket({
       ...base,
       viewRevision: stamp.viewRevision + 1,

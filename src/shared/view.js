@@ -1,8 +1,18 @@
 // @ts-check
 
-import { terrainIndex, WORLD_TOP } from "./world.js";
+import {
+  chunkCoord,
+  chunkIndex,
+  chunkKey,
+  createChunkData,
+  getChunk,
+  localCoord,
+  UNKNOWN,
+  WORLD_TOP,
+} from "./terrain.js";
 import { centerTile } from "./locomotion.js";
 import {
+  parseTileKey,
   recomputeVisibility,
   tileKey,
   visibilityPosition,
@@ -11,6 +21,8 @@ import { packVisibility } from "./visibility-wire.js";
 
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./visibility.js').Visibility} Visibility */
+/** Terrain a joining player has seen: chunk data with `UNKNOWN` for tiles never seen. */
+/** @typedef {Map<string,import('./terrain.js').ChunkData>} RememberedTerrain */
 
 /** Animate only the visible half of a move across a sight boundary. */
 /** @param {import('./world.js').Player} player @param {boolean} entering */
@@ -59,21 +71,41 @@ export function viewMotionPosition(motion, tick) {
   };
 }
 
-/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {number[]} rememberedTerrain */
+/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain */
 export function entityPlayers(world, viewerId, sight, rememberedTerrain) {
   const viewer = world.players[viewerId];
   if (viewer) {
     recomputeVisibility(world, sight, visibilityPosition(viewer, world.tick));
   }
+  // Visible tiles arrive in runs inside one chunk, so remember the last pair.
+  let lastCx = NaN;
+  let lastCy = NaN;
+  /** @type {import('./terrain.js').ChunkData|null} */
+  let source = null;
+  /** @type {import('./terrain.js').ChunkData|null} */
+  let remembered = null;
   for (const key of sight.visible) {
-    const [x, y, z] = key.split(",").map(Number);
-    if (
-      x >= 0 && x < world.edge && y >= 0 && y < world.edge &&
-      z >= 0 && z <= WORLD_TOP
-    ) {
-      const index = terrainIndex(x, y, z, world.edge);
-      rememberedTerrain[index] = world.terrain[index];
+    const [x, y, z] = parseTileKey(key);
+    if (z < 0 || z > WORLD_TOP) continue;
+    const cx = chunkCoord(x);
+    const cy = chunkCoord(y);
+    if (cx !== lastCx || cy !== lastCy) {
+      lastCx = cx;
+      lastCy = cy;
+      source = getChunk(world, cx, cy);
+      remembered = null;
+      if (source) {
+        const rememberedKey = chunkKey(cx, cy);
+        remembered = rememberedTerrain.get(rememberedKey) ?? null;
+        if (!remembered) {
+          remembered = createChunkData(UNKNOWN);
+          rememberedTerrain.set(rememberedKey, remembered);
+        }
+      }
     }
+    if (!source || !remembered) continue;
+    const index = chunkIndex(localCoord(x), localCoord(y), z);
+    remembered[index] = source[index];
   }
   /** @type {World['players']} */
   const players = {};
@@ -138,17 +170,15 @@ export function entityPlayers(world, viewerId, sight, rememberedTerrain) {
   return players;
 }
 
-/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {number[]} rememberedTerrain */
+/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain */
 export function entityView(world, viewerId, sight, rememberedTerrain) {
   const players = entityPlayers(world, viewerId, sight, rememberedTerrain);
   return {
     world: {
       tick: world.tick,
-      edge: world.edge,
-      chunks: world.chunks,
-      terrain: [...rememberedTerrain],
+      chunks: new Map(rememberedTerrain),
       players,
     },
-    visibility: packVisibility(sight, world.edge),
+    visibility: packVisibility(sight),
   };
 }
