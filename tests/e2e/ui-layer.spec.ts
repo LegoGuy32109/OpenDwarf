@@ -78,6 +78,82 @@ test("in play the only visible HTML element is the canvas", async ({ page }) => 
   expect(await noFocus(page)).toEqual({ active: "BODY", fields: 0 });
 });
 
+test("the loading screen is drawn in the canvas until the textures load", async ({ page }) => {
+  // Hold one texture back, so the world cannot draw yet.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => release = resolve);
+  await page.route("**/assets/floor.png", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto("/?harness=1");
+  await page.waitForFunction(() =>
+    Boolean((globalThis as unknown as Harness).__od)
+  );
+  await expect.poll(() => hasUi(page, "loading")).toBe(true);
+  await expect(page.locator("#world")).not.toHaveAttribute(
+    "data-ready",
+    "true",
+  );
+  // The screen takes every pointer: the controls and panels under it do not answer.
+  await page.mouse.click(400, 300);
+  await page.waitForTimeout(300);
+  await evidenceShot(page, "loading-screen");
+  release();
+  await ready(page);
+  expect(await hasUi(page, "loading")).toBe(false);
+});
+
+test("a texture that cannot load says so on the loading screen", async ({ page }) => {
+  await page.route("**/assets/floor.png", (route) => route.abort());
+  await page.goto("/?harness=1");
+  await page.waitForFunction(() =>
+    (globalThis as unknown as { __od?: { scene: { loading: string | null } } })
+      .__od?.scene.loading?.startsWith("Cannot load")
+  );
+  expect(await hasUi(page, "loading")).toBe(true);
+});
+
+test("evidence: the desktop UI, with chat typed on a physical keyboard", async ({ page }) => {
+  await page.goto("/?harness=1&tools=1&layout=room");
+  await ready(page);
+  await page.evaluate(async () => {
+    const items = await import("/src/shared/items.js");
+    const { scene } = (globalThis as unknown as Harness).__od;
+    const player = scene.world.players[scene.localId] as never;
+    for (
+      const [kind, count] of [["coal", 12], ["gold ore", 3], [
+        "diamond",
+        2,
+      ]] as const
+    ) items.addStack(items.inventoryOf(player), kind, count);
+  });
+  // T opens chat, typing goes through keydown, Enter sends, and Escape closes.
+  await page.keyboard.press("t");
+  await expectChat(page, true);
+  await page.keyboard.type("hello from the keyboard");
+  expect(await chatDraft(page)).toBe("hello from the keyboard");
+  expect(await noFocus(page)).toEqual({ active: "BODY", fields: 0 });
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await scene(page)).message).toBe(
+    "hello from the keyboard",
+  );
+  await page.keyboard.press("t");
+  await expectChat(page, true);
+  await page.keyboard.press("Escape");
+  await expectChat(page, false);
+  await page.keyboard.press("Backquote");
+  await page.keyboard.press("q");
+  await expect.poll(async () => (await uiState(page)).qrReady).toBe(true);
+  await page.waitForTimeout(500);
+  await evidenceShot(page, "ui-desktop");
+  await page.keyboard.press("q");
+  await page.keyboard.press("Backquote");
+  await page.keyboard.press("b");
+  await page.waitForTimeout(500);
+  await evidenceShot(page, "ui-desktop-inventory");
+});
+
 test.describe("phone", () => {
   test.use({
     viewport: { width: 390, height: 844 },

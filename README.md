@@ -81,14 +81,19 @@ send input. Pair that model over Bluetooth to play.
 
 The fullscreen button uses the browser API when available; on Safari, adding the
 page to the Home Screen can hide browser controls. Pinch to zoom or drag two
-fingers vertically to change view levels. The on-screen A button opens the chat
-bar, which turns off autocorrect and suggestions so the iOS keyboard stays small
-and rides above it using the visual viewport, and the on-screen B button opens
-the menu. Use `/nick Josh
-Hale` to set a name. Names are unique within a world.
-Any player can use `/master` for an unrestricted camera and the complete world
-view, then `/entity` to return to the player's field of view. Master travel does
-not add tiles to entity-view memory.
+fingers vertically to change view levels. The page holds one canvas, and the
+game draws all its UI in WebGL with the bitmap font (see
+[The UI layer](docs/architecture.md#the-ui-layer)). The on-screen A button opens
+chat with an in-game keyboard drawn at the bottom of the safe area, so the
+system keyboard never opens on a phone. It has QWERTY letters, shift, a page of
+numbers and symbols, space, backspace, send, and close, and it holds 120
+characters. A physical keyboard types through `keydown`: letters, Backspace,
+Enter sends, and Escape closes. Paste and dictation are not supported. The
+on-screen B button opens the menu. Use `/nick Josh
+Hale` to set a name. Names
+are unique within a world. Any player can use `/master` for an unrestricted
+camera and the complete world view, then `/entity` to return to the player's
+field of view. Master travel does not add tiles to entity-view memory.
 
 ## Code
 
@@ -97,7 +102,8 @@ not add tiles to entity-view memory.
   JSDoc types runs in the browser without compilation.
 - `src/server/`: Deno TypeScript routes for static files, live sessions, session
   channels for signaling, ICE servers, and the local signaling relay.
-- `public/`: HTML, custom CSS, browser entrypoint, and texture atlases.
+- `public/`: the page (a canvas and a hidden live region), a small stylesheet,
+  the browser entrypoint, and texture atlases.
 
 Each visitor owns their world in the browser. Movement begins locally on the
 next 50 ms simulation tick. Joining tabs connect as players through WebRTC. The
