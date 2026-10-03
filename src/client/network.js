@@ -40,6 +40,7 @@ import {
   PROTOCOL_VERSION,
 } from "../shared/wire.js";
 import { centerTile } from "../shared/locomotion.js";
+import { roomSpawnTile } from "../shared/spawn-room.js";
 
 // Test-only game-message delivery conditions; ICE and physical packets are unchanged.
 const harnessParams = new URL(location.href).searchParams;
@@ -72,7 +73,7 @@ function deliver(receive, replaceable = false) {
 }
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -208,6 +209,7 @@ export function startHost(scene, session) {
   }
 
   function spawn() {
+    if (scene.layout === "room") return roomSpawnTile(++spawnOrdinal);
     if (scene.world.chunks.size === 1 && spawnOrdinal < 8) {
       const position = { x: 8 + spawnOrdinal, y: 7, z: 0 };
       spawnOrdinal++;

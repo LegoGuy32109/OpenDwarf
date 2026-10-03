@@ -9,7 +9,16 @@ structure: Open Dwarf, Resume, Settings, Leave Game, and UI Scale. The current
 demo draws these with one small WebGL2 renderer. The older Rust engine stays on
 `webgl-version`.
 
-The default authored world is one 16×16 tile square across z levels 0–7.
+A normal page starts the spawn room (`src/shared/spawn-room.js`): a 9×7 room
+at z 4 in the 2×2 spawn chunks, one doorway in its south wall that opens into
+solid stone, two stair tiles down to a tunnel at z 2, and a reserved shopkeeper
+tile. Everything else is solid stone. The host and every joining player spawn
+inside the room, and the corner NPC walks a square in its south west corner.
+`?layout=test` loads the older layout below. A page with `?harness=1` uses that
+test layout unless it adds `?layout=room`, so the motion and sight specs keep
+their pillar and staircase.
+
+The test layout is one 16×16 tile square across z levels 0–7.
 `?world=32` starts an expanded 32×32 authored area with four fixed 16×16 chunks
 and the same eight levels. The expanded area includes a second pillar.
 Terrain is stored per 16×16 chunk in a map keyed by chunk coordinates, which can
