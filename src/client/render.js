@@ -91,7 +91,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,chatLift:number,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,chatLift:number,safe?:{top:number,right:number,bottom:number,left:number},status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
 
 /**
  * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
@@ -437,12 +437,14 @@ export async function createRenderer(canvas) {
     if (
       scene.viewMode === "entity" && localPlayer && !scene.pickupCells?.length
     ) {
-      const target = highlightedTile(
-        localPlayer,
-        scene.aim,
-        scene.viewZ,
-        scene.world,
-      );
+      // At rest the aim is the player's own tile: interact still works there, but the
+      // outline only shows for an aimed tile or the tile being mined.
+      const resting = scene.aim.x === 0 && scene.aim.y === 0;
+      const target = resting
+        ? (scene.mining ?? []).find((entry) =>
+          entry.id === scene.localId && entry.z === scene.viewZ
+        )
+        : highlightedTile(localPlayer, scene.aim, scene.viewZ, scene.world);
       if (target) {
         const px = target.x * TILE;
         const py = target.y * TILE;
@@ -966,27 +968,43 @@ export async function createRenderer(canvas) {
       (scene.notice && performance.now() < scene.notice.until
         ? scene.notice.text
         : scene.status).slice(0, 75);
+    // Text the canvas draws stays inside the safe area, clear of a notch.
+    const safe = scene.safe ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const edgeLeft = (10 + safe.left) * dpr;
+    const edgeTop = (10 + safe.top) * dpr;
+    const edgeRight = (10 + safe.right) * dpr;
     if (status) {
       rect(
-        10 * dpr,
-        10 * dpr,
-        Math.min(width - 20 * dpr, (status.length * 8 + 12) * scale),
+        edgeLeft,
+        edgeTop,
+        Math.min(
+          width - edgeLeft - edgeRight,
+          (status.length * 8 + 12) * scale,
+        ),
         20 * scale,
         [0.05, 0.05, 0.05, 0.75],
       );
-      text(status, 16 * dpr, 12 * dpr, scale);
+      text(status, edgeLeft + 6 * dpr, edgeTop + 2 * dpr, scale);
     }
     if (scene.touchGesture || performance.now() < scene.hudUntil) {
       const value = `Z ${scene.viewZ}  ZOOM ${scene.zoom.toFixed(2)}`;
       const hudWidth = (value.length * 8 + 16) * scale;
-      const x = Math.max(8 * dpr, width - hudWidth - 10 * dpr);
-      rect(x, 10 * dpr, hudWidth, 20 * scale, [0.06, 0.08, 0.12, 0.75]);
-      text(value, x + 8 * scale, 12 * dpr, scale, [1, 0.86, 0.56, 1]);
+      const x = Math.max(edgeLeft, width - hudWidth - edgeRight);
+      rect(x, edgeTop, hudWidth, 20 * scale, [0.06, 0.08, 0.12, 0.75]);
+      text(value, x + 8 * scale, edgeTop + 2 * dpr, scale, [1, 0.86, 0.56, 1]);
     }
     if (scene.chatOpen) {
-      const barX = 12 * dpr;
-      const barY = height - (54 + scene.chatLift) * dpr;
-      rect(barX, barY, width - barX * 2, 30 * dpr, [0.1, 0.1, 0.1, 0.9]);
+      const barX = (12 + safe.left) * dpr;
+      // The keyboard lift already clears the home indicator; without it, the inset does.
+      const lift = scene.chatLift || safe.bottom;
+      const barY = height - (54 + lift) * dpr;
+      rect(
+        barX,
+        barY,
+        width - barX - (12 + safe.right) * dpr,
+        30 * dpr,
+        [0.1, 0.1, 0.1, 0.9],
+      );
       text(`> ${scene.chatDraft}_`, barX + 8 * dpr, barY + 3 * dpr, scale);
     }
     if (scene.menu) {
