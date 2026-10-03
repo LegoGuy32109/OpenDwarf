@@ -41,6 +41,9 @@ open the others when your ticket touches their area.
 - Canvas UI stays inside `scene.safe` (the safe-area insets).
 - Use a distinct `PORT` for e2e, because Playwright reuses a server already on
   its port.
+- Document your feature in its file under `docs/features/` (a new file gets one
+  line in the README index). Do not extend `README.md` or
+  `docs/architecture.md`.
 - Use the `CONTEXT.md` terms. Add a term there when you add a domain idea.
 
 ## Commands
