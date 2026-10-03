@@ -1,6 +1,6 @@
 // @ts-check
 
-import { itemInfo } from "../shared/items.js";
+import { itemInfo, PICKAXE, STONE_ITEM } from "../shared/items.js";
 
 /**
  * The UI layer: one place that lays out every UI element in CSS pixels inside
@@ -42,7 +42,7 @@ export const CHAT_LIMIT = 120;
  * @property {string} [color] a palette name
  * @property {"left"|"center"|"right"} [align]
  * @property {number} [scale] glyph scale in CSS pixels per font pixel
- * @property {string} [glyph] a drawn symbol: "x", "fullscreen", "bag", "sprint", "pickaxe"
+ * @property {string} [glyph] a drawn symbol: "x", "fullscreen", "bag", "sprint", "item"
  * @property {string} [item] an item kind to draw
  * @property {number} [count]
  * @property {boolean} [on] a toggled button, or the selected row or slot
@@ -381,7 +381,7 @@ export function layoutUi(view) {
       moveX + stick + 6,
       stickBottom - roundSize,
       roundSize,
-      { glyph: "pickaxe" },
+      { glyph: "item", item: view.held === STONE_ITEM ? STONE_ITEM : PICKAXE },
     );
     roundButton(
       "btn:sprint",

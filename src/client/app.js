@@ -20,7 +20,7 @@ import {
   visibilityPosition,
 } from "../shared/visibility.js";
 import { clampCameraAxis, playerOccluded } from "../shared/surface.js";
-import { terrainExtent } from "../shared/terrain.js";
+import { OPEN, readTile, terrainExtent } from "../shared/terrain.js";
 import {
   createChunkGenerator,
   generateAround,
@@ -66,6 +66,7 @@ import {
   PICKAXE,
   startMining,
 } from "../shared/mining.js";
+import { placeStone, reservedTiles } from "../shared/placing.js";
 import { setHeldItem } from "../shared/held-item.js";
 import { createInventoryPanel } from "./inventory-panel.js";
 import {
@@ -91,6 +92,7 @@ import {
   inventoryOf,
   pickUp,
   pickupLine,
+  STONE_ITEM,
 } from "../shared/items.js";
 import { sellItems, SHOP_TILE } from "../shared/shop.js";
 import { createShopPanel } from "./shop-panel.js";
@@ -527,7 +529,7 @@ function isShopkeeper(target) {
     target.y === SHOP_TILE.y && target.z === SHOP_TILE.z;
 }
 
-/** Interact on the highlighted tile: pick up dropped items, or start mining it. The host checks everything. */
+/** Interact on the highlighted tile: pick up dropped items, place held stone on an open tile, or start mining it. The host checks everything. */
 function interact() {
   if (bag.isOpen) {
     bag.confirm();
@@ -573,6 +575,24 @@ function interact() {
     openPickupGrid(pickupGrid, target, performance.now());
     gridKeysAtOpen.clear();
     for (const code of held) gridKeysAtOpen.add(code);
+    return;
+  }
+  const tileOpen = readTile(scene.world, target.x, target.y, target.z) === OPEN;
+  if (heldDisplay() === STONE_ITEM) {
+    if (!tileOpen) {
+      flash("Hold the pickaxe to mine");
+      return;
+    }
+    if (isAdmin) guest?.send({ type: "place", ...target });
+    else {
+      const result = placeStone(
+        scene.world,
+        scene.localId,
+        target,
+        reservedTiles(scene.layout),
+      );
+      if (!result.ok) flash(result.reason);
+    }
     return;
   }
   mineLock = { x: scene.aim.x, y: scene.aim.y, z: scene.viewZ };
