@@ -70,12 +70,12 @@ Deno.test("routes are read under the base", () => {
 
 Deno.test("join links and API URLs carry the build's base and origin", () => {
   const session = "abcdefgh-1234";
-  const root = createBuild(parseBuildConfig(null));
+  const root = createBuild(parseBuildConfig(null), "http://localhost:8000");
   assertEquals(
     root.joinLink(session, "http://localhost:8000"),
     `http://localhost:8000/join/${session}`,
   );
-  assertEquals(root.apiUrl("ice"), "/api/v1/ice");
+  assertEquals(root.apiUrl("ice"), "http://localhost:8000/api/v1/ice");
   const build = createBuild(
     parseBuildConfig(
       JSON.stringify({ base: "/b/test/", api: "https://od.example.me" }),
@@ -88,6 +88,18 @@ Deno.test("join links and API URLs carry the build's base and origin", () => {
   assertEquals(
     build.apiUrl(`signal/${session}/host`),
     `https://od.example.me/api/v1/signal/${session}/host`,
+  );
+});
+
+Deno.test("a same-origin API is a full URL on the page's origin, not the files' base", () => {
+  // The shell serves /b/<name>/ with <base href> on jsDelivr and an empty api.
+  const build = createBuild(
+    parseBuildConfig(JSON.stringify({ base: "/b/main/", api: "" })),
+    "https://od.joshhale.me",
+  );
+  assertEquals(
+    build.apiUrl("sessions"),
+    "https://od.joshhale.me/api/v1/sessions",
   );
 });
 

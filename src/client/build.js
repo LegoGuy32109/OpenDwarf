@@ -75,9 +75,18 @@ export const LOCAL_COMMIT = "local";
  * @typedef {{commit:string,label:string|null,path:string}} SessionBuild
  */
 
-/** @param {BuildConfig} config */
-export function createBuild(config) {
+/**
+ * @param {BuildConfig} config
+ * @param {string} [origin] the page's origin. A same-origin API must use it in full: the page's
+ * `<base href>` points at the build's files on jsDelivr, so a path such as `/api/v1/...` would
+ * resolve there.
+ */
+export function createBuild(
+  config,
+  origin = globalThis.location?.origin ?? "",
+) {
   const commit = config.commit || LOCAL_COMMIT;
+  const api = config.api || origin;
   return {
     ...config,
     /** The build this page runs, as the shell records it for a session. */
@@ -104,7 +113,7 @@ export function createBuild(config) {
     joinLink: (session, origin) =>
       new URL(`${config.base}join/${session}`, origin).href,
     /** An API URL. @param {string} path such as `sessions` or `sessions/<id>/ice` */
-    apiUrl: (path) => `${config.api}/api/v1/${path}`,
+    apiUrl: (path) => `${api}/api/v1/${path}`,
   };
 }
 

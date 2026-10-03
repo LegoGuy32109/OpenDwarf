@@ -66,7 +66,8 @@ async function serveShell(assets: string) {
     }
     const config = JSON.stringify({
       base: "/b/test/",
-      api: url.origin,
+      // As the shell does: an empty api means the page's own origin, not the base's.
+      api: "",
       label: "test",
       commit: "0123456",
     });
