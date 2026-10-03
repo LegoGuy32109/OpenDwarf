@@ -13,6 +13,7 @@ import { readTile } from "../shared/terrain.js";
 import { highlightedTile } from "../shared/target.js";
 import { decalFrame } from "../shared/mining.js";
 import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
+import { SHOP_TILE } from "../shared/shop.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import {
@@ -88,7 +89,7 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[]}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
 
 /**
  * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
@@ -590,6 +591,30 @@ export async function createRenderer(canvas) {
         /** @type {[number,number,number,number]} */ ([...tint, visible]),
       );
     }
+    // The shopkeeper: a gold-tinted dwarf on the reserved tile, in the room layout.
+    const shopkeeper = scene.layout === "room" &&
+        scene.viewZ === SHOP_TILE.z &&
+        (scene.viewMode === "master" ||
+          tileVisibility(
+              scene.visibility,
+              SHOP_TILE.x,
+              SHOP_TILE.y,
+              SHOP_TILE.z,
+            ) === "visible")
+      ? SHOP_TILE
+      : null;
+    if (shopkeeper) {
+      quad(
+        textures.sprite,
+        false,
+        snap(shopkeeper.x * TILE, cameraX, width),
+        snap(shopkeeper.y * TILE, cameraY, height),
+        TILE,
+        TILE,
+        [0, 0, 1, 1],
+        [1, 0.78, 0.25, 1],
+      );
+    }
     flush();
     // Pickup grid: dark squares with one stack each; the selector is the orange outline.
     for (const cell of scene.pickupCells ?? []) {
@@ -710,6 +735,17 @@ export async function createRenderer(canvas) {
         Math.round((cell.y + cell.size - cameraY) * zoom + height / 2) -
           16 * scale - 2 * dpr,
         scale,
+      );
+    }
+    if (shopkeeper) {
+      text(
+        "Shopkeeper",
+        Math.round(((shopkeeper.x + 0.5) * TILE - cameraX) * zoom + width / 2) -
+          5 * scale * 8,
+        Math.round(((shopkeeper.y + 1) * TILE - cameraY) * zoom + height / 2) +
+          4 * dpr,
+        scale,
+        [1, 0.82, 0.4, 1],
       );
     }
     for (const { player, pos } of players) {

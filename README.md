@@ -57,6 +57,15 @@ mining. While the panel is open, interact and the look control drive the panel
 and others see your typing bubble. B, Escape, gamepad button 1, or the close
 button closes it. The world host stores the held item and checks that the
 inventory holds it.
+In the spawn room a gold-tinted shopkeeper stands on the north wall. Interact
+with that tile highlighted (or standing on it) opens the shop panel: every stack
+you carry with its count and unit price, and a "Sell all ore" row. IJKL, the look
+stick, or the D-pad move the selection, and interact (or a tap on a row) sells
+it; Escape, gamepad button 1, or the × button closes the panel. Prices: coal 1,
+iron ore 3, lapis 4, redstone 4, gold ore 8, emerald 15, diamond 20. Stone, the
+pickaxe, and coins show dimmed. Coins are an item and the score, which a small
+readout under the status text shows. Each sale adds a line such as "Sold coal ×3
+for 3 coins" to the seller's hearing log.
 On the host, F3 toggles a small FPS, payload upload, queue, and join-failure
 panel. `T` opens chat, `/` opens a command, and Escape opens the menu. On a
 touch screen, the left stick moves the player and the right stick points at a

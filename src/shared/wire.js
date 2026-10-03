@@ -368,6 +368,13 @@ export function decodeControl(value) {
         : null;
     case "hold":
       return isItemKind(value.kind) ? value : null;
+    case "sell":
+      return value.all === true ||
+          (identifier(value.kind, 24) &&
+            counter(value.count, MAX_STACK_COUNT) &&
+            value.count >= 1)
+        ? value
+        : null;
     case "mode":
       return value.mode === "entity" || value.mode === "master" ? value : null;
     case "typing":

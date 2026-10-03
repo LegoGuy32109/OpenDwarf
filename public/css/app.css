@@ -486,3 +486,130 @@ input {
     width: min(34vh, 160px);
   }
 }
+
+/* Shop panel and score readout (src/client/shop-panel.js). */
+#score {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--safe-top) + 56px);
+  left: calc(var(--safe-left) + 12px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border: 1px solid #706958;
+  background: #1e2024dd;
+  color: #f3e7c9;
+  font-size: 13px;
+  pointer-events: none;
+}
+#score[hidden] {
+  display: none;
+}
+#score b {
+  color: #f2c14e;
+}
+.shop-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  background: url("/assets/items.png") no-repeat;
+  background-size: 24px auto;
+  background-position: 0 calc(var(--frame, 0) * -24px);
+  image-rendering: pixelated;
+}
+#shop-panel {
+  position: absolute;
+  z-index: 8;
+  top: calc(var(--safe-top) + 100px);
+  left: 50%;
+  display: flex;
+  width: min(380px, calc(100% - var(--safe-left) - var(--safe-right) - 24px));
+  max-height: min(60vh, calc(100% - 300px));
+  flex-direction: column;
+  transform: translateX(-50%);
+  border: 1px solid #706958;
+  background: #1e2024f4;
+  color: #f3e7c9;
+}
+#shop-panel[hidden] {
+  display: none;
+}
+#shop-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 10px;
+  border-bottom: 1px solid #706958;
+}
+#shop-panel h2 {
+  margin: 0;
+  color: #e4a34a;
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.shop-close {
+  min-width: 40px;
+  min-height: 36px;
+  border: 1px solid #706958;
+  background: #333438;
+  color: inherit;
+  font-size: 18px;
+}
+.shop-rows {
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  touch-action: pan-y;
+}
+.shop-row {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  padding: 4px 8px;
+  border: 1px solid #4a4d52;
+  background: #2a2c30;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shop-row.selected {
+  border-color: #ff610a;
+  background: #3a2f26;
+  box-shadow: inset 0 0 0 1px #ff610a;
+}
+.shop-row.dimmed {
+  opacity: .4;
+  cursor: default;
+}
+.shop-name {
+  flex: 1;
+}
+.shop-count {
+  min-width: 3.5ch;
+  color: #9ec7e8;
+}
+.shop-price {
+  min-width: 9ch;
+  color: #f2c14e;
+  text-align: right;
+}
+#shop-panel footer {
+  padding: 4px 10px 6px;
+  border-top: 1px solid #706958;
+  color: #9b9486;
+  font-size: 11px;
+}
+@media (orientation: landscape) {
+  /* The sticks sit at the sides, so the panel can use the middle from the top. */
+  #shop-panel {
+    top: calc(var(--safe-top) + 12px);
+    max-height: calc(100% - 24px - var(--safe-bottom));
+  }
+}
