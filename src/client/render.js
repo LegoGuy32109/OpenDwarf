@@ -10,7 +10,8 @@ import {
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import { readTile } from "../shared/terrain.js";
-import { adjacentTarget } from "../shared/target.js";
+import { highlightedTile } from "../shared/target.js";
+import { decalFrame } from "../shared/mining.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import {
@@ -86,7 +87,20 @@ function texture(gl, source) {
 
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string}} Scene */
+/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,mining?:{id:string,x:number,y:number,z:number,progress:number}[]}} Scene */
+
+/**
+ * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
+ * in 16×16 pixel units; frame n draws the pieces of frames 0 through n.
+ * @type {readonly (readonly (readonly [number,number,number,number])[])[]}
+ */
+const DECAL_PIECES = [
+  [[7, 7, 2, 2]],
+  [[5, 5, 2, 2], [9, 9, 2, 2], [7, 4, 1, 3]],
+  [[3, 8, 4, 1], [9, 3, 1, 4], [10, 11, 3, 1]],
+  [[2, 2, 3, 2], [11, 5, 3, 2], [6, 11, 2, 4], [4, 12, 2, 2]],
+  [[1, 6, 3, 1], [12, 9, 3, 1], [8, 1, 1, 5], [13, 12, 2, 2], [3, 3, 1, 5]],
+];
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -414,7 +428,7 @@ export async function createRenderer(canvas) {
     flush();
     const localPlayer = scene.world.players[scene.localId];
     if (scene.viewMode === "entity" && localPlayer) {
-      const target = adjacentTarget(
+      const target = highlightedTile(
         localPlayer,
         scene.aim,
         scene.viewZ,
@@ -460,6 +474,44 @@ export async function createRenderer(canvas) {
         flush();
       }
     }
+    for (const entry of scene.mining ?? []) {
+      if (entry.z !== scene.viewZ) continue;
+      const px = entry.x * TILE;
+      const py = entry.y * TILE;
+      if (entry.id === scene.localId) {
+        // A square grows from the tile's center inside the orange outline.
+        const side = Math.max(2, (TILE - 12) * entry.progress);
+        quad(
+          textures.white,
+          false,
+          px + (TILE - side) / 2,
+          py + (TILE - side) / 2,
+          side,
+          side,
+          [0, 0, 1, 1],
+          [1, 0.55, 0.12, 0.85],
+        );
+        continue;
+      }
+      const unit = TILE / 16;
+      for (
+        const pieces of DECAL_PIECES.slice(0, decalFrame(entry.progress) + 1)
+      ) {
+        for (const [x, y, w, h] of pieces) {
+          quad(
+            textures.white,
+            false,
+            px + x * unit,
+            py + y * unit,
+            w * unit,
+            h * unit,
+            [0, 0, 1, 1],
+            [0, 0, 0, 0.6],
+          );
+        }
+      }
+    }
+    flush();
     const players = scene.presentation.sightEntries(
       Object.values(scene.world.players),
       scene.localId,

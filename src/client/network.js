@@ -10,6 +10,20 @@ import {
   submitMessage,
 } from "../shared/world.js";
 import { acceptMoveIntent } from "../shared/protocol.js";
+import {
+  cancelMining,
+  miningEntries,
+  startMining,
+  stepMining,
+} from "../shared/mining.js";
+import {
+  chunkCoord,
+  chunkIndex,
+  chunkKey,
+  drainTileChanges,
+  getChunk,
+  localCoord,
+} from "../shared/terrain.js";
 import { mergeSnapshot } from "../shared/reconcile.js";
 import { renderPosition } from "../shared/world.js";
 import {
@@ -32,10 +46,13 @@ import { createRevisionOrder } from "./revision-order.js";
 import {
   decodeChat,
   decodeControl,
+  decodeMining,
   decodeMotion,
   decodeState,
+  decodeTerrainChanges,
   encodeMotionPlayers,
   encodeWorld,
+  MAX_TERRAIN_CHANGES,
   parsePacket,
   PROTOCOL_VERSION,
 } from "../shared/wire.js";
@@ -73,7 +90,8 @@ function deliver(receive, replaceable = false) {
 }
 
 /** @typedef {import('../shared/world.js').World} World */
-/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{at:number,entries:import('../shared/mining.js').MiningEntry[]}} MineFeed */
+/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {{id:string,from:string,kind:string,data:unknown}} Signal */
 
 /** @param {string} session @param {string} recipient @param {string} kind @param {unknown} data @param {string} from */
@@ -207,6 +225,15 @@ export function startHost(scene, session) {
   }
 
   function tick() {
+    // Finished mining is handled in `completeMining`; the tile it wrote reaches
+    // each peer that can see it as a small terrain message.
+    stepMining(scene.world);
+    const changes = drainTileChanges(scene.world);
+    if (changes.length) {
+      // Force the host's own sight to see through a mined tile.
+      scene.visibility.sample = "";
+      for (const connection of peers.values()) connection.terrain(changes);
+    }
     for (const connection of peers.values()) connection.tick();
   }
 
@@ -251,6 +278,8 @@ export function startHost(scene, session) {
     let activeAttempt = "";
     let lastSeen = performance.now();
     let lastSequence = 0;
+    /** What this peer was last told about visible mining, to send only changes. */
+    let lastMining = "";
     let direction = { x: 0, y: 0 };
     /** The host tracks stamina, so a guest cannot sprint without it. */
     let stamina = createStamina();
@@ -375,6 +404,23 @@ export function startHost(scene, session) {
         }
         return;
       }
+      if (message.type === "mine") {
+        const result = startMining(scene.world, playerId, {
+          x: Number(message.x),
+          y: Number(message.y),
+          z: Number(message.z),
+        });
+        if (!result.ok && channel?.readyState === "open") {
+          channel.send(
+            JSON.stringify({ type: "mine-result", reason: result.reason }),
+          );
+        }
+        return;
+      }
+      if (message.type === "mine-cancel") {
+        cancelMining(scene.world, playerId);
+        return;
+      }
       if (message.type === "move") {
         // Only the latest direction is useful while a previous step is finishing.
         // A queued step must not run after the visitor has turned elsewhere.
@@ -455,6 +501,7 @@ export function startHost(scene, session) {
       deadline.start(attempt);
       joined = true;
       lastSequence = 0;
+      lastMining = "";
       direction = { x: 0, y: 0 };
       stamina = createStamina();
       pendingMoves.length = 0;
@@ -631,7 +678,65 @@ export function startHost(scene, session) {
       peer?.close();
     }
 
+    /** Tell the peer which mining actions it can see, when that list changes. */
+    function sendMining() {
+      if (!joined || channel?.readyState !== "open") return;
+      const entries = miningEntries(scene.world).filter((entry) =>
+        entry.id === playerId || mode === "master" ||
+        sight.visible.has(tileKey(entry.x, entry.y, entry.z))
+      );
+      const signature = entries.map((entry) =>
+        `${entry.id}:${entry.x},${entry.y},${entry.z}`
+      ).join(";");
+      if (signature === lastMining) return;
+      lastMining = signature;
+      channel.send(JSON.stringify({ type: "mining", entries }));
+    }
+
+    /**
+     * Send the changed tiles this peer can see. Remembered terrain follows only
+     * what the peer sees; a tile out of sight keeps its last observed state.
+     * @param {import('../shared/terrain.js').TileChange[]} changes
+     */
+    function sendTerrain(changes) {
+      if (
+        !joined || channel?.readyState !== "open" ||
+        !scene.world.players[playerId]
+      ) return;
+      const seen = mode === "master"
+        ? changes
+        : changes.filter((change) =>
+          sight.visible.has(tileKey(change.x, change.y, change.z))
+        );
+      if (!seen.length) return;
+      if (mode === "entity") {
+        for (const change of seen) {
+          const chunk = rememberedTerrain.get(
+            chunkKey(chunkCoord(change.x), chunkCoord(change.y)),
+          );
+          if (chunk) {
+            chunk[
+              chunkIndex(
+                localCoord(change.x),
+                localCoord(change.y),
+                change.z,
+              )
+            ] = change.material;
+          }
+        }
+        // Sight may now pass through the tile; the next snapshot recomputes it.
+        sight.sample = "";
+      }
+      for (let i = 0; i < seen.length; i += MAX_TERRAIN_CHANGES) {
+        channel.send(JSON.stringify({
+          type: "terrain",
+          changes: seen.slice(i, i + MAX_TERRAIN_CHANGES),
+        }));
+      }
+    }
+
     function tickPeer() {
+      sendMining();
       drainMoves();
       moveEntity(
         scene.world,
@@ -696,6 +801,7 @@ export function startHost(scene, session) {
         }
       },
       tick: tickPeer,
+      terrain: sendTerrain,
       expireIfSilent,
       expired: () =>
         !joined && departedAt > 0 &&
@@ -919,6 +1025,7 @@ export function joinWorld(scene, session) {
     resyncFailures = 0;
     lastChatTick = -1;
     scene.chatFeed = [];
+    scene.mineFeed = undefined;
     attempt = crypto.randomUUID();
     attemptStarted = performance.now();
     lastPong = attemptStarted;
@@ -1018,6 +1125,41 @@ export function joinWorld(scene, session) {
     if (value.type === "system") {
       if (typeof value.text === "string" && value.text.length <= 120) {
         scene.systemLine?.(value.text);
+      }
+      return;
+    }
+    if (value.type === "terrain") {
+      const changes = decodeTerrainChanges(value);
+      if (!changes) {
+        recover();
+        return;
+      }
+      for (const change of changes) {
+        const chunk = getChunk(
+          scene.world,
+          chunkCoord(change.x),
+          chunkCoord(change.y),
+        );
+        if (chunk) {
+          chunk[
+            chunkIndex(
+              localCoord(change.x),
+              localCoord(change.y),
+              change.z,
+            )
+          ] = change.material;
+        }
+      }
+      return;
+    }
+    if (value.type === "mining") {
+      const entries = decodeMining(value);
+      if (entries) scene.mineFeed = { at: performance.now(), entries };
+      return;
+    }
+    if (value.type === "mine-result") {
+      if (typeof value.reason === "string" && value.reason.length <= 40) {
+        scene.status = `Cannot mine: ${value.reason}`;
       }
       return;
     }
@@ -1168,6 +1310,7 @@ export function joinWorld(scene, session) {
   const closeInbox = inbox(session, playerId, (message) => {
     if (message.kind === "leave") {
       scene.world = createWorld();
+      scene.mineFeed = undefined;
       scene.chatFeed = [];
       scene.status = "Visitor left. World ended.";
       connected = false;

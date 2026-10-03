@@ -55,6 +55,8 @@ import {
   speedTilesPerSecond,
 } from "../shared/locomotion.js";
 import { createStamina, setSprint, stepStamina } from "../shared/stamina.js";
+import { highlightedTile } from "../shared/target.js";
+import { cancelMining, miningEntries, startMining } from "../shared/mining.js";
 
 /** @param {string} selector */
 const $ = (
@@ -107,6 +109,12 @@ const scene = {
   systemLine: (text) => addSystemLine(scene.hearingLog, text),
   status: "Local world",
   aim: { x: 0, y: 0 },
+  /** Mining actions to draw, with progress from 0 to 1. */
+  mining:
+    /** @type {{id:string,x:number,y:number,z:number,progress:number}[]} */ ([]),
+  /** Mining actions a guest was told about by the world host. */
+  mineFeed:
+    /** @type {import('./network.js').MineFeed|undefined} */ (undefined),
   sessionId: "",
   metrics:
     /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
@@ -148,6 +156,9 @@ const isAdmin = location.pathname === "/admin" || isPhoneTest || !!joinRoute;
 const isSynthetic = new URL(location.href).searchParams.has("synthetic") &&
   new URL(location.href).searchParams.has("harness");
 let lastPlayerZ = 0;
+/** The aim and level the local player started mining with; aiming elsewhere cancels it. */
+/** @type {{x:number,y:number,z:number}|null} */
+let mineLock = null;
 /** @type {ReturnType<typeof createCornerNpc>|null} */
 let tickNpc = null;
 
@@ -304,6 +315,94 @@ function toggleSprint() {
   showSprint();
 }
 
+/** The look stick, IJKL, and controller camera input combined. */
+function cameraInput() {
+  const controllerCamera = scene.chatOpen || scene.menu
+    ? { x: 0, y: 0 }
+    : gamepadCamera;
+  return {
+    x: Number(held.has("KeyL")) - Number(held.has("KeyJ")) + cameraStick.x +
+      controllerCamera.x,
+    y: Number(held.has("KeyK")) - Number(held.has("KeyI")) + cameraStick.y +
+      controllerCamera.y,
+  };
+}
+
+/** Start mining the highlighted tile. The host checks reach, material, and the pickaxe. */
+function interact() {
+  const player = scene.world.players[scene.localId];
+  if (!player || scene.chatOpen || scene.menu) return;
+  if (scene.viewMode !== "entity") {
+    notify("Switch to entity view to mine");
+    return;
+  }
+  // Read the aim now: a frame may not have run since the key went down.
+  const input = cameraInput();
+  scene.aim = stickDirection(input.x, input.y, 0.18);
+  const target = highlightedTile(
+    player,
+    scene.aim,
+    scene.viewZ,
+    scene.world,
+  );
+  if (!target) {
+    notify("Nothing to mine there");
+    return;
+  }
+  mineLock = { x: scene.aim.x, y: scene.aim.y, z: scene.viewZ };
+  if (isAdmin) guest?.send({ type: "mine", ...target });
+  else {
+    const result = startMining(scene.world, scene.localId, target);
+    if (!result.ok) notify(`Cannot mine: ${result.reason}`);
+  }
+}
+
+/**
+ * The target locks when mining starts, so walking while the aim holds does not
+ * cancel (the host cancels when the target leaves reach). A new aim direction
+ * or view level means aiming at another tile, which cancels.
+ */
+function checkMineLock() {
+  if (!mineLock) return;
+  if (
+    scene.viewMode === "entity" && scene.aim.x === mineLock.x &&
+    scene.aim.y === mineLock.y && scene.viewZ === mineLock.z
+  ) return;
+  mineLock = null;
+  if (isAdmin) guest?.send({ type: "mine-cancel" });
+  else cancelMining(scene.world, scene.localId);
+}
+
+/** The mining actions to draw this frame, with progress from 0 to 1. @param {number} alpha */
+function miningDisplay(alpha) {
+  if (isAdmin) {
+    const feed = scene.mineFeed;
+    if (!feed) return [];
+    const now = performance.now();
+    return feed.entries.map((entry) => ({
+      id: entry.id,
+      x: entry.x,
+      y: entry.y,
+      z: entry.z,
+      progress: clamp((entry.elapsedMs + now - feed.at) / entry.totalMs, 0, 1),
+    }));
+  }
+  return miningEntries(scene.world).filter((entry) =>
+    entry.id === scene.localId || scene.viewMode === "master" ||
+    tileVisibility(scene.visibility, entry.x, entry.y, entry.z) === "visible"
+  ).map((entry) => ({
+    id: entry.id,
+    x: entry.x,
+    y: entry.y,
+    z: entry.z,
+    progress: clamp(
+      (entry.elapsedMs + alpha * TICK_MS) / entry.totalMs,
+      0,
+      1,
+    ),
+  }));
+}
+
 /** Shows or hides the small join QR below the host tools. */
 function toggleJoinPanel() {
   const panel = $("#join-panel");
@@ -432,6 +531,7 @@ function pollGamepad() {
   if (!scene.chatOpen && !scene.menu) {
     if (newlyPressed(4)) changeLayer(-1);
     if (newlyPressed(5)) changeLayer(1);
+    if (newlyPressed(0)) interact();
   }
   gamepadButtons = buttons;
 }
@@ -649,6 +749,10 @@ function bindInput() {
     scene.inputMode = "touch";
     toggleSprint();
   });
+  $("#interact-button").addEventListener("click", () => {
+    scene.inputMode = "touch";
+    interact();
+  });
   $("#chat-button").addEventListener("click", () => {
     scene.inputMode = "touch";
     openChat();
@@ -721,6 +825,11 @@ function bindInput() {
       if (!event.repeat) toggleSprint();
       return;
     }
+    if (event.code === "Space") {
+      event.preventDefault();
+      if (!event.repeat) interact();
+      return;
+    }
     held.add(event.code);
     if (
       ["KeyE", "KeyS", "KeyD", "KeyF"].includes(event.code) && !event.repeat
@@ -750,6 +859,7 @@ function bindInput() {
     }
   });
   document.addEventListener("keyup", (event) => {
+    if (event.code === "Space") event.preventDefault();
     held.delete(event.code);
     if (["KeyR", "KeyV", "KeyU", "KeyN"].includes(event.code)) {
       scene.hudUntil = performance.now() + 500;
@@ -1118,18 +1228,13 @@ export async function startApp() {
     scene.renderOffset.x *= correctionDecay;
     scene.renderOffset.y *= correctionDecay;
     scene.renderOffset.z *= correctionDecay;
-    const controllerCamera = scene.chatOpen || scene.menu
-      ? { x: 0, y: 0 }
-      : gamepadCamera;
-    const cameraX = Number(held.has("KeyL")) - Number(held.has("KeyJ")) +
-      cameraStick.x + controllerCamera.x;
-    const cameraY = Number(held.has("KeyK")) - Number(held.has("KeyI")) +
-      cameraStick.y + controllerCamera.y;
+    const { x: cameraX, y: cameraY } = cameraInput();
     if (scene.viewMode === "master") {
       scene.camera.x += cameraX * dt * 0.48;
       scene.camera.y += cameraY * dt * 0.48;
     } else {
       scene.aim = stickDirection(cameraX, cameraY, 0.18);
+      checkMineLock();
       const pos = local
         ? renderPosition(local, scene.world.tick + accumulator / TICK_MS)
         : { x: 7, y: 7, z: 0 };
@@ -1161,6 +1266,7 @@ export async function startApp() {
     }
     hearChat(scene.hearingLog, scene.chatFeed, speakerName);
     drawLog();
+    scene.mining = miningDisplay(accumulator / TICK_MS);
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };
