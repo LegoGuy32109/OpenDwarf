@@ -17,89 +17,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>Open Dwarf</title>
     <link rel="stylesheet" href="css/app.css">
-    <link rel="stylesheet" href="css/inventory-panel.css">
     <script type="module" src="js/app.js"></script>
   </head>
   <body>
-    <main id="game" aria-label="Open Dwarf world">
+    <main id="game">
       <canvas id="world" aria-label="Open Dwarf game world"></canvas>
-      <div id="loading" role="status">Connecting to world…</div>
-      <button id="fullscreen-toggle" type="button" aria-label="Enter fullscreen"
-        title="Enter fullscreen">⛶</button>
-      <output id="display-status" role="status" aria-live="polite"></output>
-      <aside id="diagnostics" hidden aria-label="Host diagnostics"></aside>
-      <div id="host-tools" hidden>
-        <button id="join-toggle" type="button" aria-label="Show join code"
-          aria-controls="join-panel" aria-expanded="false">QR</button>
-        <span id="player-count">1 player</span>
-      </div>
-      <aside id="join-panel" hidden aria-label="Join this world">
-        <img id="join-code" alt="Scan to join this world" width="384"
-          height="384">
-      </aside>
-      <div id="controls" aria-label="Touch controls">
-        <section class="stick move" aria-label="Move controller">
-          <button class="action" id="interact-button" type="button"
-            aria-label="Interact">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
-              stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-              stroke-linejoin="round"><path
-                d="M4 9c3-4 10-5 16-2M12 7.5L7 21M12 7.5l1.2 1.4" /></svg>
-          </button>
-          <span class="control-name">MOVE <b>ESDF</b> · SPRINT <b>H</b></span>
-          <button class="stick-hit" data-stick="move" type="button"
-            aria-label="Move controller"><span class="octant-guides" aria-hidden="true"></span><span class="stick-deadzone" aria-hidden="true"></span><span class="stick-knob" aria-hidden="true"></span></button>
-          <span class="actions">
-          </span>
-        </section>
-        <section class="stick camera" aria-label="Look or pan controller">
-          <button class="action" id="sprint-button" type="button"
-            aria-label="Sprint" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
-              stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-              stroke-linejoin="round"><circle cx="15" cy="4.5" r="1.8"
-                fill="currentColor" stroke="none" /><path
-                d="M13 8.5l-3 3.5 3 2.5-1.5 5M10 12l-3.5 1M13 8.5l3 2.5 3 .5M13 14.5l3.5 2" /></svg>
-            <span class="stamina-line" aria-hidden="true"></span>
-          </button>
-          <span class="control-name">LOOK <b>IJKL</b></span>
-          <button class="stick-hit" data-stick="camera" type="button"
-            aria-label="Look or pan controller"><span class="octant-guides" aria-hidden="true"></span><span class="stick-deadzone" aria-hidden="true"></span><span class="stick-knob" aria-hidden="true"></span></button>
-          <span class="actions">
-            <button class="action" id="chat-button" type="button"
-              aria-label="Open chat">A</button>
-            <button class="action" id="log-button" type="button"
-              aria-label="Open hearing log" aria-controls="hearing-log"
-              aria-pressed="false">L</button>
-            <button class="action" id="menu-button" type="button"
-              aria-label="Open menu">B</button>
-            <button class="action" id="bag-button" type="button"
-              aria-label="Open inventory" aria-controls="inventory-panel"
-              aria-pressed="false">
-              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none"
-                stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
-                stroke-linejoin="round"><path
-                  d="M8 7V5.5A2.5 2.5 0 0 1 10.5 3h3A2.5 2.5 0 0 1 16 5.5V7M6 7h12l1 13H5z" /></svg>
-            </button>
-          </span>
-        </section>
-      </div>
-      <aside id="hearing-log" hidden aria-label="Hearing log">
-        <header>
-          <h2>Hearing log</h2>
-          <button id="log-close" type="button" aria-label="Close hearing log">×</button>
-        </header>
-        <ol id="hearing-log-lines" tabindex="0"></ol>
-      </aside>
-      <input id="chat-input" maxlength="120" autocomplete="off"
-        autocorrect="off" autocapitalize="off" spellcheck="false"
-        enterkeyhint="send" aria-label="Chat message or slash command">
-      <aside id="admin" hidden>
-        <h1>Active worlds</h1>
-        <p id="admin-status">Looking for visitors…</p>
-        <p id="net-stats"></p>
-        <ul id="sessions"></ul>
-      </aside>
+      <!-- The game draws all its UI in the canvas. This region repeats the
+        status text for screen readers. -->
+      <output id="live-status" class="visually-hidden" role="status"
+        aria-live="polite"></output>
     </main>
   </body>
 </html>

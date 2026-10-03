@@ -1,6 +1,5 @@
 // @ts-check
 
-import { itemInfo } from "../shared/items.js";
 import { rowRequest, shopRows } from "../shared/shop.js";
 
 /** @typedef {import('../shared/items.js').Stack} Stack */
@@ -12,61 +11,27 @@ const REPEAT_FIRST_MS = 350;
 const REPEAT_MS = 150;
 
 /**
- * An element made from a tag, with a class and children.
- * @param {string} tag @param {string} className @param {(Node|string)[]} [children]
- */
-function el(tag, className, children = []) {
-  const node = document.createElement(tag);
-  node.className = className;
-  node.append(...children);
-  return node;
-}
-
-/** The icon of an item kind, drawn from the item sprite sheet. @param {string} kind */
-function icon(kind) {
-  const node = el("span", "shop-icon");
-  node.style.setProperty("--frame", String(itemInfo(kind)?.frame ?? 0));
-  node.setAttribute("aria-hidden", "true");
-  return node;
-}
-
-/**
- * The shop panel: sellable stacks with unit price and count, and a "Sell all
- * ore" row. Stacks the shopkeeper does not buy show dimmed and the selection
- * skips them. IJKL, the look stick, or the D-pad move the selection through
- * `steer`; interact confirms through `confirm`; a tap on a row sells it. The
- * panel only asks: the world host decides every sale.
+ * The shop panel's state: sellable stacks with unit price and count, and a
+ * "Sell all ore" row. Stacks the shopkeeper does not buy show dimmed and the
+ * selection skips them. IJKL, the look stick, or the D-pad move the selection
+ * through `steer`; interact confirms through `confirm`; a tap on a row sells
+ * it. The panel only asks: the world host decides every sale. The UI layer
+ * (`ui.js`) lays the rows out and draws them.
  * @param {object} options
- * @param {HTMLElement} options.root where the panel goes
  * @param {(request:SaleRequest)=>void} options.sell asks the world host for a sale
  * @param {(text:string)=>void} options.flash
  */
-export function createShopPanel({ root, sell, flash }) {
-  const list = el("ul", "shop-rows");
-  const close = el("button", "shop-close", ["×"]);
-  close.setAttribute("type", "button");
-  close.setAttribute("aria-label", "Close shop");
-  const panel = el("aside", "", [
-    el("header", "", [el("h2", "", ["Shopkeeper buys"]), close]),
-    list,
-    el("footer", "", ["IJKL or D-pad: choose · Interact: sell"]),
-  ]);
-  panel.id = "shop-panel";
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-label", "Shop");
-  panel.hidden = true;
-  root.append(panel);
-
-  /** @type {Stack[]} */
-  let stacks = [];
+export function createShopPanel({ sell, flash }) {
   /** @type {ShopRow[]} */
   let rows = [];
   /** The selected row's identity, so a changed inventory keeps the selection. */
   let selectedKey = "";
-  let drawn = "";
   let open = false;
   let heldDirection = 0;
   let nextRepeat = 0;
+  /** The first row shown, and how many rows fit. The UI layer reports the capacity. */
+  let scroll = 0;
+  let capacity = 1;
 
   /** @param {ShopRow} row */
   const keyOf = (row) => row.type === "all" ? "all" : row.kind;
@@ -82,51 +47,13 @@ export function createShopPanel({ root, sell, flash }) {
     selectedKey = first ? keyOf(first) : "";
   }
 
-  function draw() {
-    const signature = JSON.stringify([rows, selectedKey]);
-    if (signature === drawn) return;
-    drawn = signature;
-    list.replaceChildren(...rows.map((row) => {
-      const button = el("button", "shop-row");
-      button.setAttribute("type", "button");
-      const selected = row.enabled && keyOf(row) === selectedKey;
-      button.classList.toggle("selected", selected);
-      button.classList.toggle("dimmed", !row.enabled);
-      button.setAttribute("aria-disabled", String(!row.enabled));
-      button.setAttribute("aria-current", String(selected));
-      button.dataset.row = keyOf(row);
-      if (row.type === "all") {
-        button.append(
-          el("span", "shop-name", ["Sell all ore"]),
-          el("span", "shop-count", row.enabled ? [`×${row.count}`] : []),
-          el("span", "shop-price", [
-            row.enabled
-              ? `${row.coins} coin${row.coins === 1 ? "" : "s"}`
-              : "no ore",
-          ]),
-        );
-      } else {
-        button.append(
-          icon(row.kind),
-          el("span", "shop-name", [itemInfo(row.kind)?.name ?? row.kind]),
-          el("span", "shop-count", [`×${row.count}`]),
-          el("span", "shop-price", [
-            row.enabled ? `${row.price} each` : "not bought",
-          ]),
-        );
-      }
-      button.addEventListener("click", () => {
-        if (!row.enabled) {
-          flash("The shopkeeper does not buy that");
-          return;
-        }
-        selectedKey = keyOf(row);
-        confirm();
-      });
-      const item = el("li", "", [button]);
-      return item;
-    }));
-    list.querySelector(".selected")?.scrollIntoView({ block: "nearest" });
+  /** Scroll so the selected row shows. */
+  function reveal() {
+    const at = rows.findIndex((row) => keyOf(row) === selectedKey);
+    if (at < 0) return;
+    if (at < scroll) scroll = at;
+    else if (at >= scroll + capacity) scroll = at - capacity + 1;
+    scroll = Math.max(0, Math.min(scroll, Math.max(0, rows.length - capacity)));
   }
 
   /** @param {number} step -1 for up, 1 for down */
@@ -136,7 +63,7 @@ export function createShopPanel({ root, sell, flash }) {
     const at = enabled.findIndex((row) => keyOf(row) === selectedKey);
     const next = enabled[(at + step + enabled.length) % enabled.length];
     selectedKey = keyOf(next);
-    draw();
+    reveal();
   }
 
   function confirm() {
@@ -148,9 +75,7 @@ export function createShopPanel({ root, sell, flash }) {
     sell(rowRequest(row));
   }
 
-  close.addEventListener("click", () => api.close());
-
-  const api = {
+  return {
     isOpen: () => open,
     /**
      * Show the panel. A direction already held (an aim that opened it) does
@@ -159,28 +84,58 @@ export function createShopPanel({ root, sell, flash }) {
      */
     open(direction = 0) {
       open = true;
-      panel.hidden = false;
       heldDirection = direction;
       nextRepeat = Infinity;
       selectedKey = "";
+      scroll = 0;
       settleSelection();
-      drawn = "";
-      draw();
     },
     close() {
       open = false;
-      panel.hidden = true;
     },
-    /** Redraw for the player's current inventory. @param {readonly Stack[]} inventory */
+    /** Take the player's current inventory. @param {readonly Stack[]} inventory */
     update(inventory) {
-      stacks = inventory.map(({ kind, count }) => ({ kind, count }));
-      rows = shopRows(stacks);
+      rows = shopRows(inventory.map(({ kind, count }) => ({ kind, count })));
       if (!open) return;
       settleSelection();
-      draw();
+      reveal();
     },
     move,
     confirm,
+    /**
+     * A tap on a row: sell it when the shopkeeper buys it. @param {string} name
+     */
+    tapRow(name) {
+      const row = rows.find((candidate) => keyOf(candidate) === name);
+      if (!row) return;
+      if (!row.enabled) {
+        flash("The shopkeeper does not buy that");
+        return;
+      }
+      selectedKey = keyOf(row);
+      confirm();
+    },
+    /** The UI layer's row capacity, so the selection can scroll into view. @param {number} rowsShown */
+    fit(rowsShown) {
+      capacity = Math.max(1, rowsShown);
+      reveal();
+    },
+    /** Scroll by whole rows from a drag or the wheel. @param {number} step */
+    scrollBy(step) {
+      scroll = Math.max(
+        0,
+        Math.min(scroll + step, Math.max(0, rows.length - capacity)),
+      );
+    },
+    get rows() {
+      return rows;
+    },
+    get selected() {
+      return selectedIndex() >= 0 ? selectedKey : "";
+    },
+    get scroll() {
+      return scroll;
+    },
     /**
      * Feed the combined up/down input every frame: -1 up, 1 down, 0 none. A
      * new direction moves at once, and a held one repeats.
@@ -201,5 +156,4 @@ export function createShopPanel({ root, sell, flash }) {
       }
     },
   };
-  return api;
 }

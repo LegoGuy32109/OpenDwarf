@@ -44,7 +44,8 @@ import {
   TEXT_SIZE_KEY,
   TEXT_SIZES,
 } from "../shared/chat.js";
-import { keyboardInset } from "./chat-bar.js";
+import { CHAT_LIMIT, layoutUi, typeKey } from "./ui.js";
+import { createPointerRouter } from "./ui-pointer.js";
 import {
   addSystemLine,
   createHearingLog,
@@ -99,19 +100,15 @@ const $ = (
   selector,
 ) => /** @type {HTMLElement} */ (document.querySelector(selector));
 const canvas = /** @type {HTMLCanvasElement} */ ($("#world"));
-const chatInput = /** @type {HTMLInputElement} */ ($("#chat-input"));
-const logPanel = $("#hearing-log");
-/** The inventory panel and the held item icon. While it is open, interact and the look control drive it. */
+const liveStatus = $("#live-status");
+const gameRoot = $("#game");
+/** The inventory panel's selection and the held item. While it is open, interact and the look control drive it. */
 const bag = createInventoryPanel({
-  parent: $("#game"),
   onHold: (kind) => holdItem(kind),
   onOpenChange: () => typing(),
 });
-const logList = $("#hearing-log-lines");
-let renderedLog = -1;
-/** The shop panel, drawn by `shop-panel.js`. */
+/** The shop panel's selection. */
 const shop = createShopPanel({
-  root: $("#game"),
   sell: (request) => sellRequest(request),
   flash: (text) => flash(text),
 });
@@ -155,10 +152,15 @@ const scene = {
   hearingLog: createHearingLog(),
   /** @param {string} text */
   systemLine: (text) => addSystemLine(scene.hearingLog, text),
-  chatLift: 0,
   /** The screen's safe-area insets in CSS pixels (the notch, the home indicator). */
   safe: { top: 0, right: 0, bottom: 0, left: 0 },
   status: "Local world",
+  /** Extra status lines at the top right, such as gamepad details. */
+  displayStatus: "",
+  /** The loading screen text, or null once the world can draw. */
+  loading: /** @type {string|null} */ ("Connecting to world…"),
+  /** What `ui.js` laid out this frame, for the renderer. */
+  ui: /** @type {import('./render.js').Scene["ui"]} */ (undefined),
   aim: { x: 0, y: 0 },
   /** Mining actions to draw, with progress from 0 to 1. */
   mining:
@@ -231,6 +233,35 @@ const pickupGrid = createPickupGrid();
 /** The D-pad direction. It moves the pickup grid's selector while the grid is open. */
 let gamepadDpad = { x: 0, y: 0 };
 
+/** The sticks, the log, and the other UI state that no game module owns. */
+const ui = {
+  sticks: {
+    move: { active: false, x: 0, y: 0 },
+    look: { active: false, x: 0, y: 0 },
+  },
+  chatPage: /** @type {"letters"|"symbols"} */ ("letters"),
+  chatShift: false,
+  logOpen: false,
+  /** Lines the hearing log is scrolled up from its newest line. */
+  logScroll: 0,
+  joinOpen: false,
+  qrReady: false,
+  qrUrl: "",
+  hostTools: false,
+  diagnosticsOpen: false,
+  diagnostics: "HOST  F3 close\nFPS …",
+  /** Distance a drag or wheel has moved a list that is not yet a whole row. */
+  scrollRemainder: { log: 0, shop: 0 },
+  sessions: {
+    open: false,
+    status: "Looking for visitors…",
+    stats: "",
+    items: /** @type {{id:string}[]} */ ([]),
+  },
+};
+const touchQuery = globalThis.matchMedia?.("(pointer: coarse)");
+const standaloneQuery = globalThis.matchMedia?.("(display-mode: standalone)");
+
 /** @param {number} value @param {number} min @param {number} max */
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -276,7 +307,20 @@ safeProbe.style.cssText =
   "padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) " +
   "env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)";
 document.body.append(safeProbe);
+/** Specs and screenshots simulate a notch with `?harness&safe=top,right,bottom,left` (CSS pixels). */
+const safeOverride = (() => {
+  const params = new URL(location.href).searchParams;
+  if (!params.has("harness")) return null;
+  const parts = (params.get("safe") ?? "").split(",").map(Number);
+  return parts.length === 4 && parts.every((part) => part >= 0)
+    ? { top: parts[0], right: parts[1], bottom: parts[2], left: parts[3] }
+    : null;
+})();
 function measureSafeArea() {
+  if (safeOverride) {
+    scene.safe = safeOverride;
+    return;
+  }
   const style = getComputedStyle(safeProbe);
   scene.safe = {
     top: parseFloat(style.paddingTop) || 0,
@@ -289,15 +333,6 @@ measureSafeArea();
 globalThis.addEventListener("resize", measureSafeArea);
 globalThis.addEventListener("orientationchange", measureSafeArea);
 
-/** Lift the chat bar above the on-screen keyboard while chat is open. */
-function placeChatBar() {
-  const visual = globalThis.visualViewport;
-  scene.chatLift = scene.chatOpen && visual
-    ? keyboardInset(globalThis.innerHeight, visual)
-    : 0;
-  chatInput.style.setProperty("--chat-lift", `${scene.chatLift}px`);
-}
-
 /** @param {string} [prefill] */
 function openChat(prefill = "") {
   bag.toggle(false);
@@ -305,26 +340,21 @@ function openChat(prefill = "") {
   scene.menu = false;
   scene.menuPage = "root";
   scene.chatOpen = true;
-  scene.chatDraft = prefill;
-  chatInput.value = prefill;
-  chatInput.classList.add("open");
-  chatInput.focus();
-  placeChatBar();
+  scene.chatDraft = prefill.slice(0, CHAT_LIMIT);
+  ui.chatPage = "letters";
+  ui.chatShift = false;
   typing();
 }
 
 function closeChat() {
+  stopBackspaceRepeat();
   scene.chatOpen = false;
   scene.chatDraft = "";
-  chatInput.value = "";
-  chatInput.classList.remove("open");
-  chatInput.blur();
-  placeChatBar();
   typing();
 }
 
 function submitChat() {
-  const text = chatInput.value.trim();
+  const text = scene.chatDraft.trim();
   closeChat();
   if (!text) return;
   if (text.toLowerCase().startsWith("/nick ")) {
@@ -364,14 +394,9 @@ function nameChangeLine(before, name) {
 }
 
 /** @param {boolean} [open] */
-function toggleLog(open = !logPanel.classList.contains("open")) {
-  logPanel.hidden = !open;
-  logPanel.classList.toggle("open", open);
-  $("#log-button").setAttribute("aria-pressed", String(open));
-  if (open) {
-    renderedLog = -1;
-    drawLog();
-  }
+function toggleLog(open = !ui.logOpen) {
+  ui.logOpen = open;
+  if (open) ui.logScroll = 0;
 }
 
 /** @param {string} id */
@@ -381,44 +406,9 @@ function speakerName(id) {
   return name || "Visitor";
 }
 
-function drawLog() {
-  const log = scene.hearingLog;
-  if (logPanel.hidden || renderedLog === log.version) return;
-  renderedLog = log.version;
-  const atEnd = logList.scrollTop + logList.clientHeight >=
-    logList.scrollHeight - 8;
-  logList.replaceChildren(...log.lines.map((line) => {
-    const item = document.createElement("li");
-    item.className = line.kind;
-    if (line.kind === "chat") {
-      const who = document.createElement("b");
-      who.textContent = `${line.speaker}: `;
-      item.append(who, line.text ?? "");
-    } else item.textContent = line.text;
-    return item;
-  }));
-  if (atEnd || logList.scrollTop === 0) {
-    logList.scrollTop = logList.scrollHeight;
-  }
-}
-
-/** Draw the sprint button: pressed, dimmed while locked, and the stamina line. */
-function showSprint() {
-  const button = $("#sprint-button");
-  button.setAttribute("aria-pressed", String(stamina.sprint));
-  button.classList.toggle("is-on", stamina.sprint);
-  button.classList.toggle("is-locked", stamina.locked);
-  button.style.setProperty("--stamina", String(stamina.value));
-  button.setAttribute(
-    "aria-label",
-    stamina.locked ? "Sprint locked until stamina is full" : "Sprint",
-  );
-}
-
 /** Sprint doubles walk speed. It needs stamina and stays off while locked. */
 function toggleSprint() {
   setSprint(stamina, !stamina.sprint);
-  showSprint();
 }
 
 /** @param {string} text */
@@ -503,7 +493,6 @@ function heldDisplay() {
 function toggleBag(open = !bag.isOpen) {
   if (open && (scene.chatOpen || scene.menu || shop.isOpen())) return;
   bag.toggle(open);
-  $("#bag-button").setAttribute("aria-pressed", String(bag.isOpen));
 }
 
 /** Up or down on the look stick or the D-pad, for the shop panel. IJKL act on key presses. */
@@ -722,9 +711,15 @@ function miningDisplay(alpha) {
 
 /** Shows or hides the small join QR below the host tools. */
 function toggleJoinPanel() {
-  const panel = $("#join-panel");
-  panel.hidden = !panel.hidden;
-  $("#join-toggle").setAttribute("aria-expanded", String(!panel.hidden));
+  ui.joinOpen = !ui.joinOpen;
+}
+
+/** Opens or closes the menu. It shuts the panels, which would sit under it. */
+function toggleMenu() {
+  toggleBag(false);
+  shop.close();
+  scene.menu = !scene.menu;
+  scene.menuPage = "root";
 }
 
 /** @returns {{x:number,y:number}} */
@@ -777,7 +772,7 @@ function pollGamepad() {
   if (gamepadDebug) {
     const inspected = active ?? pad ??
       [...pads].find((candidate) => candidate?.connected);
-    $("#display-status").textContent = inspected
+    scene.displayStatus = inspected
       ? `${inspected.id}\nMapping: ${inspected.mapping || "raw"}\nAxes: ${
         inspected.axes.map((axis) => axis.toFixed(2)).join(", ")
       }\nButtons: ${
@@ -849,10 +844,7 @@ function pollGamepad() {
   if (bag.isOpen) bag.steer(gamepadDirection, performance.now());
   if (newlyPressed(3)) {
     if (scene.chatOpen) closeChat();
-    toggleBag(false);
-    shop.close();
-    scene.menu = !scene.menu;
-    scene.menuPage = "root";
+    toggleMenu();
   }
   if (!scene.chatOpen && !scene.menu) {
     if (newlyPressed(4)) changeLayer(-1);
@@ -895,7 +887,6 @@ function move() {
     speed,
   );
   stepStamina(stamina);
-  showSprint();
   if (
     !isAdmin && moved && player &&
     (player.move || before?.x !== centerTile(player.x) ||
@@ -905,66 +896,263 @@ function move() {
   }
 }
 
-/** @param {HTMLElement} element @param {(x:number,y:number)=>void} update */
-function bindStick(element, update) {
-  const knob =
-    /** @type {HTMLElement} */ (element.querySelector(".stick-knob"));
-  let pointer = -1;
-  /** @param {PointerEvent} event */
-  const change = (event) => {
-    const box = element.getBoundingClientRect();
-    const dx = event.clientX - box.left - box.width / 2;
-    const dy = event.clientY - box.top - box.height / 2;
-    const length = Math.hypot(dx, dy);
-    const reach = box.width * 0.3;
-    const scale = Math.min(1, reach / Math.max(1, length));
-    knob.style.transform = `translate(${dx * scale}px, ${dy * scale}px)`;
-    const deadzone = Math.max(20, box.width * 0.12);
-    const octant = length < deadzone
-      ? null
-      : Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
-    const directions = [
-      [1, 0],
-      [1, 1],
-      [0, 1],
-      [-1, 1],
-      [-1, 0],
-      [-1, -1],
-      [0, -1],
-      [1, -1],
-    ];
-    const [x, y] = octant === null ? [0, 0] : directions[(octant + 8) % 8];
-    element.dataset.direction = x || y ? `${x},${y}` : "center";
-    update(x, y);
-  };
-  element.addEventListener("pointerdown", (raw) => {
-    const event = /** @type {PointerEvent} */ (raw);
-    if (pointer !== -1) return;
-    event.preventDefault();
-    pointer = event.pointerId;
-    element.setPointerCapture(pointer);
-    element.classList.add("is-active");
-    change(event);
-  });
-  element.addEventListener("pointermove", (raw) => {
-    const event = /** @type {PointerEvent} */ (raw);
-    if (event.pointerId === pointer) change(event);
-  });
-  /** @param {PointerEvent} event */
-  const release = (event) => {
-    if (event.pointerId !== pointer) return;
-    pointer = -1;
-    knob.style.transform = "";
-    element.classList.remove("is-active");
-    element.dataset.direction = "center";
-    update(0, 0);
-  };
-  element.addEventListener("pointerup", release);
-  element.addEventListener("pointercancel", release);
-  element.addEventListener("lostpointercapture", release);
+/** The pointer routing over the UI layer. Elements act on pointer down. */
+const router = createPointerRouter({
+  layout: () => currentLayout(),
+  onAction: (element) => uiAction(element),
+  onRelease: (element) => {
+    if (element.id === "key:backspace") stopBackspaceRepeat();
+  },
+  onStick: (id, state) => {
+    const stick = id === "stick:move" ? "move" : "look";
+    ui.sticks[stick] = { active: state.active, x: state.knobX, y: state.knobY };
+    if (stick === "move") joystick = { x: state.x, y: state.y };
+    else cameraStick = { x: state.x, y: state.y };
+  },
+  onScroll: (list, pixels) => scrollList(list, pixels),
+});
+
+/**
+ * A list moved by a drag or the wheel. A positive distance shows later rows.
+ * @param {string} list @param {number} pixels
+ */
+function scrollList(list, pixels) {
+  const layout = scene.ui?.layout ?? currentLayout();
+  const unit = list === "log"
+    ? 20 * layout.ts
+    : (Math.max(40 * scene.uiScale, 16 * layout.ts + 12 * scene.uiScale) +
+      4 * scene.uiScale);
+  const key = list === "log" ? "log" : "shop";
+  ui.scrollRemainder[key] += pixels;
+  const rows = Math.trunc(ui.scrollRemainder[key] / unit);
+  if (!rows) return;
+  ui.scrollRemainder[key] -= rows * unit;
+  if (list === "log") ui.logScroll = Math.max(0, ui.logScroll - rows);
+  else shop.scrollBy(rows);
 }
 
-function bindTouchGesture() {
+/** What the layout needs to know about the game right now. @returns {import('./ui.js').UiView} */
+function uiView() {
+  const now = performance.now();
+  const notice = scene.notice && now < scene.notice.until
+    ? scene.notice.text
+    : scene.status;
+  const players =
+    Object.keys(scene.world.players).filter((id) => id !== "npc-corner").length;
+  const touch = Boolean(touchQuery?.matches);
+  return {
+    width: canvas.clientWidth,
+    height: canvas.clientHeight,
+    safe: scene.safe,
+    scale: scene.uiScale,
+    dpr: globalThis.devicePixelRatio || 1,
+    touch,
+    loading: scene.loading,
+    status: notice.slice(0, 75),
+    displayStatus: scene.displayStatus,
+    diagnostics: ui.diagnosticsOpen && !isAdmin ? ui.diagnostics : null,
+    zoom: scene.touchGesture || now < scene.hudUntil
+      ? `Z ${scene.viewZ}  ZOOM ${scene.zoom.toFixed(2)}`
+      : null,
+    // Only a browser tab offers fullscreen; a Home Screen app already fills the screen.
+    fullscreen: !isStandalone(),
+    fullscreenOn: document.fullscreenElement === gameRoot,
+    host: isAdmin
+      ? undefined
+      : { tools: ui.hostTools, players, joinOpen: ui.joinOpen, qr: ui.qrReady },
+    held: heldDisplay(),
+    stamina: {
+      value: stamina.value,
+      on: stamina.sprint,
+      locked: stamina.locked,
+    },
+    logButton: { open: ui.logOpen },
+    bagOpenButton: bag.isOpen,
+    chat: scene.chatOpen
+      ? {
+        open: true,
+        draft: scene.chatDraft,
+        page: ui.chatPage,
+        shift: ui.chatShift,
+      }
+      : undefined,
+    menu: scene.menu
+      ? {
+        open: true,
+        page: scene.menuPage,
+        scale: scene.uiScale,
+        textSize: scene.textSize,
+        sizes: TEXT_SIZES,
+        mode: scene.inputMode,
+      }
+      : undefined,
+    log: {
+      open: ui.logOpen,
+      lines: scene.hearingLog.lines,
+      scroll: ui.logScroll,
+    },
+    bag: {
+      open: bag.isOpen,
+      stacks: bag.stacks,
+      selected: bag.selected,
+      held: bag.held,
+    },
+    shop: {
+      open: shop.isOpen(),
+      rows: shop.rows,
+      selected: shop.selected,
+      scroll: shop.scroll,
+    },
+    sessions: ui.sessions,
+  };
+}
+
+/** Lay the UI out for this moment. Every frame and every pointer event asks. */
+function currentLayout() {
+  return layoutUi(uiView());
+}
+
+function isStandalone() {
+  return Boolean(/** @type {{standalone?:boolean}} */ (navigator).standalone) ||
+    Boolean(standaloneQuery?.matches);
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await gameRoot.requestFullscreen();
+    scene.displayStatus = "";
+  } catch {
+    scene.displayStatus =
+      "Fullscreen unavailable. Add this page to your Home Screen.";
+  }
+}
+
+/** Backspace on the keyboard repeats while the key is held. */
+/** @type {ReturnType<typeof setTimeout>|undefined} */
+let backspaceTimer;
+function stopBackspaceRepeat() {
+  clearTimeout(backspaceTimer);
+  clearInterval(backspaceTimer);
+  backspaceTimer = undefined;
+}
+
+/** @param {string} key a character, "space", or "backspace" */
+function typeIntoChat(key) {
+  const next = typeKey(scene.chatDraft, key, ui.chatShift);
+  scene.chatDraft = next.draft;
+  ui.chatShift = next.shift;
+  typing();
+}
+
+/** A tap on an in-game keyboard key. @param {import('./ui.js').UiElement} element */
+function pressKey(element) {
+  switch (element.key) {
+    case "send":
+      submitChat();
+      break;
+    case "close":
+      closeChat();
+      break;
+    case "page":
+      ui.chatPage = ui.chatPage === "letters" ? "symbols" : "letters";
+      break;
+    case "shift":
+      ui.chatShift = !ui.chatShift;
+      break;
+    case "backspace":
+      typeIntoChat("backspace");
+      stopBackspaceRepeat();
+      backspaceTimer = setTimeout(() => {
+        backspaceTimer = setInterval(() => typeIntoChat("backspace"), 70);
+      }, 400);
+      break;
+    default:
+      if (element.key) typeIntoChat(element.key);
+  }
+}
+
+/** A key on a physical keyboard while chat is open. @param {KeyboardEvent} event */
+function chatKey(event) {
+  // Browser shortcuts such as Ctrl+R keep working.
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key === "Enter") submitChat();
+  else if (event.key === "Escape") closeChat();
+  else if (event.key === "Backspace") typeIntoChat("backspace");
+  else if (event.key.length === 1) typeIntoChat(event.key);
+  else return;
+  event.preventDefault();
+}
+
+/** A tap on a UI element. @param {import('./ui.js').UiElement} element */
+function uiAction(element) {
+  const id = element.id;
+  if (id.startsWith("key:")) return pressKey(element);
+  if (id.startsWith("slot:")) return bag.tap(id.slice(5));
+  if (id.startsWith("row:")) return shop.tapRow(id.slice(4));
+  if (id.startsWith("btn:session:")) return joinSession(id.slice(12));
+  if (id.startsWith("btn:size:")) {
+    const size = TEXT_SIZES.find((candidate) => candidate === id.slice(9));
+    if (!size) return;
+    scene.textSize = size;
+    try {
+      localStorage.setItem(TEXT_SIZE_KEY, scene.textSize);
+    } catch {
+      // The choice still applies for this visit.
+    }
+    return;
+  }
+  switch (id) {
+    case "btn:interact":
+      return interact();
+    case "btn:sprint":
+      return toggleSprint();
+    case "btn:chat":
+      return openChat();
+    case "btn:log":
+      return toggleLog();
+    case "btn:menu":
+      return toggleMenu();
+    case "btn:bag":
+      return toggleBag();
+    case "btn:fullscreen":
+      return void toggleFullscreen();
+    case "btn:qr":
+      return toggleJoinPanel();
+    case "btn:log-close":
+      return toggleLog(false);
+    case "btn:bag-close":
+      return toggleBag(false);
+    case "btn:shop-close":
+      return shop.close();
+    case "scrim:menu":
+    case "btn:resume":
+      scene.menu = false;
+      return;
+    case "btn:settings":
+      scene.menuPage = "settings";
+      return;
+    case "btn:back":
+      scene.menuPage = "root";
+      return;
+    case "btn:leave":
+      guest?.close();
+      location.reload();
+      return;
+    case "btn:scale-down":
+      scene.uiScale = clamp(scene.uiScale - 0.25, 1, 2);
+      return;
+    case "btn:scale-up":
+      scene.uiScale = clamp(scene.uiScale + 0.25, 1, 2);
+      return;
+  }
+}
+
+/**
+ * Pinch and two-finger level drags work on the world only: a pointer that
+ * starts on a UI element never joins a gesture.
+ */
+function bindWorldGesture() {
   /** @type {Map<number,{x:number,y:number}>} */
   const pointers = new Map();
   /** @type {{mode:"pending"|"pinch"|"layer",distance:number,y:number,zoom:number,z:number}|null} */
@@ -996,12 +1184,11 @@ function bindTouchGesture() {
       scene.viewZ = clamp(gesture.z - Math.sign(dy) * steps, 0, WORLD_TOP);
     }
   };
-  canvas.addEventListener("pointerdown", (event) => {
-    if (event.pointerType !== "touch" || scene.menu) return;
-    event.preventDefault();
-    scene.inputMode = "touch";
+  /** @param {PointerEvent} event */
+  const down = (event) => {
+    tapPickupGrid(event.clientX, event.clientY);
+    if (event.pointerType !== "touch") return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    canvas.setPointerCapture(event.pointerId);
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       if (!a || !b) return;
@@ -1014,129 +1201,80 @@ function bindTouchGesture() {
       };
       scene.touchGesture = true;
     }
-  });
-  canvas.addEventListener("pointermove", (event) => {
+  };
+  /** @param {PointerEvent} event */
+  const move = (event) => {
     if (event.pointerType !== "touch" || !pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (!updateQueued) {
       updateQueued = true;
       requestAnimationFrame(updateGesture);
     }
-  });
+  };
   /** @param {PointerEvent} event */
   const release = (event) => {
-    pointers.delete(event.pointerId);
+    if (!pointers.delete(event.pointerId)) return;
     if (pointers.size < 2) {
       gesture = null;
       scene.touchGesture = false;
       scene.hudUntil = 0;
     }
   };
-  canvas.addEventListener("pointerup", release);
-  canvas.addEventListener("pointercancel", release);
-  canvas.addEventListener("touchmove", (event) => {
-    if (event.touches.length > 1) event.preventDefault();
-  }, { passive: false });
-}
-
-/**
- * Runs `action` when a touch on `element` goes down. iOS sends no click while another finger
- * is on the screen, so a click handler misses taps made while a stick is held. A mouse or
- * keyboard click still works.
- * @param {HTMLElement} element @param {()=>void} action
- */
-function bindPress(element, action) {
-  let touchedAt = -Infinity;
-  element.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "mouse") return;
-    event.preventDefault();
-    touchedAt = performance.now();
-    scene.inputMode = "touch";
-    action();
-  });
-  element.addEventListener("click", () => {
-    if (performance.now() - touchedAt < 1000) return;
-    action();
-  });
+  return { down, move, release };
 }
 
 function bindInput() {
-  // iOS reports a Home Screen app through navigator.standalone.
-  if (/** @type {{standalone?:boolean}} */ (navigator).standalone) {
-    document.documentElement.classList.add("standalone");
-  }
-  const fullscreenButton = $("#fullscreen-toggle");
-  const displayStatus = $("#display-status");
-  const updateFullscreen = () => {
-    const fullscreen = document.fullscreenElement === $("#game");
-    fullscreenButton.textContent = fullscreen ? "×" : "⛶";
-    fullscreenButton.setAttribute(
-      "aria-label",
-      fullscreen ? "Exit fullscreen" : "Enter fullscreen",
-    );
-    fullscreenButton.title = fullscreen
-      ? "Exit fullscreen"
-      : "Enter fullscreen";
+  document.addEventListener("fullscreenchange", () => {
+    scene.displayStatus = "";
+  });
+  const world = bindWorldGesture();
+  /** @param {PointerEvent} event */
+  const point = (event) => {
+    const box = canvas.getBoundingClientRect();
+    return {
+      id: event.pointerId,
+      x: event.clientX - box.left,
+      y: event.clientY - box.top,
+    };
   };
-  fullscreenButton.addEventListener("click", async () => {
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    if (event.pointerType === "touch") scene.inputMode = "touch";
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await $("#game").requestFullscreen();
-      displayStatus.textContent = "";
+      canvas.setPointerCapture(event.pointerId);
     } catch {
-      displayStatus.textContent =
-        "Fullscreen unavailable. Add this page to your Home Screen.";
+      // A pointer that already ended cannot be captured.
     }
+    if (router.down(point(event)) === "world") world.down(event);
   });
-  document.addEventListener("fullscreenchange", updateFullscreen);
-  bindStick($("[data-stick=move]"), (x, y) => {
-    scene.inputMode = "touch";
-    joystick = { x, y };
+  canvas.addEventListener("pointermove", (event) => {
+    router.move(point(event));
+    world.move(event);
   });
-  bindStick($("[data-stick=camera]"), (x, y) => {
-    scene.inputMode = "touch";
-    cameraStick = { x, y };
-  });
-  bindPress($("#sprint-button"), toggleSprint);
-  bindPress($("#interact-button"), interact);
-  $("#chat-button").addEventListener("click", () => {
-    scene.inputMode = "touch";
-    openChat();
-  });
-  bindPress($("#log-button"), () => toggleLog());
-  $("#log-close").addEventListener("click", () => toggleLog(false));
-  bindPress($("#bag-button"), () => toggleBag());
-  bindPress($("#menu-button"), () => {
-    toggleBag(false);
-    shop.close();
-    scene.menu = !scene.menu;
-    scene.menuPage = "root";
-  });
-  const visual = globalThis.visualViewport;
-  visual?.addEventListener("resize", placeChatBar);
-  visual?.addEventListener("scroll", placeChatBar);
-  chatInput.addEventListener("input", () => {
-    scene.chatDraft = chatInput.value;
-    typing();
-  });
-  chatInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      event.stopPropagation();
-      submitChat();
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      closeChat();
-    }
-  });
+  /** @param {PointerEvent} event @param {boolean} cancelled */
+  const finish = (event, cancelled) => {
+    router.up(point(event), cancelled);
+    world.release(event);
+  };
+  canvas.addEventListener("pointerup", (event) => finish(event, false));
+  canvas.addEventListener("pointercancel", (event) => finish(event, true));
+  canvas.addEventListener(
+    "lostpointercapture",
+    (event) => finish(event, true),
+  );
+  canvas.addEventListener("touchmove", (event) => {
+    if (event.touches.length > 1) event.preventDefault();
+  }, { passive: false });
   document.addEventListener("keydown", (event) => {
     if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) return;
-    if (document.activeElement === chatInput) return;
+    if (scene.chatOpen) {
+      chatKey(event);
+      return;
+    }
     if (event.code === "F3" && !isAdmin && !event.repeat) {
       event.preventDefault();
-      $("#diagnostics").hidden = !$("#diagnostics").hidden;
+      ui.diagnosticsOpen = !ui.diagnosticsOpen;
       return;
     }
     if (event.code === "KeyQ" && !isAdmin && !event.repeat) {
@@ -1170,7 +1308,7 @@ function bindInput() {
       if (!event.repeat) shop.close();
       return;
     }
-    if (event.code === "Escape" && logPanel.classList.contains("open")) {
+    if (event.code === "Escape" && ui.logOpen) {
       event.preventDefault();
       if (!event.repeat) toggleLog(false);
       return;
@@ -1255,52 +1393,21 @@ function bindInput() {
   globalThis.addEventListener("blur", () => {
     held.clear();
     pressed.clear();
+    router.releaseAll();
     joystick = { x: 0, y: 0 };
     cameraStick = { x: 0, y: 0 };
     gamepadDirection = { x: 0, y: 0 };
     gamepadCamera = { x: 0, y: 0 };
     gamepadZoom = 0;
   });
-  canvas.addEventListener("pointerdown", (event) => {
-    if (event.pointerType === "touch") scene.inputMode = "touch";
-    tapPickupGrid(event.clientX, event.clientY);
-    if (!scene.menu) return;
-    const panelHeight = Math.min(300, canvas.clientHeight - 20);
-    const y = event.clientY - (canvas.clientHeight - panelHeight) / 2;
-    const x = event.clientX - canvas.clientWidth / 2;
-    if (
-      Math.abs(x) > Math.min(160, (canvas.clientWidth - 20) / 2) || y < 0 ||
-      y > panelHeight
-    ) {
-      scene.menu = false;
-      return;
-    }
-    if (scene.menuPage === "settings") {
-      if (y >= 208 && y < 244) scene.menuPage = "root";
-      else if (y >= 164 && y < 202) {
-        scene.textSize = TEXT_SIZES[x < -45 ? 0 : x > 45 ? 2 : 1];
-        try {
-          localStorage.setItem(TEXT_SIZE_KEY, scene.textSize);
-        } catch {
-          // The choice still applies for this visit.
-        }
-      } else if (y >= 88 && y < 126 && x < 0) {
-        scene.uiScale = clamp(scene.uiScale - 0.25, 1, 2);
-      } else if (y >= 88 && y < 126) {
-        scene.uiScale = clamp(scene.uiScale + 0.25, 1, 2);
-      }
-      return;
-    }
-    if (y >= 40 && y < 73) scene.menu = false;
-    else if (y >= 73 && y < 106) scene.menuPage = "settings";
-    else if (y >= 106 && y < 140) {
-      guest?.close();
-      location.reload();
-    }
-  });
-  bindTouchGesture();
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
+    const scrolled = router.wheel(
+      event.clientX - canvas.getBoundingClientRect().left,
+      event.clientY - canvas.getBoundingClientRect().top,
+      event.deltaY,
+    );
+    if (scrolled) return;
     scene.inputMode = "keyboard";
     scene.zoomTarget = clamp(
       scene.zoomTarget * (event.deltaY < 0 ? 1.1 : 0.9),
@@ -1312,10 +1419,7 @@ function bindInput() {
 }
 
 function startAdminList() {
-  $("#admin").hidden = false;
-  const sessions = $("#sessions");
-  const status = $("#admin-status");
-  const stats = $("#net-stats");
+  ui.sessions.open = true;
   setInterval(() => {
     const metrics = scene.metrics;
     if (!metrics) return;
@@ -1326,7 +1430,7 @@ function startAdminList() {
     const p95 = samples.length
       ? samples[Math.ceil(samples.length * 0.95) - 1]
       : null;
-    stats.textContent = `WebRTC · route ${metrics.route} · join ${
+    ui.sessions.stats = `WebRTC · route ${metrics.route} · join ${
       metrics.joinMs ?? "…"
     } ms · RTT median ${median ?? "…"} ms · p95 ${
       p95 ?? "…"
@@ -1336,28 +1440,48 @@ function startAdminList() {
     try {
       const response = await fetch(build.apiUrl("sessions"));
       const data = await response.json();
-      sessions.replaceChildren();
-      status.textContent = data.sessions.length
+      ui.sessions.items = data.sessions.map((
+        /** @type {{id:string}} */ item,
+      ) => ({
+        id: item.id,
+      }));
+      ui.sessions.status = data.sessions.length
         ? "Choose a world to join"
         : "No active visitors";
-      for (const item of data.sessions) {
-        const li = document.createElement("li");
-        const button = document.createElement("button");
-        button.dataset.sessionId = item.id;
-        button.dataset.transport = "webrtc";
-        button.textContent = `Join ${item.id.slice(0, 8)} · WebRTC`;
-        button.addEventListener("click", () => {
-          joinSession(item.id);
-        });
-        li.append(button);
-        sessions.append(li);
-      }
     } catch {
-      status.textContent = "Sessions unavailable";
+      ui.sessions.status = "Sessions unavailable";
     }
   };
   void refresh();
   setInterval(() => void refresh(), 5000);
+}
+
+/**
+ * Load the join QR code as a texture. The shell serves it as an SVG, which a
+ * canvas draws at a fixed size; a blob URL keeps the canvas from tainting.
+ * @param {string} url @param {{setQr:(source:TexImageSource|null)=>void}} renderer
+ */
+async function loadQr(url, renderer) {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const picture = new Image();
+    picture.src = objectUrl;
+    await picture.decode();
+    const surface = document.createElement("canvas");
+    surface.width = surface.height = 384;
+    const context = surface.getContext("2d");
+    if (!context) return;
+    context.imageSmoothingEnabled = false;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, 384, 384);
+    context.drawImage(picture, 0, 0, 384, 384);
+    renderer.setQr(surface);
+    ui.qrReady = true;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 /** @param {string} id */
@@ -1385,7 +1509,17 @@ export async function startApp() {
   );
   bindInput();
   const renderer = isSynthetic ? null : await createRenderer(canvas);
-  $("#loading").hidden = true;
+  const finishLoading = () => {
+    scene.loading = null;
+    canvas.dataset.ready = "true";
+  };
+  if (renderer) {
+    renderer.ready.then(finishLoading).catch((error) => {
+      scene.loading = "Cannot load the game. Reload to try again.";
+      scene.telemetry?.("error", { status: "assets-failed" });
+      console.error(error);
+    });
+  } else finishLoading();
   if (isAdmin && !joinRoute) startAdminList();
   else {
     if (!isAdmin) {
@@ -1399,22 +1533,12 @@ export async function startApp() {
         new URL(location.href).searchParams.get("seed") ?? scene.sessionId,
       ));
       generateAround(scene.world, Object.values(scene.world.players), 9);
-      const hostTools = $("#host-tools");
-      const code = /** @type {HTMLImageElement} */ ($("#join-code"));
       const link = build.joinLink(scene.sessionId, location.origin);
-      code.src = build.apiUrl(
+      ui.qrUrl = build.apiUrl(
         `qr/${scene.sessionId}?link=${encodeURIComponent(link)}`,
       );
-      hostTools.hidden = new URL(location.href).searchParams.has("harness");
-      $("#join-toggle").addEventListener("click", toggleJoinPanel);
-      setInterval(() => {
-        const count = Object.keys(scene.world.players).filter((id) =>
-          id !== "npc-corner"
-        ).length;
-        $("#player-count").textContent = `${count} player${
-          count === 1 ? "" : "s"
-        }`;
-      }, 1000);
+      ui.hostTools = !new URL(location.href).searchParams.has("harness");
+      if (renderer) loadQr(ui.qrUrl, renderer).catch(() => {});
     }
   }
   if (joinRoute) joinSession(joinRoute);
@@ -1422,8 +1546,7 @@ export async function startApp() {
     let previousBytes = 0;
     let previousTime = performance.now();
     setInterval(() => {
-      const panel = $("#diagnostics");
-      if (panel.hidden || !host) return;
+      if (!ui.diagnosticsOpen || !host) return;
       void host.diagnostics().then((stats) => {
         const now = performance.now();
         const bytes = stats.connections.reduce(
@@ -1442,7 +1565,7 @@ export async function startApp() {
         const frameMean = frameMs.length
           ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
           : 0;
-        panel.textContent =
+        ui.diagnostics =
           `HOST  F3 close\nFPS ${
             frameMean ? (1000 / frameMean).toFixed(0) : "…"
           }` +
@@ -1629,7 +1752,6 @@ export async function startApp() {
       scene.chatFeed = chatView(scene.world, scene.localId, localChatBands);
     }
     hearChat(scene.hearingLog, scene.chatFeed, speakerName);
-    drawLog();
     scene.mining = miningDisplay(accumulator / TICK_MS);
     scene.items = itemsDisplay();
     updatePickupGrid();
@@ -1637,6 +1759,18 @@ export async function startApp() {
     bag.update(scene.inventory, heldDisplay());
     shop.update(scene.inventory);
     shop.steer(shopDirection(), now);
+    scene.ui = {
+      layout: currentLayout(),
+      state: { pressed: router.pressed(), sticks: ui.sticks, now },
+    };
+    shop.fit(scene.ui.layout.shopList?.capacity ?? 1);
+    const liveText = [
+      scene.notice && now < scene.notice.until
+        ? scene.notice.text
+        : scene.status,
+      scene.displayStatus,
+    ].filter(Boolean).join("\n");
+    if (liveStatus.textContent !== liveText) liveStatus.textContent = liveText;
     renderer?.render(scene, accumulator / TICK_MS);
     requestAnimationFrame(frame);
   };
@@ -1646,6 +1780,15 @@ export async function startApp() {
       scene,
       openChat,
       join: joinSession,
+      /** The UI layer's current layout, for specs that tap elements. */
+      ui: {
+        layout: () => currentLayout(),
+        /** @param {string} id */
+        rect: (id) => currentLayout().byId.get(id)?.rect ?? null,
+        ids: () => [...currentLayout().byId.keys()],
+        state: ui,
+        qrUrl: () => ui.qrUrl,
+      },
       /** @param {Record<string,unknown>} message */
       send: (message) => guest?.send(message) ?? false,
       hostStats: () => host?.diagnostics() ?? null,

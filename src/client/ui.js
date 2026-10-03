@@ -968,7 +968,7 @@ export function layoutUi(view) {
   }
 
   // The join QR code, over the panels.
-  if (host?.tools && host.joinOpen) {
+  if (host?.joinOpen) {
     const size = clamp(0.4 * Math.min(W, H), 144, 224);
     const pad = 6 * s;
     const x = Math.max(
