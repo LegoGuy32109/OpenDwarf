@@ -1,6 +1,7 @@
 // @ts-check
 
-import { CHUNK_CELLS, parseChunkKey, STONE } from "./terrain.js";
+import { CHUNK_CELLS, parseChunkKey } from "./terrain.js";
+import { MAX_MATERIAL } from "./materials.js";
 
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
 
@@ -40,7 +41,7 @@ export function decodeChunk(value) {
   for (let i = 0; i < raw.length; i += 2) {
     const material = raw.charCodeAt(i);
     const length = raw.charCodeAt(i + 1) + 1;
-    if (material > STONE || cell + length > CHUNK_CELLS) return null;
+    if (material > MAX_MATERIAL || cell + length > CHUNK_CELLS) return null;
     data.fill(material, cell, cell + length);
     cell += length;
   }

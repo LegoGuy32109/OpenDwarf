@@ -18,7 +18,11 @@ be negative ([ADR 0003](adr/0003-chunked-terrain-generated-on-demand.md)).
 at x, y, z; `world.generateChunk`, a hook `ensureChunk` calls to create a missing
 chunk (the generator plugs into it); and `drainTileChanges`, which lists the
 tiles written since the last call so the host can send them to peers. A tile in
-a chunk that does not exist reads as solid stone. There is no distance-based
+a chunk that does not exist reads as solid stone. Materials and their stable ids
+live in `src/shared/materials.js`: air, stone, then coal, iron ore, gold ore,
+lapis, redstone, diamond, and emerald. Every material except air is solid. The
+chunk wire accepts ids up to `MAX_MATERIAL`, and the renderer draws an ore from
+`public/assets/ores.png`. A test row of each ore sits in the authored area. There is no distance-based
 chunk creation yet. A seven-step staircase on the south edge reaches
 the top landing; a full-height pillar tests occlusion. The view can show five
 lower levels, with deeper floors turning blue before they disappear. There is no

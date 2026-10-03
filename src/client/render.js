@@ -8,6 +8,8 @@ import {
   thoughtDotLifts,
 } from "../shared/chat.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
+import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
+import { readTile } from "../shared/terrain.js";
 import { adjacentTarget } from "../shared/target.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { viewMotionOpacity } from "../shared/view.js";
@@ -118,16 +120,23 @@ export async function createRenderer(canvas) {
   gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  const [floorImage, spriteImage, fontImage, edgeImage, ceilingImage] =
-    /** @type {HTMLImageElement[]} */ (
-      await Promise.all([
-        image("/assets/floor.png"),
-        image("/assets/dwarf.png"),
-        image("/assets/font.png"),
-        image("/assets/edge.png"),
-        image("/assets/ceiling.png"),
-      ])
-    );
+  const [
+    floorImage,
+    spriteImage,
+    fontImage,
+    edgeImage,
+    ceilingImage,
+    oreImage,
+  ] = /** @type {HTMLImageElement[]} */ (
+    await Promise.all([
+      image("/assets/floor.png"),
+      image("/assets/dwarf.png"),
+      image("/assets/font.png"),
+      image("/assets/edge.png"),
+      image("/assets/ceiling.png"),
+      image("/assets/ores.png"),
+    ])
+  );
   const whiteImage = document.createElement("canvas");
   whiteImage.width = whiteImage.height = 1;
   const whiteContext = whiteImage.getContext("2d");
@@ -141,6 +150,7 @@ export async function createRenderer(canvas) {
     font: texture(gl, fontImage),
     edge: texture(gl, edgeImage),
     ceiling: texture(gl, ceilingImage),
+    ores: texture(gl, oreImage),
     white: texture(gl, whiteImage),
   };
   const locationSize = gl.getUniformLocation(program, "u_size");
@@ -270,14 +280,22 @@ export async function createRenderer(canvas) {
         const tint = tile.seen === "remembered"
           ? [1, 0.86, 0.34]
           : DEPTH_TINTS[tile.depth];
+        // An ore keeps the stone's depth tint, so it reads as a wall at the
+        // player's level and as a darker top when seen from above.
+        const oreFrame = materialInfo(
+          readTile(scene.world, x, y, tile.z),
+        )?.oreFrame;
+        const ore = oreFrame !== null && oreFrame !== undefined;
         quad(
-          textures.floor,
+          ore ? textures.ores : textures.floor,
           false,
           x * TILE,
           y * TILE,
           TILE,
           TILE,
-          [0, 5 / 31, 1, 1 / 31],
+          ore
+            ? [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES]
+            : [0, 5 / 31, 1, 1 / 31],
           /** @type {[number,number,number,number]} */ ([
             ...tint,
             tile.seen === "remembered" ? 0.95 : 1,
