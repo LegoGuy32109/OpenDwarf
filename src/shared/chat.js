@@ -12,6 +12,28 @@ export const CHAT_TALKING_RADIUS = 12;
 export const CHAT_Z_LIMIT = 4;
 export const CHAT_BUFFER = 0.1;
 
+/** Width in bubble pixels of the three thought bubble dots. */
+export const THOUGHT_DOTS_WIDTH = 24;
+const THOUGHT_PERIOD_MS = 1200;
+
+/**
+ * Lift of each thought bubble dot at `now`, from 0 (rest) to 1 (top). The dots
+ * rise in turn, so the bubble reads as thinking. A player shows the bubble for
+ * any reason by setting `typing` on their player (see `setTyping`); the host
+ * already sends it to every listener within chat hearing range.
+ * @param {number} now milliseconds
+ * @returns {[number,number,number]}
+ */
+export function thoughtDotLifts(now) {
+  const phase = (now % THOUGHT_PERIOD_MS) / THOUGHT_PERIOD_MS;
+  /** @param {number} offset */
+  const lift = (offset) => {
+    const local = (phase - offset + 1) % 1;
+    return local < 0.4 ? Math.sin(local / 0.4 * Math.PI) : 0;
+  };
+  return [lift(0), lift(0.15), lift(0.3)];
+}
+
 /** @param {Player} listener @param {Player} speaker @param {ChatBand|undefined} previous */
 export function chatBand(listener, speaker, previous) {
   if (Math.abs(listener.z - speaker.z) > CHAT_Z_LIMIT) return "none";

@@ -3,6 +3,7 @@ import {
   chatBand,
   chatView,
   receiveChat,
+  thoughtDotLifts,
   withoutChat,
 } from "../../src/shared/chat.js";
 import {
@@ -77,4 +78,17 @@ Deno.test("message deadline stays fixed as range changes", () => {
     ),
     [],
   );
+});
+
+Deno.test("thought bubble dots rise in turn and loop", () => {
+  assertEquals(thoughtDotLifts(0), thoughtDotLifts(1200));
+  const [first, second, third] = thoughtDotLifts(240);
+  assertEquals(first > 0.99, true);
+  assertEquals(second > 0 && second < first, true);
+  assertEquals(third, 0);
+  for (let now = 0; now < 2400; now += 7) {
+    for (const lift of thoughtDotLifts(now)) {
+      assertEquals(lift >= 0 && lift <= 1, true);
+    }
+  }
 });

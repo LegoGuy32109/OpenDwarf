@@ -1,5 +1,6 @@
 // @ts-check
 
+import { THOUGHT_DOTS_WIDTH, thoughtDotLifts } from "../shared/chat.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { adjacentTarget } from "../shared/target.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
@@ -188,6 +189,20 @@ export async function createRenderer(canvas) {
   /** @param {number} x @param {number} y @param {number} w @param {number} h @param {[number,number,number,number]} color */
   function rect(x, y, w, h, color) {
     quad(textures.white, true, x, y, w, h, [0, 0, 1, 1], color);
+  }
+
+  /** The animated dots of a thought bubble, inside a bubble whose top-left is (x, y). @param {number} x @param {number} y @param {number} scale @param {number} now */
+  function thoughtDots(x, y, scale, now) {
+    const lifts = thoughtDotLifts(now);
+    for (const [n, lift] of lifts.entries()) {
+      rect(
+        x + (2 + n * 8) * scale,
+        y + (11 - lift * 4) * scale,
+        4 * scale,
+        4 * scale,
+        [0.95, 0.9, 0.78, 0.55 + lift * 0.45],
+      );
+    }
   }
 
   /** @param {Scene} scene @param {number} alpha */
@@ -525,7 +540,7 @@ export async function createRenderer(canvas) {
       const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
       const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
       const level = record.z - listener.z;
-      const content = record.text ?? (record.talking ? ":0" : "...");
+      const content = record.text ?? (record.talking ? ":0" : "");
       const direction = sx < 0
         ? "<"
         : sx > width
@@ -543,7 +558,11 @@ export async function createRenderer(canvas) {
         Math.floor((width - 32 * dpr) / (8 * scale)) - 2,
       );
       const value = label.slice(0, maxChars);
-      const w = Math.min(width - 16 * dpr, (value.length * 8 + 16) * scale);
+      const dotsW = record.typing ? THOUGHT_DOTS_WIDTH * scale : 0;
+      const w = Math.min(
+        width - 16 * dpr,
+        (value.length * 8 + 16) * scale + dotsW,
+      );
       const rawX = sx - w / 2;
       const rawY = sy - 28 * scale;
       const x = Math.max(8 * dpr, Math.min(width - w - 8 * dpr, rawX));
@@ -585,6 +604,33 @@ export async function createRenderer(canvas) {
         );
         rect(candidate.x, y, candidate.w, 20 * scale, [0.06, 0.06, 0.06, 0.85]);
         text(candidate.value, candidate.x + 8 * scale, y + 2 * scale, scale);
+        if (candidate.record.typing) {
+          const dotsX = candidate.x + (8 + candidate.value.length * 8) * scale;
+          thoughtDots(dotsX, y, scale, performance.now());
+          if (index === 0) {
+            const tailX = candidate.x + candidate.w / 2;
+            const color = /** @type {[number,number,number,number]} */ ([
+              0.06,
+              0.06,
+              0.06,
+              0.85,
+            ]);
+            rect(
+              tailX - 3 * scale,
+              y + 21 * scale,
+              4 * scale,
+              4 * scale,
+              color,
+            );
+            rect(
+              tailX - 6 * scale,
+              y + 26 * scale,
+              2 * scale,
+              2 * scale,
+              color,
+            );
+          }
+        }
         if (candidate.level) {
           const arrowX = candidate.x + (candidate.direction ? 24 : 8) * scale;
           const arrowY = y + 5 * scale;
