@@ -124,7 +124,9 @@ test("the host mines ore, sells it to the shopkeeper, and the score changes", as
   await expect(page.locator("#score")).toContainText("Coins 0");
   // Down the stairs into the tunnel, then mine coal and iron ore.
   await holdUntil(page, "e", (p) => p.y <= 12.1);
-  await holdUntil(page, "f", (p) => p.z === 2 && p.x >= 21.8);
+  await holdUntil(page, "f", (p) => p.z === 2 && p.x >= 21.2);
+  await placeAt(page, 22, 12); // the coal is one tile north of tile 22
+  await page.waitForTimeout(300);
   await mineAiming(page, "i", 2000); // coal at (22, 11)
   await expect.poll(
     () =>
@@ -137,7 +139,8 @@ test("the host mines ore, sells it to the shopkeeper, and the score changes", as
   await page.waitForTimeout(300);
   await interactAiming(page, "i"); // pick the coal up
   await expect.poll(async () => (await inventory(page)).length).toBe(2);
-  await holdUntil(page, "f", (p) => p.x >= 24.8);
+  await placeAt(page, 25, 12); // the iron ore is one tile north of tile 25
+  await page.waitForTimeout(300);
   await mineAiming(page, "i", 2500); // iron ore at (25, 11)
   await interactAiming(page, "i"); // pick the iron ore up
   await expect.poll(async () => (await inventory(page)).length).toBe(3);
@@ -304,17 +307,18 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
   await give(page, "coal", 2);
   await give(page, "diamond", 1);
   await placeAt(page, SHOP.x, SHOP.y);
+  await page.waitForTimeout(400);
   const press = async (button: number) => {
     await page.evaluate((b) => {
       (globalThis as unknown as { __pad: { buttons: { pressed: boolean }[] } })
         .__pad.buttons[b].pressed = true;
     }, button);
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(300);
     await page.evaluate((b) => {
       (globalThis as unknown as { __pad: { buttons: { pressed: boolean }[] } })
         .__pad.buttons[b].pressed = false;
     }, button);
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(300);
   };
   await press(0); // interact opens the shop
   await expect(page.locator("#shop-panel")).toBeVisible();

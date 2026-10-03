@@ -521,7 +521,7 @@ input {
 #shop-panel {
   position: absolute;
   z-index: 8;
-  top: calc(var(--safe-top) + 100px);
+  top: calc(var(--safe-top) + 112px);
   left: 50%;
   display: flex;
   width: min(380px, calc(100% - var(--safe-left) - var(--safe-right) - 24px));
