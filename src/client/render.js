@@ -211,6 +211,13 @@ export async function createRenderer(canvas) {
     const cameraY = scene.camera.y;
     gl.uniform2f(locationCamera, cameraX, cameraY);
     gl.uniform1f(locationZoom, zoom);
+    // Sprites start on a whole device pixel relative to the camera. At a
+    // fractional scale, NEAREST sampling otherwise changes which texel columns
+    // are one pixel wider on each frame, so a slow sprite shimmers.
+    /** @param {number} world @param {number} camera @param {number} size */
+    const snap = (world, camera, size) =>
+      camera + (Math.round((world - camera) * zoom + size / 2) - size / 2) /
+        zoom;
     const left = Math.floor((cameraX - width / (2 * zoom)) / TILE) - 1;
     const right = Math.ceil((cameraX + width / (2 * zoom)) / TILE) + 1;
     const top = Math.floor((cameraY - height / (2 * zoom)) / TILE) - 1;
@@ -452,8 +459,8 @@ export async function createRenderer(canvas) {
       quad(
         textures.sprite,
         false,
-        (pos.x + offset.x) * TILE,
-        (pos.y + offset.y) * TILE,
+        snap((pos.x + offset.x) * TILE, cameraX, width),
+        snap((pos.y + offset.y) * TILE, cameraY, height),
         TILE,
         TILE,
         /** @type {[number,number,number,number]} */ (uv),
@@ -468,9 +475,14 @@ export async function createRenderer(canvas) {
       const offset = player.id === scene.localId
         ? scene.renderOffset
         : { x: 0, y: 0, z: 0 };
-      const sx = ((pos.x + offset.x) * TILE + TILE / 2 - cameraX) * zoom +
-        width / 2;
-      const sy = ((pos.y + offset.y) * TILE - cameraY) * zoom + height / 2;
+      const sx = Math.round(
+        ((pos.x + offset.x) * TILE - cameraX) * zoom +
+          width / 2,
+      ) + TILE / 2 * zoom;
+      const sy = Math.round(
+        ((pos.y + offset.y) * TILE - cameraY) * zoom +
+          height / 2,
+      );
       if (player.name) {
         text(
           player.name,
