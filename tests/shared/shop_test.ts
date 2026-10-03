@@ -19,6 +19,8 @@ import {
   shopRows,
 } from "../../src/shared/shop.js";
 import { decodeControl } from "../../src/shared/wire.js";
+import { setHeldItem } from "../../src/shared/held-item.js";
+import { heldItem } from "../../src/shared/mining.js";
 
 /** A world with a player standing next to the shopkeeper, and one far away. */
 function shopWorld(): World {
@@ -221,4 +223,14 @@ Deno.test("the wire accepts a sell request and rejects malformed ones", () => {
       { type: "sell", all: "yes" },
     ]
   ) assertEquals(decodeControl(value), null, JSON.stringify(value));
+});
+
+Deno.test("selling the last of the held kind makes the pickaxe held again", () => {
+  const world = shopWorld();
+  addStack(inventoryOf(world.players.near), "diamond", 2);
+  assert(setHeldItem(world, "near", "diamond").ok);
+  assert(sellItems(world, "near", { kind: "diamond", count: 1 }).ok);
+  assertEquals(heldItem(world.players.near), "diamond");
+  assert(sellItems(world, "near", { kind: "diamond", count: 1 }).ok);
+  assertEquals(heldItem(world.players.near), PICKAXE);
 });
