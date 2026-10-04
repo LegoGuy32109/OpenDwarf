@@ -27,7 +27,9 @@ worker without being asked.
 
 A pushed branch is a preview: `https://od.joshhale.me/b/<branch>` (no slashes in
 the branch name). Production `/` serves main, which changes only with
-`deno task od promote <label|branch|sha> --prod`.
+`deno task od promote <label|branch|sha> --prod`. After a promotion or a shell
+deploy, run `deno task smoke`: a headless host and guest must join on production
+with no page errors.
 
 ## Evidence
 

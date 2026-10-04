@@ -31,6 +31,7 @@
     "test": "deno test --allow-read --allow-net --allow-env tests/lint tests/shared tests/client tests/server",
     "e2e": "deno run -A npm:playwright@1.63.0 test",
     "stress": "deno run -A scripts/stress.ts",
+    "smoke": "deno run -A scripts/smoke.ts",
     "orca": "deno run --allow-run --allow-read --allow-env scripts/orca.ts",
     "evidence:publish": "deno run --allow-run --allow-read --allow-write scripts/publish-evidence.ts",
     "capture:sync": "deno run -A scripts/capture-visual-sync.ts",
