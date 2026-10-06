@@ -1,9 +1,8 @@
 // @ts-check
 
 import { WORLD_TOP } from "./terrain.js";
-import { decodeChunks, encodeChunks } from "./chunk-wire.js";
+import { decodeChunks, MAX_REVEAL_CHUNKS } from "./chunk-wire.js";
 import { isItemKind, MAX_STACK_COUNT } from "./items.js";
-import { MAX_MATERIAL } from "./materials.js";
 import { unpackVisibility } from "./visibility-wire.js";
 
 /** @typedef {import('./world.js').Player} Player */
@@ -11,11 +10,11 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {Omit<Player,'typing'|'message'|'messageUntil'>} MotionPlayer */
 /** @typedef {import('./chat.js').ChatRecord} ChatRecord */
 /** @typedef {{attempt:string,viewRevision:number,sightRevision:number}} Envelope */
-/** @typedef {Envelope & {type:"state",world:World,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
+/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
 /** @typedef {Envelope & {type:"motion",tick:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MAX_PACKET_BYTES = 256 * 1024;
 const MAX_ENTITIES = 1024;
 const MAX_TICK = Number.MAX_SAFE_INTEGER;
@@ -219,12 +218,11 @@ function chatRecords(value) {
   }));
 }
 
-/** Wire form of a world snapshot: chunks become run-length strings and players keep only wire fields. */
-/** @param {World} world */
+/** Wire form of a world snapshot: players keep only wire fields. Terrain travels as `reveal`. */
+/** @param {Pick<World,'tick'|'players'>} world */
 export function encodeWorld(world) {
   return {
     tick: world.tick,
-    chunks: encodeChunks(world.chunks),
     players: encodeMotionPlayers(world.players),
   };
 }
@@ -240,8 +238,8 @@ export function decodeState(value) {
   ) return null;
   const world = value.world;
   if (!counter(world.tick)) return null;
-  const chunks = decodeChunks(world.chunks);
-  if (!chunks) return null;
+  const reveal = decodeChunks(value.reveal);
+  if (!reveal || reveal.size > MAX_REVEAL_CHUNKS) return null;
   const parsedPlayers = players(world.players);
   const chat = chatRecords(value.chat);
   if (
@@ -254,8 +252,7 @@ export function decodeState(value) {
       !record(value.visibility) ||
       typeof value.visibility.sample !== "string" ||
       value.visibility.sample.length > 128 ||
-      !record(value.visibility.visible) ||
-      !record(value.visibility.memory)
+      !record(value.visibility.visible)
     ) return null;
     try {
       unpackVisibility(
@@ -279,13 +276,12 @@ export function decodeState(value) {
       encoding: parsed.visibility.encoding,
       sample: parsed.visibility.sample,
       visible: parsed.visibility.visible,
-      memory: parsed.visibility.memory,
     },
     world: {
       tick: parsed.world.tick,
-      chunks,
       players: parsedPlayers,
     },
+    reveal,
     chat,
   };
 }
@@ -396,40 +392,6 @@ export function decodeControl(value) {
     default:
       return null;
   }
-}
-
-/** Most tile changes one terrain message may carry. */
-export const MAX_TERRAIN_CHANGES = 256;
-
-/**
- * Host to guest: tiles that changed. Only tiles the guest can see, or all of
- * them in master view. Returns null for anything malformed.
- * @param {unknown} value @returns {import('./terrain.js').TileChange[]|null}
- */
-export function decodeTerrainChanges(value) {
-  if (
-    !record(value) || value.type !== "terrain" ||
-    !Array.isArray(value.changes) ||
-    value.changes.length > MAX_TERRAIN_CHANGES
-  ) return null;
-  /** @type {import('./terrain.js').TileChange[]} */
-  const changes = [];
-  for (const change of value.changes) {
-    if (
-      !record(change) || !Number.isInteger(change.x) ||
-      !finite(change.x, -MAX_COORD, MAX_COORD) || !Number.isInteger(change.y) ||
-      !finite(change.y, -MAX_COORD, MAX_COORD) || !Number.isInteger(change.z) ||
-      !finite(change.z, 0, WORLD_TOP) || !Number.isInteger(change.material) ||
-      !finite(change.material, 0, MAX_MATERIAL)
-    ) return null;
-    changes.push({
-      x: change.x,
-      y: change.y,
-      z: change.z,
-      material: change.material,
-    });
-  }
-  return changes;
 }
 
 /** Most mining entries one message may carry. */

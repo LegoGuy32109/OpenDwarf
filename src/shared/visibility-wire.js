@@ -12,7 +12,7 @@ import {
 import { MAX_WIRE_CHUNKS } from "./chunk-wire.js";
 
 /** @typedef {import('./visibility.js').Visibility} Visibility */
-/** @typedef {{encoding:"bitset-v2",visible:Record<string,string>,memory:Record<string,string>,sample:string}} WireVisibility */
+/** @typedef {{encoding:"bitset-v2",visible:Record<string,string>,sample:string}} WireVisibility */
 
 /** Levels -1 through the top level plus one, so the floor and ceiling shells fit. */
 const HEIGHT = WORLD_TOP + 3;
@@ -95,7 +95,6 @@ export function packVisibility(visibility) {
   return {
     encoding: "bitset-v2",
     visible: encodeTiles(visibility.visible),
-    memory: encodeTiles(visibility.memory),
     sample: visibility.sample,
   };
 }
@@ -107,7 +106,8 @@ export function unpackVisibility(packed) {
   }
   return {
     visible: decodeTiles(packed.visible),
-    memory: decodeTiles(packed.memory),
+    memory: new Set(),
+    fromTerrain: true,
     sample: packed.sample,
   };
 }

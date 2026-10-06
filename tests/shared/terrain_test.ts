@@ -39,6 +39,7 @@ import {
   tileKey,
 } from "../../src/shared/visibility.js";
 import { entityView } from "../../src/shared/view.js";
+import { createPendingReveal, drainReveal } from "../../src/shared/reveal.js";
 import { adjacentTarget } from "../../src/shared/target.js";
 import {
   decodeState,
@@ -323,8 +324,11 @@ for (const count of [4, 25]) {
       }
     }
     sight.sample = tileKey(7, 7, 0); // the viewer's tile, so sight is not recomputed
-    const view = entityView(world, "guest", sight, remembered);
-    assertEquals(view.world.chunks.size, world.chunks.size);
+    const pending = createPendingReveal();
+    const view = entityView(world, "guest", sight, remembered, pending);
+    assertEquals(remembered.size, world.chunks.size);
+    // A packet carries MAX_REVEAL_CHUNKS chunks; the rest follows in later ones.
+    const reveal = drainReveal(remembered, pending);
     const packet = {
       type: "state",
       attempt: "a",
@@ -334,6 +338,7 @@ for (const count of [4, 25]) {
       mode: "entity",
       playerId: "guest",
       world: encodeWorld(view.world),
+      reveal,
       visibility: view.visibility,
       chat: [],
     };
@@ -341,7 +346,7 @@ for (const count of [4, 25]) {
     assert(bytes < MAX_PACKET_BYTES, `${count} chunks: ${bytes} bytes`);
     const decoded = decodeState(JSON.parse(JSON.stringify(packet)));
     assert(decoded, "the packet decodes");
-    assertEquals(decoded.world.chunks.size, world.chunks.size);
+    assertEquals(decoded.reveal.size, Object.keys(reveal).length);
   });
 }
 
@@ -351,8 +356,8 @@ Deno.test("a guest receives only the chunks it has seen", () => {
   ensureChunk(world, 9, 9);
   addPlayer(world, "viewer", { x: 3, y: 3, z: 0 });
   const remembered = new Map();
-  const view = entityView(world, "viewer", createVisibility(), remembered);
-  const keys = [...view.world.chunks.keys()];
+  entityView(world, "viewer", createVisibility(), remembered);
+  const keys = [...remembered.keys()];
   assert(keys.includes("0,0"));
   assert(keys.includes("-1,0"), "the chunk beside the viewer is visible");
   assert(!keys.includes("9,9"), "a far chunk is never sent");

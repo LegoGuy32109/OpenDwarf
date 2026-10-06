@@ -22,7 +22,6 @@ import {
   viewMotionOpacity,
   viewMotionPosition,
 } from "../../src/shared/view.js";
-import { unpackVisibility } from "../../src/shared/visibility-wire.js";
 import {
   chunkCoord,
   chunkIndex,
@@ -106,8 +105,8 @@ Deno.test("guest snapshot excludes hidden entities and undiscovered terrain", ()
   assertEquals(snapshot.world.players.hidden, undefined);
   assert(snapshot.world.players.viewer);
   assert(snapshot.world.players.seen);
-  assertEquals(seenMaterial(snapshot.world, 9, 8, 0), UNKNOWN);
-  assertEquals(seenMaterial(snapshot.world, 6, 8, 0), OPEN);
+  assertEquals(seenMaterial({ chunks: remembered }, 9, 8, 0), UNKNOWN);
+  assertEquals(seenMaterial({ chunks: remembered }, 6, 8, 0), OPEN);
   assert(!JSON.stringify(snapshot).includes("secret"));
 });
 
@@ -178,10 +177,10 @@ Deno.test("remembered terrain stays stale until seen again, including after mast
   assertEquals([...sight.visible], [...knownBeforeMaster]);
   assertEquals(seenMaterial({ chunks: remembered }, 6, 8, 0), OPEN);
   writeTile(world, 6, 8, 0, STONE);
-  const afterReturn = entityView(world, "viewer", sight, remembered);
-  assertEquals(seenMaterial(afterReturn.world, 6, 8, 0), OPEN);
-  assert(unpackVisibility(afterReturn.visibility).memory.has(tileKey(6, 8, 0)));
+  entityView(world, "viewer", sight, remembered);
+  assertEquals(seenMaterial({ chunks: remembered }, 6, 8, 0), OPEN);
+  assert(sight.memory.has(tileKey(6, 8, 0)));
   viewer.x = 7;
-  const afterSeeingAgain = entityView(world, "viewer", sight, remembered);
-  assertEquals(seenMaterial(afterSeeingAgain.world, 6, 8, 0), STONE);
+  entityView(world, "viewer", sight, remembered);
+  assertEquals(seenMaterial({ chunks: remembered }, 6, 8, 0), STONE);
 });

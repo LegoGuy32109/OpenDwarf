@@ -2,6 +2,10 @@ import { assert, assertEquals } from "@std/assert";
 import { addPlayer, createWorld } from "../../src/shared/world.js";
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { createVisibility } from "../../src/shared/visibility.js";
+import {
+  encodeChunks,
+  MAX_REVEAL_CHUNKS,
+} from "../../src/shared/chunk-wire.js";
 import { packVisibility } from "../../src/shared/visibility-wire.js";
 import {
   decodeChat,
@@ -42,6 +46,7 @@ function snapshot(edge = 16) {
     mode: "entity" as "entity" | "master",
     playerId: "guest",
     world: encodeWorld(world),
+    reveal: encodeChunks(world.chunks),
     visibility: packVisibility(createVisibility()) as
       | ReturnType<typeof packVisibility>
       | null,
@@ -69,18 +74,28 @@ Deno.test("wire snapshots validate both authored areas and master mode", () => {
 
 Deno.test("wire full-state rejection is atomic for terrain, masks and entities", () => {
   const valid = snapshot();
-  const chunk = valid.world.chunks["0,0"];
+  const chunk = valid.reveal["0,0"];
   const invalid = [
-    { ...valid, world: { ...valid.world, chunks: { "0,0": "AQE=" } } },
-    { ...valid, world: { ...valid.world, chunks: { "0,0": "AwD/" } } },
-    { ...valid, world: { ...valid.world, chunks: { "00,0": chunk } } },
-    { ...valid, world: { ...valid.world, chunks: { "-0,0": chunk } } },
-    { ...valid, world: { ...valid.world, chunks: { "9999999,0": chunk } } },
-    { ...valid, world: { ...valid.world, chunks: ["0,0"] } },
-    { ...valid, visibility: { ...valid.visibility, memory: "broken mask" } },
+    { ...valid, reveal: { "0,0": "AQE=" } },
+    { ...valid, reveal: { "0,0": "AwD/" } },
+    { ...valid, reveal: { "00,0": chunk } },
+    { ...valid, reveal: { "-0,0": chunk } },
+    { ...valid, reveal: { "9999999,0": chunk } },
+    { ...valid, reveal: ["0,0"] },
+    { ...valid, reveal: undefined },
     {
       ...valid,
-      visibility: { ...valid.visibility, memory: { "0,0": "AA==" } },
+      reveal: Object.fromEntries(
+        Array.from(
+          { length: MAX_REVEAL_CHUNKS + 1 },
+          (_, i) => [`${i},0`, chunk],
+        ),
+      ),
+    },
+    { ...valid, visibility: { ...valid.visibility, visible: "broken mask" } },
+    {
+      ...valid,
+      visibility: { ...valid.visibility, visible: { "0,0": "AA==" } },
     },
     { ...valid, playerId: "missing" },
     {

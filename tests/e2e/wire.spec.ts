@@ -2,11 +2,9 @@ import { expect, test } from "@playwright/test";
 import type { StatePacket } from "../../src/shared/wire.js";
 import { ready } from "./ui.ts";
 
-/** The state packet as sent: chunks are run-length strings. */
-type WireState = Omit<StatePacket, "world"> & {
-  world: Omit<StatePacket["world"], "chunks"> & {
-    chunks: Record<string, string>;
-  };
+/** The state packet as sent: reveal chunks are run-length strings. */
+type WireState = Omit<StatePacket, "reveal"> & {
+  reveal: Record<string, string>;
 };
 
 test("unordered motion waits for sight, rejects old attempts, and survives older state", async ({ browser }) => {
@@ -29,7 +27,10 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
   const result = await guest.evaluate(() => {
     const game = (globalThis as unknown as {
       __od: {
-        scene: { world: StatePacket["world"]; status: string };
+        scene: {
+          world: StatePacket["world"] & { chunks: Map<string, Uint8Array> };
+          status: string;
+        };
         wireDebug: () => {
           state: WireState;
           pending: { tick: number } | null;
@@ -47,6 +48,10 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
     base.viewRevision += 10;
     base.mode = "master";
     base.visibility = null;
+    // Open air for the whole chunk: eight runs of 256 tiles.
+    base.reveal = {
+      "0,0": btoa(String.fromCharCode(...Array(8).fill([1, 255]).flat())),
+    };
     const own = base.world.players[base.playerId];
     const probe = { ...own, id: "packet-probe", name: "probe", x: 7, y: 6 };
     base.world.players[probe.id] = probe;
@@ -91,7 +96,7 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
     const beforeTerrain = game.scene.world.chunks.get("0,0")?.[0];
     const invalid = structuredClone(base);
     invalid.world.tick += 20;
-    invalid.world.chunks["0,0"] = "AAAA";
+    invalid.reveal["0,0"] = "AAAA";
     game.injectPacket(invalid);
     const afterTerrain = game.scene.world.chunks.get("0,0")?.[0];
     game.injectPacket({
@@ -128,6 +133,7 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
   expect(result.pendingTick).toBe(result.expectedPendingTick);
   expect(result.applied).toBe(7.3);
   expect(result.oldAttempt).toBe(7.3);
+  expect(result.beforeTerrain).toBe(1);
   expect(result.afterTerrain).toBe(result.beforeTerrain);
   expect(result.hiddenStayedHidden).toBe(true);
   await host.close();
