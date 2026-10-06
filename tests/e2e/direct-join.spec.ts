@@ -20,7 +20,8 @@ test("the host opens the small join QR from the QR button", async ({ page }) => 
   await clickUi(page, "btn:qr");
   await expect.poll(() => hasUi(page, "panel:join")).toBe(false);
   await page.keyboard.press("q");
-  await expect.poll(() => hasUi(page, "panel:join")).toBe(true);
+  await expect.poll(() => hasUi(page, "panel:join")).toBe(false);
+  await expect.poll(() => hasUi(page, "panel:menu")).toBe(true);
 });
 
 test("a phone link joins the expanded authored world directly", async ({ browser }) => {

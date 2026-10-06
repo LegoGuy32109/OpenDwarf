@@ -10,6 +10,7 @@
 import { TEXT_SIZES } from "../shared/chat.js";
 import { VOICES_LEVELS } from "./chatter.js";
 import { heldDisplay } from "./display.js";
+import { build } from "./build.js";
 import { layoutUi } from "./ui.js";
 
 /** @typedef {import('./context.js').Context} Context */
@@ -39,6 +40,9 @@ function uiView(ctx) {
     loading: scene.loading,
     status: notice.slice(0, 75),
     displayStatus: scene.displayStatus,
+    update: ui.updateAvailable
+      ? "A newer version is available. Reload to update; guests will rejoin."
+      : undefined,
     diagnostics: ui.diagnosticsOpen && !ctx.isAdmin ? ui.diagnostics : null,
     zoom: scene.touchGesture || now < scene.hudUntil
       ? `Z ${scene.viewZ}  ZOOM ${scene.zoom.toFixed(2)}`
@@ -75,6 +79,7 @@ function uiView(ctx) {
         voices: ctx.chatter.level,
         voiceLevels: VOICES_LEVELS,
         mode: scene.inputMode,
+        build: build.line,
       }
       : undefined,
     log: {

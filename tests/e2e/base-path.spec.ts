@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { evidenceShot } from "./evidence.ts";
-import { hasUi, qrUrl, ready, uiState } from "./ui.ts";
+import { clickUi, hasUi, qrUrl, ready, uiState } from "./ui.ts";
 
 const GAME_ORIGIN = `http://127.0.0.1:${process.env.PORT ?? "8000"}`;
 const TYPES: Record<string, string> = {
@@ -158,7 +158,7 @@ test("the build under /b/test/ shows its join QR code", async ({ browser }) => {
     const page = await context.newPage();
     await page.goto(`${PAGE_ORIGIN}/b/test/?harness=1&tools=1`);
     await ready(page);
-    await page.keyboard.press("q");
+    await clickUi(page, "btn:qr");
     await expect.poll(() => hasUi(page, "panel:join")).toBe(true);
     await expect.poll(async () => (await uiState(page)).qrReady).toBe(true);
     await page.waitForTimeout(300);

@@ -72,6 +72,7 @@ export const CHAT_LIMIT = 120;
  * @property {string|null} [loading] the loading screen text, or null
  * @property {string} [status]
  * @property {string} [displayStatus]
+ * @property {string} [update] the stale-build notice; a tap reloads the page
  * @property {string|null} [diagnostics] the F3 panel text, or null when closed
  * @property {string|null} [zoom] the level and zoom text, or null
  * @property {boolean} [fullscreen] show the fullscreen button
@@ -83,7 +84,7 @@ export const CHAT_LIMIT = 120;
  * @property {boolean} [bagOpenButton]
  * @property {{move:Knob,look:Knob}} [sticks]
  * @property {{open:boolean,draft:string,page:"letters"|"symbols",shift:boolean}} [chat]
- * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],mode:string}} [menu]
+ * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],mode:string,build?:string}} [menu]
  * @property {{open:boolean,lines:readonly HearingLine[],scroll:number}} [log]
  * @property {{open:boolean,stacks:readonly Stack[],selected:number,held:string}} [bag]
  * @property {{open:boolean,rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
@@ -491,6 +492,30 @@ export function layoutUi(view) {
       scale: ts,
       align: "left",
       on: true,
+    });
+    leftY += h + 6 * s;
+  }
+  const updateText = ascii(view.update ?? "");
+  if (updateText) {
+    const available = Math.max(
+      cw * 8,
+      (topRight.length ? hostLeft : right - edge) - 8 * s - (left + edge),
+    );
+    const lines = wrapText(updateText, Math.floor((available - 12 * s) / cw))
+      .slice(0, 3);
+    const longest = Math.max(...lines.map((line) => line.length));
+    const h = lines.length * pitch + 2 * s;
+    add({
+      id: "btn:update",
+      kind: "text",
+      rect: box(left + edge, leftY, longest * cw + 12 * s, h),
+      text: lines.join("\n"),
+      color: "amber",
+      scale: ts,
+      align: "left",
+      on: true,
+      hit: true,
+      act: "down",
     });
     leftY += h + 6 * s;
   }
@@ -1067,12 +1092,12 @@ export function layoutUi(view) {
         "ESDF MOVE  IJKL LOOK",
         "R V LEVEL  U N ZOOM",
         "T CHAT  / COMMAND",
-        "ESC MENU",
+        "ESC OR Q MENU",
       ];
     const rowH = Math.max(34 * s, lh + 12 * s);
     const settings = menu.page === "settings";
     const bodyRows = settings ? 6 : rootRows.length;
-    const hintLines = settings ? 0 : hints.length;
+    const hintLines = settings ? 0 : hints.length + (menu.build ? 1 : 0);
     const h = Math.min(
       safeRect.h - 20,
       12 * s + pitch + 8 * s + bodyRows * (rowH + 4 * s) + hintLines * pitch +
@@ -1199,6 +1224,17 @@ export function layoutUi(view) {
         scale: ts,
         align: "center",
       });
+      if (menu.build) {
+        add({
+          id: "text:menu-build",
+          kind: "text",
+          rect: box(x, cursor + 6 * s + hints.length * pitch, w, pitch),
+          text: ascii(menu.build),
+          color: "dim",
+          scale: ts,
+          align: "center",
+        });
+      }
     }
   }
 

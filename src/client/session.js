@@ -15,6 +15,7 @@ import {
 import { createCornerNpc } from "../shared/npc.js";
 import { NPC_ORIGIN } from "../shared/spawn-room.js";
 import { build } from "./build.js";
+import { startUpdateCheck } from "./update-check.js";
 import { joinWorld, startHost } from "./network.js";
 import { pinLoadedChunks } from "../shared/terrain.js";
 import { rememberedLine, worldTerrainLine } from "./terrain-diagnostics.js";
@@ -121,6 +122,14 @@ export function startHosting(ctx, renderer) {
   // Specs hide the host tools, which sit in screenshots, unless they ask with `?tools=1`.
   ui.hostTools = !params.has("harness") || params.has("tools");
   if (renderer) loadQr(ctx, ui.qrUrl, renderer).catch(() => {});
+  startUpdateCheck({
+    host: true,
+    build: build.identity,
+    url: build.apiUrl("status"),
+    onNewer: () => {
+      ui.updateAvailable = true;
+    },
+  });
 }
 
 /** Once a second, while the diagnostics overlay is open, read the host's network stats into its text. @param {Context} ctx */
@@ -150,7 +159,7 @@ export function startDiagnostics(ctx) {
         : 0;
       const remembered = rememberedLine(stats.connections);
       ui.diagnostics =
-        `HOST  F3 close\nFPS ${
+        `HOST  F3 close\n${build.line}\nFPS ${
           frameMean ? (1000 / frameMean).toFixed(0) : "…"
         }` +
         `  peers ${

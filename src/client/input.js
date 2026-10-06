@@ -201,6 +201,9 @@ function uiAction(ctx, element) {
       return void toggleFullscreen(ctx);
     case "btn:qr":
       return toggleJoinPanel(ctx);
+    case "btn:update":
+      location.reload();
+      return;
     case "btn:log-close":
       return toggleLog(ctx, false);
     case "btn:bag-close":
@@ -320,11 +323,8 @@ function keyDown(ctx, event) {
     ui.diagnosticsOpen = !ui.diagnosticsOpen;
     return;
   }
-  if (event.code === "KeyQ" && !ctx.isAdmin && !event.repeat) {
-    event.preventDefault();
-    toggleJoinPanel(ctx);
-    return;
-  }
+  // Q does what Escape does.
+  const code = event.code === "KeyQ" ? "Escape" : event.code;
   scene.inputMode = "keyboard";
   if (event.code === "Backquote") {
     event.preventDefault();
@@ -336,27 +336,27 @@ function keyDown(ctx, event) {
     toggleBag(ctx);
     return;
   }
-  if (event.code === "Escape" && bag.isOpen) {
+  if (code === "Escape" && bag.isOpen) {
     event.preventDefault();
     if (!event.repeat) toggleBag(ctx, false);
     return;
   }
-  if (event.code === "Escape" && isPickupGridOpen(ctx.pickupGrid)) {
+  if (code === "Escape" && isPickupGridOpen(ctx.pickupGrid)) {
     event.preventDefault();
     if (!event.repeat) closePickupGrid(ctx.pickupGrid);
     return;
   }
-  if (event.code === "Escape" && shop.isOpen()) {
+  if (code === "Escape" && shop.isOpen()) {
     event.preventDefault();
     if (!event.repeat) shop.close();
     return;
   }
-  if (event.code === "Escape" && ui.logOpen) {
+  if (code === "Escape" && ui.logOpen) {
     event.preventDefault();
     if (!event.repeat) toggleLog(ctx, false);
     return;
   }
-  if (event.code === "Escape") {
+  if (code === "Escape") {
     event.preventDefault();
     if (!event.repeat) {
       scene.menu = !scene.menu;

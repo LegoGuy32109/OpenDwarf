@@ -132,6 +132,8 @@ export function createContext() {
       move: { active: false, x: 0, y: 0, dir: "center" },
       look: { active: false, x: 0, y: 0, dir: "center" },
     },
+    /** A newer main exists than the build this host runs. */
+    updateAvailable: false,
     chatPage: /** @type {"letters"|"symbols"} */ ("letters"),
     chatShift: false,
     logOpen: false,
