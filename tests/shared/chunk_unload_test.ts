@@ -8,14 +8,21 @@ import {
   UNLOAD_RADIUS,
 } from "../../src/shared/generation.js";
 import {
+  CHUNK_CELLS,
   chunkKey,
   ensureChunk,
   OPEN,
   pinLoadedChunks,
   readTile,
   STONE,
+  unloadChunk,
   writeTile,
 } from "../../src/shared/terrain.js";
+import {
+  createVisibility,
+  recomputeVisibility,
+  tileKey,
+} from "../../src/shared/visibility.js";
 import { createWorld } from "../../src/shared/world.js";
 import { dropItem, droppedAt } from "../../src/shared/items.js";
 
@@ -147,4 +154,22 @@ Deno.test("the authored build leaves no edit diffs", () => {
   assertEquals(world.edits?.size ?? 0, 0);
   writeTile(world, 4, 4, 1, OPEN);
   assertEquals(world.edits?.size ?? 0, 0);
+});
+
+Deno.test("sight refreshes when a nearby chunk loads or unloads, without moving", () => {
+  const world = createWorld();
+  world.chunks.get("0,0")!.fill(OPEN);
+  world.generateChunk = () => new Uint8Array(CHUNK_CELLS).fill(OPEN);
+  const sight = createVisibility();
+  const spot = { x: 8.5, y: 8.5, z: 0 };
+  const far = tileKey(20, 8, 1);
+  recomputeVisibility(world, sight, spot);
+  assert(!sight.visible.has(far));
+  assertEquals(recomputeVisibility(world, sight, spot), false);
+  ensureChunk(world, 1, 0);
+  assertEquals(recomputeVisibility(world, sight, spot), true);
+  assert(sight.visible.has(far));
+  unloadChunk(world, 1, 0);
+  assertEquals(recomputeVisibility(world, sight, spot), true);
+  assert(!sight.visible.has(far));
 });

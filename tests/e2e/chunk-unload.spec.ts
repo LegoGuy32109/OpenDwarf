@@ -6,11 +6,13 @@ type Harness = {
   __od: {
     scene: {
       localId: string;
+      visibility: { visible: Set<string> };
       world: {
         chunks: Map<string, Uint8Array>;
         players: Record<string, { x: number; y: number; z: number }>;
       };
     };
+    visibility: { visible: Set<string> };
     ui: { state: { diagnosticsOpen: boolean } };
   };
 };
@@ -91,6 +93,14 @@ test("a host that walks away unloads the far chunks and finds its tunnel when it
   await placeHost(page, 8.5 + 16 * 5, 8.5 + 16 * 5);
   await expect.poll(() => hasChunk(page, "5,5")).toBe(true);
   expect(await bytes(page, "5,5")).toBe(tunnel);
+  // Sight follows the reloaded chunk, though the host did not walk.
+  await expect.poll(() =>
+    page.evaluate(() =>
+      (globalThis as unknown as Harness).__od.scene.visibility.visible.has(
+        `${5 * 16 + 9},${5 * 16 + 8},0`,
+      )
+    )
+  ).toBe(true);
   await page.waitForTimeout(1300);
   await evidenceShot(page, "chunk-unload-returned");
 });
