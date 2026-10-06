@@ -10,6 +10,7 @@
 
 import { WORLD_TOP } from "../shared/world.js";
 import { TEXT_SIZE_KEY, TEXT_SIZES } from "../shared/chat.js";
+import { VOICES_KEY, VOICES_LEVELS } from "./chatter.js";
 import { setSprint } from "../shared/stamina.js";
 import { closePickupGrid, isPickupGridOpen } from "./pickup-grid.js";
 import { createPointerRouter } from "./ui-pointer.js";
@@ -167,6 +168,17 @@ function uiAction(ctx, element) {
     scene.textSize = size;
     try {
       localStorage.setItem(TEXT_SIZE_KEY, scene.textSize);
+    } catch {
+      // The choice still applies for this visit.
+    }
+    return;
+  }
+  if (id.startsWith("btn:voices:")) {
+    const level = VOICES_LEVELS.find((candidate) => candidate === id.slice(11));
+    if (!level) return;
+    ctx.chatter.setLevel(level);
+    try {
+      localStorage.setItem(VOICES_KEY, level);
     } catch {
       // The choice still applies for this visit.
     }
@@ -458,6 +470,7 @@ export function createInput(ctx) {
       };
     };
     canvas.addEventListener("pointerdown", (event) => {
+      ctx.chatter.unlock();
       if (event.pointerType === "mouse" && event.button !== 0) return;
       event.preventDefault();
       if (event.pointerType === "touch") scene.inputMode = "touch";
@@ -488,7 +501,10 @@ export function createInput(ctx) {
     canvas.addEventListener("touchmove", (event) => {
       if (event.touches.length > 1) event.preventDefault();
     }, { passive: false });
-    document.addEventListener("keydown", (event) => keyDown(ctx, event));
+    document.addEventListener("keydown", (event) => {
+      ctx.chatter.unlock();
+      keyDown(ctx, event);
+    });
     document.addEventListener("keyup", (event) => {
       if (event.code === "Space") event.preventDefault();
       ctx.held.delete(event.code);

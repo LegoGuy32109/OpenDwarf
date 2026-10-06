@@ -54,6 +54,7 @@ its feature there:
 - [Inventory and shop](docs/features/inventory-and-shop.md)
 - [Placing](docs/features/placing.md)
 - [Chat](docs/features/chat.md)
+- [Chatter](docs/features/chatter.md)
 - [Controls and UI](docs/features/controls-and-ui.md)
 - [Networking](docs/features/networking.md)
 - [Sessions and signaling](docs/features/sessions-and-signaling.md)

@@ -27,6 +27,11 @@ export function exposeHarness(ctx) {
   const { scene, ui, frameMs } = ctx;
   /** @type {{__od?:unknown}} */ (globalThis).__od = {
     scene,
+    /** Chatter that started (ADR 0006), so specs can check it without listening. */
+    chatter: {
+      log: ctx.chatter.log,
+      level: () => ctx.chatter.level,
+    },
     /** @param {string} [prefill] */
     openChat: (prefill) => openChat(ctx, prefill),
     stamina: ctx.stamina,

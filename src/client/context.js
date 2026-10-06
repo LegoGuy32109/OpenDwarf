@@ -15,6 +15,7 @@ import { createVisibility } from "../shared/visibility.js";
 import { layoutFromParams } from "../shared/spawn-room.js";
 import { createPresentation } from "./presentation.js";
 import { parseTextSize, TEXT_SIZE_KEY } from "../shared/chat.js";
+import { createChatter, parseVoicesLevel, VOICES_KEY } from "./chatter.js";
 import { addSystemLine, createHearingLog } from "../shared/hearing-log.js";
 import { createStamina } from "../shared/stamina.js";
 import { setHeldItem } from "../shared/held-item.js";
@@ -37,6 +38,15 @@ const $ = (
 function storedTextSize() {
   try {
     return localStorage.getItem(TEXT_SIZE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Private browsing can block storage; Medium then applies. */
+function storedVoices() {
+  try {
+    return localStorage.getItem(VOICES_KEY);
   } catch {
     return null;
   }
@@ -147,6 +157,8 @@ export function createContext() {
     scene,
     ui,
     canvas: /** @type {HTMLCanvasElement} */ ($("#world")),
+    /** Plays chatter for the bubbles in `scene.chatFeed` (ADR 0006). */
+    chatter: createChatter({ level: parseVoicesLevel(storedVoices()) }),
     liveStatus: $("#live-status"),
     gameRoot: $("#game"),
     touchQuery: globalThis.matchMedia?.("(pointer: coarse)"),

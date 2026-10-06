@@ -8,6 +8,7 @@
  */
 
 import { TEXT_SIZES } from "../shared/chat.js";
+import { VOICES_LEVELS } from "./chatter.js";
 import { heldDisplay } from "./display.js";
 import { layoutUi } from "./ui.js";
 
@@ -71,6 +72,8 @@ function uiView(ctx) {
         scale: scene.uiScale,
         textSize: scene.textSize,
         sizes: TEXT_SIZES,
+        voices: ctx.chatter.level,
+        voiceLevels: VOICES_LEVELS,
         mode: scene.inputMode,
       }
       : undefined,
