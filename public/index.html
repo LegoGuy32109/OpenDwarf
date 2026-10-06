@@ -16,69 +16,114 @@
       strip at the bottom unpainted. No CSS or script recovers it. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>Open Dwarf</title>
-    <link rel="stylesheet" href="css/app.css">
-    <!-- The boot-error screen. A classic script, so it runs even when a module
-      cannot load or parse. Until js/app.js marks the page booted, it writes a
-      failed script, an uncaught error, or a slow start onto the page, so a
+    <!-- The boot-error screen. Its style and script are inline and come first,
+      so they work when the build's files cannot load: a stylesheet still
+      pending would hold back painting and every script after it. Until
+      js/app.js marks the page booted, it writes a file that failed or never
+      arrived, an uncaught error, or an unhandled rejection onto the page, so a
       phone shows the cause instead of a blank screen. -->
+    <style>
+    html,
+    body {
+      margin: 0;
+      background: #17191c;
+    }
+    #boot-error:not([hidden]) {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      margin: 0;
+      padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+      overflow: auto;
+      background: #17191c;
+      color: #f0e6d2;
+      font: 14px/1.4 ui-monospace, Menlo, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    </style>
     <script>
-      (() => {
-        const root = document.documentElement;
-        const started = Date.now();
-        const lines = [];
-        const show = (line) => {
-          if (root.dataset.booted === "true") return;
-          lines.push(line);
-          const panel = document.getElementById("boot-error");
-          if (!panel) return;
-          let build = "";
-          try {
-            build = JSON.parse(
-              document.getElementById("od-build")?.textContent || "{}",
-            ).commit || "local";
-          } catch {
-            build = "unknown";
-          }
-          panel.textContent = [
-            "Open Dwarf could not start.",
-            "",
-            ...lines,
-            "",
-            `Build: ${String(build).slice(0, 7)}`,
-            `After: ${((Date.now() - started) / 1000).toFixed(1)} s`,
-            `Browser: ${navigator.userAgent}`,
-          ].join("\n");
-          panel.hidden = false;
-        };
-        const describe = (error) =>
-          error && typeof error === "object"
-            ? `${error.name || "Error"}: ${error.message || error}${
-              error.stack ? `\n${String(error.stack).slice(0, 600)}` : ""
-            }`
-            : String(error);
-        addEventListener("error", (event) => {
-          const target = event.target;
-          if (target && target !== window && target.tagName) {
-            show(`Could not load ${target.src || target.href || target.tagName}`);
-          } else {
-            show(
-              `${event.message || "Error"}${
-                event.filename ? `\n  at ${event.filename}:${event.lineno}:${event.colno}` : ""
-              }${event.error?.stack ? `\n${String(event.error.stack).slice(0, 600)}` : ""}`,
-            );
-          }
-        }, true);
-        addEventListener("unhandledrejection", (event) => {
-          show(`Unhandled: ${describe(event.reason)}`);
-        });
-        globalThis.__odBootError = (error) => show(describe(error));
-        setTimeout(() => {
-          if (root.dataset.booted !== "true" && !lines.length) {
-            show("The game did not start within 15 seconds.");
-          }
-        }, 15000);
-      })();
+    (() => {
+      const root = document.documentElement;
+      const started = Date.now();
+      const lines = [];
+      const loaded = new Set();
+      const show = (line) => {
+        if (root.dataset.booted === "true") return;
+        if (line) lines.push(line);
+        const panel = document.getElementById("boot-error");
+        if (!panel) return;
+        let build = "";
+        try {
+          build = JSON.parse(
+            document.getElementById("od-build")?.textContent || "{}",
+          ).commit || "local";
+        } catch {
+          build = "unknown";
+        }
+        panel.textContent = [
+          "Open Dwarf could not start.",
+          "",
+          ...lines,
+          "",
+          `Build: ${String(build).slice(0, 7)}`,
+          `After: ${((Date.now() - started) / 1000).toFixed(1)} s`,
+          `Browser: ${navigator.userAgent}`,
+        ].join("\n");
+        panel.hidden = false;
+      };
+      const describe = (error) =>
+        error && typeof error === "object"
+          ? `${error.name || "Error"}: ${error.message || error}${
+            error.stack ? `\n${String(error.stack).slice(0, 600)}` : ""
+          }`
+          : String(error);
+      addEventListener("load", (event) => loaded.add(event.target), true);
+      addEventListener("error", (event) => {
+        const target = event.target;
+        if (target && target !== window && target.tagName) {
+          show(`Could not load ${target.src || target.href || target.tagName}`);
+        } else {
+          show(
+            `${event.message || "Error"}${
+              event.filename
+                ? `\n  at ${event.filename}:${event.lineno}:${event.colno}`
+                : ""
+            }${
+              event.error?.stack
+                ? `\n${String(event.error.stack).slice(0, 600)}`
+                : ""
+            }`,
+          );
+        }
+      }, true);
+      addEventListener("unhandledrejection", (event) => {
+        show(`Unhandled: ${describe(event.reason)}`);
+      });
+      globalThis.__odBootError = (error) => show(describe(error));
+      setTimeout(() => {
+        if (root.dataset.booted === "true" || lines.length) return;
+        const waiting = [
+          ...document.querySelectorAll(
+            'link[rel="stylesheet"], script[type="module"][src]',
+          ),
+        ].filter((element) =>
+          !loaded.has(element) && !(element.tagName === "LINK" && element.sheet)
+        ).map((element) => `  ${element.href || element.src}`);
+        show(
+          waiting.length
+            ? `Still waiting after 15 s for:\n${waiting.join("\n")}`
+            : "The game did not start within 15 seconds.",
+        );
+      }, 15000);
+    })();
     </script>
+    <!-- Loaded as print first so a slow stylesheet does not hold back painting;
+      the boot-error screen above has its own style. -->
+    <link rel="stylesheet" href="css/app.css" media="print"
+      onload="this.media = 'all'">
     <script type="module" src="js/app.js"></script>
   </head>
   <body>

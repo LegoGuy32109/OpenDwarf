@@ -84,11 +84,14 @@ insets in CSS pixels.
 
 ## Boot errors
 
-The page cannot draw anything until its modules load, so a failure there used to
-leave a blank screen. A classic inline script in `public/index.html` runs before
-the modules and listens for a script that cannot load, an uncaught error, and an
-unhandled rejection. Until `public/js/app.js` sets `data-booted` on `<html>`
-after `startApp` resolves, it writes each one onto a full-page panel with the
-build commit, the time since load, and the browser's user agent. With no error
-and no boot after 15 seconds, it says the game did not start. After the boot it
-stays hidden. The text can be selected and copied from a phone.
+The page cannot draw anything until its files load, so a failure there used to
+leave a blank screen. An inline style and a classic inline script come first in
+`public/index.html`, so they work even when the build's files never arrive. The
+stylesheet loads without holding back painting. The script listens for a file
+that cannot load, an uncaught error, and an unhandled rejection. Until
+`public/js/app.js` sets `data-booted` on `<html>` after `startApp` resolves, it
+writes each one onto a full-page panel with the build commit, the time since
+load, and the browser's user agent. With no error and no boot after 15 seconds,
+it lists the stylesheet and module files still pending, which names the host,
+such as jsDelivr. After the boot it stays hidden. The text can be selected and
+copied from a phone.
