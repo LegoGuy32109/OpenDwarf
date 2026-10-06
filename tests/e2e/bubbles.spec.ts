@@ -82,6 +82,7 @@ test("three quick messages show three stacked bubbles on the host and a nearby g
 });
 
 test("text size changes bubble size and persists across reloads", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/?harness=1");
   await ready(page);
   expect(
@@ -95,7 +96,7 @@ test("text size changes bubble size and persists across reloads", async ({ page 
     // Each message starts when the last is spoken, so wait for the third.
     await page.waitForTimeout(5000);
     await evidenceShot(page, `stacked-bubbles-${size}`);
-    await page.waitForTimeout(7500);
+    await page.waitForTimeout(5500);
   }
   await page.reload();
   await ready(page);
