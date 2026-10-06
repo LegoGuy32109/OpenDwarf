@@ -50,6 +50,14 @@ export const ORE_BANDS = Object.freeze([
 /** Chunks generated around a player: every chunk within this many chunks. */
 export const GENERATE_RADIUS = 1;
 
+/**
+ * The world host unloads a chunk once no player has been within this many
+ * chunks of it for `UNLOAD_GRACE_MS` (ADR 0005). One ring beyond the generate
+ * radius, so pacing across a chunk border does not reload chunks.
+ */
+export const UNLOAD_RADIUS = 2;
+export const UNLOAD_GRACE_MS = 30_000;
+
 /** @param {number} a @param {number} b @param {number} c @param {number} d */
 function hash(a, b, c, d) {
   let h = Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca77) ^
