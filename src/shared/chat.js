@@ -115,7 +115,12 @@ export function withoutChat(players) {
   );
 }
 
-/** @typedef {Omit<ChatRecord,"bubbles"> & {expiresAt?:number,bubbles?:{text:string,expiresTick:number,expiresAt?:number}[]}} DisplayChatRecord */
+/**
+ * A chat record on the listening client, with host ticks turned into local
+ * `performance.now()` times. A bubble's `startAt` is when its syllable reveal
+ * and chatter begin there (ADR 0006); the reveal and the audio both read it.
+ * @typedef {Omit<ChatRecord,"bubbles"> & {expiresAt?:number,bubbles?:{text:string,expiresTick:number,startTick?:number,expiresAt?:number,startAt?:number}[]}} DisplayChatRecord
+ */
 
 /** @typedef {"small"|"medium"|"large"} TextSize */
 export const TEXT_SIZES = /** @type {TextSize[]} */ ([
