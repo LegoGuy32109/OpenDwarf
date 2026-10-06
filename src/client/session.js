@@ -16,6 +16,7 @@ import { createCornerNpc } from "../shared/npc.js";
 import { NPC_ORIGIN } from "../shared/spawn-room.js";
 import { build } from "./build.js";
 import { joinWorld, startHost } from "./network.js";
+import { pinLoadedChunks } from "../shared/terrain.js";
 import { rememberedLine, worldTerrainLine } from "./terrain-diagnostics.js";
 
 /** @typedef {import('./context.js').Context} Context */
@@ -109,6 +110,8 @@ export function startHosting(ctx, renderer) {
   scene.world.generateChunk = createChunkGenerator(seedFromText(
     new URL(location.href).searchParams.get("seed") ?? scene.sessionId,
   ));
+  // Everything built so far, the authored chunks, never unloads.
+  pinLoadedChunks(scene.world);
   generateAround(scene.world, Object.values(scene.world.players), 9);
   const link = build.joinLink(scene.sessionId, location.origin);
   ui.qrUrl = build.apiUrl(
