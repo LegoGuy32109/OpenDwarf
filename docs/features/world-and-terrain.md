@@ -22,8 +22,7 @@ be negative ([ADR 0003](../adr/0003-chunked-terrain-generated-on-demand.md)).
 at x, y, z; `world.generateChunk`, a hook `ensureChunk` calls to create a
 missing chunk (the generator plugs into it); and `drainTileChanges`, which lists
 the tiles written since the last call so the host can send them to peers. A tile
-in a chunk that does not exist reads as solid stone. There is no chunk unloading
-or persistence.
+in a chunk that does not exist reads as solid stone.
 
 Materials and their stable ids live in `src/shared/materials.js`: air, stone,
 then coal, iron ore, gold ore, lapis, redstone, diamond, and emerald. Every
@@ -44,3 +43,31 @@ they receive generated terrain only for tiles they see.
 Terrain changes the world host sends to guests are described in
 [sight](sight.md) and [networking](networking.md); mining writes terrain through
 `writeTile` ([mining and items](mining-and-items.md)).
+
+## Chunk unloading
+
+The world host unloads a chunk when no player has been within `UNLOAD_RADIUS`
+(2) chunks of it for `UNLOAD_GRACE_MS` (30 s)
+([ADR 0005](../adr/0005-bounded-terrain-sync-and-chunk-unloading.md)). Players
+here include the corner NPC, a guest in master view, and the host's own
+master-view camera. `src/shared/chunk-unload.js` keeps when each chunk last had
+a player near and takes the clock as an argument. The host loop runs it next to
+`generateAround`, at most once a second.
+
+- **Edit diffs.** `writeTile` records each change in `world.edits`: chunk key to
+  a map of tile index to material. `ensureChunk` applies the diff after it
+  regenerates a chunk from the seed, so mined tunnels and placed stone come
+  back. Diffs last for the session. The authored build leaves none, because a
+  diff is recorded only when the world has a generator and the chunk is not
+  pinned.
+- **Pinned chunks.** `pinLoadedChunks` runs when the host starts, so every chunk
+  that exists before play (the spawn room, `?layout=test`, `?world=32`) is in
+  `world.pinned` and never unloads. A world without `world.generateChunk` never
+  unloads anything.
+- **Cache.** `unloadChunk` bumps the `getChunk` cache generation, so a read
+  never returns the dropped tiles.
+- **Items and mining.** Dropped items and mining progress live outside chunk
+  data and are not touched.
+- **Diagnostics.** The host panel (F3) shows loaded chunks, pinned chunks, and
+  edit-diff totals in chunks and tiles.
+- **Harness.** `?harness=1&unloadGraceMs=<ms>` replaces the grace period.

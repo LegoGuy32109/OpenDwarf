@@ -6,12 +6,15 @@
  */
 
 /**
- * World chunks the host holds. Chunk unloading adds pinned chunks and edit
- * diff totals here.
+ * World chunks the host holds. Loaded chunks, pinned chunks, and edit diff
+ * totals (ADR 0005).
  * @param {import('../shared/terrain.js').TerrainStore} world
  */
 export function worldTerrainLine(world) {
-  return `Chunks ${world.chunks.size}`;
+  let editTiles = 0;
+  for (const diff of world.edits?.values() ?? []) editTiles += diff.size;
+  return `Chunks ${world.chunks.size}  pinned ${world.pinned?.size ?? 0}` +
+    `  edits ${world.edits?.size ?? 0} chunks ${editTiles} tiles`;
 }
 
 /**

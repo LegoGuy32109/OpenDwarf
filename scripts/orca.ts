@@ -11,7 +11,8 @@
 // decision on the map issue.
 
 const REPO = "LegoGuy32109/OpenDwarf";
-const REPO_ID = "0ab44644-7ce6-4764-aedd-110d641adfb1";
+// A name, not an id: Orca gives the repo a new id when it is registered again.
+const ORCA_REPO = "name:OpenDwarf";
 const MODEL = "claude-sonnet-5-5";
 const BRIEF = new URL("../docs/orca/worker-brief.md", import.meta.url);
 const ACTIONABLE = ["worker_done", "escalation", "question"];
@@ -163,7 +164,7 @@ async function start(flags: Record<string, string | undefined>) {
     "--name",
     branch,
     "--repo",
-    `id:${REPO_ID}`,
+    ORCA_REPO,
     "--base-branch",
     `origin/${base}`,
     "--setup",
