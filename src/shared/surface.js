@@ -30,7 +30,7 @@ export function surfaceAt(world, x, y, viewZ, mode, visibility) {
     if (!isSolid(world, x, y, z)) continue;
     const seen = mode === "master"
       ? "visible"
-      : tileVisibility(visibility, x, y, z);
+      : tileVisibility(visibility, x, y, z, world);
     if (seen !== "unseen") return { z, depth, seen };
   }
   return null;
@@ -46,7 +46,7 @@ export function ceilingMask(world, x, y, viewZ, mode, visibility) {
     if (!surface || (mode === "entity" && surface.depth !== 0)) continue;
     const upper = mode === "master"
       ? "visible"
-      : tileVisibility(visibility, tx, ty, viewZ + 1);
+      : tileVisibility(visibility, tx, ty, viewZ + 1, world);
     if (upper !== "unseen" && isSolid(world, tx, ty, viewZ + 1)) mask |= bit;
   }
   return mask;

@@ -39,11 +39,7 @@ import {
 import { setHeldItem } from "../../src/shared/held-item.js";
 import { addStack, inventoryOf } from "../../src/shared/items.js";
 import { highlightedTile } from "../../src/shared/target.js";
-import {
-  decodeControl,
-  decodeMining,
-  decodeTerrainChanges,
-} from "../../src/shared/wire.js";
+import { decodeControl, decodeMining } from "../../src/shared/wire.js";
 
 /** Open air at levels 1 and above, a stone floor at level 0. */
 function field(): World {
@@ -316,21 +312,7 @@ Deno.test("mine messages are validated", () => {
   ) assertEquals(decodeControl(bad), null, JSON.stringify(bad));
 });
 
-Deno.test("terrain and mining messages from the host are validated", () => {
-  const change = { x: 6, y: 5, z: 1, material: OPEN };
-  assertEquals(decodeTerrainChanges({ type: "terrain", changes: [change] }), [
-    change,
-  ]);
-  for (
-    const bad of [
-      { type: "terrain" },
-      { type: "terrain", changes: [{ ...change, material: 10 }] },
-      { type: "terrain", changes: [{ ...change, z: 8 }] },
-      { type: "terrain", changes: [{ ...change, x: 0.5 }] },
-      { type: "terrain", changes: Array(257).fill(change) },
-      { type: "mining", changes: [change] },
-    ]
-  ) assertEquals(decodeTerrainChanges(bad), null, JSON.stringify(bad));
+Deno.test("mining messages from the host are validated", () => {
   const entry = {
     id: "self",
     x: 6,

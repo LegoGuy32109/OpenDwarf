@@ -38,6 +38,11 @@ import {
 import { addPlayer, isSolid } from "../../src/shared/world.js";
 import { createVisibility } from "../../src/shared/visibility.js";
 import { entityView } from "../../src/shared/view.js";
+import {
+  applyReveal,
+  createPendingReveal,
+  drainReveal,
+} from "../../src/shared/reveal.js";
 import { decodeState, encodeWorld } from "../../src/shared/wire.js";
 
 Deno.test("material ids are stable", () => {
@@ -118,7 +123,14 @@ Deno.test("a joining player's state and remembered terrain keep ore materials", 
   const world = createAuthoredWorld();
   addPlayer(world, "viewer", { x: 5, y: 2, z: 0 });
   const remembered = new Map();
-  const view = entityView(world, "viewer", createVisibility(), remembered);
+  const pending = createPendingReveal();
+  const view = entityView(
+    world,
+    "viewer",
+    createVisibility(),
+    remembered,
+    pending,
+  );
   const decoded = decodeState(JSON.parse(JSON.stringify({
     type: "state",
     attempt: "a",
@@ -128,12 +140,15 @@ Deno.test("a joining player's state and remembered terrain keep ore materials", 
     mode: "entity",
     playerId: "viewer",
     world: encodeWorld(view.world),
+    reveal: drainReveal(remembered, pending),
     visibility: view.visibility,
     chat: [],
   })));
   assert(decoded, "the state decodes");
+  const guest = { chunks: new Map<string, Uint8Array>() };
+  applyReveal(guest, decoded.reveal);
   const seen = ORE_ROW.map((_, i) =>
-    readTile(decoded.world, ORE_ROW_X + i, ORE_ROW_Y, 0)
+    readTile(guest, ORE_ROW_X + i, ORE_ROW_Y, 0)
   );
   assertEquals(seen, [STONE, ...ORE_MATERIALS]);
   // Memory keeps the materials after the viewer looks elsewhere.

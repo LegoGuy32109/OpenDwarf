@@ -73,3 +73,10 @@ export function decodeChunks(value) {
   }
   return chunks;
 }
+
+/**
+ * Chunks one state packet may carry in `reveal` (ADR 0005). A chunk is at most
+ * a few KB and usually about 500 characters, so a full packet stays far below
+ * `MAX_PACKET_BYTES`.
+ */
+export const MAX_REVEAL_CHUNKS = 32;

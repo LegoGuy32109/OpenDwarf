@@ -28,14 +28,15 @@ import {
   stepMining,
 } from "../shared/mining.js";
 import { placeStone, reservedTiles } from "../shared/placing.js";
+import { chunkCoord, drainTileChanges } from "../shared/terrain.js";
 import {
-  chunkCoord,
-  chunkIndex,
-  chunkKey,
-  drainTileChanges,
-  getChunk,
-  localCoord,
-} from "../shared/terrain.js";
+  applyReveal,
+  createPendingReveal,
+  drainReveal,
+  markAllPending,
+  revealChanges as addRevealedChanges,
+  syncLoadedChunks,
+} from "../shared/reveal.js";
 import { mergeSnapshot } from "../shared/reconcile.js";
 import { renderPosition } from "../shared/world.js";
 import {
@@ -46,6 +47,7 @@ import {
 import { entityPlayers, entityView } from "../shared/view.js";
 import { createSignaling } from "./signaling.js";
 import { unpackVisibility } from "../shared/visibility-wire.js";
+import { encodeChunks } from "../shared/chunk-wire.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
 import {
   enableLocomotion,
@@ -65,10 +67,8 @@ import {
   decodeMining,
   decodeMotion,
   decodeState,
-  decodeTerrainChanges,
   encodeMotionPlayers,
   encodeWorld,
-  MAX_TERRAIN_CHANGES,
   parsePacket,
   PROTOCOL_VERSION,
 } from "../shared/wire.js";
@@ -245,13 +245,13 @@ export function startHost(scene, session) {
 
   function tick() {
     // Finished mining is handled in `completeMining`; the tile it wrote reaches
-    // each peer that can see it as a small terrain message.
+    // each peer that can see it through its pending reveal.
     stepMining(scene.world);
     const changes = drainTileChanges(scene.world);
     if (changes.length) {
       // Force the host's own sight to see through a mined tile.
       scene.visibility.sample = "";
-      for (const connection of peers.values()) connection.terrain(changes);
+      for (const connection of peers.values()) connection.reveal(changes);
     }
     for (const connection of peers.values()) connection.tick();
   }
@@ -327,8 +327,21 @@ export function startHost(scene, session) {
     const chatBands = new Map();
     /** @type {import('../shared/view.js').RememberedTerrain} */
     const rememberedTerrain = new Map();
+    /** What a master view guest holds: the loaded chunks near its player. */
+    /** @type {Map<string,import('../shared/terrain.js').ChunkData>} */
+    const masterTerrain = new Map();
+    /** Tiles of the guest's copy it has not been sent yet. */
+    const pendingReveal = createPendingReveal();
     /** @type {"entity"|"master"} */
     let mode = "entity";
+    /** The terrain the guest's copy holds in the current view mode. */
+    const guestTerrain = () =>
+      mode === "master" ? masterTerrain : rememberedTerrain;
+    /** The guest starts its copy over; send it everything held for this view mode again. */
+    function resendTerrain() {
+      masterTerrain.clear();
+      markAllPending(pendingReveal, guestTerrain());
+    }
     const deadline = createAttemptDeadline((attempt) => {
       if (activeAttempt !== attempt) return;
       activeAttempt = "";
@@ -403,6 +416,8 @@ export function startHost(scene, session) {
       lastSeen = performance.now();
       if (!scene.world.players[playerId]) return;
       if (message.type === "resync") {
+        // A rejected packet may have held a reveal; send the whole copy again.
+        resendTerrain();
         publishToPeer();
         return;
       }
@@ -511,6 +526,7 @@ export function startHost(scene, session) {
         if (message.mode === "entity" || message.mode === "master") {
           if (mode !== message.mode) {
             mode = message.mode;
+            resendTerrain();
             viewRevision++;
             sightRevision = 0;
             lastSight = "";
@@ -577,6 +593,7 @@ export function startHost(scene, session) {
       pendingMoves.length = 0;
       viewRevision = sightRevision = 0;
       lastSight = "";
+      resendTerrain();
       try {
         const iceServers = await ice(session);
         if (activeAttempt !== attempt) return;
@@ -593,13 +610,37 @@ export function startHost(scene, session) {
         snapshotSender = createSnapshotSender(channel, () => {
           const began = performance.now();
           const view = mode === "master"
-            ? { world: scene.world, visibility: null }
-            : entityView(scene.world, playerId, sight, rememberedTerrain);
+            ? {
+              world: { tick: scene.world.tick, players: scene.world.players },
+              visibility: null,
+            }
+            : entityView(
+              scene.world,
+              playerId,
+              sight,
+              rememberedTerrain,
+              pendingReveal,
+            );
+          const player = scene.world.players[playerId];
+          if (mode === "master" && player) {
+            syncLoadedChunks(
+              scene.world,
+              masterTerrain,
+              pendingReveal,
+              chunkCoord(centerTile(player.x)),
+              chunkCoord(centerTile(player.y)),
+            );
+          }
+          // Drain here, not earlier: the sender may coalesce publishes.
+          const reveal = drainReveal(guestTerrain(), pendingReveal);
           timing.filterMs += performance.now() - began;
+          // The rest follows when the channel has room.
+          if (pendingReveal.size) setTimeout(publishToPeer, 0);
           return {
             type: "state",
             ...stamp(),
             ...view,
+            reveal,
             world: encodeWorld(view.world),
             chat: chatView(scene.world, playerId, chatBands),
             mode,
@@ -611,7 +652,13 @@ export function startHost(scene, session) {
           const began = performance.now();
           const players = mode === "master"
             ? scene.world.players
-            : entityPlayers(scene.world, playerId, sight, rememberedTerrain);
+            : entityPlayers(
+              scene.world,
+              playerId,
+              sight,
+              rememberedTerrain,
+              pendingReveal,
+            );
           timing.filterMs += performance.now() - began;
           const previousSight = sightRevision;
           const envelope = stamp();
@@ -795,45 +842,27 @@ export function startHost(scene, session) {
     }
 
     /**
-     * Send the changed tiles this peer can see. Remembered terrain follows only
-     * what the peer sees; a tile out of sight keeps its last observed state.
+     * Add the changed tiles this peer can see to its pending reveal and publish
+     * at once. Remembered terrain follows only what the peer sees; a tile out of
+     * sight keeps its last observed state.
      * @param {import('../shared/terrain.js').TileChange[]} changes
      */
-    function sendTerrain(changes) {
+    function revealChanges(changes) {
       if (
         !joined || channel?.readyState !== "open" ||
         !scene.world.players[playerId]
       ) return;
-      const seen = mode === "master"
-        ? changes
-        : changes.filter((change) =>
-          sight.visible.has(tileKey(change.x, change.y, change.z))
-        );
-      if (!seen.length) return;
-      if (mode === "entity") {
-        for (const change of seen) {
-          const chunk = rememberedTerrain.get(
-            chunkKey(chunkCoord(change.x), chunkCoord(change.y)),
-          );
-          if (chunk) {
-            chunk[
-              chunkIndex(
-                localCoord(change.x),
-                localCoord(change.y),
-                change.z,
-              )
-            ] = change.material;
-          }
-        }
-        // Sight may now pass through the tile; the next snapshot recomputes it.
-        sight.sample = "";
-      }
-      for (let i = 0; i < seen.length; i += MAX_TERRAIN_CHANGES) {
-        channel.send(JSON.stringify({
-          type: "terrain",
-          changes: seen.slice(i, i + MAX_TERRAIN_CHANGES),
-        }));
-      }
+      const revealed = addRevealedChanges({
+        mode,
+        sight,
+        remembered: rememberedTerrain,
+        master: masterTerrain,
+        pending: pendingReveal,
+      }, changes);
+      if (!revealed) return;
+      // Sight may now pass through the tile; the next snapshot recomputes it.
+      if (mode === "entity") sight.sample = "";
+      publishToPeer();
     }
 
     function tickPeer() {
@@ -903,7 +932,7 @@ export function startHost(scene, session) {
         }
       },
       tick: tickPeer,
-      terrain: sendTerrain,
+      reveal: revealChanges,
       expireIfSilent,
       expired: () =>
         !joined && departedAt > 0 &&
@@ -932,7 +961,7 @@ export function startHost(scene, session) {
           reliableBytesSent: bytes("world"),
           motionBytesSent: bytes("motion"),
           motionBufferedAmount: motionChannel?.bufferedAmount ?? 0,
-          rememberedChunks: rememberedTerrain.size,
+          rememberedChunks: guestTerrain().size,
           channels: {
             reliable: channel?.readyState,
             motion: motionChannel?.readyState,
@@ -1110,6 +1139,9 @@ export function joinWorld(scene, session) {
     `peer-${crypto.randomUUID()}`;
   sessionStorage.setItem(playerIdKey, playerId);
   let latestLocalSequence = 0;
+  /** The view mode the guest's copy of the terrain belongs to; a change starts the copy over. */
+  /** @type {"entity"|"master"|null} */
+  let copyMode = null;
   const revisions = createRevisionOrder();
   /** @type {import('../shared/wire.js').MotionPacket|null} */
   let pendingMotion = null;
@@ -1117,8 +1149,8 @@ export function joinWorld(scene, session) {
   let resyncFailures = 0;
   const corrections = { count: 0, totalGap: 0, maxGap: 0 };
   let lastResync = -Infinity;
-  /** The last state as sent: chunks are run-length strings. */
-  /** @type {(Omit<import('../shared/wire.js').StatePacket,'world'> & {world:ReturnType<typeof encodeWorld>})|null} */
+  /** The last state as sent: reveal chunks are run-length strings. */
+  /** @type {(Omit<import('../shared/wire.js').StatePacket,'world'|'reveal'> & {world:ReturnType<typeof encodeWorld>,reveal:Record<string,string>})|null} */
   let debugState = null;
   /** @type {import('../shared/wire.js').MotionPacket|null} */
   let debugMotion = null;
@@ -1147,6 +1179,7 @@ export function joinWorld(scene, session) {
     channel = null;
     motionChannel = null;
     connected = false;
+    copyMode = null;
     latestLocalSequence = 0;
     revisions.reset();
     pendingMotion = null;
@@ -1260,30 +1293,6 @@ export function joinWorld(scene, session) {
       }
       return;
     }
-    if (value.type === "terrain") {
-      const changes = decodeTerrainChanges(value);
-      if (!changes) {
-        recover();
-        return;
-      }
-      for (const change of changes) {
-        const chunk = getChunk(
-          scene.world,
-          chunkCoord(change.x),
-          chunkCoord(change.y),
-        );
-        if (chunk) {
-          chunk[
-            chunkIndex(
-              localCoord(change.x),
-              localCoord(change.y),
-              change.z,
-            )
-          ] = change.material;
-        }
-      }
-      return;
-    }
     if (value.type === "mining") {
       const entries = decodeMining(value);
       if (entries) scene.mineFeed = { at: performance.now(), entries };
@@ -1358,12 +1367,23 @@ export function joinWorld(scene, session) {
       if (
         channel?.readyState !== "open" || motionChannel?.readyState !== "open"
       ) return;
-      const snapshot = decoded.world;
+      // Apply the reveal first: the host drained it when it built this packet,
+      // so it must land even if the revision order drops the rest.
+      if (copyMode !== decoded.mode) {
+        scene.world.chunks = new Map();
+        copyMode = decoded.mode;
+      }
+      applyReveal(scene.world, decoded.reveal);
+      const snapshot = { ...decoded.world, chunks: scene.world.chunks };
       const ordering = revisions.reliable({ ...decoded, tick: snapshot.tick });
       if (!ordering) return;
       resyncFailures = 0;
       if (harnessParams.has("harness")) {
-        debugState = { ...decoded, world: encodeWorld(decoded.world) };
+        debugState = {
+          ...decoded,
+          world: encodeWorld(decoded.world),
+          reveal: encodeChunks(decoded.reveal),
+        };
       }
       const visibility = decoded.mode === "entity"
         ? unpackVisibility(

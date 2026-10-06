@@ -3,8 +3,12 @@
 import { isSolid } from "./world.js";
 import {
   chunkCoord,
+  chunkIndex,
+  getChunk,
   hasChunk,
+  localCoord,
   nearLoadedTerrain,
+  UNKNOWN,
   WORLD_TOP,
 } from "./terrain.js";
 import { centerTile } from "./locomotion.js";
@@ -14,7 +18,14 @@ export const FOV_RADIUS = 20;
 /** @typedef {import('./world.js').Tile} Tile */
 /** @typedef {import('./world.js').Player} Player */
 /** @typedef {import('./world.js').World} World */
-/** @typedef {{visible:Set<string>,memory:Set<string>,sample:string,loaded?:string}} Visibility */
+/**
+ * `memory` holds tiles that left sight on the world host. A guest does not
+ * receive it (ADR 0005); its `fromTerrain` is set, and a tile it remembers is
+ * one its own copy of the terrain knows and sight does not hold. `loaded`
+ * records which chunks under the sight box were loaded, so a chunk that loads
+ * or unloads refreshes sight.
+ * @typedef {{visible:Set<string>,memory:Set<string>,sample:string,loaded?:string,fromTerrain?:boolean}} Visibility
+ */
 
 /** @param {number} x @param {number} y @param {number} z */
 export function tileKey(x, y, z) {
@@ -193,11 +204,23 @@ export function recomputeVisibility(world, state, position) {
   return true;
 }
 
-/** @param {Visibility} state @param {number} x @param {number} y @param {number} z */
-export function tileVisibility(state, x, y, z) {
+/** Floor and ceiling shells (z -1 and above the top) are not stored; the level beside them stands for them. */
+/** @param {World} world @param {number} x @param {number} y @param {number} z */
+function terrainKnows(world, x, y, z) {
+  const chunk = getChunk(world, chunkCoord(x), chunkCoord(y));
+  if (!chunk) return false;
+  const level = Math.min(Math.max(z, 0), WORLD_TOP);
+  return chunk[chunkIndex(localCoord(x), localCoord(y), level)] !== UNKNOWN;
+}
+
+/** @param {Visibility} state @param {number} x @param {number} y @param {number} z @param {World} [world] needed when `state.fromTerrain` is set */
+export function tileVisibility(state, x, y, z, world) {
   const key = tileKey(x, y, z);
   if (state.visible.has(key)) return "visible";
   if (state.memory.has(key)) return "remembered";
+  if (state.fromTerrain && world && terrainKnows(world, x, y, z)) {
+    return "remembered";
+  }
   return "unseen";
 }
 

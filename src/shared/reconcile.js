@@ -144,6 +144,5 @@ export function mergeSnapshot(
     players[id] = atLocalTick(incoming, snapshot.tick, local.tick);
   }
   local.players = players;
-  local.chunks = snapshot.chunks;
   return { corrected };
 }

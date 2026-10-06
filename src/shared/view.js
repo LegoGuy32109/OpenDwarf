@@ -18,6 +18,7 @@ import {
   visibilityPosition,
 } from "./visibility.js";
 import { packVisibility } from "./visibility-wire.js";
+import { markPending } from "./reveal.js";
 
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./visibility.js').Visibility} Visibility */
@@ -71,8 +72,15 @@ export function viewMotionPosition(motion, tick) {
   };
 }
 
-/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain */
-export function entityPlayers(world, viewerId, sight, rememberedTerrain) {
+/** Sight copies each newly seen or changed tile into `rememberedTerrain` and marks it in `pending`. */
+/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain @param {import('./reveal.js').PendingReveal} [pending] */
+export function entityPlayers(
+  world,
+  viewerId,
+  sight,
+  rememberedTerrain,
+  pending,
+) {
   const viewer = world.players[viewerId];
   if (viewer) {
     recomputeVisibility(world, sight, visibilityPosition(viewer, world.tick));
@@ -105,7 +113,9 @@ export function entityPlayers(world, viewerId, sight, rememberedTerrain) {
     }
     if (!source || !remembered) continue;
     const index = chunkIndex(localCoord(x), localCoord(y), z);
+    if (remembered[index] === source[index]) continue;
     remembered[index] = source[index];
+    if (pending) markPending(pending, chunkKey(cx, cy), index);
   }
   /** @type {World['players']} */
   const players = {};
@@ -170,13 +180,24 @@ export function entityPlayers(world, viewerId, sight, rememberedTerrain) {
   return players;
 }
 
-/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain */
-export function entityView(world, viewerId, sight, rememberedTerrain) {
-  const players = entityPlayers(world, viewerId, sight, rememberedTerrain);
+/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain @param {import('./reveal.js').PendingReveal} [pending] */
+export function entityView(
+  world,
+  viewerId,
+  sight,
+  rememberedTerrain,
+  pending,
+) {
+  const players = entityPlayers(
+    world,
+    viewerId,
+    sight,
+    rememberedTerrain,
+    pending,
+  );
   return {
     world: {
       tick: world.tick,
-      chunks: new Map(rememberedTerrain),
       players,
     },
     visibility: packVisibility(sight),
