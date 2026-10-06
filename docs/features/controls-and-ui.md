@@ -81,3 +81,14 @@ textures are ready.
 With `?harness`, `window.__od.ui` gives specs the current layout, so a spec taps
 an element by its rectangle. `?safe=top,right,bottom,left` simulates safe-area
 insets in CSS pixels.
+
+## Boot errors
+
+The page cannot draw anything until its modules load, so a failure there used to
+leave a blank screen. A classic inline script in `public/index.html` runs before
+the modules and listens for a script that cannot load, an uncaught error, and an
+unhandled rejection. Until `public/js/app.js` sets `data-booted` on `<html>`
+after `startApp` resolves, it writes each one onto a full-page panel with the
+build commit, the time since load, and the browser's user agent. With no error
+and no boot after 15 seconds, it says the game did not start. After the boot it
+stays hidden. The text can be selected and copied from a phone.

@@ -43,3 +43,19 @@ body {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+/* The boot-error screen (index.html): shown only when the game cannot start. */
+#boot-error:not([hidden]) {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  margin: 0;
+  padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+  overflow: auto;
+  background: #17191c;
+  color: #f0e6d2;
+  font: 14px/1.4 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}

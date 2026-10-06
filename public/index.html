@@ -17,6 +17,68 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>Open Dwarf</title>
     <link rel="stylesheet" href="css/app.css">
+    <!-- The boot-error screen. A classic script, so it runs even when a module
+      cannot load or parse. Until js/app.js marks the page booted, it writes a
+      failed script, an uncaught error, or a slow start onto the page, so a
+      phone shows the cause instead of a blank screen. -->
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const started = Date.now();
+        const lines = [];
+        const show = (line) => {
+          if (root.dataset.booted === "true") return;
+          lines.push(line);
+          const panel = document.getElementById("boot-error");
+          if (!panel) return;
+          let build = "";
+          try {
+            build = JSON.parse(
+              document.getElementById("od-build")?.textContent || "{}",
+            ).commit || "local";
+          } catch {
+            build = "unknown";
+          }
+          panel.textContent = [
+            "Open Dwarf could not start.",
+            "",
+            ...lines,
+            "",
+            `Build: ${String(build).slice(0, 7)}`,
+            `After: ${((Date.now() - started) / 1000).toFixed(1)} s`,
+            `Browser: ${navigator.userAgent}`,
+          ].join("\n");
+          panel.hidden = false;
+        };
+        const describe = (error) =>
+          error && typeof error === "object"
+            ? `${error.name || "Error"}: ${error.message || error}${
+              error.stack ? `\n${String(error.stack).slice(0, 600)}` : ""
+            }`
+            : String(error);
+        addEventListener("error", (event) => {
+          const target = event.target;
+          if (target && target !== window && target.tagName) {
+            show(`Could not load ${target.src || target.href || target.tagName}`);
+          } else {
+            show(
+              `${event.message || "Error"}${
+                event.filename ? `\n  at ${event.filename}:${event.lineno}:${event.colno}` : ""
+              }${event.error?.stack ? `\n${String(event.error.stack).slice(0, 600)}` : ""}`,
+            );
+          }
+        }, true);
+        addEventListener("unhandledrejection", (event) => {
+          show(`Unhandled: ${describe(event.reason)}`);
+        });
+        globalThis.__odBootError = (error) => show(describe(error));
+        setTimeout(() => {
+          if (root.dataset.booted !== "true" && !lines.length) {
+            show("The game did not start within 15 seconds.");
+          }
+        }, 15000);
+      })();
+    </script>
     <script type="module" src="js/app.js"></script>
   </head>
   <body>
@@ -27,5 +89,6 @@
       <output id="live-status" class="visually-hidden" role="status"
         aria-live="polite"></output>
     </main>
+    <pre id="boot-error" role="alert" hidden></pre>
   </body>
 </html>
