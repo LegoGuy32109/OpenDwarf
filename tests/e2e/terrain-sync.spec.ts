@@ -22,14 +22,44 @@ const chunkKeys = (page: Page) =>
       .sort()
   );
 
+/**
+ * An open level-0 tile in a loaded chunk of column `cx`, or null. A player
+ * placed in stone is pushed back by collision, so the walk needs open ground.
+ */
+const openTile = (host: Page, cx: number) =>
+  host.evaluate((cx) => {
+    const chunks = (globalThis as unknown as Harness).__od.scene.world.chunks;
+    for (const cy of [0, -1, 1]) {
+      const chunk = chunks.get(`${cx},${cy}`);
+      if (!chunk) continue;
+      for (let i = 0; i < 256; i++) {
+        if (chunk[i] === 1) {
+          return { x: cx * 16 + (i % 16), y: cy * 16 + Math.floor(i / 16), cy };
+        }
+      }
+    }
+    return null;
+  }, cx);
+
 /** Move the host's player, or its guest's player, to a tile, as if it had walked there. */
 const place = (host: Page, own: boolean, x: number, y: number) =>
   host.evaluate(([own, x, y]) => {
     const scene = (globalThis as unknown as Harness).__od.scene;
     for (const [id, player] of Object.entries(scene.world.players)) {
-      if ((id === scene.localId) === own) Object.assign(player, { x, y, z: 0 });
+      if ((id === scene.localId) === own && !id.startsWith("npc")) {
+        Object.assign(player, { x, y, z: 0 });
+      }
     }
   }, [own, x, y] as const);
+
+/** Wait until every player named by `own` stands in chunk column `cx`. */
+const stands = (host: Page, own: boolean, cx: number) =>
+  host.evaluate(([own, cx]) => {
+    const scene = (globalThis as unknown as Harness).__od.scene;
+    return Object.entries(scene.world.players).filter(([id]) =>
+      (id === scene.localId) === own && !id.startsWith("npc")
+    ).every(([, player]) => Math.floor(player.x / 16) === cx);
+  }, [own, cx] as const);
 
 test("a guest that explores keeps its remembered terrain, and the host reports it", async ({ browser }) => {
   const host = await browser.newPage({ viewport: { width: 960, height: 600 } });
@@ -50,12 +80,17 @@ test("a guest that explores keeps its remembered terrain, and the host reports i
   // Walk the host's player and the guest east, one chunk at a time.
   for (let cx = 1; cx <= 6; cx++) {
     // The host generates around its own player first, so the guest's sight
-    // finds the chunks loaded when it arrives.
-    await place(host, true, 8 + 16 * cx, 8);
-    await expect.poll(() => chunkKeys(host)).toContain(`${cx + 1},0`);
-    await place(host, false, 8 + 16 * cx, 8);
+    // finds the chunks loaded when it arrives. Each step needs open ground in
+    // a chunk the previous step generated.
+    await expect.poll(() => openTile(host, cx)).not.toBeNull();
+    const spot = (await openTile(host, cx))!;
+    await place(host, true, spot.x, spot.y);
+    await expect.poll(() => stands(host, true, cx)).toBe(true);
+    await expect.poll(() => chunkKeys(host)).toContain(`${cx + 1},${spot.cy}`);
+    await place(host, false, spot.x, spot.y);
+    await expect.poll(() => stands(host, false, cx)).toBe(true);
     await expect.poll(() => chunkKeys(guest), { timeout: 15_000 }).toContain(
-      `${cx},0`,
+      `${cx},${spot.cy}`,
     );
   }
   // The guest's own copy and the host's remembered terrain for it agree.
