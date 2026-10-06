@@ -43,9 +43,9 @@ room layout.
 A guest sends `{type:"place", x, y, z}`. `decodeControl` in `wire.js` checks the
 shape, and the host calls `placeStone`. A refusal comes back as
 `{type:"place-result", reason}` and shows as a notice. A success sends no
-answer. The tile goes through `writeTile`, so `drainTileChanges` sends it to
-each peer that sees it, the same way as a mined tile. The guest's inventory
-count follows through the inventory message.
+answer. The tile goes through `writeTile`, so `drainTileChanges` adds it to the
+pending reveal of each peer that sees it, the same way as a mined tile. The
+guest's inventory count follows through the inventory message.
 
 ## Not yet
 

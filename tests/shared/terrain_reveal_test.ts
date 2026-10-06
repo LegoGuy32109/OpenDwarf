@@ -144,9 +144,9 @@ Deno.test("a rejoin resends everything the host holds for the guest", () => {
 });
 
 Deno.test("a mined tile reaches a guest that sees it, but not one that does not", () => {
-  const world = createAuthoredWorld();
+  const world = createAuthoredWorld(32);
   addPlayer(world, "near", { x: 7, y: 8, z: 0 });
-  addPlayer(world, "far", { x: 14, y: 1, z: 0 });
+  addPlayer(world, "far", { x: 30, y: 30, z: 0 });
   const near = hostGuest();
   const far = hostGuest();
   nextReveal(world, near, "near");

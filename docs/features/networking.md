@@ -33,16 +33,40 @@ Movement also coalesces to the newest unsent state, and stops send a 300 ms
 settling tail, with 500 ms reliable snapshots as recovery. Pending sends
 coalesce to current state when each channel drains.
 
+## Terrain reveals
+
+A state packet carries no terrain except `reveal` (ADR 0005). For each joining
+player the host keeps the remembered terrain and a pending reveal: the tiles
+that entered it or changed in it since the last state packet. Sight adds a tile
+when it copies one whose material differs. Mining or placing a tile the player
+sees writes it and publishes a state packet at once. The host drains the pending
+reveal when it builds the packet, not earlier, because the snapshot sender may
+coalesce publishes and drop one.
+
+`reveal` maps a chunk key to a run-length chunk string (`chunk-wire.js`).
+Material 0 (`UNKNOWN`) means no change, so the guest copies only the other tiles
+into its own remembered terrain in `scene.world.chunks`. A packet holds at most
+`MAX_REVEAL_CHUNKS` (32) chunks. The host keeps the rest pending and publishes
+again, which waits for the channel to drain. Packet size follows what the player
+sees and changes, not how far it has explored. The host diagnostics panel (F3)
+shows each guest's remembered chunk count on its `Remembered` line.
+
+A guest in `/master` gets every loaded chunk within `UNLOAD_RADIUS` of its
+player, in full, through the same pending reveal. The host reads only chunks it
+has loaded.
+
 ## Validation and versions
 
 The wire uses validated JSON and rejects incompatible versions with a refresh
-instruction. Protocol version 3 requires a matching join/offer version. Complete
+instruction. Protocol version 4 requires a matching join/offer version. Complete
 snapshots are validated before scene mutation. Motion packets carry attempt,
 view, and sight revisions so delayed updates cannot restore an older view;
 motion is fenced by connection attempt, view revision, sight revision, and tick.
 The guest retains only the newest motion awaiting reliable sight. Older reliable
-state can refresh terrain and sight without rewinding newer remote positions.
-Invalid motion is discarded. Malformed reliable state requests a full resync.
+state can refresh sight without rewinding newer remote positions. A reveal in
+such a state still applies, because the host drained it when it built the
+packet. Invalid motion is discarded. Malformed reliable state requests a full
+resync, and the host then sends the guest's whole remembered terrain again.
 Repeated recovery failure closes the connection with a refresh instruction. An
 incomplete join attempt expires after ten seconds, independently of player
 creation.
@@ -60,6 +84,10 @@ fresh join request. The host holds its sprite for at most five seconds and
 preserves its name, tile, view mode, discovered terrain, and entity terrain
 memory for a later rejoin while the host world remains open. Ping activity also
 expires a silent connection.
+
+A new attempt, a change of view mode, and a `resync` request make the guest
+start its copy over. The host then marks every tile it holds for that guest as
+pending, and they go out in batches of `MAX_REVEAL_CHUNKS`.
 
 ## Diagnostics
 

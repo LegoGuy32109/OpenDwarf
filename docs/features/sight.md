@@ -29,8 +29,12 @@ reciprocal between stationary positions. Different-height sight retains the
 earlier ray rule. See [sight boundary design](../sight-boundary-design.md).
 
 The host sends a view filtered for each joining tab every 500 ms, and when that
-player's sight moves to another tile. Visibility and memory use one bit mask per
-chunk in network snapshots, and terrain travels as run-length encoded 16×16
-chunks. A joining player receives only the chunks that hold a tile it has seen.
-Terrain memory and view mode live in the browser host; closing that world
-discards them. They survive a guest's rejoin (see [networking](networking.md)).
+player's sight moves to another tile. Visibility uses one bit mask per chunk in
+network snapshots. Terrain does not repeat: the host sends only the tiles that
+entered the player's remembered terrain or changed in it since the last packet,
+as run-length encoded 16×16 chunks in `reveal`, and the guest keeps its own copy
+(see [networking](networking.md)). A tile is remembered when that copy knows it
+and the visible mask does not hold it, so remembered terrain keeps its warm tint
+without a memory mask on the wire. The host keeps remembered terrain and view
+mode in the browser; closing that world discards them. They survive a guest's
+rejoin, which sends the whole remembered terrain again in batches.

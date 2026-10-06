@@ -18,9 +18,9 @@ host tick `stepMining` cancels an action whose target left reach, whose held
 item changed, or whose tile changed, and finishes the ones that are done.
 `completeMining` is the one place a finished action is handled: it writes air
 with `writeTile` and drops one item of the material's item kind on the tile. The
-host sends the tiles `drainTileChanges` returns to each peer as a small
-`terrain` message, only for tiles that peer sees now, and updates that peer's
-remembered terrain for them; a tile out of sight keeps its last observed state
+host adds the tiles `drainTileChanges` returns to each peer's pending reveal,
+only for tiles that peer sees now, and publishes a state packet at once (see
+[networking](networking.md)); a tile out of sight keeps its last observed state
 until seen again. A `mining` message lists the actions a peer can see (and its
 own), with elapsed and total time, so a peer draws the breaking decal on other
 players' tiles and the miner draws a growing square. Clients cancel when the aim
