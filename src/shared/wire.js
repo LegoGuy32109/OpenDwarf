@@ -149,6 +149,9 @@ function players(value) {
   );
 }
 
+/** A message holds at most 120 characters, so no more syllables than that. */
+const MAX_SYLLABLES = 120;
+
 /** @param {unknown} value @returns {ChatRecord[]|null} */
 function chatRecords(value) {
   if (!Array.isArray(value) || value.length > MAX_ENTITIES) return null;
@@ -168,6 +171,12 @@ function chatRecords(value) {
     if (item.typing !== undefined && typeof item.typing !== "boolean") {
       return null;
     }
+    if (item.queued !== undefined && typeof item.queued !== "boolean") {
+      return null;
+    }
+    if (
+      item.syllables !== undefined && !counter(item.syllables, MAX_SYLLABLES)
+    ) return null;
     if (item.expiresTick !== undefined && !counter(item.expiresTick)) {
       return null;
     }
@@ -180,12 +189,14 @@ function chatRecords(value) {
         if (
           !record(bubble) || typeof bubble.text !== "string" ||
           !bubble.text.length || bubble.text.length > 120 ||
-          !counter(bubble.expiresTick)
+          !counter(bubble.expiresTick) ||
+          (bubble.startTick !== undefined && !counter(bubble.startTick))
         ) return null;
       }
     }
     if (
-      item.text === undefined && item.talking !== true && item.typing !== true
+      item.text === undefined && item.talking !== true &&
+      item.typing !== true && item.queued !== true
     ) {
       return null;
     }
@@ -207,11 +218,16 @@ function chatRecords(value) {
         bubbles: item.bubbles.map((bubble) => ({
           text: bubble.text,
           expiresTick: bubble.expiresTick,
+          ...(bubble.startTick !== undefined
+            ? { startTick: bubble.startTick }
+            : {}),
         })),
       }
       : {}),
     ...(item.talking !== undefined ? { talking: item.talking } : {}),
     ...(item.typing !== undefined ? { typing: item.typing } : {}),
+    ...(item.queued !== undefined ? { queued: item.queued } : {}),
+    ...(item.syllables !== undefined ? { syllables: item.syllables } : {}),
     ...(item.expiresTick !== undefined
       ? { expiresTick: item.expiresTick }
       : {}),

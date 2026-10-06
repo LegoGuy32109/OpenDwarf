@@ -104,7 +104,9 @@ Deno.test("a speaker keeps the three newest bubbles, each lasting five seconds p
   const long = "x".repeat(100);
   for (const text of ["one", "two", "three", "four"]) {
     submitMessage(world, "speaker", text);
+    world.tick += 30;
   }
+  world.tick -= 30;
   const speaker = world.players.speaker;
   assertEquals(speaker.messages?.map((bubble) => bubble.text), [
     "two",
@@ -112,9 +114,10 @@ Deno.test("a speaker keeps the three newest bubbles, each lasting five seconds p
     "four",
   ]);
   assertEquals(speaker.message, "four");
-  assertEquals(speaker.messages?.[2].until, 100);
+  assertEquals(speaker.messages?.[2].until, 190);
+  world.tick = 120;
   submitMessage(world, "speaker", long);
-  assertEquals(speaker.messages?.[2].until, 160);
+  assertEquals(speaker.messages?.[2].until, 280);
   assertEquals(bubbleTicks("short"), 100);
   assertEquals(bubbleTicks(long), 160);
 });
@@ -126,7 +129,7 @@ Deno.test("older bubbles expire first and chat view lists them oldest to newest"
   submitMessage(world, "speaker", "first");
   world.tick = 30;
   submitMessage(world, "speaker", "second");
-  world.tick = 31;
+  world.tick = 40;
   submitMessage(world, "speaker", "third");
   const [record] = chatView(world, "listener", new Map());
   assertEquals(record.bubbles?.map((bubble) => bubble.text), [

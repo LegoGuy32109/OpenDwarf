@@ -1,6 +1,7 @@
 // @ts-check
 
-import { TICK_MS } from "./world.js";
+import { syllableCount } from "./speech.js";
+import { bubbleStart, TICK_MS } from "./world.js";
 
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./world.js').Player} Player */
@@ -67,9 +68,14 @@ export function chatView(world, listenerId, bands) {
   /** @type {ChatRecord[]} */
   const records = [];
   for (const speaker of Object.values(world.players)) {
-    const hasMessage = Boolean(speaker.message) &&
-      world.tick < speaker.messageUntil;
-    if (!hasMessage && !speaker.typing) {
+    // Only bubbles whose start has come leave the host (ADR 0006); a waiting
+    // bubble's text stays behind and the listener sees only that one waits.
+    const live = (speaker.messages ?? []).filter((bubble) =>
+      world.tick < bubble.until
+    );
+    const started = live.filter((bubble) => bubbleStart(bubble) <= world.tick);
+    const queued = live.length > started.length;
+    if (!started.length && !queued && !speaker.typing) {
       bands.delete(speaker.id);
       continue;
     }
@@ -82,24 +88,34 @@ export function chatView(world, listenerId, bands) {
       y: speaker.y,
       z: speaker.z,
     };
-    if (hasMessage && band === "text") {
-      const bubbles = (speaker.messages ?? [])
-        .filter((bubble) => world.tick < bubble.until)
-        .map((bubble) => ({ text: bubble.text, expiresTick: bubble.until }));
+    const newest = started.at(-1);
+    const expiresTick = Math.max(0, ...started.map((bubble) => bubble.until));
+    if (newest && band === "text") {
       records.push({
         ...base,
-        text: speaker.message,
-        expiresTick: speaker.messageUntil,
-        ...(bubbles.length ? { bubbles } : {}),
+        text: newest.text,
+        expiresTick,
+        bubbles: started.map((bubble) => ({
+          text: bubble.text,
+          expiresTick: bubble.until,
+          startTick: bubbleStart(bubble),
+        })),
+        ...(speaker.typing ? { typing: true } : {}),
+        ...(queued ? { queued: true } : {}),
       });
-    } else if (hasMessage && band === "talking") {
+    } else if (newest && band === "talking") {
       records.push({
         ...base,
         talking: true,
-        expiresTick: speaker.messageUntil,
+        syllables: syllableCount(newest.text),
+        expiresTick,
       });
-    } else if (speaker.typing && band === "text") {
-      records.push({ ...base, typing: true });
+    } else if ((speaker.typing || queued) && band === "text") {
+      records.push({
+        ...base,
+        ...(speaker.typing ? { typing: true } : {}),
+        ...(queued ? { queued: true } : {}),
+      });
     }
   }
   return records;
@@ -137,14 +153,26 @@ export function parseTextSize(value) {
   return TEXT_SIZES.find((size) => size === value) ?? "medium";
 }
 
-/** Bubbles to draw for one record, oldest first, newest last. @param {DisplayChatRecord} record @param {number} now */
-export function liveBubbles(record, now) {
+/**
+ * Bubbles to draw for one record, oldest first, newest last, with the local
+ * time each began speaking (`startAt`, absent when it has no start).
+ * @param {DisplayChatRecord} record @param {number} now
+ */
+export function liveBubbleItems(record, now) {
   if (record.text === undefined) return [];
   const bubbles = record.bubbles ??
     [{ text: record.text, expiresAt: record.expiresAt }];
   return bubbles.filter((bubble) =>
     bubble.expiresAt === undefined || now < bubble.expiresAt
-  ).slice(-3).map((bubble) => bubble.text);
+  ).slice(-3).map((bubble) => ({
+    text: bubble.text,
+    startAt: /** @type {{startAt?:number}} */ (bubble).startAt,
+  }));
+}
+
+/** Bubble texts to draw for one record, oldest first. @param {DisplayChatRecord} record @param {number} now */
+export function liveBubbles(record, now) {
+  return liveBubbleItems(record, now).map((bubble) => bubble.text);
 }
 
 /** @param {DisplayChatRecord[]} existing @param {ChatRecord[]} incoming @param {number} hostTick @param {number} [now] */
@@ -177,6 +205,10 @@ export function receiveChat(
         ...bubble,
         expiresAt: oldBubble?.expiresAt ??
           now + (bubble.expiresTick - hostTick) * TICK_MS,
+        ...(bubble.startTick === undefined ? {} : {
+          startAt: oldBubble?.startAt ??
+            now + (bubble.startTick - hostTick) * TICK_MS,
+        }),
       };
     });
     records.push({

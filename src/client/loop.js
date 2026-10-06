@@ -22,7 +22,7 @@ import { clampCameraAxis } from "../shared/surface.js";
 import { terrainExtent } from "../shared/terrain.js";
 import { generateAround } from "../shared/generation.js";
 import { createChunkUnloader } from "../shared/chunk-unload.js";
-import { chatView } from "../shared/chat.js";
+import { chatView, receiveChat } from "../shared/chat.js";
 import { hearChat } from "../shared/hearing-log.js";
 import {
   centerTile,
@@ -227,10 +227,10 @@ export function startLoop(ctx, renderer, input) {
       );
     }
     if (!ctx.isAdmin) {
-      scene.chatFeed = chatView(
-        scene.world,
-        scene.localId,
-        ctx.localChatBands,
+      scene.chatFeed = receiveChat(
+        scene.chatFeed,
+        chatView(scene.world, scene.localId, ctx.localChatBands),
+        scene.world.tick,
       );
     }
     hearChat(scene.hearingLog, scene.chatFeed, (id) => speakerName(ctx, id));

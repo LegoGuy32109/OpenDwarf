@@ -11,7 +11,7 @@ type Od = {
   wireDebug: () => { state: unknown } | null;
 };
 
-test("other players see the typing bubble while a player types", async ({ page, context }) => {
+test("other players see the thought icon while a player types", async ({ page, context }) => {
   await page.goto("/?harness=1");
   await ready(page);
   const session = await page.evaluate(() =>

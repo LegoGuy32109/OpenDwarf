@@ -1,5 +1,6 @@
 // @ts-check
 
+import { speechDurationMs, voiceFromId } from "./speech.js";
 import {
   CHUNK_EDGE,
   chunkIndex,
@@ -17,7 +18,12 @@ export const WORLD_EDGE = CHUNK_EDGE;
 export const EXPANDED_WORLD_EDGE = 32;
 export const Z_LEVELS_BELOW = 5;
 export const TICK_MS = 50;
+/** Bubbles that have started and are still up; waiting ones do not count. */
 export const MAX_BUBBLES = 3;
+/** Messages one speaker may have waiting to start; more are refused. */
+export const MAX_QUEUED = 5;
+/** Silence after speech ends before a bubble expires, in ticks (two seconds). */
+const BUBBLE_LINGER_TICKS = 40;
 const BUBBLE_BASE_TICKS = 100;
 const BUBBLE_LONG_LENGTH = 40;
 
@@ -30,7 +36,7 @@ export const MOVE_TICKS = 10;
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
-/** `start` is the tick its speech begins; a later start means it waits in the queue (ADR 0006). */
+/** `start` is the tick its speech begins; a later start means it waits in the queue (ADR 0006). A bubble without one has started. */
 /** @typedef {{text:string,until:number,start?:number}} Bubble */
 /** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number}} Player */
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
@@ -277,7 +283,24 @@ export function setTyping(world, id, typing) {
   if (player) player.typing = typing;
 }
 
-/** @param {World} world @param {string} id @param {string} message */
+/** The tick a bubble's speech begins. @param {Bubble} bubble */
+export function bubbleStart(bubble) {
+  return bubble.start ?? 0;
+}
+
+/** Ticks a speaker needs to say a message. @param {string} text @param {string} id */
+export function speechTicks(text, id) {
+  return Math.ceil(speechDurationMs(text, voiceFromId(id)) / TICK_MS);
+}
+
+/**
+ * Queue a message as a bubble. A speaker says one message at a time, so the
+ * bubble starts when the speaker's previous bubble finishes speaking, or now.
+ * It expires two seconds after its speech ends, and never sooner than
+ * `bubbleTicks` counted from its start (ADR 0006). Returns false for an empty
+ * message or a full queue.
+ * @param {World} world @param {string} id @param {string} message
+ */
 export function submitMessage(world, id, message) {
   const player = world.players[id];
   if (!player) return false;
@@ -287,12 +310,29 @@ export function submitMessage(world, id, message) {
   const live = (player.messages ?? []).filter((bubble) =>
     world.tick < bubble.until
   );
-  const until = Math.max(
-    world.tick + bubbleTicks(text),
-    ...live.map((bubble) => bubble.until),
+  const waiting = live.filter((bubble) => bubbleStart(bubble) > world.tick);
+  if (waiting.length >= MAX_QUEUED) return false;
+  const started = live.filter((bubble) => bubbleStart(bubble) <= world.tick);
+  const previous = live.at(-1);
+  const start = Math.max(
+    world.tick,
+    previous ? bubbleStart(previous) + speechTicks(previous.text, id) : 0,
   );
-  player.messages = [...live, { text, until }].slice(-MAX_BUBBLES);
+  const speech = speechTicks(text, id);
+  const until = start + Math.max(
+    speech + BUBBLE_LINGER_TICKS,
+    bubbleTicks(text),
+  );
+  player.messages = [
+    ...started.slice(-(MAX_BUBBLES - (start <= world.tick ? 1 : 0))),
+    ...waiting,
+    {
+      text,
+      until,
+      start,
+    },
+  ];
   player.message = text;
-  player.messageUntil = until;
+  player.messageUntil = Math.max(until, player.messageUntil);
   return true;
 }
