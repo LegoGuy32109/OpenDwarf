@@ -36,7 +36,7 @@ shell code needs `deno task deploy`. See
 | Interact, mine   | Space                 | pickaxe button               |
 | Inventory        | B                     | bag button                   |
 | Chat, command    | T, `/`                | A button                     |
-| Menu             | Escape                | B button                     |
+| Menu             | Escape, Q             | B button                     |
 
 Gamepad buttons and the rest are in
 [controls and UI](docs/features/controls-and-ui.md).

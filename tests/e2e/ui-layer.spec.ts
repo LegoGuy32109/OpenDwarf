@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import {
   chatDraft,
+  clickUi,
   expectChat,
   hasUi,
   ready,
@@ -143,11 +144,11 @@ test("evidence: the desktop UI, with chat typed on a physical keyboard", async (
   await page.keyboard.press("Escape");
   await expectChat(page, false);
   await page.keyboard.press("Backquote");
-  await page.keyboard.press("q");
+  await clickUi(page, "btn:qr");
   await expect.poll(async () => (await uiState(page)).qrReady).toBe(true);
   await page.waitForTimeout(500);
   await evidenceShot(page, "ui-desktop");
-  await page.keyboard.press("q");
+  await clickUi(page, "btn:qr");
   await page.keyboard.press("Backquote");
   await page.keyboard.press("b");
   await page.waitForTimeout(500);

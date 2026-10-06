@@ -2,9 +2,15 @@
 
 ## Input
 
-The code is hidden at the start of a world. Press Q on the host or use the QR
-button to show it in the top right corner. On the host, F3 toggles a small FPS,
-payload upload, queue, and join-failure panel.
+The code is hidden at the start of a world. Use the QR button on the host to
+show it in the top right corner. On the host, F3 toggles a small FPS, payload
+upload, queue, and join-failure panel. It starts with a `Build <sha7> (<label>)`
+line from `build.js` (`Build local` for the working tree).
+
+Q does what Escape does: it closes the open panel (bag, pickup grid, shop,
+hearing log) first, and otherwise toggles the menu. While chat is open, Q types
+a "q". The menu's root page shows the same build line in small text at the
+bottom.
 
 In entity view, IJKL points an orange square at one of the eight neighboring
 tiles. R/V selects the view level; the square appears at the player's level or
@@ -39,6 +45,16 @@ space, backspace, send, and close.
 
 The engine page gives the demo the VGA bitmap font and the Escape menu
 structure: Open Dwarf, Resume, Settings, Leave Game, and UI Scale.
+
+## The update notice
+
+A world host whose page was served as `main` reads `/api/v1/status` every 2
+minutes, and once when the tab becomes visible again
+(`src/client/update-check.js`). When `main.commit` differs from the host's own
+commit, the UI layer shows "A newer version is available. Reload to update;
+guests will rejoin." under the status line. A tap or click on it reloads the
+page. Guests never check, because they follow the host's build, and a branch or
+commit preview never checks. A failed request is ignored.
 
 ## The UI layer
 

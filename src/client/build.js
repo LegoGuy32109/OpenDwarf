@@ -89,6 +89,10 @@ export function createBuild(
   const api = config.api || origin;
   return {
     ...config,
+    /** What the F3 panel and the menu show: `Build <sha7> (<label>)`, `Build local` for the working tree. */
+    line: `Build ${commit === LOCAL_COMMIT ? commit : commit.slice(0, 7)}${
+      config.label && commit !== LOCAL_COMMIT ? ` (${config.label})` : ""
+    }`,
     /** The build this page runs, as the shell records it for a session. */
     identity: { commit, label: config.label || null },
     /**
