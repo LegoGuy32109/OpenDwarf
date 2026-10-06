@@ -1,7 +1,12 @@
 // @ts-check
 
 import { isSolid } from "./world.js";
-import { nearLoadedTerrain, WORLD_TOP } from "./terrain.js";
+import {
+  chunkCoord,
+  hasChunk,
+  nearLoadedTerrain,
+  WORLD_TOP,
+} from "./terrain.js";
 import { centerTile } from "./locomotion.js";
 
 export const FOV_RADIUS = 20;
@@ -9,7 +14,7 @@ export const FOV_RADIUS = 20;
 /** @typedef {import('./world.js').Tile} Tile */
 /** @typedef {import('./world.js').Player} Player */
 /** @typedef {import('./world.js').World} World */
-/** @typedef {{visible:Set<string>,memory:Set<string>,sample:string}} Visibility */
+/** @typedef {{visible:Set<string>,memory:Set<string>,sample:string,loaded?:string}} Visibility */
 
 /** @param {number} x @param {number} y @param {number} z */
 export function tileKey(x, y, z) {
@@ -121,10 +126,35 @@ export function hasLineOfSight(world, from, to) {
   return true;
 }
 
+/** Which chunks under the sight box are loaded, so a chunk that loads or unloads refreshes sight. @param {World} world @param {Tile} position */
+function loadedAround(world, position) {
+  const minX = Math.floor(position.x) - FOV_RADIUS;
+  const minY = Math.floor(position.y) - FOV_RADIUS;
+  let bits = "";
+  for (
+    let cy = chunkCoord(minY);
+    cy <= chunkCoord(minY + 2 * FOV_RADIUS + 1);
+    cy++
+  ) {
+    for (
+      let cx = chunkCoord(minX);
+      cx <= chunkCoord(minX + 2 * FOV_RADIUS + 1);
+      cx++
+    ) {
+      bits += hasChunk(world, cx, cy) ? "1" : "0";
+    }
+  }
+  return bits;
+}
+
 /** @param {World} world @param {Visibility} state @param {Tile} position */
 export function recomputeVisibility(world, state, position) {
   const sample = tileKey(position.x, position.y, position.z);
-  if (state.sample === sample) return false;
+  const loaded = loadedAround(world, position);
+  if (
+    state.sample === sample &&
+    (state.loaded === undefined || state.loaded === loaded)
+  ) return false;
   const next = new Set();
   const radiusSquared = FOV_RADIUS * FOV_RADIUS;
   // One stone tile beyond loaded chunks is the farthest exterior surface visible.
@@ -159,6 +189,7 @@ export function recomputeVisibility(world, state, position) {
   for (const key of next) state.memory.delete(key);
   state.visible = next;
   state.sample = sample;
+  state.loaded = loaded;
   return true;
 }
 

@@ -23,7 +23,7 @@ export const STONE = 2;
 
 /** @typedef {Uint8Array} ChunkData One material byte per tile, `z * 256 + localY * 16 + localX`. */
 /** @typedef {{x:number,y:number,z:number,material:number}} TileChange */
-/** @typedef {{chunks:Map<string,ChunkData>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,TileChange>}} TerrainStore */
+/** @typedef {{chunks:Map<string,ChunkData>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>}} TerrainStore */
 
 /** @param {number} cx @param {number} cy */
 export function chunkKey(cx, cy) {
@@ -141,8 +141,34 @@ export function ensureChunk(world, cx, cy) {
     throw new RangeError("chunk is too far from the origin");
   }
   const data = world.generateChunk?.(cx, cy) ?? createChunkData();
+  const diff = world.edits?.get(chunkKey(cx, cy));
+  if (diff) { for (const [index, material] of diff) data[index] = material; }
   setChunk(world, cx, cy, data);
   return data;
+}
+
+/**
+ * Pin every chunk that exists now, so it never unloads (ADR 0005). The host
+ * calls this once before play, after the authored terrain is built.
+ * @param {TerrainStore} world
+ */
+export function pinLoadedChunks(world) {
+  world.pinned = new Set(world.chunks.keys());
+  for (const key of world.pinned) world.edits?.delete(key);
+}
+
+/**
+ * Drop a loaded chunk's tiles. It reads as stone until `ensureChunk` brings it
+ * back from the generator and its edit diff. Pinned chunks stay, and so does
+ * every chunk of a world that cannot regenerate.
+ * @param {TerrainStore} world @param {number} cx @param {number} cy
+ */
+export function unloadChunk(world, cx, cy) {
+  const key = chunkKey(cx, cy);
+  if (!world.generateChunk || world.pinned?.has(key)) return false;
+  if (!world.chunks.delete(key)) return false;
+  generation++;
+  return true;
 }
 
 /**
@@ -175,6 +201,14 @@ export function writeTile(world, x, y, z, material) {
   const index = chunkIndex(localCoord(x), localCoord(y), z);
   if (chunk[index] === material) return false;
   chunk[index] = material;
+  const key = chunkKey(chunkCoord(x), chunkCoord(y));
+  // Only in-play edits to a chunk that can unload need a diff.
+  if (world.generateChunk && !world.pinned?.has(key)) {
+    world.edits ??= new Map();
+    let diff = world.edits.get(key);
+    if (!diff) world.edits.set(key, diff = new Map());
+    diff.set(index, material);
+  }
   world.changes ??= new Map();
   world.changes.set(`${x},${y},${z}`, { x, y, z, material });
   return true;

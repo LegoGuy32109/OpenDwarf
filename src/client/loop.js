@@ -21,6 +21,7 @@ import {
 import { clampCameraAxis } from "../shared/surface.js";
 import { terrainExtent } from "../shared/terrain.js";
 import { generateAround } from "../shared/generation.js";
+import { createChunkUnloader } from "../shared/chunk-unload.js";
 import { chatView } from "../shared/chat.js";
 import { hearChat } from "../shared/hearing-log.js";
 import {
@@ -108,6 +109,17 @@ function move(ctx) {
 export function startLoop(ctx, renderer, input) {
   const { scene, bag, shop, canvas, frameMs } = ctx;
   let last = performance.now();
+  // `?harness=1&unloadGraceMs=<n>` shortens the grace period for specs.
+  const params = new URL(location.href).searchParams;
+  const graceOverride = params.has("harness") && params.has("unloadGraceMs")
+    ? Number(params.get("unloadGraceMs"))
+    : NaN;
+  const unloader = createChunkUnloader(
+    Number.isFinite(graceOverride) && graceOverride >= 0
+      ? { graceMs: graceOverride }
+      : {},
+  );
+  let lastUnload = 0;
   /** @param {number} now */
   const frame = (now) => {
     const elapsed = now - last;
@@ -122,6 +134,16 @@ export function startLoop(ctx, renderer, input) {
       ctx.tickNpc?.();
       ctx.host?.tick();
       generateAround(scene.world, Object.values(scene.world.players));
+      if (now - lastUnload >= 1000) {
+        lastUnload = now;
+        /** @type {{x:number,y:number}[]} */
+        const near = Object.values(scene.world.players);
+        // The host's own master view looks from its camera, not its player.
+        if (scene.viewMode === "master") {
+          near.push({ x: scene.camera.x / 64, y: scene.camera.y / 64 });
+        }
+        unloader.update(scene.world, near, now);
+      }
       move(ctx);
       if (!ctx.isAdmin) {
         for (const player of Object.values(scene.world.players)) {
