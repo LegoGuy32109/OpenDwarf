@@ -83,7 +83,7 @@ export const CHAT_LIMIT = 120;
  * @property {boolean} [bagOpenButton]
  * @property {{move:Knob,look:Knob}} [sticks]
  * @property {{open:boolean,draft:string,page:"letters"|"symbols",shift:boolean}} [chat]
- * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],mode:string}} [menu]
+ * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],mode:string}} [menu]
  * @property {{open:boolean,lines:readonly HearingLine[],scroll:number}} [log]
  * @property {{open:boolean,stacks:readonly Stack[],selected:number,held:string}} [bag]
  * @property {{open:boolean,rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
@@ -1158,6 +1158,28 @@ export function layoutUi(view) {
         );
       }
       cursor += rowH + 8 * s;
+      if (menu.voiceLevels) {
+        add({
+          id: "text:menu-voices",
+          kind: "text",
+          rect: box(x, cursor, w, lh),
+          text: "Voices",
+          color: "cream",
+          scale: ts,
+          align: "center",
+        });
+        cursor += pitch;
+        const quarter = (inner - 3 * 4 * s) / 4;
+        for (const [index, level] of menu.voiceLevels.entries()) {
+          menuButton(
+            `voices:${level}`,
+            level[0].toUpperCase() + level.slice(1),
+            box(bx + index * (quarter + 4 * s), cursor, quarter, rowH),
+            { on: level === menu.voices },
+          );
+        }
+        cursor += rowH + 8 * s;
+      }
       menuButton("back", "Back", box(bx, cursor, inner, rowH));
     } else {
       for (const [index, label] of rootRows.entries()) {

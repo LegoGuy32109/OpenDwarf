@@ -234,6 +234,12 @@ export function startLoop(ctx, renderer, input) {
       );
     }
     hearChat(scene.hearingLog, scene.chatFeed, (id) => speakerName(ctx, id));
+    ctx.chatter.update(
+      scene.chatFeed,
+      scene.localId,
+      scene.world.players[scene.localId],
+      now,
+    );
     scene.mining = miningDisplay(ctx, ctx.accumulator / TICK_MS);
     scene.items = itemsDisplay(ctx);
     updatePickupGrid(ctx);
