@@ -177,6 +177,7 @@ function chatRecords(value) {
     if (
       item.syllables !== undefined && !counter(item.syllables, MAX_SYLLABLES)
     ) return null;
+    if (item.startTick !== undefined && !counter(item.startTick)) return null;
     if (item.expiresTick !== undefined && !counter(item.expiresTick)) {
       return null;
     }
@@ -228,6 +229,7 @@ function chatRecords(value) {
     ...(item.typing !== undefined ? { typing: item.typing } : {}),
     ...(item.queued !== undefined ? { queued: item.queued } : {}),
     ...(item.syllables !== undefined ? { syllables: item.syllables } : {}),
+    ...(item.startTick !== undefined ? { startTick: item.startTick } : {}),
     ...(item.expiresTick !== undefined
       ? { expiresTick: item.expiresTick }
       : {}),

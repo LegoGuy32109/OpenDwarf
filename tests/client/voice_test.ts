@@ -291,3 +291,171 @@ Deno.test("a voice's vowel tables are built once", () => {
   assertEquals(vowelTables(voice, 8000), first);
   assertEquals(tableBuilds.count, before + 1);
 });
+
+/** A talking record for `id`, a murmur of the message that started at `startTick`. */
+function murmurRecord(id: string, startTick: number, extra = {}) {
+  return {
+    id,
+    x: listener.x + 8,
+    y: listener.y,
+    z: 0,
+    talking: true,
+    syllables: 4,
+    startTick,
+    expiresTick: 500,
+    ...extra,
+  };
+}
+/** A text record whose one bubble started at `startTick`. */
+function startedText(id: string, startTick: number, startAt: number) {
+  return textRecord(id, 1, {
+    bubbles: [{ text: "Hello there", expiresTick: 500, startTick, startAt }],
+  });
+}
+
+Deno.test("unlock sets audioSession.type to playback when present", () => {
+  const navigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const session = { type: "auto" };
+  Object.defineProperty(globalThis, "navigator", {
+    value: { audioSession: session },
+    configurable: true,
+  });
+  try {
+    const { chatter } = player();
+    chatter.unlock();
+    assertEquals(session.type, "playback");
+  } finally {
+    if (navigator) Object.defineProperty(globalThis, "navigator", navigator);
+  }
+});
+
+Deno.test("unlock plays a silent element once when there is no audioSession", () => {
+  const navigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const audioDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Audio");
+  const played: string[] = [];
+  Object.defineProperty(globalThis, "navigator", {
+    value: {},
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "Audio", {
+    value: class {
+      constructor(public src: string) {}
+      play() {
+        played.push(this.src);
+        return Promise.resolve();
+      }
+    },
+    configurable: true,
+    writable: true,
+  });
+  try {
+    const { chatter } = player();
+    chatter.unlock();
+    chatter.unlock();
+    assertEquals(played.length, 1);
+    assert(played[0].startsWith("data:audio/wav;base64,"));
+  } finally {
+    if (navigator) Object.defineProperty(globalThis, "navigator", navigator);
+    if (audioDescriptor) {
+      Object.defineProperty(globalThis, "Audio", audioDescriptor);
+    } else delete (globalThis as { Audio?: unknown }).Audio;
+  }
+});
+
+Deno.test("unlock never throws", () => {
+  const navigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const audioDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Audio");
+  Object.defineProperty(globalThis, "navigator", {
+    value: {
+      get audioSession() {
+        throw new Error("no session");
+      },
+    },
+    configurable: true,
+  });
+  try {
+    player().chatter.unlock();
+    Object.defineProperty(globalThis, "navigator", {
+      value: {},
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, "Audio", {
+      value: class {
+        constructor() {
+          throw new Error("no audio");
+        }
+      },
+      configurable: true,
+      writable: true,
+    });
+    player().chatter.unlock();
+  } finally {
+    if (navigator) Object.defineProperty(globalThis, "navigator", navigator);
+    if (audioDescriptor) {
+      Object.defineProperty(globalThis, "Audio", audioDescriptor);
+    } else delete (globalThis as { Audio?: unknown }).Audio;
+  }
+});
+
+Deno.test("text then murmur of one message plays once", () => {
+  const { chatter } = player();
+  const now = performance.now();
+  chatter.update([startedText("a", 100, now)], "me", listener, now);
+  chatter.update(
+    [murmurRecord("a", 100, { startAt: now + 5 })],
+    "me",
+    listener,
+    now + 16,
+  );
+  assertEquals(chatter.log.length, 1);
+  assertEquals(chatter.log[0].murmur, false);
+});
+
+Deno.test("murmur then text of one message plays once", () => {
+  const { chatter } = player();
+  const now = performance.now();
+  chatter.update(
+    [murmurRecord("a", 100, { startAt: now })],
+    "me",
+    listener,
+    now,
+  );
+  chatter.update([startedText("a", 100, now + 5)], "me", listener, now + 16);
+  assertEquals(chatter.log.length, 1);
+  assertEquals(chatter.log[0].murmur, true);
+});
+
+Deno.test("two different messages each play", () => {
+  const { chatter } = player();
+  const now = performance.now();
+  chatter.update([startedText("a", 100, now)], "me", listener, now);
+  chatter.update(
+    [murmurRecord("a", 140, { startAt: now + 100 })],
+    "me",
+    listener,
+    now + 200,
+  );
+  chatter.update([startedText("a", 180, now + 300)], "me", listener, now + 400);
+  assertEquals(chatter.log.map((entry) => entry.murmur), [false, true, false]);
+});
+
+Deno.test("a late murmur starts at its offset, and is skipped once the speech is over", () => {
+  const { chatter, audio } = player();
+  const now = performance.now();
+  chatter.update(
+    [murmurRecord("a", 100, { startAt: now - 300 })],
+    "me",
+    listener,
+    now,
+  );
+  assertEquals(chatter.log.length, 1);
+  assertAlmostEquals(audio.started[0].offset, 0.3, 1e-6);
+  const length = speechSchedule(murmurText(4), voiceFromId("b")).duration;
+  chatter.update(
+    [murmurRecord("b", 100, { startAt: now - (length + 0.5) * 1000 })],
+    "me",
+    listener,
+    now,
+  );
+  assertEquals(chatter.log.length, 1);
+});

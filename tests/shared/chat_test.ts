@@ -185,3 +185,38 @@ Deno.test("text size parses stored values and defaults to medium at two thirds",
   assert(TEXT_SIZE_SCALE.medium < TEXT_SIZE_SCALE.large);
   assertEquals(TEXT_SIZE_SCALE.medium, 2 / 3);
 });
+
+Deno.test("a speaker walking out of text range and back keeps one startTick and startAt", () => {
+  const world = createWorld();
+  addPlayer(world, "listener", { x: 0, y: 0, z: 0 });
+  const speaker = addPlayer(world, "speaker", { x: 3, y: 0, z: 0 });
+  submitMessage(world, "speaker", "hello there");
+  advanceTicks(world, 2);
+  const bands = new Map();
+  const view = (speakerX: number) => {
+    speaker.x = speakerX;
+    return chatView(world, "listener", bands)[0];
+  };
+  const text = view(3);
+  const talking = view(8);
+  const back = view(3);
+  assertEquals(talking.talking, true);
+  const startTick = text.bubbles![0].startTick!;
+  assertEquals(talking.startTick, startTick);
+  assertEquals(back.bubbles![0].startTick, startTick);
+
+  const now = 10_000;
+  /** Receive a record on a client that keeps its feed between packets. */
+  let feed = receiveChat([], [text], world.tick, now);
+  const textAt = feed[0].bubbles![0].startAt;
+  assert(textAt !== undefined);
+  feed = receiveChat(feed, [talking], world.tick, now + 500);
+  assertEquals(feed[0].startAt, textAt);
+  feed = receiveChat(feed, [back], world.tick, now + 1000);
+  assertEquals(feed[0].bubbles![0].startAt, textAt);
+  // A talking record that arrives first gives the later text the same start.
+  const first = receiveChat([], [talking], world.tick, now);
+  assertEquals(first[0].startAt, textAt);
+  const later = receiveChat(first, [back], world.tick, now + 500);
+  assertEquals(later[0].bubbles![0].startAt, first[0].startAt);
+});
