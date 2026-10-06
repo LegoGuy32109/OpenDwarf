@@ -101,3 +101,8 @@ Deno.test("a Worker error falls back to setInterval", () => {
   assertEquals(FakeWorker.made[0].terminated, true);
   assertEquals(intervals.size, 1);
 });
+
+Deno.test("a step whose time falls before the last one adds no time", () => {
+  assertEquals(catchUpMs(-3, false), 0);
+  assertEquals(catchUpMs(-3, true), 0);
+});

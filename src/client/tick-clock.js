@@ -20,9 +20,10 @@ export const BACKGROUND_CATCH_UP_MS = 2000;
  * @param {boolean} hidden
  */
 export function catchUpMs(elapsedMs, hidden) {
-  return Math.min(
-    hidden ? BACKGROUND_CATCH_UP_MS : VISIBLE_CATCH_UP_MS,
-    elapsedMs,
+  // A frame's timestamp can fall a little before the last background step.
+  return Math.max(
+    0,
+    Math.min(hidden ? BACKGROUND_CATCH_UP_MS : VISIBLE_CATCH_UP_MS, elapsedMs),
   );
 }
 
