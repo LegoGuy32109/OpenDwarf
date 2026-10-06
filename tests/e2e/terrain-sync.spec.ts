@@ -22,14 +22,14 @@ const chunkKeys = (page: Page) =>
       .sort()
   );
 
-/** Move the host's player and its guest's player to a tile, as if they had walked there. */
-const placeBoth = (host: Page, x: number, y: number) =>
-  host.evaluate(([x, y]) => {
+/** Move the host's player, or its guest's player, to a tile, as if it had walked there. */
+const place = (host: Page, own: boolean, x: number, y: number) =>
+  host.evaluate(([own, x, y]) => {
     const scene = (globalThis as unknown as Harness).__od.scene;
-    for (const player of Object.values(scene.world.players)) {
-      Object.assign(player, { x, y, z: 0 });
+    for (const [id, player] of Object.entries(scene.world.players)) {
+      if ((id === scene.localId) === own) Object.assign(player, { x, y, z: 0 });
     }
-  }, [x, y]);
+  }, [own, x, y] as const);
 
 test("a guest that explores keeps its remembered terrain, and the host reports it", async ({ browser }) => {
   const host = await browser.newPage({ viewport: { width: 960, height: 600 } });
@@ -47,10 +47,13 @@ test("a guest that explores keeps its remembered terrain, and the host reports i
         .some((id) => id.startsWith("peer-"))
     )
   ).toBe(true);
-  // Walk the host and the guest east, one chunk at a time.
+  // Walk the host's player and the guest east, one chunk at a time.
   for (let cx = 1; cx <= 6; cx++) {
-    await placeBoth(host, 8 + 16 * cx, 8);
+    // The host generates around its own player first, so the guest's sight
+    // finds the chunks loaded when it arrives.
+    await place(host, true, 8 + 16 * cx, 8);
     await expect.poll(() => chunkKeys(host)).toContain(`${cx + 1},0`);
+    await place(host, false, 8 + 16 * cx, 8);
     await expect.poll(() => chunkKeys(guest), { timeout: 15_000 }).toContain(
       `${cx},0`,
     );
