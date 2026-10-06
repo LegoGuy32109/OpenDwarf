@@ -47,6 +47,7 @@ import {
 import { checkMineLock } from "./interact.js";
 import { updatePickupGrid } from "./panels.js";
 import { currentLayout } from "./ui-view.js";
+import { catchUpMs, createTickClock } from "./tick-clock.js";
 
 /** @typedef {import('./context.js').Context} Context */
 
@@ -100,6 +101,70 @@ function move(ctx) {
   }
 }
 
+/** Per-context step state: the time of the last step and the chunk unloader. */
+const stepState = new WeakMap();
+
+/** @param {Context} ctx */
+function stepStateOf(ctx) {
+  let state = stepState.get(ctx);
+  if (!state) {
+    // `?harness=1&unloadGraceMs=<n>` shortens the grace period for specs.
+    const params = new URL(location.href).searchParams;
+    const graceOverride = params.has("harness") && params.has("unloadGraceMs")
+      ? Number(params.get("unloadGraceMs"))
+      : NaN;
+    state = {
+      last: performance.now(),
+      lastUnload: 0,
+      unloader: createChunkUnloader(
+        Number.isFinite(graceOverride) && graceOverride >= 0
+          ? { graceMs: graceOverride }
+          : {},
+      ),
+    };
+    stepState.set(ctx, state);
+  }
+  return state;
+}
+
+/**
+ * Run the fixed world ticks that are due at `now`: the host tick, the local
+ * move, the NPC, terrain generation, and the chunk unloader. The frame calls
+ * this before it draws; the background clock calls it while the tab is hidden.
+ * A visible step spends at most 250 ms on ticks, a hidden one at most 2 s.
+ * @param {Context} ctx
+ * @param {number} now
+ */
+export function stepWorld(ctx, now) {
+  const { scene } = ctx;
+  const state = stepStateOf(ctx);
+  ctx.accumulator += catchUpMs(now - state.last, document.hidden);
+  state.last = now;
+  while (ctx.accumulator >= TICK_MS) {
+    advanceTicks(scene.world);
+    ctx.tickNpc?.();
+    ctx.host?.tick();
+    generateAround(scene.world, Object.values(scene.world.players));
+    if (now - state.lastUnload >= 1000) {
+      state.lastUnload = now;
+      /** @type {{x:number,y:number}[]} */
+      const near = Object.values(scene.world.players);
+      // The host's own master view looks from its camera, not its player.
+      if (scene.viewMode === "master") {
+        near.push({ x: scene.camera.x / 64, y: scene.camera.y / 64 });
+      }
+      state.unloader.update(scene.world, near, now);
+    }
+    move(ctx);
+    if (!ctx.isAdmin) {
+      for (const player of Object.values(scene.world.players)) {
+        scene.presentation.observe(player, scene.world.tick);
+      }
+    }
+    ctx.accumulator -= TICK_MS;
+  }
+}
+
 /**
  * Start the frame loop.
  * @param {Context} ctx
@@ -109,17 +174,6 @@ function move(ctx) {
 export function startLoop(ctx, renderer, input) {
   const { scene, bag, shop, canvas, frameMs } = ctx;
   let last = performance.now();
-  // `?harness=1&unloadGraceMs=<n>` shortens the grace period for specs.
-  const params = new URL(location.href).searchParams;
-  const graceOverride = params.has("harness") && params.has("unloadGraceMs")
-    ? Number(params.get("unloadGraceMs"))
-    : NaN;
-  const unloader = createChunkUnloader(
-    Number.isFinite(graceOverride) && graceOverride >= 0
-      ? { graceMs: graceOverride }
-      : {},
-  );
-  let lastUnload = 0;
   /** @param {number} now */
   const frame = (now) => {
     const elapsed = now - last;
@@ -128,30 +182,7 @@ export function startLoop(ctx, renderer, input) {
     frameMs.push(elapsed);
     if (frameMs.length > 300) frameMs.shift();
     input.poll();
-    ctx.accumulator += dt;
-    while (ctx.accumulator >= TICK_MS) {
-      advanceTicks(scene.world);
-      ctx.tickNpc?.();
-      ctx.host?.tick();
-      generateAround(scene.world, Object.values(scene.world.players));
-      if (now - lastUnload >= 1000) {
-        lastUnload = now;
-        /** @type {{x:number,y:number}[]} */
-        const near = Object.values(scene.world.players);
-        // The host's own master view looks from its camera, not its player.
-        if (scene.viewMode === "master") {
-          near.push({ x: scene.camera.x / 64, y: scene.camera.y / 64 });
-        }
-        unloader.update(scene.world, near, now);
-      }
-      move(ctx);
-      if (!ctx.isAdmin) {
-        for (const player of Object.values(scene.world.players)) {
-          scene.presentation.observe(player, scene.world.tick);
-        }
-      }
-      ctx.accumulator -= TICK_MS;
-    }
+    stepWorld(ctx, now);
     const local = scene.world.players[scene.localId];
     if (local) {
       if (!ctx.isAdmin && scene.viewMode === "entity") {
@@ -265,4 +296,6 @@ export function startLoop(ctx, renderer, input) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+  // A hidden tab gets no frames; the clock keeps the world stepping.
+  createTickClock(() => stepWorld(ctx, performance.now()), TICK_MS);
 }

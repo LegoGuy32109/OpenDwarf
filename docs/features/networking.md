@@ -107,3 +107,21 @@ for those device measurements.
   brief corrections when the host rejects a predicted move. There is no clock
   synchronization, input replay, or authoritative server.
 - Offline caching is deferred. A visitor needs the website to load the game.
+
+## Background tab
+
+A hidden tab gets no animation frames, so the world host would stop and every
+guest would freeze. The fixed-step work lives in `stepWorld(ctx, now)`
+(`src/client/loop.js`), which the frame calls before it draws. While
+`document.hidden`, `src/client/tick-clock.js` runs a dedicated Worker that posts
+a message every `TICK_MS` (50 ms), and the main thread calls `stepWorld` on each
+message. The Worker comes from an inline Blob URL, because the build's files
+load from another origin and a worker script must be same-origin. If a Worker
+cannot be made, the clock uses `setInterval`. The clock starts on
+`visibilitychange` to hidden and stops when the tab is visible again.
+
+A visible step spends at most 250 ms on ticks. A background step catches up at
+most 2 s of missed ticks and drops the rest, so a long stall does not run
+hundreds of ticks at once. Drawing, input polling, camera, and UI work stay in
+the frame and do not run in the background. A guest keeps only its local
+prediction ticking.
