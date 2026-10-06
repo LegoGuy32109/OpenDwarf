@@ -1,11 +1,17 @@
 // @ts-check
 
 import {
-  liveBubbles,
+  chatView,
+  liveBubbleItems,
+  receiveChat,
   TEXT_SIZE_SCALE,
-  THOUGHT_DOTS_WIDTH,
   thoughtDotLifts,
 } from "../shared/chat.js";
+import {
+  revealedLength,
+  speechSchedule,
+  voiceFromId,
+} from "../shared/speech.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import { readTile } from "../shared/terrain.js";
@@ -228,19 +234,58 @@ export async function createRenderer(canvas) {
     quad(textures.white, true, x, y, w, h, [0, 0, 1, 1], color);
   }
 
-  /** The animated dots of a thought bubble, inside a bubble whose top-left is (x, y). @param {number} x @param {number} y @param {number} scale @param {number} now */
-  function thoughtDots(x, y, scale, now) {
-    const lifts = thoughtDotLifts(now);
-    for (const [n, lift] of lifts.entries()) {
+  /**
+   * The thought icon (ADR 0006): a small white speech bubble with a dark
+   * outline, three rising dots, and a short tail pointing down toward the head.
+   * `x`, `y` are the top-left of the icon; `unit` is one icon pixel.
+   * @param {number} x @param {number} y @param {number} unit @param {number} now
+   */
+  function thoughtIcon(x, y, unit, now) {
+    const dark = /** @type {[number,number,number,number]} */ ([
+      0.08,
+      0.08,
+      0.1,
+      1,
+    ]);
+    const white = /** @type {[number,number,number,number]} */ ([1, 1, 1, 1]);
+    /** @param {number} u0 @param {number} v0 @param {number} w @param {number} h @param {[number,number,number,number]} color */
+    const cell = (u0, v0, w, h, color) => {
+      const x0 = Math.round(x + u0 * unit);
+      const y0 = Math.round(y + v0 * unit);
       rect(
-        x + (2 + n * 8) * scale,
-        y + (11 - lift * 4) * scale,
-        4 * scale,
-        4 * scale,
-        [0.95, 0.9, 0.78, 0.55 + lift * 0.45],
+        x0,
+        y0,
+        Math.round(x + (u0 + w) * unit) - x0,
+        Math.round(y + (v0 + h) * unit) - y0,
+        color,
       );
+    };
+    cell(0, 0, 15, 10, dark);
+    cell(1, 1, 13, 8, white);
+    cell(9, 10, 4, 1, dark);
+    cell(10, 9, 2, 2, white);
+    cell(10, 11, 2, 1, dark);
+    for (const [n, lift] of thoughtDotLifts(now).entries()) {
+      cell(2 + n * 4, 4 - lift * 2, 2, 2, dark);
     }
   }
+
+  /** Speech schedules per bubble, built once rather than every frame. @type {Map<string,import('../shared/speech.js').SpeechSchedule>} */
+  const schedules = new Map();
+  /** @param {string} id @param {string} text */
+  function scheduleFor(id, text) {
+    const key = `${id}\0${text}`;
+    let schedule = schedules.get(key);
+    if (!schedule) {
+      if (schedules.size >= 200) schedules.clear();
+      schedule = speechSchedule(text, voiceFromId(id));
+      schedules.set(key, schedule);
+    }
+    return schedule;
+  }
+
+  /** The local player's own chat while the feed lacks it, timed like any feed. @type {import('../shared/chat.js').DisplayChatRecord[]} */
+  let echoFeed = [];
 
   /** @param {Scene} scene @param {number} dpr */
   function drawInterface(scene, dpr) {
@@ -846,27 +891,17 @@ export async function createRenderer(canvas) {
       record.expiresAt === undefined || performance.now() < record.expiresAt
     );
     if (local && !chat.some((record) => record.id === local.id)) {
-      if (local.message && scene.world.tick < local.messageUntil) {
-        chat.push({
-          id: local.id,
-          x: local.x,
-          y: local.y,
-          z: local.z,
-          text: local.message,
-          bubbles: (local.messages ?? []).filter((bubble) =>
-            scene.world.tick < bubble.until
-          ).map((bubble) => ({ text: bubble.text, expiresTick: bubble.until })),
-        });
-      } else if (local.typing) {
-        chat.push({
-          id: local.id,
-          x: local.x,
-          y: local.y,
-          z: local.z,
-          typing: true,
-        });
-      }
-    }
+      // The local echo follows the feed's rules: queued text stays hidden.
+      echoFeed = receiveChat(
+        echoFeed,
+        chatView(scene.world, local.id, new Map()).filter((record) =>
+          record.id === local.id
+        ),
+        scene.world.tick,
+        now,
+      );
+      chat.push(...echoFeed);
+    } else echoFeed = [];
     /** @type {Map<string,import('../shared/world.js').Tile>} */
     const positions = new Map();
     for (const entry of players) positions.set(entry.player.id, entry.pos);
@@ -876,10 +911,23 @@ export async function createRenderer(canvas) {
       const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
       const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
       const level = record.z - listener.z;
-      const lines = liveBubbles(record, now);
+      const lines = liveBubbleItems(record, now);
+      if (!lines.length && !record.text && !record.talking) return null;
       const contents = lines.length
-        ? lines
-        : [record.text ?? (record.talking ? ":0" : "")];
+        ? lines.map((line) => line.text)
+        : [record.text ?? ":0"];
+      const shown = lines.length
+        ? lines.map((line) =>
+          line.startAt === undefined ? line.text : line.text.slice(
+            0,
+            revealedLength(
+              scheduleFor(record.id, line.text),
+              line.text,
+              now - line.startAt,
+            ),
+          )
+        )
+        : contents;
       const direction = sx < 0
         ? "<"
         : sx > width
@@ -893,16 +941,20 @@ export async function createRenderer(canvas) {
         2,
         Math.floor((width - 32 * dpr) / (8 * bubbleScale)) - 2,
       );
-      const rows = contents.map((content) =>
-        `${direction}${direction ? " " : ""}${
-          level ? `  ${Math.abs(level)} ` : ""
-        }${content}`.slice(0, maxChars)
+      const prefix = `${direction}${direction ? " " : ""}${
+        level ? `  ${Math.abs(level)} ` : ""
+      }`;
+      // The bubble keeps its final size while the text fills it.
+      const fullRows = contents.map((content) =>
+        `${prefix}${content}`.slice(0, maxChars)
       );
-      const dotsW = record.typing ? THOUGHT_DOTS_WIDTH * bubbleScale : 0;
+      const rows = shown.map((content) =>
+        `${prefix}${content}`.slice(0, maxChars)
+      );
       const w = Math.min(
         width - 16 * dpr,
-        (Math.max(...rows.map((row) => row.length)) * 8 + 16) * bubbleScale +
-          dotsW,
+        (Math.max(...fullRows.map((row) => row.length)) * 8 + 16) *
+          bubbleScale,
       );
       const h = (rows.length * 22 - 2) * bubbleScale;
       const rawX = sx - w / 2;
@@ -920,7 +972,7 @@ export async function createRenderer(canvas) {
         level,
         distance: Math.hypot(record.x - listener.x, record.y - listener.y),
       };
-    }).sort((a, b) =>
+    }).filter((candidate) => candidate !== null).sort((a, b) =>
       a.distance - b.distance || a.record.id.localeCompare(b.record.id)
     );
     /** @type {(typeof candidates)[]} */
@@ -964,33 +1016,6 @@ export async function createRenderer(canvas) {
             y + 2 * bubbleScale,
             bubbleScale,
           );
-          if (candidate.record.typing) {
-            const dotsX = candidate.x + (8 + row.length * 8) * bubbleScale;
-            thoughtDots(dotsX, y, bubbleScale, performance.now());
-            if (group[0] === candidate) {
-              const tailX = candidate.x + candidate.w / 2;
-              const color = /** @type {[number,number,number,number]} */ ([
-                0.06,
-                0.06,
-                0.06,
-                0.85,
-              ]);
-              rect(
-                tailX - 3 * bubbleScale,
-                y + 21 * bubbleScale,
-                4 * bubbleScale,
-                4 * bubbleScale,
-                color,
-              );
-              rect(
-                tailX - 6 * bubbleScale,
-                y + 26 * bubbleScale,
-                2 * bubbleScale,
-                2 * bubbleScale,
-                color,
-              );
-            }
-          }
           if (candidate.level) {
             const arrowX = candidate.x +
               (candidate.direction ? 24 : 8) * bubbleScale;
@@ -1027,6 +1052,20 @@ export async function createRenderer(canvas) {
           [1, 0.58, 0.2, 1],
         );
       }
+    }
+    // The thought icon sits beside the upper left of the head, not above it.
+    const iconUnit = TILE * zoom / 32;
+    for (const record of chat) {
+      if (!record.typing && !record.queued) continue;
+      const pos = positions.get(record.id) ?? record;
+      const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
+      const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
+      const x = sx - 20 * iconUnit;
+      const y = sy - 1 * iconUnit;
+      if (x < -16 * iconUnit || x > width || y < -12 * iconUnit || y > height) {
+        continue;
+      }
+      thoughtIcon(x, y, iconUnit, now);
     }
     drawInterface(scene, dpr);
     flush();

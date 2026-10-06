@@ -53,20 +53,26 @@ test("three quick messages show three stacked bubbles on the host and a nearby g
       guest.evaluate(() => (globalThis as unknown as Odd).__od.scene.localId)
     ).toMatch(/^peer-/);
     await say(host, messages);
-    await expect.poll(() =>
-      guest.evaluate(() =>
-        (globalThis as unknown as Odd).__od.scene.chatFeed.find((record) =>
-          record.id === "self"
-        )?.bubbles?.map((bubble) => bubble.text)
-      )
+    // The host speaks one message at a time, so the three bubbles stack up as
+    // each starts (ADR 0006).
+    await expect.poll(
+      () =>
+        guest.evaluate(() =>
+          (globalThis as unknown as Odd).__od.scene.chatFeed.find((record) =>
+            record.id === "self"
+          )?.bubbles?.map((bubble) => bubble.text)
+        ),
+      { timeout: 15_000 },
     ).toEqual(messages);
     await say(host, ["a fourth message"]);
-    await expect.poll(() =>
-      guest.evaluate(() =>
-        (globalThis as unknown as Odd).__od.scene.chatFeed.find((record) =>
-          record.id === "self"
-        )?.bubbles?.map((bubble) => bubble.text)
-      )
+    await expect.poll(
+      () =>
+        guest.evaluate(() =>
+          (globalThis as unknown as Odd).__od.scene.chatFeed.find((record) =>
+            record.id === "self"
+          )?.bubbles?.map((bubble) => bubble.text)
+        ),
+      { timeout: 15_000 },
     ).toEqual([...messages.slice(1), "a fourth message"]);
     await evidenceShot(host, "stacked-bubbles-host");
     await evidenceShot(guest, "stacked-bubbles-guest");
@@ -76,6 +82,7 @@ test("three quick messages show three stacked bubbles on the host and a nearby g
 });
 
 test("text size changes bubble size and persists across reloads", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/?harness=1");
   await ready(page);
   expect(
@@ -86,7 +93,8 @@ test("text size changes bubble size and persists across reloads", async ({ page 
   for (const size of ["small", "medium", "large"] as const) {
     await chooseTextSize(page, size);
     await say(page, messages);
-    await page.waitForTimeout(300);
+    // Each message starts when the last is spoken, so wait for the third.
+    await page.waitForTimeout(5000);
     await evidenceShot(page, `stacked-bubbles-${size}`);
     await page.waitForTimeout(5500);
   }

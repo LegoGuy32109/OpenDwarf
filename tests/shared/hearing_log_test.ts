@@ -40,6 +40,7 @@ Deno.test("hearing log records a message once while its bubble stays active", ()
   submitMessage(world, "near", "hello");
   hearChat(log, chatView(world, "listener", bands), nameOf);
   hearChat(log, chatView(world, "listener", bands), nameOf);
+  world.tick = 50;
   submitMessage(world, "near", "again");
   hearChat(log, chatView(world, "listener", bands), nameOf);
   assertEquals(log.lines.map((line) => line.text), ["hello", "again"]);
@@ -75,6 +76,7 @@ Deno.test("hearing log keeps every stacked message that arrives in one update", 
   addPlayer(world, "near", { x: 2, y: 1, z: 0 });
   const log = createHearingLog();
   submitMessage(world, "near", "first");
+  world.tick = 20;
   submitMessage(world, "near", "second");
   hearChat(log, chatView(world, "listener", new Map()), (id) => id);
   hearChat(log, chatView(world, "listener", new Map()), (id) => id);

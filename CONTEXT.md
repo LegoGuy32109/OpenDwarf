@@ -136,7 +136,7 @@ starts with one pickaxe. Only its owner receives it.
 
 **Inventory panel**: The panel B or the bag button opens. It lists the
 inventory's stacks; interact or a tap makes the selected stack the held item.
-While it is open, other players see the entity's typing bubble.
+While it is open, other players see the entity's thought icon.
 
 **Coin**: An item kind received for selling items. For now the number of coins a
 player carries is their score.
