@@ -16,6 +16,7 @@ import { createCornerNpc } from "../shared/npc.js";
 import { NPC_ORIGIN } from "../shared/spawn-room.js";
 import { build } from "./build.js";
 import { joinWorld, startHost } from "./network.js";
+import { rememberedLine, worldTerrainLine } from "./terrain-diagnostics.js";
 
 /** @typedef {import('./context.js').Context} Context */
 
@@ -144,6 +145,7 @@ export function startDiagnostics(ctx) {
       const frameMean = frameMs.length
         ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
         : 0;
+      const remembered = rememberedLine(stats.connections);
       ui.diagnostics =
         `HOST  F3 close\nFPS ${
           frameMean ? (1000 / frameMean).toFixed(0) : "…"
@@ -154,7 +156,9 @@ export function startDiagnostics(ctx) {
         `\nPayload ${Math.round(upload / 1024)} KiB/s  queued ${
           Math.round(queued / 1024)
         } KiB` +
-        `\nJoin failures ${stats.joinFailures}`;
+        `\nJoin failures ${stats.joinFailures}` +
+        `\n${worldTerrainLine(ctx.scene.world)}` +
+        (remembered ? `\n${remembered}` : "");
     }).catch(() => {});
   }, 1000);
 }

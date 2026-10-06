@@ -69,6 +69,7 @@ Decisions:
 - [ADR 0002: Continuous horizontal positions](docs/adr/0002-continuous-horizontal-positions.md)
 - [ADR 0003: Chunked terrain generated on demand](docs/adr/0003-chunked-terrain-generated-on-demand.md)
 - [ADR 0004: Shell serves builds from commits](docs/adr/0004-shell-serves-builds-from-commits.md)
+- [ADR 0005: Bounded terrain sync and chunk unloading](docs/adr/0005-bounded-terrain-sync-and-chunk-unloading.md)
 
 <!-- Add a line here for each new ADR. -->
 

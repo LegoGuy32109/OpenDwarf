@@ -157,6 +157,29 @@ appear.
 **Generated terrain**: Terrain outside the authored area, made from the
 session's seed.
 
+**Loaded chunk**: A chunk whose tiles the world host holds in memory. Only a
+loaded chunk can be read or drawn; a chunk that is not loaded reads as solid
+stone until it loads again.
+
+**Pinned chunk**: A loaded chunk that never unloads, such as an authored spawn
+chunk.
+
+**Chunk unload**: The world host dropping a loaded chunk's tiles after no player
+has been within two chunks of it for 30 seconds. Loading it again generates it
+from the seed and applies its edit diff. See
+[ADR 0005](docs/adr/0005-bounded-terrain-sync-and-chunk-unloading.md).
+
+**Edit diff**: The tiles of one chunk that mining or placing changed, as tile
+index and material. It lasts for the session and survives a chunk unload.
+
+**Remembered terrain**: The terrain a joining player has seen, with each tile as
+it last saw it and `UNKNOWN` where it has seen nothing. The world host keeps it
+for each joining player and the player keeps its own copy.
+
+**Pending reveal**: The tiles of one joining player's remembered terrain that
+changed since the world host built its last state packet. The next state packet
+carries them as a reveal and empties it.
+
 **Visitor token**: A tab-held identifier used to reclaim a joining player's
 place after a connection drop.
 

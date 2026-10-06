@@ -932,6 +932,7 @@ export function startHost(scene, session) {
           reliableBytesSent: bytes("world"),
           motionBytesSent: bytes("motion"),
           motionBufferedAmount: motionChannel?.bufferedAmount ?? 0,
+          rememberedChunks: rememberedTerrain.size,
           channels: {
             reliable: channel?.readyState,
             motion: motionChannel?.readyState,
