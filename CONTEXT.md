@@ -52,6 +52,26 @@ regardless of sight. The wider talking range may show only a talking indicator.
 is too far away to read but close enough to notice. Sight does not control the
 indicator.
 
+**Voice**: The pitch, vowel resonance, speed, and seed an entity speaks with. It
+is seeded from the entity's id, so every client hears the same voice. See
+[ADR 0006](docs/adr/0006-speech-chatter-and-queued-reveal.md).
+
+**Chatter**: The vowel-like sound a voice makes while a bubble reveals. It is
+not words.
+
+**Syllable reveal**: A bubble's text appearing one syllable at a time, in step
+with its chatter, from the bubble's start tick.
+
+**Speech queue**: A speaker's messages waiting to be spoken. A queued message
+starts when the one before it finishes; until then no client receives its text.
+
+**Thought icon**: The small animated icon at the upper left of an entity's head
+while its player types or while its speech queue holds a message. _Avoid_:
+Typing bubble, for the new icon
+
+**Murmur**: Quiet, filtered chatter a listener hears from a speaker inside the
+talking range but outside chat hearing range.
+
 **Hearing log**: The scrolling panel of every message text the player's entity
 heard in this session, plus system lines. It never holds messages outside chat
 hearing range. A log button on touch and the backquote key open it.

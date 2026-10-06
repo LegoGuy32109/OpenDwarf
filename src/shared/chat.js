@@ -5,7 +5,13 @@ import { TICK_MS } from "./world.js";
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./world.js').Player} Player */
 /** @typedef {"text"|"talking"|"none"} ChatBand */
-/** @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,expiresTick?:number,bubbles?:{text:string,expiresTick:number}[]}} ChatRecord */
+/**
+ * One speaker in a listener's chat feed. Speech fields (ADR 0006): a bubble's
+ * `startTick` is when its speech and syllable reveal begin; a bubble still
+ * waiting in the speaker's queue is never sent, and `queued` says one waits.
+ * `syllables` rides on a talking indicator so a far listener can murmur.
+ * @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,queued?:boolean,syllables?:number,expiresTick?:number,bubbles?:{text:string,expiresTick:number,startTick?:number}[]}} ChatRecord
+ */
 
 export const CHAT_TEXT_RADIUS = 5;
 export const CHAT_TALKING_RADIUS = 12;

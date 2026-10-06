@@ -30,7 +30,8 @@ export const MOVE_TICKS = 10;
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
-/** @typedef {{text:string,until:number}} Bubble */
+/** `start` is the tick its speech begins; a later start means it waits in the queue (ADR 0006). */
+/** @typedef {{text:string,until:number,start?:number}} Bubble */
 /** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number}} Player */
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
 /** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>}} World */
