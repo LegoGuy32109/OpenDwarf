@@ -103,3 +103,41 @@ test("with Voices Off nothing is logged, and the Voices row saves its choice", a
     await guest.close();
   }
 });
+
+test("a speaker who walks out of text range and back plays one chatter, not two", async ({ browser }) => {
+  const { host, guest, guestId } = await pair(browser);
+  /** Put the guest's player `blocks` east of the host's, on the host's world. */
+  const standAt = (blocks: number) =>
+    host.evaluate(([id, blocks]) => {
+      const { players } = (globalThis as unknown as Odd).__od.scene.world;
+      const me = players[(globalThis as unknown as Odd).__od.scene.localId];
+      players[id as string].x = me.x + (blocks as number);
+      players[id as string].y = me.y;
+    }, [guestId, blocks] as const);
+  const feedTalking = () =>
+    host.evaluate(
+      (id) =>
+        (globalThis as unknown as {
+          __od: { scene: { chatFeed: { id: string; talking?: boolean }[] } };
+        }).__od.scene.chatFeed.find((record) => record.id === id)?.talking,
+      guestId,
+    );
+  try {
+    await say(guest, "Hello there friend");
+    await expect.poll(async () => (await chatterLog(host)).length).toBe(1);
+    // Out to the talking range, where the host sees only a murmur indicator.
+    await standAt(8);
+    await expect.poll(feedTalking).toBe(true);
+    await host.waitForTimeout(500);
+    // And back into text range.
+    await standAt(1);
+    await expect.poll(feedTalking).toBeFalsy();
+    await host.waitForTimeout(500);
+    const log = await chatterLog(host);
+    expect(log).toHaveLength(1);
+    expect(log[0].murmur).toBe(false);
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+});

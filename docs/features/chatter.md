@@ -25,10 +25,21 @@ sample rate.
   2 blocks and fall to 30% at 5, measured as `chatBand` measures distance.
 - A record with `talking` and `syllables` plays a **murmur**: that many "ba"
   syllables in the speaker's voice, at 10% volume through a 600 Hz low-pass
-  filter.
+  filter. A murmur that starts after its message began starts at the matching
+  offset, and is skipped once the speech would be over.
+- A message sounds once, whatever the range. Its identity is the speaker id and
+  the message's start tick: `startTick` on a bubble, or on a talking record
+  (the start of the message its `syllables` come from; `receiveChat` turns it
+  into the record's `startAt`). Text and murmur of one message share it, so a
+  speaker who walks from hearing range into talking range, or the reverse, is
+  not heard twice. Two messages each play. A bubble with no start falls back to
+  its expiry and text.
 - At most 6 voices play at once. The nearest are kept.
 - The `AudioContext` is created or resumed on the first `pointerdown` or
-  `keydown`. Until then, and while `document.hidden`, chatter is skipped and
+  `keydown`. On that gesture `unlock` also lets audio play with the iPhone
+  silent switch off: it sets `navigator.audioSession.type = "playback"` where
+  that exists (Safari 17 and later), and otherwise plays a short silent
+  `HTMLAudioElement` once. Neither can throw. Until then, and while `document.hidden`, chatter is skipped and
   stopped.
 
 ## Voices setting

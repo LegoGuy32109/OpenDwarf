@@ -10,8 +10,10 @@ import { bubbleStart, TICK_MS } from "./world.js";
  * One speaker in a listener's chat feed. Speech fields (ADR 0006): a bubble's
  * `startTick` is when its speech and syllable reveal begin; a bubble still
  * waiting in the speaker's queue is never sent, and `queued` says one waits.
- * `syllables` rides on a talking indicator so a far listener can murmur.
- * @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,queued?:boolean,syllables?:number,expiresTick?:number,bubbles?:{text:string,expiresTick:number,startTick?:number}[]}} ChatRecord
+ * `syllables` rides on a talking indicator so a far listener can murmur, and
+ * `startTick` says which message those syllables belong to (the newest started
+ * bubble's start), so the listener can tell a murmur from text it already heard.
+ * @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,queued?:boolean,syllables?:number,startTick?:number,expiresTick?:number,bubbles?:{text:string,expiresTick:number,startTick?:number}[]}} ChatRecord
  */
 
 export const CHAT_TEXT_RADIUS = 5;
@@ -108,6 +110,7 @@ export function chatView(world, listenerId, bands) {
         ...base,
         talking: true,
         syllables: syllableCount(newest.text),
+        startTick: bubbleStart(newest),
         expiresTick,
       });
     } else if ((speaker.typing || queued) && band === "text") {
@@ -135,7 +138,7 @@ export function withoutChat(players) {
  * A chat record on the listening client, with host ticks turned into local
  * `performance.now()` times. A bubble's `startAt` is when its syllable reveal
  * and chatter begin there (ADR 0006); the reveal and the audio both read it.
- * @typedef {Omit<ChatRecord,"bubbles"> & {expiresAt?:number,bubbles?:{text:string,expiresTick:number,startTick?:number,expiresAt?:number,startAt?:number}[]}} DisplayChatRecord
+ * @typedef {Omit<ChatRecord,"bubbles"> & {expiresAt?:number,startAt?:number,bubbles?:{text:string,expiresTick:number,startTick?:number,expiresAt?:number,startAt?:number}[]}} DisplayChatRecord
  */
 
 /** @typedef {"small"|"medium"|"large"} TextSize */
@@ -207,13 +210,21 @@ export function receiveChat(
           now + (bubble.expiresTick - hostTick) * TICK_MS,
         ...(bubble.startTick === undefined ? {} : {
           startAt: oldBubble?.startAt ??
+            (old?.startTick === bubble.startTick ? old.startAt : undefined) ??
             now + (bubble.startTick - hostTick) * TICK_MS,
         }),
       };
     });
+    const startAt = record.startTick === undefined ? undefined : (
+      old?.startTick === record.startTick && old.startAt !== undefined
+        ? old.startAt
+        : old?.bubbles?.find((item) => item.startTick === record.startTick)
+          ?.startAt
+    ) ?? now + (record.startTick - hostTick) * TICK_MS;
     records.push({
       ...record,
       ...(bubbles ? { bubbles } : {}),
+      ...(startAt === undefined ? {} : { startAt }),
       expiresAt,
     });
   }

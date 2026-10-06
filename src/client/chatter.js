@@ -33,6 +33,19 @@ export const MAX_VOICES = 6;
 const HEARD_LIMIT = 400;
 const BUFFER_CACHE_LIMIT = 24;
 
+/** A tiny silent WAV (eight 8-bit samples at 8 kHz). Playing it moves iOS to the playback audio session. */
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==";
+
+/**
+ * A message is its speaker and start (tick, or local time when only that is at
+ * hand); text and murmur of one message share it.
+ * @param {string} id @param {number|undefined} start
+ */
+function messageKey(id, start) {
+  return start === undefined ? undefined : `${id}:${start}`;
+}
+
 /** @param {unknown} value @returns {VoicesLevel} */
 export function parseVoicesLevel(value) {
   return VOICES_LEVELS.find((level) => level === value) ?? "medium";
@@ -96,8 +109,34 @@ export function createChatter(options = {}) {
     active = [];
   }
 
+  let silentPlayed = false;
+
+  /**
+   * On iOS the ringer switch mutes Web Audio unless the page's audio session is
+   * "playback". Safari 17 has `navigator.audioSession`; older iOS needs an
+   * HTMLAudioElement to play once. Never throws.
+   */
+  function useMediaSession() {
+    try {
+      const session = /** @type {{audioSession?:{type:string}}} */ (
+        globalThis.navigator ?? {}
+      ).audioSession;
+      if (session) {
+        session.type = "playback";
+        return;
+      }
+      if (silentPlayed || typeof globalThis.Audio !== "function") return;
+      silentPlayed = true;
+      const element = new globalThis.Audio(SILENT_WAV);
+      element.play()?.catch?.(() => {});
+    } catch {
+      // Audio still works with the ringer on.
+    }
+  }
+
   /** Create or resume the context; call it from a user gesture. */
   function unlock() {
+    useMediaSession();
     try {
       audio ??= createContext();
       if (audio.state === "suspended") audio.resume?.();
@@ -208,7 +247,11 @@ export function createChatter(options = {}) {
           startAt: /** @type {number|undefined} */ (undefined),
         }];
         for (const bubble of bubbles) {
-          const key = `${record.id}:${bubble.expiresTick}:${bubble.text}`;
+          const key = messageKey(
+            record.id,
+            /** @type {{startTick?:number}} */ (bubble).startTick ??
+              bubble.startAt,
+          ) ?? `${record.id}:${bubble.expiresTick}:${bubble.text}`;
           if (heard.has(key)) continue;
           const startAt = bubble.startAt ?? now;
           if (startAt > now) continue;
@@ -229,20 +272,27 @@ export function createChatter(options = {}) {
           });
         }
       } else if (record.talking && record.syllables) {
-        const key =
+        const key = messageKey(record.id, record.startTick ?? record.startAt) ??
           `${record.id}:${record.expiresTick}:murmur:${record.syllables}`;
         if (heard.has(key)) continue;
+        const startAt = record.startAt ?? now;
+        if (startAt > now) continue;
         markHeard(key);
         if (mute) continue;
+        const text = murmurText(record.syllables);
+        const offset = (now - startAt) / 1000;
+        if (offset > speechSchedule(text, voiceFromId(record.id)).duration) {
+          continue;
+        }
         play({
           speaker: record.id,
-          text: murmurText(record.syllables),
+          text,
           length: 0,
           syllables: record.syllables,
           distance,
           gain: MURMUR_GAIN,
           murmur: true,
-          offset: 0,
+          offset,
         });
       }
     }
