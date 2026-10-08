@@ -56,3 +56,24 @@ a URL to file:line (see [sessions and signaling](sessions-and-signaling.md)).
 Tests: `tests/client/frame_stats_test.ts` (the ring, counters, spike log, rate
 limit) and `tests/e2e/frame-stats.spec.ts` (the summary body, one `spike` for a
 forced long frame, the error detail, the F3 line).
+
+## Reading the telemetry
+
+The shell writes every telemetry event to the Deno Deploy log, which reaches
+back about a day. `deno task telemetry` reads it with the deploy CLI
+(`DENO_DEPLOY_TOKEN` in the environment) and prints one report per session:
+
+- **Participants:** frame rate, p95 (median and worst), spike and long-task
+  counts, render time, RTT, and route.
+- **Host upload:** KiB/s and queued bytes.
+- **Timeline:** one row per minute, with the participants over 33 ms.
+- **Events:** every error, spike and connection change.
+
+- **Range:** `--start -2h` (or an ISO time) and `--end` set it; the default is
+  the last hour. `--session <prefix>` picks one session. Sessions flagged as
+  tests (`?test=1`, harness pages, `deno task smoke`) are left out unless you
+  pass `--all`.
+- **Keep a copy:** `--save <file.jsonl>` keeps the raw lines, and
+  `--file <file.jsonl>` reads them again later.
+- **During a test:** `deno task telemetry --follow --save <file.jsonl>` tails
+  the live log into a file.

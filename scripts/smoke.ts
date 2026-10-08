@@ -37,7 +37,10 @@ const sessions = async () =>
     started: number;
   }[];
 const before = new Set((await sessions()).map((s) => s.id));
-await host.goto(`${base}${path}`);
+// `test=1` flags the session and its telemetry as a test, so analysis leaves it out.
+const testFlag = (url: string) =>
+  `${url}${url.includes("?") ? "&" : "?"}test=1`;
+await host.goto(testFlag(`${base}${path}`));
 let mine: Awaited<ReturnType<typeof sessions>>[number] | undefined;
 for (let i = 0; i < 30 && !mine; i++) {
   await host.waitForTimeout(1000);
@@ -50,7 +53,7 @@ if (!mine) {
   Deno.exit(1);
 }
 console.log("host session on", mine.build.commit.slice(0, 7));
-await guest.goto(`${base}${mine.build.path}join/${mine.id}`);
+await guest.goto(testFlag(`${base}${mine.build.path}join/${mine.id}`));
 let players = 0;
 for (let i = 0; i < 40 && players < 2; i++) {
   await host.waitForTimeout(1000);
