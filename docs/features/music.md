@@ -55,10 +55,46 @@ nothing. `?music=0` turns music off. With `?harness=1` music is off unless
 The F3 panel has a line with the current track, the mood, and the number and
 size of the cached tracks.
 
+## Shared music
+
+[ADR 0009](../adr/0009-reach-free-cursor-and-controller.md): the world host's
+player is the **conductor** and every guest plays what it plays.
+
+- **Conductor.** `onTrackStart(listener)` marks a player as a host. It keeps
+  picking tracks for the mood when its Music level is Off or the first gesture
+  has not come yet: it counts each track out by the index `duration` (the next
+  starts `CROSSFADE_SECONDS` before the end, as it would with audio) and
+  downloads nothing. Turning Music on mid-track plays that same track from the
+  offset it has reached, with no new cue; turning it Off keeps counting the
+  track that was playing. With no `duration`, a track counts as 180 s. A player
+  that is `enabled: false` (`?music=0`, or a test page without `music=1`) does
+  not conduct.
+- **Cue.** Each start calls `host.cue(track)` in `network.js`, which sends every
+  guest `{type:"music", key, hash, startTick}` on the reliable `world` channel,
+  and sends the current cue to a guest when it joins or rejoins.
+  `decodeMusicCue` (`src/shared/wire.js`) accepts a media key (the shell's
+  `/media/` rules), a 12 digit lowercase hex hash, and a whole `startTick`.
+- **Guest.** The first state sets the tick clock, then `scene.followMusic` calls
+  `follow(track, offsetSeconds)` with the host's position in the track at the
+  presentation time (`presentation.timeOfTick`, the 150 ms delay included). The
+  player stops picking, loads the track (the device cache applies) and starts it
+  at the offset, crossfading from the previous one. A cue for a track the
+  guest's index does not list, or one that fails to load, keeps the current
+  track. A guest whose Music is Off downloads nothing; it keeps the cue and
+  starts the track at its then-current offset when Music turns on (or the first
+  gesture comes). `follow(null, 0)` returns to local picking.
+- **Offline and single player** pick locally, as before. A tab that joins
+  another world is not a conductor; until the first cue arrives it may play a
+  local pick, and the cue crossfades from it.
+- **F3.** The music line says `(host)` or `(cued)` after the track name.
+
 ## Testing
 
 `globalThis.__od.music` has `state()` (status, current and next track, skipped
-tracks, cache size), `setMood`, and `setRandom` for a fixed pick. The unit tests
-are `tests/client/music_test.ts`; the e2e spec is `tests/e2e/music.spec.ts`,
-which plays the fixture media (`tests/e2e/fixtures/media`: two tones and an
-index entry whose file is missing).
+tracks, cache size, plus `role`, `cue` and `offset` for shared music),
+`setMood`, and `setRandom` for a fixed pick. The unit tests are
+`tests/client/music_test.ts` and `tests/client/music_cue_test.ts` (shared
+music); `tests/e2e/music-shared.spec.ts` runs a host and a guest on the fixture
+media; the e2e spec is `tests/e2e/music.spec.ts`, which plays the fixture media
+(`tests/e2e/fixtures/media`: two tones and an index entry whose file is
+missing).
