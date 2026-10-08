@@ -449,6 +449,15 @@ export function decodeMining(value) {
   return entries;
 }
 
+/**
+ * Host to guest: the sound events the guest hears this tick (ADR 0008).
+ * Returns null for anything malformed. The sound events ticket fills it in.
+ * @param {unknown} _value @returns {import('./sound.js').HeardSound[]|null}
+ */
+export function decodeSounds(_value) {
+  return null;
+}
+
 /** Most stacks one tile or one inventory may carry in a message: one per item kind. */
 const MAX_STACKS = 16;
 /** Most tiles one dropped item message may carry. */

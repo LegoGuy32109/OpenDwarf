@@ -1,7 +1,9 @@
 // Media for the opendwarf R2 bucket. The repo's media/ folder mirrors the bucket (ADR 0007).
 //
-//   deno task media convert <folder of mp3s>   # writes media/music/<name>.ogg (64 kbps Opus)
-//   deno task media hash                       # fills each index entry's hash from its file
+//   deno task media convert <folder> [--to <dir>]  # writes media/<dir>/<name>.ogg (64 kbps Opus);
+//                                                #   <dir> defaults to music; takes .mp3, .ogg, .wav, .flac
+//   deno task media hash [<index>]                 # fills each entry's hash in every index, or one
+//                                                #   such as sfx.v1.json
 //   deno task media upload                     # sends every changed file in media/ to the bucket
 //
 // media/index/*.json is tracked in git; the rest of media/ is git-ignored. Conversion skips a
@@ -10,6 +12,7 @@
 
 const MEDIA = new URL("../media/", import.meta.url);
 const BITRATE = "64k";
+const AUDIO = /\.(mp3|ogg|wav|flac)$/;
 const TYPES: Record<string, string> = {
   ".ogg": "audio/ogg",
   ".json": "application/json",
@@ -80,16 +83,17 @@ async function md5(url: URL): Promise<string> {
   return result.out.split(" ")[0];
 }
 
-async function convert(source: string | undefined) {
-  if (!source) throw new Error("convert needs a folder of mp3s");
+async function convert(source: string | undefined, to = "music") {
+  if (!source) throw new Error("convert needs a folder of audio files");
   const names: string[] = [];
   for await (const entry of Deno.readDir(source)) {
-    if (entry.isFile && entry.name.endsWith(".mp3")) names.push(entry.name);
+    if (entry.isFile && AUDIO.test(entry.name)) names.push(entry.name);
   }
-  await Deno.mkdir(new URL("music/", MEDIA), { recursive: true });
+  const dir = new URL(`${to.replace(/\/+$/, "")}/`, MEDIA);
+  await Deno.mkdir(dir, { recursive: true });
   let made = 0;
   await pool(names, navigator.hardwareConcurrency || 4, async (name) => {
-    const out = new URL(`music/${name.replace(/\.mp3$/, ".ogg")}`, MEDIA);
+    const out = new URL(name.replace(AUDIO, ".ogg"), dir);
     if (await exists(out)) return;
     const result = await run("ffmpeg", [
       "-nostdin",
@@ -115,9 +119,10 @@ async function convert(source: string | undefined) {
 }
 
 /** Fills `hash` (12 hex digits of the MD5) for every entry with a `key`, in every index file. */
-async function hash() {
+async function hash(only?: string) {
   for (const key of await keys()) {
     if (!key.startsWith("index/") || !key.endsWith(".json")) continue;
+    if (only && key !== `index/${only}`) continue;
     const url = new URL(key, MEDIA);
     const index = JSON.parse(await Deno.readTextFile(url));
     let changed = 0;
@@ -194,12 +199,16 @@ async function upload() {
 
 if (import.meta.main) {
   const [command, arg] = Deno.args;
+  const toAt = Deno.args.indexOf("--to");
   try {
-    if (command === "convert") await convert(arg);
-    else if (command === "hash") await hash();
+    if (command === "convert") {
+      await convert(arg, toAt >= 0 ? Deno.args[toAt + 1] : undefined);
+    } else if (command === "hash") await hash(arg);
     else if (command === "upload") await upload();
     else {
-      console.error("Usage: deno task media <convert <folder>|hash|upload>");
+      console.error(
+        "Usage: deno task media <convert <folder> [--to <dir>]|hash [<index>]|upload>",
+      );
       Deno.exit(2);
     }
   } catch (error) {

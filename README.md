@@ -76,6 +76,7 @@ Decisions:
 - [ADR 0005: Bounded terrain sync and chunk unloading](docs/adr/0005-bounded-terrain-sync-and-chunk-unloading.md)
 - [ADR 0006: Speech chatter and the queued reveal](docs/adr/0006-speech-chatter-and-queued-reveal.md)
 - [ADR 0007: Media from R2 and offline play](docs/adr/0007-media-from-r2-and-offline-play.md)
+- [ADR 0008: Sound effects from samples](docs/adr/0008-sound-effects-from-samples.md)
 
 <!-- Add a line here for each new ADR. -->
 

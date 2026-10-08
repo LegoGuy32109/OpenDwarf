@@ -277,3 +277,17 @@ on the player's device.
 
 **Offline play**: Starting and playing a single-player world with no network,
 served by the build's service worker.
+
+**Sound effect**: A short recorded sample the game plays for something that
+happens, such as a step or a mining hit, at a random pitch and speed each time.
+See [ADR 0008](docs/adr/0008-sound-effects-from-samples.md).
+
+**Sound tags**: The tags a sound effect sample carries in `index/sfx.v1.json`
+and a play asks for, from general to specific, such as `step`, `run`, `stone`.
+
+**Sound event**: One sound in the world that the world host records, with tags,
+a position, a tick and the entity that made it. Listeners within 12 tiles and 4
+levels hear it, whether or not they see it.
+
+**Muffled sound**: A sound event from a source the listener cannot see. It plays
+through a low-pass filter, quieter.

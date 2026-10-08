@@ -17,6 +17,7 @@ import { createPresentation } from "./presentation.js";
 import { parseTextSize, TEXT_SIZE_KEY } from "../shared/chat.js";
 import { createChatter, parseVoicesLevel, VOICES_KEY } from "./chatter.js";
 import { createMusic, MUSIC_KEY, parseMusicLevel } from "./music.js";
+import { createSfx, EFFECTS_KEY, parseEffectsLevel } from "./sfx.js";
 import { addSystemLine, createHearingLog } from "../shared/hearing-log.js";
 import { createStamina } from "../shared/stamina.js";
 import { setHeldItem } from "../shared/held-item.js";
@@ -57,6 +58,15 @@ function storedVoices() {
 function storedMusic() {
   try {
     return localStorage.getItem(MUSIC_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Private browsing can block storage; 75% then applies. */
+function storedEffects() {
+  try {
+    return localStorage.getItem(EFFECTS_KEY);
   } catch {
     return null;
   }
@@ -178,6 +188,12 @@ export function createContext() {
       level: parseMusicLevel(storedMusic()),
       enabled: params.get("music") !== "0" &&
         (!params.has("harness") || params.get("music") === "1"),
+    }),
+    /** Plays sound effects from tagged samples (ADR 0008). `?sfx=0` turns it off; test pages need `sfx=1`. */
+    sfx: createSfx({
+      level: parseEffectsLevel(storedEffects()),
+      enabled: params.get("sfx") !== "0" &&
+        (!params.has("harness") || params.get("sfx") === "1"),
     }),
     liveStatus: $("#live-status"),
     gameRoot: $("#game"),

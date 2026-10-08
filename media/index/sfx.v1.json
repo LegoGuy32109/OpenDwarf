@@ -1,0 +1,806 @@
+{
+  "version": 1,
+  "samples": [
+    {
+      "key": "sfx/mine-break-rock/mine-break-rock-01.ogg",
+      "hash": "d72ecd0c2e90",
+      "tags": [
+        "mine",
+        "break",
+        "rock"
+      ],
+      "note": "fdbosses mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/mine-break-rock/mine-break-rock-02.ogg",
+      "hash": "f0b37c76377f",
+      "tags": [
+        "mine",
+        "break",
+        "rock"
+      ],
+      "note": "fdbosses mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/mine-break-rock/mine-break-rock-03.ogg",
+      "hash": "37d308a2ea28",
+      "tags": [
+        "mine",
+        "break",
+        "rock"
+      ],
+      "note": "fdbosses mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/mine-break-rock/mine-break-rock-04.ogg",
+      "hash": "2349dfa422fe",
+      "tags": [
+        "mine",
+        "break",
+        "rock"
+      ],
+      "note": "fdbosses mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/mine-break-rock/mine-break-rock-05.ogg",
+      "hash": "bed4ed809bfe",
+      "tags": [
+        "mine",
+        "break",
+        "rock"
+      ],
+      "note": "fdbosses mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/mine-break-rock/mine-break-rock-06.ogg",
+      "hash": "cdb74836065f",
+      "tags": [
+        "mine",
+        "break",
+        "rock"
+      ],
+      "note": "fdbosses mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/mine-break-stone/mine-break-stone-01.ogg",
+      "hash": "6cf0c7132b73",
+      "tags": [
+        "mine",
+        "break",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-break-stone/mine-break-stone-02.ogg",
+      "hash": "25e910b93267",
+      "tags": [
+        "mine",
+        "break",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-break-stone/mine-break-stone-03.ogg",
+      "hash": "e60d556f0df5",
+      "tags": [
+        "mine",
+        "break",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-break-stone/mine-break-stone-04.ogg",
+      "hash": "0e90d3f1bca5",
+      "tags": [
+        "mine",
+        "break",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-01.ogg",
+      "hash": "31c580ef7278",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-02.ogg",
+      "hash": "1202a44232e6",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-03.ogg",
+      "hash": "86dfe149bb53",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-04.ogg",
+      "hash": "235655b08ceb",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-05.ogg",
+      "hash": "b140d9b41616",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-06.ogg",
+      "hash": "1d4baee5ac4b",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-07.ogg",
+      "hash": "343c93e84f85",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-hit-stone/mine-hit-stone-08.ogg",
+      "hash": "100f6d3f590d",
+      "tags": [
+        "mine",
+        "hit",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/mine-swing/mine-swing-01.ogg",
+      "hash": "7e391d475a87",
+      "tags": [
+        "mine",
+        "swing"
+      ],
+      "note": "Better Combat mod (GPL-3.0)"
+    },
+    {
+      "key": "sfx/pickup/pickup-01.ogg",
+      "hash": "5847bca569a1",
+      "tags": [
+        "pickup"
+      ],
+      "note": "Companions mod (GPL-3.0)"
+    },
+    {
+      "key": "sfx/pickup/pickup-02.ogg",
+      "hash": "cf138f4cacc7",
+      "tags": [
+        "pickup"
+      ],
+      "note": "Companions mod (GPL-3.0)"
+    },
+    {
+      "key": "sfx/pickup/pickup-03.ogg",
+      "hash": "9bfc591925f4",
+      "tags": [
+        "pickup"
+      ],
+      "note": "Companions mod (GPL-3.0)"
+    },
+    {
+      "key": "sfx/pickup/pickup-04.ogg",
+      "hash": "fc573570a70e",
+      "tags": [
+        "pickup"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/place-stone/place-stone-01.ogg",
+      "hash": "e536cc5d40b4",
+      "tags": [
+        "place",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/place-stone/place-stone-02.ogg",
+      "hash": "37b26419befc",
+      "tags": [
+        "place",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/place-stone/place-stone-03.ogg",
+      "hash": "dc0bdf9e534c",
+      "tags": [
+        "place",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/place-stone/place-stone-04.ogg",
+      "hash": "005547ab5e8f",
+      "tags": [
+        "place",
+        "stone"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/sell-coins/sell-coins-01.ogg",
+      "hash": "06129d8e5581",
+      "tags": [
+        "sell"
+      ],
+      "note": "Rats mod (LGPL)"
+    },
+    {
+      "key": "sfx/sell-coins/sell-coins-02.ogg",
+      "hash": "ed1272c9cbd1",
+      "tags": [
+        "sell"
+      ],
+      "note": "Rats mod (LGPL)"
+    },
+    {
+      "key": "sfx/sell-coins/sell-coins-03.ogg",
+      "hash": "de81b2ff1771",
+      "tags": [
+        "sell"
+      ],
+      "note": "Rats mod (LGPL)"
+    },
+    {
+      "key": "sfx/sell-coins/sell-coins-04.ogg",
+      "hash": "97fa51e22375",
+      "tags": [
+        "sell"
+      ],
+      "note": "Rats mod (LGPL)"
+    },
+    {
+      "key": "sfx/sell-coins/sell-coins-05.ogg",
+      "hash": "4fbd188ebda7",
+      "tags": [
+        "sell"
+      ],
+      "note": "Companions mod (GPL-3.0)"
+    },
+    {
+      "key": "sfx/step-deepslate/step-deepslate-01.ogg",
+      "hash": "3c6ec3bc251b",
+      "tags": [
+        "step",
+        "walk",
+        "deepslate"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-deepslate/step-deepslate-02.ogg",
+      "hash": "cf1c5757fb88",
+      "tags": [
+        "step",
+        "walk",
+        "deepslate"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-deepslate/step-deepslate-03.ogg",
+      "hash": "145f4fe3575c",
+      "tags": [
+        "step",
+        "walk",
+        "deepslate"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-deepslate/step-deepslate-04.ogg",
+      "hash": "7cb0f8a0ccf6",
+      "tags": [
+        "step",
+        "walk",
+        "deepslate"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-deepslate/step-deepslate-05.ogg",
+      "hash": "22c5e2b482ab",
+      "tags": [
+        "step",
+        "walk",
+        "deepslate"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-deepslate/step-deepslate-06.ogg",
+      "hash": "bd01ba4436a8",
+      "tags": [
+        "step",
+        "walk",
+        "deepslate"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-01.ogg",
+      "hash": "06d2f6ab5b8a",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-02.ogg",
+      "hash": "c600ae9521b3",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-03.ogg",
+      "hash": "21f40428fca2",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-04.ogg",
+      "hash": "0656538e9ded",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-05.ogg",
+      "hash": "71c1acac958a",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-06.ogg",
+      "hash": "c712f4848953",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-07.ogg",
+      "hash": "31d432e9016d",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-08.ogg",
+      "hash": "4ff4c60aaca5",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-09.ogg",
+      "hash": "fc2ca745fe23",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-10.ogg",
+      "hash": "5fbb1c23ed20",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-gravel-walk/step-gravel-walk-11.ogg",
+      "hash": "e0580ed9c8db",
+      "tags": [
+        "step",
+        "walk",
+        "gravel"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-ea/step-stone-ea-01.ogg",
+      "hash": "9d1cafd0add6",
+      "tags": [
+        "step",
+        "walk",
+        "stone-alt"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/step-stone-ea/step-stone-ea-02.ogg",
+      "hash": "ca062d0814b2",
+      "tags": [
+        "step",
+        "walk",
+        "stone-alt"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/step-stone-ea/step-stone-ea-03.ogg",
+      "hash": "4bd864d441a0",
+      "tags": [
+        "step",
+        "walk",
+        "stone-alt"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/step-stone-ea/step-stone-ea-04.ogg",
+      "hash": "1762332e4ab1",
+      "tags": [
+        "step",
+        "walk",
+        "stone-alt"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/step-stone-ea/step-stone-ea-05.ogg",
+      "hash": "0d2cb2559851",
+      "tags": [
+        "step",
+        "walk",
+        "stone-alt"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/step-stone-ea/step-stone-ea-06.ogg",
+      "hash": "066010cc1e9b",
+      "tags": [
+        "step",
+        "walk",
+        "stone-alt"
+      ],
+      "note": "Enhanced Audio resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-01.ogg",
+      "hash": "7711570187ab",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-02.ogg",
+      "hash": "875c807ed2bf",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-03.ogg",
+      "hash": "7429a9517f3e",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-04.ogg",
+      "hash": "490c782586a2",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-05.ogg",
+      "hash": "8d76449c2ed2",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-06.ogg",
+      "hash": "82b0f8719a44",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-07.ogg",
+      "hash": "269e0cc0952a",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-08.ogg",
+      "hash": "6f2a4f237f39",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-09.ogg",
+      "hash": "7df68fb58fd9",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-10.ogg",
+      "hash": "aa4eeb97addd",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-run/step-stone-run-11.ogg",
+      "hash": "7fa5582e97b5",
+      "tags": [
+        "step",
+        "run",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-01.ogg",
+      "hash": "c0a693f875c0",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-02.ogg",
+      "hash": "de215b072f1a",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-03.ogg",
+      "hash": "792e731439d8",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-04.ogg",
+      "hash": "bbceed3c44ed",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-05.ogg",
+      "hash": "16aa781a35eb",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-06.ogg",
+      "hash": "a25c7e794493",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-07.ogg",
+      "hash": "7e285b0db335",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-08.ogg",
+      "hash": "5577c73641d2",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-09.ogg",
+      "hash": "5e529ec74b12",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-10.ogg",
+      "hash": "13fb203f2c72",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/step-stone-walk/step-stone-walk-11.ogg",
+      "hash": "a21b4259bf84",
+      "tags": [
+        "step",
+        "walk",
+        "stone"
+      ],
+      "note": "Dynamic Surroundings resource pack"
+    },
+    {
+      "key": "sfx/ui-bag-open/ui-bag-open-01.ogg",
+      "hash": "b9d4fa49c02c",
+      "tags": [
+        "ui",
+        "open"
+      ],
+      "note": "Blue Skies mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/ui-bag-open/ui-bag-open-02.ogg",
+      "hash": "f7e761f0efb8",
+      "tags": [
+        "ui",
+        "open"
+      ],
+      "note": "Blue Skies mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/ui-bag-open/ui-bag-open-03.ogg",
+      "hash": "6f06ee2adcd1",
+      "tags": [
+        "ui",
+        "open"
+      ],
+      "note": "Blue Skies mod (All Rights Reserved)"
+    },
+    {
+      "key": "sfx/ui-bag-open/ui-bag-open-04.ogg",
+      "hash": "1acec015db94",
+      "tags": [
+        "ui",
+        "open"
+      ],
+      "note": "Supplementaries mod"
+    },
+    {
+      "key": "sfx/ui-bag-open/ui-bag-open-05.ogg",
+      "hash": "9fc2edec3eb1",
+      "tags": [
+        "ui",
+        "open"
+      ],
+      "note": "Supplementaries mod"
+    },
+    {
+      "key": "sfx/ui-click/ui-click-01.ogg",
+      "hash": "f964e6c08ee9",
+      "tags": [
+        "ui",
+        "click"
+      ],
+      "note": "Enhanced Audio resource pack"
+    }
+  ]
+}
