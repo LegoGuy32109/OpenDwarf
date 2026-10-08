@@ -65,6 +65,7 @@ export async function startApp() {
   if (!ctx.isAdmin) startDiagnostics(ctx);
   startTelemetry(ctx);
   ctx.music.start();
+  ctx.sfx.start();
   startLoop(ctx, renderer, input);
   exposeHarness(ctx);
   // After the first frame is on its way: the worker never delays the game.

@@ -40,6 +40,13 @@ export function exposeHarness(ctx) {
       /** @param {() => number} source */
       setRandom: (source) => ctx.music.setRandom(source),
     },
+    /** The effects player's state, plays and a fixed pick (ADR 0008). */
+    sfx: {
+      state: () => ctx.sfx.state(),
+      log: ctx.sfx.log,
+      /** @param {() => number} source */
+      setRandom: (source) => ctx.sfx.setRandom(source),
+    },
     /** @param {string} [prefill] */
     openChat: (prefill) => openChat(ctx, prefill),
     stamina: ctx.stamina,

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "samples": [
+    {
+      "key": "sfx/tick.ogg",
+      "hash": "b77ddd94640c",
+      "tags": ["ui", "click"],
+      "note": "test tone"
+    },
+    {
+      "key": "sfx/tock.ogg",
+      "hash": "ea3455eb0221",
+      "tags": ["ui", "open"],
+      "note": "test tone"
+    },
+    {
+      "key": "sfx/thud.ogg",
+      "hash": "6ea777f1f69e",
+      "tags": ["sell"],
+      "note": "test tone"
+    },
+    {
+      "key": "sfx/missing.ogg",
+      "hash": "000000000000",
+      "tags": ["ui", "open"],
+      "note": "not in the folder: the player must skip it"
+    }
+  ]
+}

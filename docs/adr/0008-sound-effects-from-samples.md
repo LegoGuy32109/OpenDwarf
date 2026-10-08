@@ -92,7 +92,8 @@ first `pointerdown` or `keydown` beside chatter and music. At start it fetches
 the index fresh, downloads every sample into the `od-media` cache (no eviction:
 the samples are small) and decodes each into an `AudioBuffer`, so a play never
 waits on the network. At most 16 sounds play at once; a new sound replaces the
-quietest. A sample that fails to load is skipped.
+quietest, or is dropped when it is quieter still. A sample that fails to load is
+skipped.
 
 **Setting.** The settings page has an Effects row: Off, 25, 50, 75, 100, saved
 in `localStorage` under `open-dwarf-effects`. 75 is the default. Off plays

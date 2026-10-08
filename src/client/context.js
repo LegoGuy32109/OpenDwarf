@@ -333,11 +333,15 @@ export function sellRequest(ctx, request) {
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "sell", ...request });
+    // The host answers only a refusal, so a guest hears its own request.
+    ctx.sfx.play(["sell"]);
     return;
   }
   const result = scene.layout === "room"
     ? sellItems(scene.world, scene.localId, request)
     : { ok: /** @type {const} */ (false), reason: "no shop here" };
-  if (result.ok) scene.systemLine(result.line);
-  else flash(ctx, `Cannot sell: ${result.reason}`);
+  if (result.ok) {
+    scene.systemLine(result.line);
+    ctx.sfx.play(["sell"]);
+  } else flash(ctx, `Cannot sell: ${result.reason}`);
 }
