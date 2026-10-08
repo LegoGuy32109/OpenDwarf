@@ -17,6 +17,7 @@ import {
   localCoord,
   parseChunkKey,
   setChunk,
+  touchChunk,
   UNKNOWN,
 } from "./terrain.js";
 import { encodeChunk, MAX_REVEAL_CHUNKS } from "./chunk-wire.js";
@@ -162,5 +163,6 @@ export function applyReveal(world, reveal) {
     for (let i = 0; i < CHUNK_CELLS; i++) {
       if (delta[i] !== UNKNOWN) chunk[i] = delta[i];
     }
+    touchChunk(chunk);
   }
 }

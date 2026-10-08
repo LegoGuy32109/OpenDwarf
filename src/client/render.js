@@ -22,6 +22,13 @@ import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { drawUi } from "./ui-draw.js";
 import { viewMotionOpacity } from "../shared/view.js";
 import {
+  buildTerrainMesh,
+  FLOATS_PER_QUAD as MESH_FLOATS_PER_QUAD,
+  MESH_PASSES,
+  meshIsFresh,
+} from "./terrain-mesh.js";
+import { chunkKey } from "../shared/terrain.js";
+import {
   ceilingMask,
   DEPTH_TINTS,
   elevationMask,
@@ -375,47 +382,134 @@ export async function createRenderer(canvas) {
     renderer.stats = { tiles: drawnTiles, quads: drawnQuads };
   }
 
-  /** @param {Scene} scene @param {number} alpha */
-  function draw(scene, alpha) {
-    const dpr = globalThis.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
-    const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
+  /** @typedef {{stamp:import('./terrain-mesh.js').MeshStamp,tiles:number,seen:number,parts:Record<string,{vao:WebGLVertexArrayObject,buffer:WebGLBuffer,vertices:number}>}} MeshEntry */
+  /** Master view terrain, one entry per chunk: the mesh and its GPU buffers. @type {Map<string,MeshEntry>} */
+  const meshes = new Map();
+  let meshFrame = 0;
+
+  /** @param {MeshEntry} entry */
+  function releaseMesh(entry) {
+    for (const part of Object.values(entry.parts)) {
+      gl.deleteVertexArray(part.vao);
+      gl.deleteBuffer(part.buffer);
     }
-    gl.viewport(0, 0, width, height);
-    gl.clearColor(0.106, 0.109, 0.122, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(program);
+  }
+
+  /** Upload a mesh's passes once, each into its own buffer and vertex array. @param {import('./terrain-mesh.js').TerrainMesh} mesh @returns {MeshEntry['parts']} */
+  function uploadMesh(mesh) {
+    /** @type {MeshEntry['parts']} */
+    const parts = {};
+    for (const pass of MESH_PASSES) {
+      const data =
+        mesh.parts[/** @type {import('./terrain-mesh.js').MeshPass} */ (pass)];
+      if (!data.length) continue;
+      const partBuffer = gl.createBuffer();
+      const partVao = gl.createVertexArray();
+      if (!partBuffer || !partVao) throw new Error("WebGL2 buffer unavailable");
+      gl.bindVertexArray(partVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, partBuffer);
+      for (const [index, count, offset] of [[0, 2, 0], [1, 2, 8], [2, 4, 16]]) {
+        gl.enableVertexAttribArray(index);
+        gl.vertexAttribPointer(index, count, gl.FLOAT, false, 32, offset);
+      }
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      parts[pass] = {
+        vao: partVao,
+        buffer: partBuffer,
+        vertices: data.length / 8,
+      };
+    }
+    return parts;
+  }
+
+  /**
+   * Draw master view terrain from the per-chunk meshes. A chunk's mesh is rebuilt
+   * only when `meshIsFresh` says its tiles, its neighbors' tiles, or the level
+   * changed; panning only moves the camera.
+   * @param {Scene} scene @param {number} left @param {number} top @param {number} right @param {number} bottom
+   */
+  function drawMeshes(scene, left, top, right, bottom) {
+    flush();
+    const frame = ++meshFrame;
+    const chunkLeft = Math.floor(left / 16);
+    const chunkRight = Math.floor(right / 16);
+    const chunkTop = Math.floor(top / 16);
+    const chunkBottom = Math.floor(bottom / 16);
+    /** @type {MeshEntry[]} */
+    const visible = [];
+    for (let cy = chunkTop; cy <= chunkBottom; cy++) {
+      for (let cx = chunkLeft; cx <= chunkRight; cx++) {
+        const key = chunkKey(cx, cy);
+        let entry = meshes.get(key);
+        if (
+          !entry || !meshIsFresh(entry.stamp, scene.world, cx, cy, scene.viewZ)
+        ) {
+          if (entry) releaseMesh(entry);
+          const mesh = buildTerrainMesh(
+            scene.world,
+            cx,
+            cy,
+            scene.viewZ,
+            scene.visibility,
+          );
+          entry = {
+            stamp: {
+              viewZ: mesh.viewZ,
+              chunks: mesh.chunks,
+              versions: mesh.versions,
+              tiles: mesh.tiles,
+            },
+            tiles: mesh.tiles,
+            seen: frame,
+            parts: uploadMesh(mesh),
+          };
+          meshes.set(key, entry);
+        }
+        entry.seen = frame;
+        visible.push(entry);
+        drawnTiles += entry.tiles;
+      }
+    }
+    gl.uniform1i(locationScreen, 0);
+    for (const pass of MESH_PASSES) {
+      const texture = pass === "ores"
+        ? textures.ores
+        : pass === "edge"
+        ? textures.edge
+        : pass === "bands"
+        ? textures.white
+        : pass === "ceiling"
+        ? textures.ceiling
+        : textures.floor;
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      for (const entry of visible) {
+        const part = entry.parts[pass];
+        if (!part) continue;
+        gl.bindVertexArray(part.vao);
+        gl.drawArrays(gl.TRIANGLES, 0, part.vertices);
+        drawnQuads += part.vertices * 8 / MESH_FLOATS_PER_QUAD;
+      }
+    }
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.uniform2f(locationSize, width, height);
-    if (!loaded) {
-      drawInterface(scene, dpr);
-      return;
+    // Keep the chunks near the view for panning back; free the rest.
+    const keep = visible.length * 4 + 32;
+    if (meshes.size > keep) {
+      for (const [key, entry] of meshes) {
+        if (meshes.size <= keep) break;
+        if (entry.seen === frame) continue;
+        releaseMesh(entry);
+        meshes.delete(key);
+      }
     }
-    const zoom = dpr * scene.zoom;
-    const cameraX = scene.camera.x;
-    // The in-game keyboard covers the bottom of the screen: center on what is above it.
-    const chatTop = scene.ui?.layout.chatTop;
-    const lift = chatTop === null || chatTop === undefined
-      ? 0
-      : (canvas.clientHeight - chatTop) * dpr / 2;
-    const cameraY = scene.camera.y + lift / zoom;
-    gl.uniform2f(locationCamera, cameraX, cameraY);
-    gl.uniform1f(locationZoom, zoom);
-    // Sprites start on a whole device pixel relative to the camera. At a
-    // fractional scale, NEAREST sampling otherwise changes which texel columns
-    // are one pixel wider on each frame, so a slow sprite shimmers.
-    /** @param {number} world @param {number} camera @param {number} size */
-    const snap = (world, camera, size) =>
-      camera + (Math.round((world - camera) * zoom + size / 2) - size / 2) /
-        zoom;
-    const left = Math.floor((cameraX - width / (2 * zoom)) / TILE) - 1;
-    const right = Math.ceil((cameraX + width / (2 * zoom)) / TILE) + 1;
-    const top = Math.floor((cameraY - height / (2 * zoom)) / TILE) - 1;
-    const bottom = Math.ceil((cameraY + height / (2 * zoom)) / TILE) + 1;
+  }
+
+  /**
+   * Draw the terrain of the view tile by tile, every frame. Entity view uses
+   * this, because what each tile shows depends on what the player sees.
+   * @param {Scene} scene @param {number} left @param {number} top @param {number} right @param {number} bottom
+   */
+  function drawTilesPerFrame(scene, left, top, right, bottom) {
     // One surface per tile per frame, shared by the floor, edges and masks. The
     // grid has a one-tile border for the right and lower neighbors.
     const surface = surfaceGrid(
@@ -562,6 +656,52 @@ export async function createRenderer(canvas) {
       }
     }
     flush();
+  }
+
+  /** @param {Scene} scene @param {number} alpha */
+  function draw(scene, alpha) {
+    const dpr = globalThis.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    gl.viewport(0, 0, width, height);
+    gl.clearColor(0.106, 0.109, 0.122, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(program);
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.uniform2f(locationSize, width, height);
+    if (!loaded) {
+      drawInterface(scene, dpr);
+      return;
+    }
+    const zoom = dpr * scene.zoom;
+    const cameraX = scene.camera.x;
+    // The in-game keyboard covers the bottom of the screen: center on what is above it.
+    const chatTop = scene.ui?.layout.chatTop;
+    const lift = chatTop === null || chatTop === undefined
+      ? 0
+      : (canvas.clientHeight - chatTop) * dpr / 2;
+    const cameraY = scene.camera.y + lift / zoom;
+    gl.uniform2f(locationCamera, cameraX, cameraY);
+    gl.uniform1f(locationZoom, zoom);
+    // Sprites start on a whole device pixel relative to the camera. At a
+    // fractional scale, NEAREST sampling otherwise changes which texel columns
+    // are one pixel wider on each frame, so a slow sprite shimmers.
+    /** @param {number} world @param {number} camera @param {number} size */
+    const snap = (world, camera, size) =>
+      camera + (Math.round((world - camera) * zoom + size / 2) - size / 2) /
+        zoom;
+    const left = Math.floor((cameraX - width / (2 * zoom)) / TILE) - 1;
+    const right = Math.ceil((cameraX + width / (2 * zoom)) / TILE) + 1;
+    const top = Math.floor((cameraY - height / (2 * zoom)) / TILE) - 1;
+    const bottom = Math.ceil((cameraY + height / (2 * zoom)) / TILE) + 1;
+    if (scene.viewMode === "master") {
+      drawMeshes(scene, left, top, right, bottom);
+    } else drawTilesPerFrame(scene, left, top, right, bottom);
     const cursor = localCursor(scene);
     if (cursor) {
       const px = cursor.tile.x * TILE;
