@@ -66,3 +66,10 @@ Write contracts before starting parallel workers. When several tickets share a
 module or an API, the coordinator first commits the interface (types, route
 shapes, empty test files), so the tickets can run at the same time instead of
 waiting on each other. Keep a ticket to one session; split anything larger.
+
+## Music
+
+Tracks are 64 kbps Opus `.ogg` files in the `opendwarf` R2 bucket under
+`music/`. `public/assets/music/music.json` lists them and is tracked; the audio
+files are git-ignored. `deno task music convert <folder>` converts new mp3s, and
+`deno task music upload` sends changed tracks (R2 keys in `.env`).

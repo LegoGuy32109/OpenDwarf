@@ -1,7 +1,7 @@
 {
   "tracks": [
     {
-      "file": "ACelticTale.mp3",
+      "file": "ACelticTale.ogg",
       "duration": 214,
       "tags": [
         "adventure",
@@ -10,7 +10,7 @@
       ]
     },
     {
-      "file": "Adventure.mp3",
+      "file": "Adventure.ogg",
       "duration": 278,
       "tags": [
         "adventure",
@@ -19,7 +19,7 @@
       "note": "remaster"
     },
     {
-      "file": "AFaintGlow.mp3",
+      "file": "AFaintGlow.ogg",
       "duration": 209,
       "tags": [
         "soft",
@@ -28,14 +28,14 @@
       ]
     },
     {
-      "file": "Alpha.mp3",
+      "file": "Alpha.ogg",
       "duration": 261,
       "tags": [
         "dramatic"
       ]
     },
     {
-      "file": "Alvae.mp3",
+      "file": "Alvae.ogg",
       "duration": 291,
       "tags": [
         "soft",
@@ -44,7 +44,7 @@
       ]
     },
     {
-      "file": "AmongTheWitheredLeaves.mp3",
+      "file": "AmongTheWitheredLeaves.ogg",
       "duration": 191,
       "tags": [
         "forest",
@@ -53,14 +53,14 @@
       ]
     },
     {
-      "file": "ASongFromTheDeep.mp3",
+      "file": "ASongFromTheDeep.ogg",
       "duration": 218,
       "tags": [
         "soft"
       ]
     },
     {
-      "file": "Battlefield.mp3",
+      "file": "Battlefield.ogg",
       "duration": 236,
       "tags": [
         "battle",
@@ -69,7 +69,7 @@
       ]
     },
     {
-      "file": "BeautifulDreams.mp3",
+      "file": "BeautifulDreams.ogg",
       "duration": 217,
       "tags": [
         "night",
@@ -78,7 +78,7 @@
       ]
     },
     {
-      "file": "BeyondTheHorizon.mp3",
+      "file": "BeyondTheHorizon.ogg",
       "duration": 279,
       "tags": [
         "dramatic",
@@ -86,14 +86,14 @@
       ]
     },
     {
-      "file": "Blacksmith.mp3",
+      "file": "Blacksmith.ogg",
       "duration": 161,
       "tags": [
         "battle"
       ]
     },
     {
-      "file": "BlueHour.mp3",
+      "file": "BlueHour.ogg",
       "duration": 125,
       "tags": [
         "soft",
@@ -101,7 +101,7 @@
       ]
     },
     {
-      "file": "Borgar.mp3",
+      "file": "Borgar.ogg",
       "duration": 341,
       "tags": [
         "dramatic",
@@ -111,7 +111,7 @@
       ]
     },
     {
-      "file": "BreathOfTheForest.mp3",
+      "file": "BreathOfTheForest.ogg",
       "duration": 179,
       "tags": [
         "forest",
@@ -121,7 +121,7 @@
       ]
     },
     {
-      "file": "BrothersInArms.mp3",
+      "file": "BrothersInArms.ogg",
       "duration": 151,
       "tags": [
         "adventure",
@@ -130,7 +130,7 @@
       ]
     },
     {
-      "file": "CastleInTheSky.mp3",
+      "file": "CastleInTheSky.ogg",
       "duration": 202,
       "tags": [
         "soft",
@@ -139,7 +139,7 @@
       ]
     },
     {
-      "file": "CelticLore.mp3",
+      "file": "CelticLore.ogg",
       "duration": 200,
       "tags": [
         "adventure",
@@ -148,7 +148,7 @@
       ]
     },
     {
-      "file": "CelticWhispers.mp3",
+      "file": "CelticWhispers.ogg",
       "duration": 265,
       "tags": [
         "adventure",
@@ -157,7 +157,7 @@
       "note": "I might cut out the slow parts"
     },
     {
-      "file": "CircleOfLife.mp3",
+      "file": "CircleOfLife.ogg",
       "duration": 210,
       "tags": [
         "soft",
@@ -166,7 +166,7 @@
       ]
     },
     {
-      "file": "Clarity.mp3",
+      "file": "Clarity.ogg",
       "duration": 193,
       "tags": [
         "soft",
@@ -174,7 +174,7 @@
       ]
     },
     {
-      "file": "ColdJourney.mp3",
+      "file": "ColdJourney.ogg",
       "duration": 291,
       "tags": [
         "adventure",
@@ -183,7 +183,7 @@
       ]
     },
     {
-      "file": "CrannNaBeatha.mp3",
+      "file": "CrannNaBeatha.ogg",
       "duration": 243,
       "tags": [
         "dramatic",
@@ -191,7 +191,7 @@
       ]
     },
     {
-      "file": "CrystalForest.mp3",
+      "file": "CrystalForest.ogg",
       "duration": 268,
       "tags": [
         "soft",
@@ -200,7 +200,7 @@
       ]
     },
     {
-      "file": "Daudir.mp3",
+      "file": "Daudir.ogg",
       "duration": 228,
       "tags": [
         "tactical",
@@ -209,7 +209,7 @@
       "note": "might cut the intro a bit"
     },
     {
-      "file": "Deliverance.mp3",
+      "file": "Deliverance.ogg",
       "duration": 212,
       "tags": [
         "adventure",
@@ -218,7 +218,7 @@
       ]
     },
     {
-      "file": "Dragonquest.mp3",
+      "file": "Dragonquest.ogg",
       "duration": 316,
       "tags": [
         "adventure",
@@ -227,332 +227,332 @@
       ]
     },
     {
-      "file": "Dragonsong.mp3",
+      "file": "Dragonsong.ogg",
       "duration": 225,
       "tags": []
     },
     {
-      "file": "EchoesOfValor.mp3",
+      "file": "EchoesOfValor.ogg",
       "duration": 194,
       "tags": []
     },
     {
-      "file": "EfterStorm.mp3",
+      "file": "EfterStorm.ogg",
       "duration": 194,
       "tags": []
     },
     {
-      "file": "Enchantment.mp3",
+      "file": "Enchantment.ogg",
       "duration": 339,
       "tags": []
     },
     {
-      "file": "Etherealism.mp3",
+      "file": "Etherealism.ogg",
       "duration": 189,
       "tags": []
     },
     {
-      "file": "Eventide.mp3",
+      "file": "Eventide.ogg",
       "duration": 218,
       "tags": []
     },
     {
-      "file": "EyesUp.mp3",
+      "file": "EyesUp.ogg",
       "duration": 108,
       "tags": []
     },
     {
-      "file": "FairyTale.mp3",
+      "file": "FairyTale.ogg",
       "duration": 270,
       "tags": []
     },
     {
-      "file": "FallOfTheLeaf.mp3",
+      "file": "FallOfTheLeaf.ogg",
       "duration": 188,
       "tags": []
     },
     {
-      "file": "ForTheKing.mp3",
+      "file": "ForTheKing.ogg",
       "duration": 209,
       "tags": []
     },
     {
-      "file": "ForThoseWhoStillWander.mp3",
+      "file": "ForThoseWhoStillWander.ogg",
       "duration": 201,
       "tags": []
     },
     {
-      "file": "Freedom.mp3",
+      "file": "Freedom.ogg",
       "duration": 227,
       "tags": []
     },
     {
-      "file": "Frost.mp3",
+      "file": "Frost.ogg",
       "duration": 259,
       "tags": []
     },
     {
-      "file": "FrozenInTime.mp3",
+      "file": "FrozenInTime.ogg",
       "duration": 191,
       "tags": []
     },
     {
-      "file": "Grundar.mp3",
+      "file": "Grundar.ogg",
       "duration": 271,
       "tags": []
     },
     {
-      "file": "InTheFlowOfSilentWaters.mp3",
+      "file": "InTheFlowOfSilentWaters.ogg",
       "duration": 219,
       "tags": []
     },
     {
-      "file": "IntoSilenceP1.mp3",
+      "file": "IntoSilenceP1.ogg",
       "duration": 204,
       "tags": []
     },
     {
-      "file": "IntoSilenceP2.mp3",
+      "file": "IntoSilenceP2.ogg",
       "duration": 201,
       "tags": []
     },
     {
-      "file": "IntoTheUnknown.mp3",
+      "file": "IntoTheUnknown.ogg",
       "duration": 193,
       "tags": []
     },
     {
-      "file": "KeeperOfTheForest.mp3",
+      "file": "KeeperOfTheForest.ogg",
       "duration": 216,
       "tags": []
     },
     {
-      "file": "KingdomOfBards.mp3",
+      "file": "KingdomOfBards.ogg",
       "duration": 268,
       "tags": []
     },
     {
-      "file": "LastLight.mp3",
+      "file": "LastLight.ogg",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "LeavingForValhalla.mp3",
+      "file": "LeavingForValhalla.ogg",
       "duration": 380,
       "tags": []
     },
     {
-      "file": "Lumina.mp3",
+      "file": "Lumina.ogg",
       "duration": 209,
       "tags": []
     },
     {
-      "file": "MagicTavern.mp3",
+      "file": "MagicTavern.ogg",
       "duration": 388,
       "tags": []
     },
     {
-      "file": "Marked.mp3",
+      "file": "Marked.ogg",
       "duration": 153,
       "tags": []
     },
     {
-      "file": "Mirrormere.mp3",
+      "file": "Mirrormere.ogg",
       "duration": 207,
       "tags": []
     },
     {
-      "file": "Moonsong.mp3",
+      "file": "Moonsong.ogg",
       "duration": 217,
       "tags": []
     },
     {
-      "file": "Mourning.mp3",
+      "file": "Mourning.ogg",
       "duration": 183,
       "tags": []
     },
     {
-      "file": "Mufaya-DarkAscension.mp3",
+      "file": "Mufaya-DarkAscension.ogg",
       "duration": 259,
       "tags": []
     },
     {
-      "file": "MufayaSong1.mp3",
+      "file": "MufayaSong1.ogg",
       "duration": 166,
       "tags": []
     },
     {
-      "file": "Myth.mp3",
+      "file": "Myth.ogg",
       "duration": 143,
       "tags": []
     },
     {
-      "file": "Necromancer.mp3",
+      "file": "Necromancer.ogg",
       "duration": 249,
       "tags": []
     },
     {
-      "file": "NeverToReturn.mp3",
+      "file": "NeverToReturn.ogg",
       "duration": 212,
       "tags": []
     },
     {
-      "file": "NightAtTheEolian.mp3",
+      "file": "NightAtTheEolian.ogg",
       "duration": 228,
       "tags": []
     },
     {
-      "file": "OdeToTheFallen.mp3",
+      "file": "OdeToTheFallen.ogg",
       "duration": 279,
       "tags": []
     },
     {
-      "file": "QuestsEnd.mp3",
+      "file": "QuestsEnd.ogg",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "RealmOfEternalLegends.mp3",
+      "file": "RealmOfEternalLegends.ogg",
       "duration": 179,
       "tags": []
     },
     {
-      "file": "Reverie.mp3",
+      "file": "Reverie.ogg",
       "duration": 223,
       "tags": []
     },
     {
-      "file": "RiteOfTheFadingLight.mp3",
+      "file": "RiteOfTheFadingLight.ogg",
       "duration": 248,
       "tags": []
     },
     {
-      "file": "RoamingTwo.mp3",
+      "file": "RoamingTwo.ogg",
       "duration": 156,
       "tags": []
     },
     {
-      "file": "Ruthless.mp3",
+      "file": "Ruthless.ogg",
       "duration": 183,
       "tags": []
     },
     {
-      "file": "SacredEarth.mp3",
+      "file": "SacredEarth.ogg",
       "duration": 183,
       "tags": []
     },
     {
-      "file": "ShimmeringInTheShallows.mp3",
+      "file": "ShimmeringInTheShallows.ogg",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "SiochainShuthain.mp3",
+      "file": "SiochainShuthain.ogg",
       "duration": 224,
       "tags": []
     },
     {
-      "file": "Sleeper.mp3",
+      "file": "Sleeper.ogg",
       "duration": 184,
       "tags": []
     },
     {
-      "file": "Sombre.mp3",
+      "file": "Sombre.ogg",
       "duration": 609,
       "tags": []
     },
     {
-      "file": "Stillwater.mp3",
+      "file": "Stillwater.ogg",
       "duration": 241,
       "tags": []
     },
     {
-      "file": "Stodvar.mp3",
+      "file": "Stodvar.ogg",
       "duration": 254,
       "tags": []
     },
     {
-      "file": "Storm.mp3",
+      "file": "Storm.ogg",
       "duration": 209,
       "tags": []
     },
     {
-      "file": "TheFall.mp3",
+      "file": "TheFall.ogg",
       "duration": 199,
       "tags": []
     },
     {
-      "file": "TheForestSpoke.mp3",
+      "file": "TheForestSpoke.ogg",
       "duration": 218,
       "tags": []
     },
     {
-      "file": "TheRatKing.mp3",
+      "file": "TheRatKing.ogg",
       "duration": 207,
       "tags": []
     },
     {
-      "file": "TheShapersRealm.mp3",
+      "file": "TheShapersRealm.ogg",
       "duration": 202,
       "tags": []
     },
     {
-      "file": "TitleTrack.mp3",
+      "file": "TitleTrack.ogg",
       "duration": 395,
       "tags": []
     },
     {
-      "file": "UnsungHeroes.mp3",
+      "file": "UnsungHeroes.ogg",
       "duration": 225,
       "tags": []
     },
     {
-      "file": "Wanderer.mp3",
+      "file": "Wanderer.ogg",
       "duration": 164,
       "tags": []
     },
     {
-      "file": "WandererP2.mp3",
+      "file": "WandererP2.ogg",
       "duration": 180,
       "tags": []
     },
     {
-      "file": "WhatLiesBeyond.mp3",
+      "file": "WhatLiesBeyond.ogg",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "WildfireP1.mp3",
+      "file": "WildfireP1.ogg",
       "duration": 200,
       "tags": []
     },
     {
-      "file": "WildfireP2.mp3",
+      "file": "WildfireP2.ogg",
       "duration": 199,
       "tags": []
     },
     {
-      "file": "WindsOfThePast.mp3",
+      "file": "WindsOfThePast.ogg",
       "duration": 206,
       "tags": []
     },
     {
-      "file": "WintersBreath.mp3",
+      "file": "WintersBreath.ogg",
       "duration": 1210,
       "tags": []
     },
     {
-      "file": "WintersNight.mp3",
+      "file": "WintersNight.ogg",
       "duration": 197,
       "tags": []
     },
     {
-      "file": "WoodlandTales.mp3",
+      "file": "WoodlandTales.ogg",
       "duration": 245,
       "tags": []
     },
     {
-      "file": "WorldUnbound.mp3",
+      "file": "WorldUnbound.ogg",
       "duration": 203,
       "tags": []
     }

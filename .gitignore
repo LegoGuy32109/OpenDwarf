@@ -10,5 +10,6 @@ game_library/
 vendor/
 **/target/
 
-# Music tracks stay out of git until they have a host; music.json is tracked.
+# Music tracks live in the R2 bucket (deno task music); music.json is tracked.
 public/assets/music/*.mp3
+public/assets/music/*.ogg
