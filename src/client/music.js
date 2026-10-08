@@ -565,6 +565,20 @@ export function createMusic(options = {}) {
       }
     },
     /**
+     * Host side (ADR 0009): `listener` hears each track the conductor starts,
+     * even with Music Off, so the host can send a music cue. The shared music
+     * ticket fills it in.
+     * @param {(track:{key:string,hash:string}) => void} _listener
+     */
+    onTrackStart(_listener) {},
+    /**
+     * Guest side (ADR 0009): stop picking and play `track` from `offsetSeconds`,
+     * crossfading from the previous one; null goes back to picking locally.
+     * The shared music ticket fills it in.
+     * @param {{key:string,hash:string}|null} _track @param {number} _offsetSeconds
+     */
+    follow(_track, _offsetSeconds) {},
+    /**
      * Play for this mood from now on: tracks that share a tag. A playing track
      * that does not fit crossfades into one that does.
      * @param {string[]} tags

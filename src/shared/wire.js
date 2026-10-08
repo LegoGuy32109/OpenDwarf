@@ -484,6 +484,20 @@ export function decodeSounds(value) {
   return list;
 }
 
+/**
+ * A music cue: the track the world host started and the tick it started on
+ * (ADR 0009). The shared music ticket fills it in.
+ * @typedef {{key:string,hash:string,startTick:number}} MusicCue
+ */
+
+/**
+ * Host to guest: the current music cue. Returns null for anything malformed.
+ * @param {unknown} _value @returns {MusicCue|null}
+ */
+export function decodeMusicCue(_value) {
+  return null;
+}
+
 /** Most stacks one tile or one inventory may carry in a message: one per item kind. */
 const MAX_STACKS = 16;
 /** Most tiles one dropped item message may carry. */

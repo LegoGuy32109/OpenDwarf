@@ -4,7 +4,8 @@
 //                                                #   <dir> defaults to music; takes .mp3, .ogg, .wav, .flac
 //   deno task media hash [<index>]                 # fills each entry's hash in every index, or one
 //                                                #   such as sfx.v1.json
-//   deno task media upload                     # sends every changed file in media/ to the bucket
+//   deno task media upload [<prefix>...] [--dry-run]  # sends every changed file in media/ (or
+//                                                #   those under the prefixes) to the bucket
 //
 // media/index/*.json is tracked in git; the rest of media/ is git-ignored. Conversion skips a
 // track whose .ogg exists. Upload skips a file whose bucket copy has the same MD5. The R2 keys
@@ -161,9 +162,11 @@ function r2(args: string[]) {
   ], `user = "${user}"\n`);
 }
 
-async function upload() {
+async function upload(prefixes: string[], dryRun: boolean) {
   const bucket = `${env("R2_ENDPOINT")}/${env("R2_BUCKET")}`;
-  const list = await keys();
+  const list = (await keys()).filter((key) =>
+    !prefixes.length || prefixes.some((prefix) => key.startsWith(prefix))
+  );
   let sent = 0;
   await pool(list, 6, async (key) => {
     const local = new URL(key, MEDIA);
@@ -173,6 +176,11 @@ async function upload() {
     const head = await r2(["-I", target]);
     const etag = /^etag:\s*"?([0-9a-f]+)"?/im.exec(head.out)?.[1];
     if (etag === (await md5(local))) return;
+    if (dryRun) {
+      sent++;
+      console.log(`Would upload ${key}${etag ? " (changed)" : " (new)"}`);
+      return;
+    }
     const extension = key.slice(key.lastIndexOf("."));
     // An index is read fresh; any other file is addressed by its hash.
     const cache = key.startsWith("index/")
@@ -193,7 +201,9 @@ async function upload() {
     console.log(`Uploaded ${key}`);
   });
   console.log(
-    `Uploaded ${sent} of ${list.length}; the rest were already current.`,
+    `${
+      dryRun ? "Would upload" : "Uploaded"
+    } ${sent} of ${list.length}; the rest were already current.`,
   );
 }
 
@@ -204,10 +214,15 @@ if (import.meta.main) {
     if (command === "convert") {
       await convert(arg, toAt >= 0 ? Deno.args[toAt + 1] : undefined);
     } else if (command === "hash") await hash(arg);
-    else if (command === "upload") await upload();
-    else {
+    else if (command === "upload") {
+      const rest = Deno.args.slice(1);
+      await upload(
+        rest.filter((arg) => !arg.startsWith("--")),
+        rest.includes("--dry-run"),
+      );
+    } else {
       console.error(
-        "Usage: deno task media <convert <folder> [--to <dir>]|hash [<index>]|upload>",
+        "Usage: deno task media <convert <folder> [--to <dir>]|hash [<index>]|upload [<prefix>...] [--dry-run]>",
       );
       Deno.exit(2);
     }
