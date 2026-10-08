@@ -1,0 +1,560 @@
+{
+  "tracks": [
+    {
+      "file": "ACelticTale.mp3",
+      "duration": 214,
+      "tags": [
+        "adventure",
+        "forest",
+        "celebration"
+      ]
+    },
+    {
+      "file": "Adventure.mp3",
+      "duration": 278,
+      "tags": [
+        "adventure",
+        "dramatic"
+      ],
+      "note": "remaster"
+    },
+    {
+      "file": "AFaintGlow.mp3",
+      "duration": 209,
+      "tags": [
+        "soft",
+        "home",
+        "night"
+      ]
+    },
+    {
+      "file": "Alpha.mp3",
+      "duration": 261,
+      "tags": [
+        "dramatic"
+      ]
+    },
+    {
+      "file": "Alvae.mp3",
+      "duration": 291,
+      "tags": [
+        "soft",
+        "night",
+        "home"
+      ]
+    },
+    {
+      "file": "AmongTheWitheredLeaves.mp3",
+      "duration": 191,
+      "tags": [
+        "forest",
+        "adventure",
+        "celebration"
+      ]
+    },
+    {
+      "file": "ASongFromTheDeep.mp3",
+      "duration": 218,
+      "tags": [
+        "soft"
+      ]
+    },
+    {
+      "file": "Battlefield.mp3",
+      "duration": 236,
+      "tags": [
+        "battle",
+        "dramatic",
+        "tactical"
+      ]
+    },
+    {
+      "file": "BeautifulDreams.mp3",
+      "duration": 217,
+      "tags": [
+        "night",
+        "soft",
+        "dramatic"
+      ]
+    },
+    {
+      "file": "BeyondTheHorizon.mp3",
+      "duration": 279,
+      "tags": [
+        "dramatic",
+        "adventure"
+      ]
+    },
+    {
+      "file": "Blacksmith.mp3",
+      "duration": 161,
+      "tags": [
+        "battle"
+      ]
+    },
+    {
+      "file": "BlueHour.mp3",
+      "duration": 125,
+      "tags": [
+        "soft",
+        "night"
+      ]
+    },
+    {
+      "file": "Borgar.mp3",
+      "duration": 341,
+      "tags": [
+        "dramatic",
+        "battle",
+        "tactical",
+        "adventure"
+      ]
+    },
+    {
+      "file": "BreathOfTheForest.mp3",
+      "duration": 179,
+      "tags": [
+        "forest",
+        "celebration",
+        "adventure",
+        "soft"
+      ]
+    },
+    {
+      "file": "BrothersInArms.mp3",
+      "duration": 151,
+      "tags": [
+        "adventure",
+        "soft",
+        "dramatic"
+      ]
+    },
+    {
+      "file": "CastleInTheSky.mp3",
+      "duration": 202,
+      "tags": [
+        "soft",
+        "night",
+        "adventure"
+      ]
+    },
+    {
+      "file": "CelticLore.mp3",
+      "duration": 200,
+      "tags": [
+        "adventure",
+        "forest",
+        "celebration"
+      ]
+    },
+    {
+      "file": "CelticWhispers.mp3",
+      "duration": 265,
+      "tags": [
+        "adventure",
+        "battle"
+      ],
+      "note": "I might cut out the slow parts"
+    },
+    {
+      "file": "CircleOfLife.mp3",
+      "duration": 210,
+      "tags": [
+        "soft",
+        "home",
+        "dramatic"
+      ]
+    },
+    {
+      "file": "Clarity.mp3",
+      "duration": 193,
+      "tags": [
+        "soft",
+        "adventure"
+      ]
+    },
+    {
+      "file": "ColdJourney.mp3",
+      "duration": 291,
+      "tags": [
+        "adventure",
+        "cold",
+        "tactical"
+      ]
+    },
+    {
+      "file": "CrannNaBeatha.mp3",
+      "duration": 243,
+      "tags": [
+        "dramatic",
+        "adventure"
+      ]
+    },
+    {
+      "file": "CrystalForest.mp3",
+      "duration": 268,
+      "tags": [
+        "soft",
+        "forest",
+        "adventure"
+      ]
+    },
+    {
+      "file": "Daudir.mp3",
+      "duration": 228,
+      "tags": [
+        "tactical",
+        "battle"
+      ],
+      "note": "might cut the intro a bit"
+    },
+    {
+      "file": "Deliverance.mp3",
+      "duration": 212,
+      "tags": [
+        "adventure",
+        "dramatic",
+        "soft"
+      ]
+    },
+    {
+      "file": "Dragonquest.mp3",
+      "duration": 316,
+      "tags": [
+        "adventure",
+        "tactical",
+        "dramatic"
+      ]
+    },
+    {
+      "file": "Dragonsong.mp3",
+      "duration": 225,
+      "tags": []
+    },
+    {
+      "file": "EchoesOfValor.mp3",
+      "duration": 194,
+      "tags": []
+    },
+    {
+      "file": "EfterStorm.mp3",
+      "duration": 194,
+      "tags": []
+    },
+    {
+      "file": "Enchantment.mp3",
+      "duration": 339,
+      "tags": []
+    },
+    {
+      "file": "Etherealism.mp3",
+      "duration": 189,
+      "tags": []
+    },
+    {
+      "file": "Eventide.mp3",
+      "duration": 218,
+      "tags": []
+    },
+    {
+      "file": "EyesUp.mp3",
+      "duration": 108,
+      "tags": []
+    },
+    {
+      "file": "FairyTale.mp3",
+      "duration": 270,
+      "tags": []
+    },
+    {
+      "file": "FallOfTheLeaf.mp3",
+      "duration": 188,
+      "tags": []
+    },
+    {
+      "file": "ForTheKing.mp3",
+      "duration": 209,
+      "tags": []
+    },
+    {
+      "file": "ForThoseWhoStillWander.mp3",
+      "duration": 201,
+      "tags": []
+    },
+    {
+      "file": "Freedom.mp3",
+      "duration": 227,
+      "tags": []
+    },
+    {
+      "file": "Frost.mp3",
+      "duration": 259,
+      "tags": []
+    },
+    {
+      "file": "FrozenInTime.mp3",
+      "duration": 191,
+      "tags": []
+    },
+    {
+      "file": "Grundar.mp3",
+      "duration": 271,
+      "tags": []
+    },
+    {
+      "file": "InTheFlowOfSilentWaters.mp3",
+      "duration": 219,
+      "tags": []
+    },
+    {
+      "file": "IntoSilenceP1.mp3",
+      "duration": 204,
+      "tags": []
+    },
+    {
+      "file": "IntoSilenceP2.mp3",
+      "duration": 201,
+      "tags": []
+    },
+    {
+      "file": "IntoTheUnknown.mp3",
+      "duration": 193,
+      "tags": []
+    },
+    {
+      "file": "KeeperOfTheForest.mp3",
+      "duration": 216,
+      "tags": []
+    },
+    {
+      "file": "KingdomOfBards.mp3",
+      "duration": 268,
+      "tags": []
+    },
+    {
+      "file": "LastLight.mp3",
+      "duration": 205,
+      "tags": []
+    },
+    {
+      "file": "LeavingForValhalla.mp3",
+      "duration": 380,
+      "tags": []
+    },
+    {
+      "file": "Lumina.mp3",
+      "duration": 209,
+      "tags": []
+    },
+    {
+      "file": "MagicTavern.mp3",
+      "duration": 388,
+      "tags": []
+    },
+    {
+      "file": "Marked.mp3",
+      "duration": 153,
+      "tags": []
+    },
+    {
+      "file": "Mirrormere.mp3",
+      "duration": 207,
+      "tags": []
+    },
+    {
+      "file": "Moonsong.mp3",
+      "duration": 217,
+      "tags": []
+    },
+    {
+      "file": "Mourning.mp3",
+      "duration": 183,
+      "tags": []
+    },
+    {
+      "file": "Mufaya-DarkAscension.mp3",
+      "duration": 259,
+      "tags": []
+    },
+    {
+      "file": "MufayaSong1.mp3",
+      "duration": 166,
+      "tags": []
+    },
+    {
+      "file": "Myth.mp3",
+      "duration": 143,
+      "tags": []
+    },
+    {
+      "file": "Necromancer.mp3",
+      "duration": 249,
+      "tags": []
+    },
+    {
+      "file": "NeverToReturn.mp3",
+      "duration": 212,
+      "tags": []
+    },
+    {
+      "file": "NightAtTheEolian.mp3",
+      "duration": 228,
+      "tags": []
+    },
+    {
+      "file": "OdeToTheFallen.mp3",
+      "duration": 279,
+      "tags": []
+    },
+    {
+      "file": "QuestsEnd.mp3",
+      "duration": 205,
+      "tags": []
+    },
+    {
+      "file": "RealmOfEternalLegends.mp3",
+      "duration": 179,
+      "tags": []
+    },
+    {
+      "file": "Reverie.mp3",
+      "duration": 223,
+      "tags": []
+    },
+    {
+      "file": "RiteOfTheFadingLight.mp3",
+      "duration": 248,
+      "tags": []
+    },
+    {
+      "file": "RoamingTwo.mp3",
+      "duration": 156,
+      "tags": []
+    },
+    {
+      "file": "Ruthless.mp3",
+      "duration": 183,
+      "tags": []
+    },
+    {
+      "file": "SacredEarth.mp3",
+      "duration": 183,
+      "tags": []
+    },
+    {
+      "file": "ShimmeringInTheShallows.mp3",
+      "duration": 205,
+      "tags": []
+    },
+    {
+      "file": "SiochainShuthain.mp3",
+      "duration": 224,
+      "tags": []
+    },
+    {
+      "file": "Sleeper.mp3",
+      "duration": 184,
+      "tags": []
+    },
+    {
+      "file": "Sombre.mp3",
+      "duration": 609,
+      "tags": []
+    },
+    {
+      "file": "Stillwater.mp3",
+      "duration": 241,
+      "tags": []
+    },
+    {
+      "file": "Stodvar.mp3",
+      "duration": 254,
+      "tags": []
+    },
+    {
+      "file": "Storm.mp3",
+      "duration": 209,
+      "tags": []
+    },
+    {
+      "file": "TheFall.mp3",
+      "duration": 199,
+      "tags": []
+    },
+    {
+      "file": "TheForestSpoke.mp3",
+      "duration": 218,
+      "tags": []
+    },
+    {
+      "file": "TheRatKing.mp3",
+      "duration": 207,
+      "tags": []
+    },
+    {
+      "file": "TheShapersRealm.mp3",
+      "duration": 202,
+      "tags": []
+    },
+    {
+      "file": "TitleTrack.mp3",
+      "duration": 395,
+      "tags": []
+    },
+    {
+      "file": "UnsungHeroes.mp3",
+      "duration": 225,
+      "tags": []
+    },
+    {
+      "file": "Wanderer.mp3",
+      "duration": 164,
+      "tags": []
+    },
+    {
+      "file": "WandererP2.mp3",
+      "duration": 180,
+      "tags": []
+    },
+    {
+      "file": "WhatLiesBeyond.mp3",
+      "duration": 205,
+      "tags": []
+    },
+    {
+      "file": "WildfireP1.mp3",
+      "duration": 200,
+      "tags": []
+    },
+    {
+      "file": "WildfireP2.mp3",
+      "duration": 199,
+      "tags": []
+    },
+    {
+      "file": "WindsOfThePast.mp3",
+      "duration": 206,
+      "tags": []
+    },
+    {
+      "file": "WintersBreath.mp3",
+      "duration": 1210,
+      "tags": []
+    },
+    {
+      "file": "WintersNight.mp3",
+      "duration": 197,
+      "tags": []
+    },
+    {
+      "file": "WoodlandTales.mp3",
+      "duration": 245,
+      "tags": []
+    },
+    {
+      "file": "WorldUnbound.mp3",
+      "duration": 203,
+      "tags": []
+    }
+  ]
+}

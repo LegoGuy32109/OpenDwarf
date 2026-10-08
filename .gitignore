@@ -9,3 +9,6 @@ game_engine/
 game_library/
 vendor/
 **/target/
+
+# Music tracks stay out of git until they have a host; music.json is tracked.
+public/assets/music/*.mp3
