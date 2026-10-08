@@ -9,6 +9,7 @@
 
 import { TEXT_SIZES } from "../shared/chat.js";
 import { VOICES_LEVELS } from "./chatter.js";
+import { MUSIC_LEVELS } from "./music.js";
 import { heldDisplay } from "./display.js";
 import { build } from "./build.js";
 import { layoutUi } from "./ui.js";
@@ -43,7 +44,9 @@ function uiView(ctx) {
     update: ui.updateAvailable
       ? "A newer version is available. Reload to update; guests will rejoin."
       : undefined,
-    diagnostics: ui.diagnosticsOpen && !ctx.isAdmin ? ui.diagnostics : null,
+    diagnostics: ui.diagnosticsOpen && !ctx.isAdmin
+      ? `${ui.diagnostics}\n${ctx.music.line()}`
+      : null,
     zoom: scene.touchGesture || now < scene.hudUntil
       ? `Z ${scene.viewZ}  ZOOM ${scene.zoom.toFixed(2)}`
       : null,
@@ -78,6 +81,8 @@ function uiView(ctx) {
         sizes: TEXT_SIZES,
         voices: ctx.chatter.level,
         voiceLevels: VOICES_LEVELS,
+        music: ctx.music.level,
+        musicLevels: MUSIC_LEVELS,
         mode: scene.inputMode,
         build: build.line,
       }

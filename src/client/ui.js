@@ -84,7 +84,7 @@ export const CHAT_LIMIT = 120;
  * @property {boolean} [bagOpenButton]
  * @property {{move:Knob,look:Knob}} [sticks]
  * @property {{open:boolean,draft:string,page:"letters"|"symbols",shift:boolean}} [chat]
- * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],mode:string,build?:string}} [menu]
+ * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],mode:string,build?:string}} [menu]
  * @property {{open:boolean,lines:readonly HearingLine[],scroll:number}} [log]
  * @property {{open:boolean,stacks:readonly Stack[],selected:number,held:string}} [bag]
  * @property {{open:boolean,rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
@@ -1096,7 +1096,7 @@ export function layoutUi(view) {
       ];
     const rowH = Math.max(34 * s, lh + 12 * s);
     const settings = menu.page === "settings";
-    const bodyRows = settings ? 6 : rootRows.length;
+    const bodyRows = settings ? 7 : rootRows.length;
     const hintLines = settings ? 0 : hints.length + (menu.build ? 1 : 0);
     const h = Math.min(
       safeRect.h - 20,
@@ -1201,6 +1201,28 @@ export function layoutUi(view) {
             level[0].toUpperCase() + level.slice(1),
             box(bx + index * (quarter + 4 * s), cursor, quarter, rowH),
             { on: level === menu.voices },
+          );
+        }
+        cursor += rowH + 8 * s;
+      }
+      if (menu.musicLevels) {
+        add({
+          id: "text:menu-music",
+          kind: "text",
+          rect: box(x, cursor, w, lh),
+          text: "Music",
+          color: "cream",
+          scale: ts,
+          align: "center",
+        });
+        cursor += pitch;
+        const fifth = (inner - 4 * 4 * s) / 5;
+        for (const [index, level] of menu.musicLevels.entries()) {
+          menuButton(
+            `music:${level}`,
+            level === "off" ? "Off" : level,
+            box(bx + index * (fifth + 4 * s), cursor, fifth, rowH),
+            { on: level === menu.music },
           );
         }
         cursor += rowH + 8 * s;

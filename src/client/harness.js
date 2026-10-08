@@ -32,6 +32,14 @@ export function exposeHarness(ctx) {
       log: ctx.chatter.log,
       level: () => ctx.chatter.level,
     },
+    /** The music player's state and a few hooks (ADR 0007). */
+    music: {
+      state: () => ctx.music.state(),
+      /** @param {string[]} tags */
+      setMood: (tags) => ctx.music.setMood(tags),
+      /** @param {() => number} source */
+      setRandom: (source) => ctx.music.setRandom(source),
+    },
     /** @param {string} [prefill] */
     openChat: (prefill) => openChat(ctx, prefill),
     stamina: ctx.stamina,

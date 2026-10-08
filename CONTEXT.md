@@ -72,6 +72,9 @@ Typing bubble, for the new icon
 **Murmur**: Quiet, filtered chatter a listener hears from a speaker inside the
 talking range but outside chat hearing range.
 
+**Mood**: A list of tags the music player matches tracks against. The game sets
+one mood for now; a track plays for a mood when it shares at least one tag.
+
 **Hearing log**: The scrolling panel of every message text the player's entity
 heard in this session, plus system lines. It never holds messages outside chat
 hearing range. A log button on touch and the backquote key open it.
