@@ -53,6 +53,9 @@ export default defineConfig({
     browserName: "chromium",
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 1,
+    // A worker answers its page's requests itself, where `page.route` cannot see them, so specs
+    // run without one. offline.spec.ts turns it on (ADR 0007).
+    serviceWorkers: "block" as const,
     // EVIDENCE=1 records a video of every test for publish-evidence.ts.
     video: process.env.EVIDENCE ? "on" : "off",
     launchOptions: {

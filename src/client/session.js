@@ -16,6 +16,7 @@ import { createCornerNpc } from "../shared/npc.js";
 import { NPC_ORIGIN } from "../shared/spawn-room.js";
 import { build } from "./build.js";
 import { startUpdateCheck } from "./update-check.js";
+import { isOffline } from "./offline.js";
 import { joinWorld, startHost } from "./network.js";
 import { pinLoadedChunks } from "../shared/terrain.js";
 import { rememberedLine, worldTerrainLine } from "./terrain-diagnostics.js";
@@ -114,16 +115,25 @@ export function startHosting(ctx, renderer) {
   // Everything built so far, the authored chunks, never unloads.
   pinLoadedChunks(scene.world);
   generateAround(scene.world, Object.values(scene.world.players), 9);
+  // With no network the world is single player: no join link, QR code, or update check. A reload
+  // with the network back starts them (docs/features/offline.md).
+  ui.offline = isOffline();
   const link = build.joinLink(scene.sessionId, location.origin);
-  ui.qrUrl = build.apiUrl(
+  ui.qrUrl = ui.offline ? "" : build.apiUrl(
     `qr/${scene.sessionId}?link=${encodeURIComponent(link)}`,
   );
   const params = new URL(location.href).searchParams;
   // Specs hide the host tools, which sit in screenshots, unless they ask with `?tools=1`.
   ui.hostTools = !params.has("harness") || params.has("tools");
-  if (renderer) loadQr(ctx, ui.qrUrl, renderer).catch(() => {});
+  // `navigator.onLine` is true on a network with no route out, so the QR request, the first call
+  // to the shell, also tells: a request that cannot be made means this world is offline.
+  if (renderer && !ui.offline) {
+    loadQr(ctx, ui.qrUrl, renderer).catch((error) => {
+      if (error instanceof TypeError) ui.offline = true;
+    });
+  }
   startUpdateCheck({
-    host: true,
+    host: !ui.offline,
     build: build.identity,
     url: build.apiUrl("status"),
     onNewer: () => {

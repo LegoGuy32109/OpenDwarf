@@ -77,7 +77,7 @@ export const CHAT_LIMIT = 120;
  * @property {string|null} [zoom] the level and zoom text, or null
  * @property {boolean} [fullscreen] show the fullscreen button
  * @property {boolean} [fullscreenOn]
- * @property {{tools:boolean,players:number,joinOpen:boolean,qr:boolean}} [host]
+ * @property {{tools:boolean,players:number,joinOpen:boolean,qr:boolean,offline?:boolean}} [host]
  * @property {string} [held] the held item kind
  * @property {{value:number,on:boolean,locked:boolean}} [stamina]
  * @property {{open:boolean,pressed?:boolean}} [logButton]
@@ -447,19 +447,31 @@ export function layoutUi(view) {
   if (host?.tools) {
     const label = `${host.players} player${host.players === 1 ? "" : "s"}`;
     const countW = label.length * cw;
-    const qrW = 2 * cw + 24 * s;
+    // Offline there is no join link: a label stands where the QR button is.
+    const qrW = host.offline ? 7 * cw + 8 * s : 2 * cw + 24 * s;
     const toolH = 30 * s;
     const toolY = top + edge + (fullscreenSize - toolH) / 2;
     const qrX = rightEdge - countW - 8 * s - qrW;
-    add({
-      id: "btn:qr",
-      kind: "button",
-      rect: box(qrX, toolY, qrW, toolH),
-      hit: true,
-      act: "down",
-      text: "QR",
-      on: host.joinOpen,
-    });
+    if (host.offline) {
+      add({
+        id: "text:offline",
+        kind: "text",
+        rect: box(qrX, toolY + (toolH - lh) / 2, qrW - 8 * s, lh),
+        text: "OFFLINE",
+        color: "cream",
+        scale: ts,
+      });
+    } else {
+      add({
+        id: "btn:qr",
+        kind: "button",
+        rect: box(qrX, toolY, qrW, toolH),
+        hit: true,
+        act: "down",
+        text: "QR",
+        on: host.joinOpen,
+      });
+    }
     add({
       id: "text:players",
       kind: "text",

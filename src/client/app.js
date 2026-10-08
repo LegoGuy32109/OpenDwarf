@@ -16,6 +16,8 @@ import { createContext } from "./context.js";
 import { createInput } from "./input.js";
 import { startLoop } from "./loop.js";
 import { exposeHarness } from "./harness.js";
+import { registerWorker } from "./offline.js";
+import { build } from "./build.js";
 import { bindSafeArea } from "./ui-view.js";
 import {
   joinSession,
@@ -65,4 +67,6 @@ export async function startApp() {
   ctx.music.start();
   startLoop(ctx, renderer, input);
   exposeHarness(ctx);
+  // After the first frame is on its way: the worker never delays the game.
+  void registerWorker(build);
 }

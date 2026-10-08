@@ -58,7 +58,8 @@ export function createSignaling(options) {
     try {
       ticket = await options.credentials();
     } catch (error) {
-      console.error(error);
+      // A request that never reached the shell (offline) is expected: say nothing, keep trying.
+      if (!(error instanceof TypeError)) console.error(error);
       schedule();
       return;
     }
