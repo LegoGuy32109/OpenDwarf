@@ -173,3 +173,19 @@ Deno.test("sight refreshes when a nearby chunk loads or unloads, without moving"
   assertEquals(recomputeVisibility(world, sight, spot), true);
   assert(!sight.visible.has(far));
 });
+
+Deno.test("unloader keeps every chunk inside a view rectangle", () => {
+  const world = hostWorld();
+  for (let cx = 3; cx <= 8; cx++) ensureChunk(world, cx, 0);
+  ensureChunk(world, 20, 0);
+  const unloader = createChunkUnloader({ graceMs: 1000 });
+  // The players are far away; the view covers chunks 3 through 8 on row 0.
+  const view = { minX: 3 * 16, minY: 0, maxX: 9 * 16 - 1, maxY: 15 };
+  unloader.update(world, away, 0, [view]);
+  assertEquals(unloader.update(world, away, 5000, [view]), 1);
+  for (let cx = 3; cx <= 8; cx++) assert(world.chunks.has(chunkKey(cx, 0)));
+  assertEquals(world.chunks.has(chunkKey(20, 0)), false);
+  // Once the view moves off, the chunks wait out the grace period and unload.
+  assertEquals(unloader.update(world, away, 5500, []), 0);
+  assertEquals(unloader.update(world, away, 7500, []), 6);
+});

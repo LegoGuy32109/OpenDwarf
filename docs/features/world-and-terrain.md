@@ -32,7 +32,9 @@ be negative ([ADR 0003](../adr/0003-chunked-terrain-generated-on-demand.md)).
 at x, y, z; `world.generateChunk`, a hook `ensureChunk` calls to create a
 missing chunk (the generator plugs into it); and `drainTileChanges`, which lists
 the tiles written since the last call so the host can send them to peers. A tile
-in a chunk that does not exist reads as solid stone.
+in a chunk that does not exist reads as solid stone. `terrainExtent`, the tile
+rectangle of the loaded chunks that bounds the master camera, is cached until a
+chunk is added or unloaded.
 
 Materials and their stable ids live in `src/shared/materials.js`: air, stone,
 then coal, iron ore, gold ore, lapis, redstone, diamond, and emerald. Every
@@ -47,9 +49,12 @@ including the authored area, is never replaced. A chunk is solid stone with
 noise caves that continue across chunk borders (`isCaveTile`), and ore clusters
 by depth band: coal and iron at z 5–7, gold, lapis, redstone and some iron at z
 2–4, and diamond and emerald at z 0–1. A chunk takes well under one millisecond
-to generate. `?seed=` replaces the world seed for tests, and the spawn chunks
-use it too. Joining players never generate; they receive generated terrain only
-for tiles they see.
+to generate. When the host is in master view it also generates the chunks the
+camera's view covers (`generateInView`), nearest the view center first and
+within what is left of the tick's two-chunk budget after the players' chunks, so
+panning at zoom 0.25 keeps finding terrain. `?seed=` replaces the world seed for
+tests, and the spawn chunks use it too. Joining players never generate; they
+receive generated terrain only for tiles they see.
 
 Terrain changes the world host sends to guests are described in
 [sight](sight.md) and [networking](networking.md); mining writes terrain through
@@ -61,9 +66,11 @@ The world host unloads a chunk when no player has been within `UNLOAD_RADIUS`
 (2) chunks of it for `UNLOAD_GRACE_MS` (30 s)
 ([ADR 0005](../adr/0005-bounded-terrain-sync-and-chunk-unloading.md)). Players
 here include the corner NPC, a guest in master view, and the host's own
-master-view camera. `src/shared/chunk-unload.js` keeps when each chunk last had
-a player near and takes the clock as an argument. The host loop runs it next to
-`generateAround`, at most once a second.
+master-view camera. The unloader also takes the master view's tile rectangle,
+and every chunk inside it (plus one chunk around it) counts as near, so panning
+does not thrash load and unload. `src/shared/chunk-unload.js` keeps when each
+chunk last had a player near and takes the clock as an argument. The host loop
+runs it next to `generateAround`, at most once a second.
 
 - **Edit diffs.** `writeTile` records each change in `world.edits`: chunk key to
   a map of tile index to material. `ensureChunk` applies the diff after it

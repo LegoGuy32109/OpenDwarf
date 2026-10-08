@@ -18,9 +18,13 @@ import {
   recomputeVisibility,
   visibilityPosition,
 } from "../shared/visibility.js";
-import { clampCameraAxis } from "../shared/surface.js";
+import {
+  clampCameraAxis,
+  masterPanStep,
+  masterViewTiles,
+} from "../shared/surface.js";
 import { terrainExtent } from "../shared/terrain.js";
-import { generateAround } from "../shared/generation.js";
+import { generateAround, generateInView } from "../shared/generation.js";
 import { createChunkUnloader } from "../shared/chunk-unload.js";
 import { chatView, receiveChat } from "../shared/chat.js";
 import { hearChat } from "../shared/hearing-log.js";
@@ -138,7 +142,7 @@ function stepStateOf(ctx) {
  * @param {number} now
  */
 export function stepWorld(ctx, now) {
-  const { scene } = ctx;
+  const { scene, canvas } = ctx;
   const state = stepStateOf(ctx);
   ctx.accumulator += catchUpMs(now - state.last, document.hidden);
   state.last = now;
@@ -146,7 +150,20 @@ export function stepWorld(ctx, now) {
     advanceTicks(scene.world);
     ctx.tickNpc?.();
     ctx.host?.tick();
-    generateAround(scene.world, Object.values(scene.world.players));
+    const made = generateAround(
+      scene.world,
+      Object.values(scene.world.players),
+    );
+    // The host's master view also needs the terrain its camera looks at.
+    const view = scene.viewMode === "master" && canvas.clientWidth > 0
+      ? masterViewTiles(
+        scene.camera,
+        canvas.clientWidth,
+        canvas.clientHeight,
+        scene.zoom,
+      )
+      : null;
+    if (view) generateInView(scene.world, view, 2 - made);
     if (now - state.lastUnload >= 1000) {
       state.lastUnload = now;
       /** @type {{x:number,y:number}[]} */
@@ -155,7 +172,7 @@ export function stepWorld(ctx, now) {
       if (scene.viewMode === "master") {
         near.push({ x: scene.camera.x / 64, y: scene.camera.y / 64 });
       }
-      state.unloader.update(scene.world, near, now);
+      state.unloader.update(scene.world, near, now, view ? [view] : []);
     }
     move(ctx);
     if (!ctx.isAdmin) {
@@ -238,8 +255,8 @@ export function startLoop(ctx, renderer, input) {
     bag.steer(stickDirection(panelLook.x, panelLook.y, 0.18), now);
     const { x: cameraX, y: cameraY } = bag.isOpen ? { x: 0, y: 0 } : look;
     if (scene.viewMode === "master") {
-      scene.camera.x += cameraX * dt * 0.48;
-      scene.camera.y += cameraY * dt * 0.48;
+      scene.camera.x += masterPanStep(cameraX, dt, scene.zoom);
+      scene.camera.y += masterPanStep(cameraY, dt, scene.zoom);
     } else {
       // While the pickup grid is open the look control moves its selector.
       scene.aim = isPickupGridOpen(ctx.pickupGrid)

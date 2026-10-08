@@ -225,9 +225,18 @@ export function drainTileChanges(world) {
   return changes;
 }
 
-/** Tile extent of the loaded chunks; `max` values are exclusive. Defaults to one chunk. */
+/** @type {WeakMap<Map<string,ChunkData>,{generation:number,extent:{minX:number,minY:number,maxX:number,maxY:number}}>} */
+const extentCache = new WeakMap();
+
+/**
+ * Tile extent of the loaded chunks; `max` values are exclusive. Defaults to one
+ * chunk. The frame asks every frame, so the result is kept until a chunk is
+ * added or unloaded.
+ */
 /** @param {TerrainStore} world */
 export function terrainExtent(world) {
+  const cached = extentCache.get(world.chunks);
+  if (cached && cached.generation === generation) return cached.extent;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -240,8 +249,11 @@ export function terrainExtent(world) {
     maxX = Math.max(maxX, (parsed.cx + 1) * CHUNK_EDGE);
     maxY = Math.max(maxY, (parsed.cy + 1) * CHUNK_EDGE);
   }
-  if (minX === Infinity) return { minX: 0, minY: 0, maxX: 16, maxY: 16 };
-  return { minX, minY, maxX, maxY };
+  const extent = minX === Infinity
+    ? { minX: 0, minY: 0, maxX: 16, maxY: 16 }
+    : { minX, minY, maxX, maxY };
+  extentCache.set(world.chunks, { generation, extent });
+  return extent;
 }
 
 /** True when the tile or one of its eight neighbors lies in a loaded chunk. Stone one tile beyond loaded terrain can be seen. */
