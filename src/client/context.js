@@ -27,6 +27,7 @@ import { build } from "./build.js";
 import { createInventoryPanel } from "./inventory-panel.js";
 import { createShopPanel } from "./shop-panel.js";
 import { createPickupGrid } from "./pickup-grid.js";
+import { createFrameStats } from "./frame-stats.js";
 
 /** @typedef {ReturnType<typeof import('./network.js').startHost>} Host */
 /** @typedef {ReturnType<typeof import('./network.js').joinWorld>} Guest */
@@ -150,7 +151,7 @@ export function createContext() {
     metrics:
       /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
     telemetry:
-      /** @type {((kind:"summary"|"connection"|"error",fields?:Record<string,unknown>)=>void)|undefined} */ (undefined),
+      /** @type {((kind:"summary"|"connection"|"error"|"spike",fields?:Record<string,unknown>)=>void)|undefined} */ (undefined),
   };
 
   /** The sticks, the log, and the other UI state that no game module owns. */
@@ -278,8 +279,14 @@ export function createContext() {
 
     /** Fixed-step time not yet spent on world ticks, in milliseconds. */
     accumulator: 0,
-    /** The last frame times in milliseconds, for diagnostics and telemetry. */
-    frameMs: /** @type {number[]} */ ([]),
+    /** Frame times, phase timings and lag spikes, for F3 and telemetry. */
+    frameStats: createFrameStats(),
+    /** What the last frame drew, for the frame line and telemetry. */
+    frameInfo: /** @type {import('./frame-stats.js').FrameInfo} */ ({
+      viewMode: "entity",
+      zoom: 1,
+      chunks: 0,
+    }),
     /** The local chat bands a host's own chat view remembers. */
     localChatBands:
       /** @type {Map<string,import('../shared/chat.js').ChatBand>} */ (

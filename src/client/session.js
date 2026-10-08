@@ -19,6 +19,7 @@ import { startUpdateCheck } from "./update-check.js";
 import { isOffline } from "./offline.js";
 import { joinWorld, startHost } from "./network.js";
 import { pinLoadedChunks } from "../shared/terrain.js";
+import { frameLine, spikeMetrics, summaryMetrics } from "./frame-stats.js";
 import { rememberedLine, worldTerrainLine } from "./terrain-diagnostics.js";
 
 /** @typedef {import('./context.js').Context} Context */
@@ -153,8 +154,13 @@ export function startDiagnostics(ctx) {
   let previousBytes = 0;
   let previousTime = performance.now();
   setInterval(() => {
-    const { host, ui, frameMs } = ctx;
-    if (!ui.diagnosticsOpen || !host) return;
+    const { host, ui, frameStats, frameInfo } = ctx;
+    if (!ui.diagnosticsOpen) return;
+    const frame = frameLine(frameStats.snapshot(), frameInfo.quads);
+    if (!host) {
+      ui.diagnostics = `GUEST  F3 close\n${build.line}\n${frame}`;
+      return;
+    }
     void host.diagnostics().then((stats) => {
       const now = performance.now();
       const bytes = stats.connections.reduce(
@@ -170,15 +176,9 @@ export function startDiagnostics(ctx) {
           sum + connection.bufferedAmount + connection.motionBufferedAmount,
         0,
       );
-      const frameMean = frameMs.length
-        ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
-        : 0;
       const remembered = rememberedLine(stats.connections);
-      ui.diagnostics =
-        `HOST  F3 close\n${build.line}\nFPS ${
-          frameMean ? (1000 / frameMean).toFixed(0) : "…"
-        }` +
-        `  peers ${
+      ui.diagnostics = `HOST  F3 close\n${build.line}\n${frame}` +
+        `\npeers ${
           stats.connections.filter((connection) => connection.connected).length
         }` +
         `\nPayload ${Math.round(upload / 1024)} KiB/s  queued ${
@@ -199,11 +199,14 @@ export function startDiagnostics(ctx) {
  * @param {Context} ctx
  */
 export function startTelemetry(ctx) {
-  const { scene, frameMs } = ctx;
+  const { scene, frameStats, frameInfo } = ctx;
   const params = new URL(location.href).searchParams;
   if (params.get("telemetry") === "0") return;
   const test = params.get("test") === "1" || params.has("harness");
-  /** @param {"summary"|"connection"|"error"} kind @param {Record<string,unknown>} fields */
+  const commit = /^[0-9a-f]{7,40}$/i.test(build.identity.commit)
+    ? build.identity.commit
+    : undefined;
+  /** @param {"summary"|"connection"|"error"|"spike"} kind @param {Record<string,unknown>} fields */
   const report = (kind, fields = {}) => {
     if (!scene.sessionId) return;
     void fetch(build.apiUrl("telemetry"), {
@@ -215,6 +218,7 @@ export function startTelemetry(ctx) {
         participant: scene.localId,
         role: ctx.isAdmin ? "guest" : "host",
         test,
+        commit,
         ...fields,
       }),
       keepalive: true,
@@ -235,16 +239,16 @@ export function startTelemetry(ctx) {
       report("connection", { status, route: scene.metrics?.route ?? "none" });
     }
     const orderedRtt = [...(scene.metrics?.rttMs ?? [])].sort((a, b) => a - b);
+    const snapshot = frameStats.snapshot();
     void (async () => {
       const stats = await ctx.host?.diagnostics();
       report("summary", {
         status,
         route: scene.metrics?.route ?? "none",
         players: Object.keys(scene.world.players).length,
-        frameMeanMs: frameMs.length
-          ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
-          : 0,
-        frameMaxMs: Math.max(0, ...frameMs),
+        frameMeanMs: snapshot.meanMs,
+        frameMaxMs: snapshot.maxMs,
+        metrics: summaryMetrics(snapshot, frameInfo),
         rttMs: orderedRtt[Math.floor(orderedRtt.length / 2)] ?? null,
         bytesSent: stats?.connections.reduce(
           (sum, connection) => sum + connection.bytesSent,
@@ -258,12 +262,55 @@ export function startTelemetry(ctx) {
       });
     })().catch(() => report("error", { status: "metrics-failed" }));
   }, 10_000);
+  frameStats.onSpike = (spike) =>
+    report("spike", {
+      status: "slow-frame",
+      detail: `${spike.entry.phase} ${spike.entry.ms.toFixed(0)} ms`,
+      metrics: spikeMetrics(spike),
+    });
   globalThis.addEventListener(
     "error",
-    () => report("error", { status: "script-error" }),
+    (event) =>
+      report("error", {
+        status: "script-error",
+        detail: errorDetail(
+          event.error,
+          event.message,
+          event.filename,
+          event.lineno,
+        ),
+      }),
   );
   globalThis.addEventListener(
     "unhandledrejection",
-    () => report("error", { status: "unhandled-rejection" }),
+    (event) =>
+      report("error", {
+        status: "unhandled-rejection",
+        detail: errorDetail(event.reason),
+      }),
   );
+}
+
+/**
+ * An error's name, message and file:line for a telemetry `detail`. The shell
+ * also reduces a URL to file:line and cuts the text to 160 characters.
+ * @param {unknown} error @param {string} [message] @param {string} [file] @param {number} [line]
+ */
+export function errorDetail(error, message, file, line) {
+  const known = error && typeof error === "object"
+    ? /** @type {{name?:unknown,message?:unknown,stack?:unknown}} */ (error)
+    : null;
+  const name = typeof known?.name === "string" ? known.name : "Error";
+  const text = typeof known?.message === "string"
+    ? known.message
+    : message ?? (typeof error === "string" ? error : "");
+  let place = file
+    ? `${file.split(/[?#]/)[0].split("/").pop()}:${line ?? 0}`
+    : "";
+  if (!place && typeof known?.stack === "string") {
+    place = /([^\s/()]+:\d+)(?::\d+)?\)?\s*$/m.exec(
+      known.stack.split("\n").find((row) => /:\d+/.test(row)) ?? "",
+    )?.[1] ?? "";
+  }
+  return `${name}: ${text}${place ? ` at ${place}` : ""}`.slice(0, 160);
 }

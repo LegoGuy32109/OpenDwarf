@@ -174,20 +174,31 @@ export function stepWorld(ctx, now) {
  * @param {ReturnType<typeof import('./input.js').createInput>} input
  */
 export function startLoop(ctx, renderer, input) {
-  const { scene, bag, shop, canvas, frameMs } = ctx;
+  const { scene, bag, shop, canvas, frameStats, frameInfo } = ctx;
   let last = performance.now();
   /** @param {number} now */
   const frame = (now) => {
     const elapsed = now - last;
     const dt = Math.min(250, elapsed);
     last = now;
-    frameMs.push(elapsed);
-    if (frameMs.length > 300) frameMs.shift();
+    frameInfo.viewMode = scene.viewMode;
+    frameInfo.zoom = scene.zoom;
+    frameInfo.chunks = scene.world.chunks.size;
+    // The renderer sets `stats` after each render; it may not yet (or at all).
+    const drawn = /** @type {{stats?:{quads?:number,tiles?:number}}|null} */ (
+      renderer
+    )?.stats;
+    frameInfo.quads = drawn?.quads;
+    frameInfo.tiles = drawn?.tiles;
+    frameStats.frame(now, frameInfo);
     input.poll();
+    frameStats.mark("step");
     stepWorld(ctx, now);
+    frameStats.end();
     const local = scene.world.players[scene.localId];
     if (local) {
       if (!ctx.isAdmin && scene.viewMode === "entity") {
+        frameStats.mark("visibility");
         recomputeVisibility(
           scene.world,
           scene.visibility,
@@ -196,6 +207,7 @@ export function startLoop(ctx, renderer, input) {
             scene.world.tick + ctx.accumulator / TICK_MS,
           ),
         );
+        frameStats.end();
       }
       if (local.z !== ctx.lastPlayerZ) {
         ctx.lastPlayerZ = local.z;
@@ -273,6 +285,7 @@ export function startLoop(ctx, renderer, input) {
       scene.world.players[scene.localId],
       now,
     );
+    frameStats.mark("display");
     scene.mining = miningDisplay(ctx, ctx.accumulator / TICK_MS);
     ctx.sounds.frame(now, ctx.accumulator / TICK_MS);
     scene.items = itemsDisplay(ctx);
@@ -283,10 +296,12 @@ export function startLoop(ctx, renderer, input) {
     shop.update(scene.inventory);
     shop.steer(shopDirection(ctx), now);
     shop.steerStick(ctx.gamepadStick.y, now);
+    frameStats.mark("layout");
     scene.ui = {
       layout: currentLayout(ctx),
       state: { pressed: input.router.pressed(), sticks: ctx.ui.sticks, now },
     };
+    frameStats.end();
     shop.fit(scene.ui.layout.shopList?.capacity ?? 1);
     const liveText = [
       scene.notice && now < scene.notice.until
@@ -297,10 +312,14 @@ export function startLoop(ctx, renderer, input) {
     if (ctx.liveStatus.textContent !== liveText) {
       ctx.liveStatus.textContent = liveText;
     }
+    frameStats.mark("render");
     renderer?.render(scene, ctx.accumulator / TICK_MS);
+    frameStats.end();
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+  // The gap while a tab was hidden is not a lag spike.
+  document.addEventListener("visibilitychange", () => frameStats.skipGap());
   // A hidden tab gets no frames; the clock keeps the world stepping.
   createTickClock(() => stepWorld(ctx, performance.now()), TICK_MS);
 }
