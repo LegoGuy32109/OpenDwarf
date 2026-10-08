@@ -62,6 +62,7 @@ export async function startApp() {
   if (ctx.joinRoute) joinSession(ctx, ctx.joinRoute);
   if (!ctx.isAdmin) startDiagnostics(ctx);
   startTelemetry(ctx);
+  ctx.music.start();
   startLoop(ctx, renderer, input);
   exposeHarness(ctx);
 }

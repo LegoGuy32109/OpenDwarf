@@ -16,6 +16,7 @@ import { layoutFromParams } from "../shared/spawn-room.js";
 import { createPresentation } from "./presentation.js";
 import { parseTextSize, TEXT_SIZE_KEY } from "../shared/chat.js";
 import { createChatter, parseVoicesLevel, VOICES_KEY } from "./chatter.js";
+import { createMusic, MUSIC_KEY, parseMusicLevel } from "./music.js";
 import { addSystemLine, createHearingLog } from "../shared/hearing-log.js";
 import { createStamina } from "../shared/stamina.js";
 import { setHeldItem } from "../shared/held-item.js";
@@ -47,6 +48,15 @@ function storedTextSize() {
 function storedVoices() {
   try {
     return localStorage.getItem(VOICES_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Private browsing can block storage; 50% then applies. */
+function storedMusic() {
+  try {
+    return localStorage.getItem(MUSIC_KEY);
   } catch {
     return null;
   }
@@ -161,6 +171,12 @@ export function createContext() {
     canvas: /** @type {HTMLCanvasElement} */ ($("#world")),
     /** Plays chatter for the bubbles in `scene.chatFeed` (ADR 0006). */
     chatter: createChatter({ level: parseVoicesLevel(storedVoices()) }),
+    /** Plays background music from the device cache or the bucket (ADR 0007). `?music=0` turns it off; test pages need `music=1`. */
+    music: createMusic({
+      level: parseMusicLevel(storedMusic()),
+      enabled: params.get("music") !== "0" &&
+        (!params.has("harness") || params.get("music") === "1"),
+    }),
     liveStatus: $("#live-status"),
     gameRoot: $("#game"),
     touchQuery: globalThis.matchMedia?.("(pointer: coarse)"),

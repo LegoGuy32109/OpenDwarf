@@ -37,6 +37,31 @@ const BUFFER_CACHE_LIMIT = 24;
 const SILENT_WAV =
   "data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==";
 
+let silentPlayed = false;
+
+/**
+ * On iOS the ringer switch mutes Web Audio unless the page's audio session is
+ * "playback". Safari 17 has `navigator.audioSession`; older iOS needs an
+ * HTMLAudioElement to play once. The music player shares it. Never throws.
+ */
+export function useMediaSession() {
+  try {
+    const session = /** @type {{audioSession?:{type:string}}} */ (
+      globalThis.navigator ?? {}
+    ).audioSession;
+    if (session) {
+      session.type = "playback";
+      return;
+    }
+    if (silentPlayed || typeof globalThis.Audio !== "function") return;
+    silentPlayed = true;
+    const element = new globalThis.Audio(SILENT_WAV);
+    element.play()?.catch?.(() => {});
+  } catch {
+    // Audio still works with the ringer on.
+  }
+}
+
 /**
  * A message is its speaker and start (tick, or local time when only that is at
  * hand); text and murmur of one message share it.
@@ -107,31 +132,6 @@ export function createChatter(options = {}) {
       }
     }
     active = [];
-  }
-
-  let silentPlayed = false;
-
-  /**
-   * On iOS the ringer switch mutes Web Audio unless the page's audio session is
-   * "playback". Safari 17 has `navigator.audioSession`; older iOS needs an
-   * HTMLAudioElement to play once. Never throws.
-   */
-  function useMediaSession() {
-    try {
-      const session = /** @type {{audioSession?:{type:string}}} */ (
-        globalThis.navigator ?? {}
-      ).audioSession;
-      if (session) {
-        session.type = "playback";
-        return;
-      }
-      if (silentPlayed || typeof globalThis.Audio !== "function") return;
-      silentPlayed = true;
-      const element = new globalThis.Audio(SILENT_WAV);
-      element.play()?.catch?.(() => {});
-    } catch {
-      // Audio still works with the ringer on.
-    }
   }
 
   /** Create or resume the context; call it from a user gesture. */

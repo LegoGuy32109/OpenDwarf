@@ -55,6 +55,7 @@ its feature there:
 - [Placing](docs/features/placing.md)
 - [Chat](docs/features/chat.md)
 - [Chatter](docs/features/chatter.md)
+- [Music](docs/features/music.md)
 - [Controls and UI](docs/features/controls-and-ui.md)
 - [Networking](docs/features/networking.md)
 - [Sessions and signaling](docs/features/sessions-and-signaling.md)
