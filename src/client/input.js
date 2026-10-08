@@ -513,10 +513,16 @@ export function createInput(ctx) {
         y: event.clientY - box.top,
       };
     };
-    canvas.addEventListener("pointerdown", (event) => {
+    // A touch pointerdown is not a user activation (only pointerup and
+    // touchend are), so iOS refuses audio unlocked there; unlock on all three.
+    const unlockAudio = () => {
       ctx.chatter.unlock();
       ctx.music.unlock();
       ctx.sfx.unlock();
+    };
+    document.addEventListener("touchend", unlockAudio, { passive: true });
+    canvas.addEventListener("pointerdown", (event) => {
+      unlockAudio();
       if (event.pointerType === "mouse" && event.button !== 0) return;
       event.preventDefault();
       if (event.pointerType === "touch") scene.inputMode = "touch";
@@ -536,7 +542,10 @@ export function createInput(ctx) {
       router.up(point(event), cancelled);
       world.release(event);
     };
-    canvas.addEventListener("pointerup", (event) => finish(event, false));
+    canvas.addEventListener("pointerup", (event) => {
+      unlockAudio();
+      finish(event, false);
+    });
     canvas.addEventListener("pointercancel", (event) => finish(event, true));
     canvas.addEventListener(
       "lostpointercapture",

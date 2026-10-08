@@ -237,6 +237,35 @@ Deno.test("later gestures keep the playing track, so a held key does not skip", 
   assertEquals(elements.filter((element) => !element.paused).length, 1);
 });
 
+Deno.test("the first gesture primes two reused decks, so iOS lets a later track play", async () => {
+  const { music, elements } = setup([
+    track("music/a.ogg", ["adventure"]),
+    track("music/b.ogg", ["adventure"]),
+  ]);
+  music.start(["adventure"]);
+  const plays: string[] = [];
+  const original = FakeElement.prototype.play;
+  FakeElement.prototype.play = function () {
+    plays.push(this.src.slice(0, 15));
+    return original.call(this);
+  };
+  try {
+    music.unlock();
+    // Both decks played (the silent WAV) inside the gesture itself.
+    assertEquals(elements.length, 2);
+    assertEquals(plays.length, 2);
+    assert(plays.every((src) => src.startsWith("data:audio/wav")));
+    await settle();
+    music.setMood(["adventure"]);
+    await settle();
+    // Tracks reuse the same two elements.
+    assertEquals(elements.length, 2);
+    assertEquals(music.state().status, "playing");
+  } finally {
+    FakeElement.prototype.play = original;
+  }
+});
+
 Deno.test("a failing track is skipped and the next one plays", async () => {
   const { music } = setup(
     [
@@ -255,6 +284,7 @@ Deno.test("a failing track is skipped and the next one plays", async () => {
 });
 
 Deno.test("a track that cannot decode is skipped too", async () => {
+  let failedOnce = false;
   const { music, elements } = setup(
     [
       track("music/a.ogg", ["adventure"]),
@@ -262,9 +292,15 @@ Deno.test("a track that cannot decode is skipped too", async () => {
     ],
     [],
     {
+      // The decks are reused, so the first track's play (not a deck's silent
+      // priming play) is the one that fails.
       createElement: () => {
         const element = new FakeElement();
-        element.failsToPlay = elements.length === 0;
+        const play = element.play.bind(element);
+        element.play = () =>
+          element.src !== "blob:fake" || failedOnce
+            ? play()
+            : (failedOnce = true, Promise.reject(new Error("decode")));
         elements.push(element);
         return element;
       },

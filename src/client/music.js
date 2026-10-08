@@ -42,6 +42,14 @@ export const CROSSFADE_SECONDS = 3;
 export const RECENT_LIMIT = 5;
 /** Failed tracks in a row after which the player stops until the next mood. */
 export const MAX_FAILURES = 3;
+/**
+ * A tiny silent WAV. iOS lets an audio element play later, outside a tap, only
+ * once it has played inside one, so each deck plays this on the first gesture.
+ */
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==";
+/** Two decks: the playing track and the one fading in or out. */
+const DECKS = 2;
 /** Seconds a track lasts for the conductor when its index entry has no `duration`. */
 export const DEFAULT_DURATION = 180;
 
@@ -215,6 +223,44 @@ export function createMusic(options = {}) {
   let cacheHandle = null;
   /** @type {Record<string,PlayRecord>} */
   const plays = readPlays();
+  /**
+   * Audio elements made once, on the first gesture, and reused for every track
+   * (see `SILENT_WAV`). Each keeps its media source and gain for good.
+   * @type {{element:HTMLAudioElement,source:MediaElementAudioSourceNode,gain:GainNode,owner:Active|null}[]}
+   */
+  const decks = [];
+
+  /** Make and prime the decks; call inside a user gesture. */
+  function primeDecks() {
+    const context = audio;
+    if (!context || !master || decks.length) return;
+    for (let i = 0; i < DECKS; i++) {
+      const element = createElement();
+      element.src = SILENT_WAV;
+      // The call inside the gesture is what unlocks the element; it need not keep playing.
+      try {
+        void Promise.resolve(element.play()).catch(() => {});
+        element.pause();
+      } catch {
+        // An old browser without a play promise.
+      }
+      const source = context.createMediaElementSource(element);
+      const gain = context.createGain();
+      gain.gain.value = 0;
+      source.connect(gain);
+      gain.connect(master);
+      decks.push({ element, source, gain, owner: null });
+    }
+  }
+
+  /** A deck for a new track: a free one, else the one not playing the current track. */
+  function takeDeck() {
+    primeDecks();
+    const deck = decks.find((candidate) => !candidate.owner) ??
+      decks.find((candidate) => candidate.owner !== current) ?? decks[0];
+    deck.owner?.dispose();
+    return deck;
+  }
 
   /**
    * @typedef {object} Active
@@ -398,15 +444,14 @@ export function createMusic(options = {}) {
   async function startTrack(track, loadedTrack, where = {}) {
     const { offset = 0, notify = true } = where;
     const context = /** @type {AudioContext} */ (audio);
-    const element = createElement();
+    const deck = takeDeck();
+    const { element, gain } = deck;
     const objectUrl = createObjectURL(loadedTrack.blob);
     element.src = objectUrl;
     if (offset > 0) element.currentTime = offset;
-    const source = context.createMediaElementSource(element);
-    const gain = context.createGain();
-    source.connect(gain);
-    gain.connect(/** @type {GainNode} */ (master));
+    const listening = new AbortController();
     const previous = current;
+    gain.gain.cancelScheduledValues?.(context.currentTime);
     gain.gain.value = previous ? 0 : 1;
     /** @type {Active} */
     const active = {
@@ -419,22 +464,27 @@ export function createMusic(options = {}) {
       startedAt: now() - offset * 1000,
       offset,
       dispose() {
+        if (deck.owner !== active) return;
+        deck.owner = null;
+        listening.abort();
         try {
           element.pause();
-          source.disconnect();
-          gain.disconnect();
+          gain.gain.cancelScheduledValues?.(context.currentTime);
+          gain.gain.value = 0;
         } catch {
           // Already torn down.
         }
         revokeObjectURL(objectUrl);
       },
     };
+    deck.owner = active;
     try {
       await element.play();
     } catch (error) {
       active.dispose();
       throw error;
     }
+    const signal = { signal: listening.signal };
     element.addEventListener("timeupdate", () => {
       if (
         current === active && !active.advanced &&
@@ -443,14 +493,14 @@ export function createMusic(options = {}) {
         active.advanced = true;
         void advance();
       }
-    });
+    }, signal);
     element.addEventListener("ended", () => {
       if (current !== active) return;
       if (!active.advanced) {
         active.advanced = true;
         void advance();
       }
-    });
+    }, signal);
     element.addEventListener("error", () => {
       if (current !== active) return;
       failed.add(track.key);
@@ -460,7 +510,7 @@ export function createMusic(options = {}) {
         stopped = true;
         status = "stopped";
       } else void advance();
-    });
+    }, signal);
     current = active;
     failures = 0;
     status = "playing";
@@ -667,6 +717,7 @@ export function createMusic(options = {}) {
           applyVolume(volume());
         }
         if (audio.state === "suspended") audio.resume?.();
+        primeDecks();
       } catch {
         audio = null;
         return;

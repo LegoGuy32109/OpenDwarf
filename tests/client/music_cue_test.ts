@@ -27,6 +27,12 @@ class FakeCache {
   }
 }
 
+/** The music decks are reused (primed on the first gesture for iOS): find the one playing a track. */
+const playing = (elements: FakeElement[]) =>
+  elements.filter((element) => !element.paused);
+const withTrack = (elements: FakeElement[]) =>
+  elements.filter((element) => element.src.startsWith("blob:"));
+
 class FakeElement extends EventTarget {
   src = "";
   currentTime = 0;
@@ -112,7 +118,8 @@ Deno.test("the conductor keeps picking and advances by duration with Music Off",
   // The last five are not repeated, but a two-track index alternates.
   assertEquals(started[0] === started[1], false);
   assertEquals(trackRequests(requests), []);
-  assertEquals(elements.length, 0);
+  assertEquals(withTrack(elements).length, 0);
+  assertEquals(playing(elements).length, 0);
   assertEquals(music.state().role, "host");
   assert(music.line().includes("(host)"), music.line());
   assertEquals(music.state().cue, started[started.length - 1]);
@@ -136,18 +143,18 @@ Deno.test("a host with Music on reports each track it plays, and turning it on r
   await settle();
   // The same track plays from where the conductor counted to; no new cue.
   assertEquals(started, ["music/a.ogg"]);
-  assertEquals(elements.length, 1);
-  assertEquals(elements[0].currentTime, 30);
+  assertEquals(playing(elements).length, 1);
+  assertEquals(playing(elements)[0].currentTime, 30);
   assertEquals(music.state().track, "music/a.ogg");
   // Off again: the conductor keeps counting the same track.
   music.setLevel("off");
-  assertEquals(elements[0].paused, true);
+  assertEquals(playing(elements).length, 0);
   assertEquals(music.state().cue, "music/a.ogg");
   assertEquals(started, ["music/a.ogg"]);
   clock += 1000;
   music.setLevel("50");
   await settle();
-  assertEquals(elements[1].currentTime, 31);
+  assertEquals(playing(elements)[0].currentTime, 31);
 });
 
 Deno.test("follow starts the cued track at the offset", async () => {
@@ -160,9 +167,11 @@ Deno.test("follow starts the cued track at the offset", async () => {
   assertEquals(music.state().track, "music/b.ogg");
   assertEquals(music.state().role, "cued");
   assert(music.line().includes("b (cued)"), music.line());
-  const element = elements[elements.length - 1];
-  assert(element.currentTime >= 12.5 && element.currentTime < 13);
-  assertEquals(element.paused, false);
+  // The local track may still be fading out on the other deck.
+  const element = playing(elements).find((candidate) =>
+    candidate.currentTime >= 12.5 && candidate.currentTime < 13
+  );
+  assert(element, "no deck plays b from 12.5 s");
   // The cue's hash is the one downloaded.
   assert(requests.some((url) => url.endsWith("music/b.ogg?v=bbbbbbbbbbbb")));
 });
@@ -194,15 +203,18 @@ Deno.test("a new cue crossfades from the previous track", async () => {
   music.follow(cue("a"), 1);
   await settle();
   assertEquals(music.state().track, "music/a.ogg");
-  const first = elements[elements.length - 1];
+  // The cued a started at 1 s; a local track may still be fading on the other deck.
+  const first = playing(elements).find((candidate) =>
+    candidate.currentTime >= 1 && candidate.currentTime < 1.5
+  )!;
   music.follow(cue("b"), 0);
   await settle(5);
   // Both play while the crossfade runs, then the old one is torn down.
   assertEquals(music.state().track, "music/b.ogg");
   assertEquals(first.paused, false);
-  await settle(200);
+  await settle(300);
   assertEquals(first.paused, true);
-  assertEquals(elements[elements.length - 1].paused, false);
+  assertEquals(playing(elements).length, 1);
 });
 
 Deno.test("a cue for a track the index does not list keeps the current track", async () => {
@@ -259,12 +271,12 @@ Deno.test("a guest with Music Off downloads no track and starts at the current o
   music.follow(cue("a"), 10);
   await settle();
   assertEquals(trackRequests(requests), []);
-  assertEquals(elements.length, 0);
+  assertEquals(withTrack(elements).length, 0);
   clock += 20_000;
   music.setLevel("50");
   await settle();
   assertEquals(music.state().track, "music/a.ogg");
-  assertEquals(elements[0].currentTime, 30);
+  assertEquals(playing(elements)[0].currentTime, 30);
 });
 
 Deno.test("follow(null) goes back to picking locally", async () => {
