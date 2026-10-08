@@ -1,6 +1,6 @@
 // Shared music cue tests (ADR 0009): the conductor and the guest that follows.
 import { assert, assertEquals } from "@std/assert";
-import { createMusic } from "../../src/client/music.js";
+import { createMusic, DRIFT_LIMIT } from "../../src/client/music.js";
 
 type Entry = { key: string; hash: string; tags: string[]; duration?: number };
 const entry = (name: string, duration = 100): Entry => ({
@@ -215,6 +215,61 @@ Deno.test("a new cue crossfades from the previous track", async () => {
   await settle(300);
   assertEquals(first.paused, true);
   assertEquals(playing(elements).length, 1);
+});
+
+Deno.test("a heartbeat for the same track skips a drifted guest to the host's position", async () => {
+  let clock = 1_000_000;
+  const { music, elements } = setup([entry("a"), entry("b")], "50", {
+    now: () => clock,
+  });
+  music.start(["adventure"]);
+  music.unlock();
+  await settle();
+  music.follow(cue("a"), 10);
+  await settle();
+  const deck = playing(elements).find((element) =>
+    element.src.startsWith("blob:") && element.currentTime === 10
+  )!;
+  assert(deck, "no deck plays a from 10 s");
+  const count = elements.length;
+  // The phone started late: its deck is a second behind the host.
+  clock += 5000;
+  deck.currentTime = 14;
+  music.follow(cue("a"), 15);
+  assertEquals(deck.currentTime, 15);
+  assertEquals(music.state().resyncs, 1);
+  // A drift inside the limit is left alone: no audible skip.
+  clock += 4000;
+  deck.currentTime = 19 + DRIFT_LIMIT / 2;
+  music.follow(cue("a"), 19);
+  assertEquals(deck.currentTime, 19 + DRIFT_LIMIT / 2);
+  assertEquals(music.state().resyncs, 1);
+  // The heartbeat never restarts the track.
+  await settle();
+  assertEquals(elements.length, count);
+  assertEquals(deck.paused, false);
+  assertEquals(music.state().track, "music/a.ogg");
+});
+
+Deno.test("the conductor reports where it is in its track", async () => {
+  let clock = 2_000_000;
+  const { music, elements } = setup([entry("a", 100)], "off", {
+    now: () => clock,
+  });
+  assertEquals(music.position(), null);
+  music.onTrackStart(() => {});
+  music.start(["adventure"]);
+  music.unlock();
+  await settle();
+  // Music Off: the silent count.
+  clock += 12_000;
+  assertEquals(music.position(), { key: "music/a.ogg", seconds: 12 });
+  // Music on: the playing deck's own time.
+  music.setLevel("50");
+  await settle();
+  const deck = playing(elements)[0];
+  deck.currentTime = 12.5;
+  assertEquals(music.position(), { key: "music/a.ogg", seconds: 12.5 });
 });
 
 Deno.test("a cue for a track the index does not list keeps the current track", async () => {

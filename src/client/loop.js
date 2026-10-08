@@ -18,9 +18,13 @@ import {
   recomputeVisibility,
   visibilityPosition,
 } from "../shared/visibility.js";
-import { clampCameraAxis } from "../shared/surface.js";
+import {
+  clampCameraAxis,
+  masterPanStep,
+  masterViewTiles,
+} from "../shared/surface.js";
 import { terrainExtent } from "../shared/terrain.js";
-import { generateAround } from "../shared/generation.js";
+import { generateAround, generateInView } from "../shared/generation.js";
 import { createChunkUnloader } from "../shared/chunk-unload.js";
 import { chatView, receiveChat } from "../shared/chat.js";
 import { hearChat } from "../shared/hearing-log.js";
@@ -138,7 +142,7 @@ function stepStateOf(ctx) {
  * @param {number} now
  */
 export function stepWorld(ctx, now) {
-  const { scene } = ctx;
+  const { scene, canvas } = ctx;
   const state = stepStateOf(ctx);
   ctx.accumulator += catchUpMs(now - state.last, document.hidden);
   state.last = now;
@@ -146,7 +150,20 @@ export function stepWorld(ctx, now) {
     advanceTicks(scene.world);
     ctx.tickNpc?.();
     ctx.host?.tick();
-    generateAround(scene.world, Object.values(scene.world.players));
+    const made = generateAround(
+      scene.world,
+      Object.values(scene.world.players),
+    );
+    // The host's master view also needs the terrain its camera looks at.
+    const view = scene.viewMode === "master" && canvas.clientWidth > 0
+      ? masterViewTiles(
+        scene.camera,
+        canvas.clientWidth,
+        canvas.clientHeight,
+        scene.zoom,
+      )
+      : null;
+    if (view) generateInView(scene.world, view, 2 - made);
     if (now - state.lastUnload >= 1000) {
       state.lastUnload = now;
       /** @type {{x:number,y:number}[]} */
@@ -155,7 +172,7 @@ export function stepWorld(ctx, now) {
       if (scene.viewMode === "master") {
         near.push({ x: scene.camera.x / 64, y: scene.camera.y / 64 });
       }
-      state.unloader.update(scene.world, near, now);
+      state.unloader.update(scene.world, near, now, view ? [view] : []);
     }
     move(ctx);
     if (!ctx.isAdmin) {
@@ -174,20 +191,31 @@ export function stepWorld(ctx, now) {
  * @param {ReturnType<typeof import('./input.js').createInput>} input
  */
 export function startLoop(ctx, renderer, input) {
-  const { scene, bag, shop, canvas, frameMs } = ctx;
+  const { scene, bag, shop, canvas, frameStats, frameInfo } = ctx;
   let last = performance.now();
   /** @param {number} now */
   const frame = (now) => {
     const elapsed = now - last;
     const dt = Math.min(250, elapsed);
     last = now;
-    frameMs.push(elapsed);
-    if (frameMs.length > 300) frameMs.shift();
+    frameInfo.viewMode = scene.viewMode;
+    frameInfo.zoom = scene.zoom;
+    frameInfo.chunks = scene.world.chunks.size;
+    // The renderer sets `stats` after each render; it may not yet (or at all).
+    const drawn = /** @type {{stats?:{quads?:number,tiles?:number}}|null} */ (
+      renderer
+    )?.stats;
+    frameInfo.quads = drawn?.quads;
+    frameInfo.tiles = drawn?.tiles;
+    frameStats.frame(now, frameInfo);
     input.poll();
+    frameStats.mark("step");
     stepWorld(ctx, now);
+    frameStats.end();
     const local = scene.world.players[scene.localId];
     if (local) {
       if (!ctx.isAdmin && scene.viewMode === "entity") {
+        frameStats.mark("visibility");
         recomputeVisibility(
           scene.world,
           scene.visibility,
@@ -196,6 +224,7 @@ export function startLoop(ctx, renderer, input) {
             scene.world.tick + ctx.accumulator / TICK_MS,
           ),
         );
+        frameStats.end();
       }
       if (local.z !== ctx.lastPlayerZ) {
         ctx.lastPlayerZ = local.z;
@@ -226,8 +255,8 @@ export function startLoop(ctx, renderer, input) {
     bag.steer(stickDirection(panelLook.x, panelLook.y, 0.18), now);
     const { x: cameraX, y: cameraY } = bag.isOpen ? { x: 0, y: 0 } : look;
     if (scene.viewMode === "master") {
-      scene.camera.x += cameraX * dt * 0.48;
-      scene.camera.y += cameraY * dt * 0.48;
+      scene.camera.x += masterPanStep(cameraX, dt, scene.zoom);
+      scene.camera.y += masterPanStep(cameraY, dt, scene.zoom);
     } else {
       // While the pickup grid is open the look control moves its selector.
       scene.aim = isPickupGridOpen(ctx.pickupGrid)
@@ -273,6 +302,7 @@ export function startLoop(ctx, renderer, input) {
       scene.world.players[scene.localId],
       now,
     );
+    frameStats.mark("display");
     scene.mining = miningDisplay(ctx, ctx.accumulator / TICK_MS);
     ctx.sounds.frame(now, ctx.accumulator / TICK_MS);
     scene.items = itemsDisplay(ctx);
@@ -283,10 +313,12 @@ export function startLoop(ctx, renderer, input) {
     shop.update(scene.inventory);
     shop.steer(shopDirection(ctx), now);
     shop.steerStick(ctx.gamepadStick.y, now);
+    frameStats.mark("layout");
     scene.ui = {
       layout: currentLayout(ctx),
       state: { pressed: input.router.pressed(), sticks: ctx.ui.sticks, now },
     };
+    frameStats.end();
     shop.fit(scene.ui.layout.shopList?.capacity ?? 1);
     const liveText = [
       scene.notice && now < scene.notice.until
@@ -297,10 +329,14 @@ export function startLoop(ctx, renderer, input) {
     if (ctx.liveStatus.textContent !== liveText) {
       ctx.liveStatus.textContent = liveText;
     }
+    frameStats.mark("render");
     renderer?.render(scene, ctx.accumulator / TICK_MS);
+    frameStats.end();
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+  // The gap while a tab was hidden is not a lag spike.
+  document.addEventListener("visibilitychange", () => frameStats.skipGap());
   // A hidden tab gets no frames; the clock keeps the world stepping.
   createTickClock(() => stepWorld(ctx, performance.now()), TICK_MS);
 }

@@ -106,6 +106,12 @@ the database:
   is rounded to two places, and anything else is dropped. A client adds a metric
   with a push; the shell needs no deploy.
 
+The client sends `commit` on every event. Its 10 s summary carries `metrics`
+`frameP95Ms`, `spikes33`, `spikes100`, `longTasks`, `longestTaskMs`, `renderMs`,
+`quads`, `zoom` and `master`. A frame over 250 ms sends a `spike` with the
+slowest phase in `detail`, at most once a minute, and an error event names the
+error and its file:line in `detail`. See [frame stats](frame-stats.md).
+
 `src/server/sweep.ts` deletes the Xirsys channel of every ended session. Deno
 Deploy has no cron here, so each session start and heartbeat runs the sweep, at
 most once a minute in each isolate. An isolate takes a lease on a session in

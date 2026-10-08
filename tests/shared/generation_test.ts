@@ -13,6 +13,7 @@ import {
   createChunkGenerator,
   generateAround,
   generateChunkData,
+  generateInView,
   seedFromText,
 } from "../../src/shared/generation.js";
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
@@ -212,4 +213,35 @@ Deno.test("generating a chunk takes a measured time", () => {
   );
   // A host tick lasts 50 ms; one chunk must stay a small part of it.
   assert(mean < 10, `mean ${mean} ms`);
+});
+
+Deno.test("generateInView fills the master view nearest the center first, within the budget", () => {
+  const world = createWorld();
+  world.generateChunk = createChunkGenerator(1);
+  // A view 3 chunks wide (4 to 6) and 2 high (5 and 6), centered nearest chunk 5,5.
+  const view = {
+    minX: 4 * 16 + 8,
+    minY: 5 * 16,
+    maxX: 7 * 16 - 1,
+    maxY: 7 * 16 - 1,
+  };
+  assertEquals(generateInView(world, view, 2), 2);
+  assertEquals(
+    [...world.chunks.keys()].filter((k) => k !== "0,0").sort(),
+    ["5,5", "5,6"],
+  );
+  assertEquals(generateInView(world, view, 100), 4);
+  assertEquals(generateInView(world, view, 100), 0);
+  for (let cy = 5; cy <= 6; cy++) {
+    for (let cx = 4; cx <= 6; cx++) assert(world.chunks.has(`${cx},${cy}`));
+  }
+  assertEquals(world.chunks.has("4,7"), false);
+  assertEquals(generateInView(world, view, 0), 0);
+});
+
+Deno.test("generateInView creates nothing without a generator", () => {
+  const world = createWorld();
+  const view = { minX: 100, minY: 100, maxX: 200, maxY: 200 };
+  assertEquals(generateInView(world, view), 0);
+  assertEquals(world.chunks.size, 1);
 });

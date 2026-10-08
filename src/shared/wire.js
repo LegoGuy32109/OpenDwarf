@@ -487,7 +487,7 @@ export function decodeSounds(value) {
 /**
  * A music cue: the track the world host started and the tick it started on
  * (ADR 0009).
- * @typedef {{key:string,hash:string,startTick:number}} MusicCue
+ * @typedef {{key:string,hash:string,startTick:number,atTick?:number,position?:number}} MusicCue
  */
 
 /** One segment of a media key, as the shell's `/media/` route accepts it. */
@@ -502,10 +502,15 @@ function mediaKey(value) {
     );
 }
 
+/** The longest track position a cue may carry, in seconds. */
+const MAX_MUSIC_POSITION = 24 * 60 * 60;
+
 /**
  * Host to guest: the current music cue. Returns null for anything malformed:
  * a key that is not a media key, a hash that is not 12 hex digits, or a start
- * tick that is not a bounded whole number.
+ * tick that is not a bounded whole number. A heartbeat adds `atTick` and
+ * `position`, the seconds the host's track was at on that tick; both or
+ * neither, or the cue is malformed.
  * @param {unknown} value @returns {MusicCue|null}
  */
 export function decodeMusicCue(value) {
@@ -514,7 +519,16 @@ export function decodeMusicCue(value) {
     typeof value.hash !== "string" || !/^[0-9a-f]{12}$/.test(value.hash) ||
     !counter(value.startTick)
   ) return null;
-  return { key: value.key, hash: value.hash, startTick: value.startTick };
+  /** @type {MusicCue} */
+  const cue = { key: value.key, hash: value.hash, startTick: value.startTick };
+  if (value.atTick === undefined && value.position === undefined) return cue;
+  const position = value.position;
+  if (
+    !counter(value.atTick) || typeof position !== "number" ||
+    !Number.isFinite(position) || position < 0 ||
+    position > MAX_MUSIC_POSITION
+  ) return null;
+  return { ...cue, atTick: value.atTick, position };
 }
 
 /** Most stacks one tile or one inventory may carry in a message: one per item kind. */

@@ -144,7 +144,11 @@ export function playerOccluded(world, player, viewZ) {
   return false;
 }
 
-/** Keep one full column and row of the loaded chunks (tiles `min` up to `max`) visible, or center when they fit. */
+/**
+ * Keep one full column and row of the loaded chunks (tiles `min` up to `max`)
+ * visible. The camera may pass the loaded extent by up to half a viewport, so a
+ * view wider than the terrain still pans; unknown terrain draws as stone.
+ */
 /** @param {number} desired @param {number} viewportPx @param {number} zoom @param {number} [max] @param {number} [min] */
 export function clampCameraAxis(
   desired,
@@ -153,10 +157,33 @@ export function clampCameraAxis(
   max = WORLD_EDGE,
   min = 0,
 ) {
-  const minPx = min * 64;
-  const maxPx = max * 64;
-  const visiblePx = viewportPx / zoom;
-  if (visiblePx >= maxPx - minPx) return (minPx + maxPx) / 2;
-  const half = visiblePx / 2;
-  return Math.max(minPx + 64 - half, Math.min(maxPx - 64 + half, desired));
+  const half = viewportPx / zoom / 2;
+  return Math.max(
+    min * 64 + 64 - half,
+    Math.min(max * 64 - 64 + half, desired),
+  );
+}
+
+/** Master view pan speed in world pixels per millisecond at zoom 1. */
+export const MASTER_PAN_SPEED = 0.48;
+
+/**
+ * How far the master camera moves in one frame, in world pixels. Dividing by
+ * the zoom keeps the screen speed the same at every zoom.
+ * @param {number} direction -1 to 1 @param {number} dtMs @param {number} zoom
+ */
+export function masterPanStep(direction, dtMs, zoom) {
+  return direction * dtMs * MASTER_PAN_SPEED / zoom;
+}
+
+/**
+ * The tiles the master camera looks at, as a rectangle (`max` values exclusive).
+ * @param {{x:number,y:number}} camera world pixels @param {number} widthPx @param {number} heightPx @param {number} zoom
+ */
+export function masterViewTiles(camera, widthPx, heightPx, zoom) {
+  const halfX = widthPx / zoom / 2 / 64;
+  const halfY = heightPx / zoom / 2 / 64;
+  const x = camera.x / 64;
+  const y = camera.y / 64;
+  return { minX: x - halfX, minY: y - halfY, maxX: x + halfX, maxY: y + halfY };
 }

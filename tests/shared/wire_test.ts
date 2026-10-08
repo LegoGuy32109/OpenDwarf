@@ -407,6 +407,33 @@ Deno.test("sounds accept bounded events and reject anything malformed", () => {
   assertEquals(bad({ seen: undefined }), null);
 });
 
+Deno.test("a music heartbeat carries the host's position on a tick, both or neither", () => {
+  const cue = {
+    type: "music",
+    key: "music/a.ogg",
+    hash: "0123456789ab",
+    startTick: 1200,
+  };
+  assertEquals(decodeMusicCue({ ...cue, atTick: 1400, position: 10.25 }), {
+    key: "music/a.ogg",
+    hash: "0123456789ab",
+    startTick: 1200,
+    atTick: 1400,
+    position: 10.25,
+  });
+  for (
+    const bad of [
+      { ...cue, atTick: 1400 },
+      { ...cue, position: 3 },
+      { ...cue, atTick: -1, position: 3 },
+      { ...cue, atTick: 1400, position: -0.5 },
+      { ...cue, atTick: 1400, position: NaN },
+      { ...cue, atTick: 1400, position: "3" },
+      { ...cue, atTick: 1400, position: 24 * 60 * 60 + 1 },
+    ]
+  ) assertEquals(decodeMusicCue(bad), null, JSON.stringify(bad));
+});
+
 Deno.test("a music cue needs a media key, a 12 digit hash, and a bounded tick", () => {
   const good = {
     type: "music",

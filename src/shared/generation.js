@@ -276,3 +276,42 @@ export function generateAround(world, tiles, budget = 2) {
   }
   return made;
 }
+
+/**
+ * Create the chunks the master camera's view covers that are still missing,
+ * nearest to the view center first, and stop after `budget` chunks. Call it
+ * with what is left of the tick's budget after `generateAround`.
+ * @param {import('./terrain.js').TerrainStore} world
+ * @param {{minX:number,minY:number,maxX:number,maxY:number}} view tiles
+ * @param {number} [budget]
+ * @returns {number} how many chunks were generated
+ */
+export function generateInView(world, view, budget = 2) {
+  if (!world.generateChunk || budget <= 0) return 0;
+  const x0 = chunkCoord(Math.floor(view.minX));
+  const y0 = chunkCoord(Math.floor(view.minY));
+  const x1 = chunkCoord(Math.floor(view.maxX));
+  const y1 = chunkCoord(Math.floor(view.maxY));
+  const centerX = (view.minX + view.maxX) / 2 / CHUNK_EDGE - 0.5;
+  const centerY = (view.minY + view.maxY) / 2 / CHUNK_EDGE - 0.5;
+  /** @type {{cx:number,cy:number,distance:number}[]} */
+  const wanted = [];
+  for (let cy = y0; cy <= y1; cy++) {
+    for (let cx = x0; cx <= x1; cx++) {
+      if (hasChunk(world, cx, cy)) continue;
+      wanted.push({
+        cx,
+        cy,
+        distance: (cx - centerX) ** 2 + (cy - centerY) ** 2,
+      });
+    }
+  }
+  wanted.sort((a, b) => a.distance - b.distance);
+  let made = 0;
+  for (const { cx, cy } of wanted) {
+    if (made >= budget) break;
+    ensureChunk(world, cx, cy);
+    made++;
+  }
+  return made;
+}

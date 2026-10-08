@@ -76,12 +76,14 @@ each track's `duration` from the index to know when the next one starts. Each
 time a track starts, the host sends every guest a **music cue**,
 `{type:"music", key, hash, startTick}`, on the reliable `world` channel, and it
 sends the current cue to a guest when it joins. A guest stops picking its own
-tracks and plays the cued track from `(now - startTick)` at the tick clock's
-presentation time, downloading it first if needed (the device cache still
-applies), and crossfades from the previous cue. A guest whose Music is Off
-downloads and plays nothing. Offline and single-player play keep picking
-locally. Later, places and events may give players different music; the cue
-leaves room for that.
+tracks and plays the cued track from `(now - startTick)` on the host's tick
+clock, downloading it first if needed (the device cache still applies), and
+crossfades from the previous cue. Every 4 s the host sends a heartbeat, the cue
+plus its own position in the track on a tick; a guest more than 0.25 s off skips
+to it instead of playing the wrong offset for the rest of the track. A guest
+whose Music is Off downloads and plays nothing. Offline and single-player play
+keep picking locally. Later, places and events may give players different music;
+the cue leaves room for that.
 
 ## Consequences
 

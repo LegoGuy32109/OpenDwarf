@@ -13,6 +13,7 @@ import {
   readTile,
   STONE,
   terrainExtent,
+  unloadChunk,
   writeTile,
 } from "../../src/shared/terrain.js";
 import {
@@ -361,4 +362,18 @@ Deno.test("a guest receives only the chunks it has seen", () => {
   assert(keys.includes("0,0"));
   assert(keys.includes("-1,0"), "the chunk beside the viewer is visible");
   assert(!keys.includes("9,9"), "a far chunk is never sent");
+});
+
+Deno.test("terrain extent is cached until a chunk is added or unloaded", () => {
+  const world = createAuthoredWorld(32);
+  const first = terrainExtent(world);
+  assertEquals(terrainExtent(world), first);
+  assertEquals(terrainExtent(world) === first, true);
+  ensureChunk(world, -1, 0);
+  const second = terrainExtent(world);
+  assertEquals(second.minX, -16);
+  assertEquals(terrainExtent(world) === second, true);
+  world.generateChunk = () => new Uint8Array(CHUNK_CELLS);
+  unloadChunk(world, -1, 0);
+  assertEquals(terrainExtent(world).minX, 0);
 });

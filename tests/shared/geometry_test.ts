@@ -16,6 +16,9 @@ import {
 import {
   clampCameraAxis,
   DEPTH_TINTS,
+  MASTER_PAN_SPEED,
+  masterPanStep,
+  masterViewTiles,
   playerOccluded,
   surfaceAt,
 } from "../../src/shared/surface.js";
@@ -91,5 +94,36 @@ Deno.test("lower floors turn blue then disappear beyond five levels", () => {
 Deno.test("camera keeps a full chunk row or column in view", () => {
   assertEquals(clampCameraAxis(-1000, 400, 1), -136);
   assertEquals(clampCameraAxis(2000, 400, 1), 1160);
-  assertEquals(clampCameraAxis(100, 1200, 1), 512);
+});
+
+Deno.test("camera pans past terrain narrower than the view, keeping one column on screen", () => {
+  // A 1024 px extent under a 1200 px view: the camera is no longer pinned.
+  const left = clampCameraAxis(-5000, 1200, 1, 16, 0);
+  const right = clampCameraAxis(5000, 1200, 1, 16, 0);
+  assertEquals([left, right], [-536, 1560]);
+  assertEquals(clampCameraAxis(100, 1200, 1, 16, 0), 100);
+  // At the limits the view still shows one 64 px column of terrain.
+  assertEquals(left + 600, 64);
+  assertEquals(right - 600, 1024 - 64);
+  // Zoomed out to 0.25, the 4x4 chunk start (4096 px) under a 1920 px view.
+  assertEquals(clampCameraAxis(-99999, 1920, 0.25, 64, 0) < 0, true);
+  assertEquals(clampCameraAxis(99999, 1920, 0.25, 64, 0) > 4096, true);
+});
+
+Deno.test("master pan speed on screen is the same at every zoom", () => {
+  assertEquals(masterPanStep(1, 100, 1), 100 * MASTER_PAN_SPEED);
+  for (const zoom of [0.25, 0.5, 1, 2]) {
+    const screen = masterPanStep(1, 1000, zoom) * zoom;
+    assertEquals(Math.abs(screen - 1000 * MASTER_PAN_SPEED) < 1e-9, true);
+  }
+  assertEquals(masterPanStep(-1, 100, 0.25), -4 * 100 * MASTER_PAN_SPEED);
+});
+
+Deno.test("master view tiles are the rectangle the camera looks at", () => {
+  assertEquals(masterViewTiles({ x: 640, y: 320 }, 1280, 640, 0.5), {
+    minX: -10,
+    minY: -5,
+    maxX: 30,
+    maxY: 15,
+  });
 });

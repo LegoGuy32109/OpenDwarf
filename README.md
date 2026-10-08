@@ -69,6 +69,7 @@ its feature there:
 - [Sound events](docs/features/sound-events.md)
 - [Cursor](docs/features/cursor.md)
 - [Render performance](docs/features/render-performance.md)
+- [Frame stats and lag-spike logging](docs/features/frame-stats.md)
 
 <!-- Add a line here for each new docs/features/*.md file. -->
 
