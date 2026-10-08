@@ -53,9 +53,13 @@ function uiView(ctx) {
     // Only a browser tab offers fullscreen; a Home Screen app already fills the screen.
     fullscreen: !isStandalone(ctx),
     fullscreenOn: document.fullscreenElement === ctx.gameRoot,
-    host: ctx.isAdmin
-      ? undefined
-      : { tools: ui.hostTools, players, joinOpen: ui.joinOpen, qr: ui.qrReady },
+    host: ctx.isAdmin ? undefined : {
+      tools: ui.hostTools,
+      players,
+      joinOpen: ui.joinOpen && !ui.offline,
+      qr: ui.qrReady,
+      offline: ui.offline,
+    },
     held: heldDisplay(ctx),
     stamina: {
       value: stamina.value,
@@ -84,7 +88,7 @@ function uiView(ctx) {
         music: ctx.music.level,
         musicLevels: MUSIC_LEVELS,
         mode: scene.inputMode,
-        build: build.line,
+        build: ui.offline ? `${build.line}  OFFLINE` : build.line,
       }
       : undefined,
     log: {

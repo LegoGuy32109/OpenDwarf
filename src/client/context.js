@@ -151,6 +151,8 @@ export function createContext() {
     logScroll: 0,
     joinOpen: false,
     qrReady: false,
+    /** The page started with no network: a single-player world, with no join link. */
+    offline: false,
     qrUrl: "",
     hostTools: false,
     diagnosticsOpen: false,
