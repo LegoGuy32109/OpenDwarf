@@ -128,3 +128,6 @@ and raises the GitHub API limit for branch lookups.
 
 See the Deno Deploy
 [build configuration](https://docs.deno.com/deploy/reference/builds/).
+
+The shell also serves `/media/<key>` and each build's `sw.js` loader; see
+[media](media.md).

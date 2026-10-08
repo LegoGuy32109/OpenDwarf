@@ -2,6 +2,8 @@
 // redirects to a presigned link; without it, it serves the file from a local folder that mirrors
 // the bucket, so dev and e2e need no bucket. The shell knows nothing about what a key holds.
 
+import { signerFromEnv } from "./r2.ts";
+
 const DEFAULT_DIR = new URL("../../media/", import.meta.url);
 const TYPES: Record<string, string> = {
   ".ogg": "audio/ogg",
@@ -152,15 +154,18 @@ export function createMedia(options: MediaOptions = {}): Media {
 }
 
 /**
- * The media for this process. `OD_MEDIA_DIR` overrides the local folder. The R2 signer
- * (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `R2_BUCKET`) is added by the
- * media route ticket; until then every request is served from the folder.
+ * The media for this process. `OD_MEDIA_DIR` overrides the local folder. The R2 signer is used
+ * only when `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` and `R2_BUCKET` are all
+ * set; otherwise every request is served from the folder.
  */
-export function openMedia(): Media {
-  const dir = Deno.env.get("OD_MEDIA_DIR");
+export function openMedia(
+  get: (name: string) => string | undefined = (name) => Deno.env.get(name),
+): Media {
+  const dir = get("OD_MEDIA_DIR");
   return createMedia({
     dir: dir
       ? new URL(dir.replace(/\/?$/, "/"), `file://${Deno.cwd()}/`)
       : undefined,
+    signer: signerFromEnv(get),
   });
 }

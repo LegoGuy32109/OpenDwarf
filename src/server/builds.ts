@@ -156,6 +156,12 @@ export interface Builds {
   /** Answers a GET for a path `handles` accepted. */
   serve(path: string): Promise<Response>;
   /**
+   * The service worker loader for `/sw.js` (main) and `/b/<name>/sw.js` (ADR 0007): one line
+   * that imports the build's `sw-main.js` from jsDelivr, with the commit in a comment. A `404`
+   * for an unknown build, and null for any other path (the local build's loader is the app's).
+   */
+  worker(path: string): Promise<Response | null>;
+  /**
    * Resolves a build name to a full commit SHA, or null when nothing has that name. With
    * `fresh`, a branch is looked up again instead of read from the 60 s cache: a promotion
    * right after a push must get the pushed commit.
@@ -363,6 +369,29 @@ export function createBuilds(options: BuildOptions): Builds {
     pulls,
     handles: (path) => split(path) !== null,
     resolve,
+    async worker(path) {
+      const named = /^\/b\/([^/]+)\/sw\.js$/.exec(path);
+      if (!named && path !== "/sw.js") return null;
+      try {
+        const sha = named
+          ? await resolve(named[1])
+          : (await store.getMain())?.commit ?? null;
+        if (!sha) return new Response("Not found", { status: 404 });
+        return new Response(
+          `importScripts("${cdnBase(sha)}js/sw-main.js"); // build ${sha}\n`,
+          {
+            headers: {
+              "content-type": "text/javascript; charset=utf-8",
+              "cache-control": "no-cache",
+              "x-content-type-options": "nosniff",
+            },
+          },
+        );
+      } catch (error) {
+        console.error("Build worker failed", error);
+        return new Response("Build unavailable", { status: 502 });
+      }
+    },
     async serve(path) {
       const target = split(path);
       if (!target) return new Response("Not found", { status: 404 });

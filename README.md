@@ -59,6 +59,7 @@ its feature there:
 - [Networking](docs/features/networking.md)
 - [Sessions and signaling](docs/features/sessions-and-signaling.md)
 - [Shell and builds](docs/features/shell-and-builds.md)
+- [Media and offline](docs/features/media.md)
 - [Admin dashboard](docs/features/admin-dashboard.md)
 - [Testing and evidence](docs/features/testing-and-evidence.md)
 
