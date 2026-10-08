@@ -68,6 +68,7 @@ its feature there:
 - [Testing and evidence](docs/features/testing-and-evidence.md)
 - [Sound events](docs/features/sound-events.md)
 - [Cursor](docs/features/cursor.md)
+- [Frame stats and lag-spike logging](docs/features/frame-stats.md)
 
 <!-- Add a line here for each new docs/features/*.md file. -->
 

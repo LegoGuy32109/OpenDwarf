@@ -25,7 +25,7 @@ import { localCursor } from "./cursor.js";
 /** Expose `globalThis.__od` when the page loads with `?harness`. @param {Context} ctx */
 export function exposeHarness(ctx) {
   if (!new URL(location.href).searchParams.has("harness")) return;
-  const { scene, ui, frameMs } = ctx;
+  const { scene, ui } = ctx;
   /** @type {{__od?:unknown}} */ (globalThis).__od = {
     scene,
     /** Chatter that started (ADR 0006), so specs can check it without listening. */
@@ -75,12 +75,10 @@ export function exposeHarness(ctx) {
     /** @param {unknown} value @param {boolean} [replaceable] */
     injectPacket: (value, replaceable = false) =>
       ctx.guest?.injectPacket(value, replaceable),
+    /** Frame times, spike counters, phase timings and the spike log (`frame-stats.js`). */
     frameStats: () => ({
-      samples: frameMs.length,
-      meanMs: frameMs.length
-        ? frameMs.reduce((sum, value) => sum + value, 0) / frameMs.length
-        : 0,
-      maxMs: Math.max(0, ...frameMs),
+      ...ctx.frameStats.snapshot(),
+      info: { ...ctx.frameInfo },
     }),
     /** @param {number} dx @param {number} dy */
     startMove: (dx, dy) =>
