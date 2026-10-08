@@ -222,9 +222,9 @@ export function miningEntries(world) {
 }
 
 /** Number of breaking decal frames. */
-export const DECAL_FRAMES = 5;
+export const DECAL_FRAMES = 10;
 
-/** Decal frame, 0 through 4, for mining progress from 0 to 1. @param {number} progress */
+/** Decal frame, 0 through 9, for mining progress from 0 to 1. @param {number} progress */
 export function decalFrame(progress) {
   return Math.max(
     0,

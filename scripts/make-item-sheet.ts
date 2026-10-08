@@ -1,4 +1,5 @@
-// Build the item sprite sheet `public/assets/items.png`.
+// Build the item sprite sheet `public/assets/items.png` and the breaking
+// decal sheet `public/assets/cracks.png`.
 //
 // deno run --allow-run --allow-read --allow-write scripts/make-item-sheet.ts
 //
@@ -6,7 +7,9 @@
 // src/shared/items.js: stone, coal, iron ore, gold ore, lapis, redstone,
 // diamond, emerald, coin, pickaxe. Every frame comes from the Excalibur
 // resource pack in art/excalibur/item/ (see the README's credits); the coin is
-// the emerald with its hue turned to gold. Needs ImageMagick (`magick`).
+// the emerald with its hue turned to gold. The decal sheet is one column of
+// Excalibur's ten destroy stages, art/excalibur/block/destroy_stage_0-9.png.
+// Needs ImageMagick (`magick`).
 
 import { ITEM_KINDS } from "../src/shared/items.js";
 
@@ -65,3 +68,20 @@ await writer.close();
 const status = await encode.status;
 if (!status.success) throw new Error("magick failed");
 console.log(`Wrote public/assets/items.png (${FRAMES} frames)`);
+
+const stages = Array.from(
+  { length: 10 },
+  (_, n) => `art/excalibur/block/destroy_stage_${n}.png`,
+);
+const cracks = await new Deno.Command("magick", {
+  args: [
+    ...stages,
+    "-background",
+    "none",
+    "-append",
+    "+repage",
+    "PNG32:public/assets/cracks.png",
+  ],
+}).output();
+if (!cracks.success) throw new Error("magick failed on the destroy stages");
+console.log("Wrote public/assets/cracks.png (10 frames)");

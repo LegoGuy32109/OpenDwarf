@@ -16,7 +16,7 @@ import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import { readTile } from "../shared/terrain.js";
 import { CURSOR_ICON_SIZE, CURSOR_OUTLINE, localCursor } from "./cursor.js";
-import { decalFrame } from "../shared/mining.js";
+import { DECAL_FRAMES, decalFrame } from "../shared/mining.js";
 import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
 import { SHOP_TILE } from "../shared/shop.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
@@ -99,19 +99,6 @@ function texture(gl, source) {
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
 /** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},ui?:{layout:import('./ui.js').UiLayout,state:import('./ui-draw.js').DrawState},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
 
-/**
- * Placeholder breaking decal. Each frame adds cracks, as [x, y, width, height]
- * in 16×16 pixel units; frame n draws the pieces of frames 0 through n.
- * @type {readonly (readonly (readonly [number,number,number,number])[])[]}
- */
-const DECAL_PIECES = [
-  [[7, 6, 2, 3]],
-  [[5, 4, 2, 2], [9, 9, 2, 2], [7, 3, 2, 3]],
-  [[2, 8, 5, 2], [9, 2, 2, 5], [10, 11, 4, 2]],
-  [[2, 2, 4, 2], [11, 5, 4, 2], [6, 10, 2, 5], [3, 12, 3, 2]],
-  [[1, 5, 4, 2], [11, 8, 4, 2], [8, 0, 2, 6], [13, 12, 2, 3], [3, 3, 2, 6]],
-];
-
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
   const context = canvas.getContext("webgl2", {
@@ -167,8 +154,9 @@ export async function createRenderer(canvas) {
     image("assets/ceiling.png"),
     image("assets/ores.png"),
     image("assets/items.png"),
+    image("assets/cracks.png"),
   ]).then((images) => {
-    const [floor, sprite, edge, ceiling, ores, items] =
+    const [floor, sprite, edge, ceiling, ores, items, cracks] =
       /** @type {HTMLImageElement[]} */ (images);
     textures.floor = texture(gl, floor);
     textures.sprite = texture(gl, sprite);
@@ -176,6 +164,7 @@ export async function createRenderer(canvas) {
     textures.ceiling = texture(gl, ceiling);
     textures.ores = texture(gl, ores);
     textures.items = texture(gl, items);
+    textures.cracks = texture(gl, cracks);
     loaded = true;
   });
   /** The join QR code, drawn by the UI layer. @type {WebGLTexture|null} */
@@ -604,28 +593,14 @@ export async function createRenderer(canvas) {
       if (entry.z !== scene.viewZ) continue;
       const px = entry.x * TILE;
       const py = entry.y * TILE;
-      const unit = TILE / 16;
+      // Excalibur's destroy stages, one per tenth of the mining time.
       const frame = decalFrame(entry.progress);
-      quad(textures.white, false, px, py, TILE, TILE, [0, 0, 1, 1], [
+      quad(textures.cracks, false, px, py, TILE, TILE, [
         0,
-        0,
-        0,
-        0.07 * (frame + 1),
+        frame / DECAL_FRAMES,
+        1,
+        1 / DECAL_FRAMES,
       ]);
-      for (const pieces of DECAL_PIECES.slice(0, frame + 1)) {
-        for (const [x, y, w, h] of pieces) {
-          quad(
-            textures.white,
-            false,
-            px + x * unit,
-            py + y * unit,
-            w * unit,
-            h * unit,
-            [0, 0, 1, 1],
-            [0, 0, 0, 0.8],
-          );
-        }
-      }
     }
     flush();
     // Dropped items: one icon per tile, and the kinds on a tile take turns.

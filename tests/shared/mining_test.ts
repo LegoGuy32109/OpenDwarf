@@ -285,8 +285,8 @@ Deno.test("entries report elapsed and total time and drive the decal frames", ()
     { id: "self", x: 6, y: 5, z: 1, elapsedMs: 200, totalMs: 1000 },
   ]);
   assertEquals(
-    [0, 0.19, 0.2, 0.5, 0.79, 0.8, 1].map(decalFrame),
-    [0, 0, 1, 2, 3, 4, 4],
+    [0, 0.09, 0.1, 0.5, 0.89, 0.9, 1].map(decalFrame),
+    [0, 0, 1, 5, 8, 9, 9],
   );
 });
 
