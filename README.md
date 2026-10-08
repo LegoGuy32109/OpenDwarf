@@ -85,3 +85,14 @@ Design notes: [movement](docs/movement-design.md),
 [sight boundary](docs/sight-boundary-design.md),
 [live-session vision](docs/live-session-vision.md), and
 [stress runs](docs/stress-runs/README.md).
+
+## Credits
+
+The stone floor, the ore tiles (`public/assets/floor.png`, `ores.png`), and the
+stone and ore item icons (`items.png`, from `art/excalibur/item/`) come from
+[Excalibur](https://www.curseforge.com/minecraft/texture-packs/excalibur) by
+Maffhew, licensed
+[CC BY-NC-ND 3.0](http://creativecommons.org/licenses/by-nc-nd/3.0/us/). The
+floor's stone frames are lightly edited. Sound effect samples come from
+Minecraft mods and resource packs; each sample's `note` in
+`media/index/sfx.v1.json` names its source.

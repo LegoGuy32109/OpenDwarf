@@ -1,10 +1,12 @@
-// Draw the placeholder item sprite sheet `public/assets/items.png`.
+// Draw the item sprite sheet `public/assets/items.png`.
 //
-// deno run --allow-run --allow-write scripts/make-item-sheet.ts
+// deno run --allow-run --allow-read --allow-write scripts/make-item-sheet.ts
 //
 // The sheet is one column of 16×16 frames, in the order of `ITEM_KINDS` in
 // src/shared/items.js: stone, coal, iron ore, gold ore, lapis, redstone,
-// diamond, emerald, coin, pickaxe. The pickaxe is cut from the first dwarf
+// diamond, emerald, coin, pickaxe. Stone and the ore items come from the
+// Excalibur resource pack in art/excalibur/item/ (see the README's credits);
+// the coin is drawn here. The pickaxe is cut from the first dwarf
 // mining frame on `main` (Assets/CreatureSprites/Dwarf/MineFrames/DwarfMine1.png):
 // only its gray head and brown handle pixels stay. Needs ImageMagick (`magick`).
 
@@ -27,82 +29,31 @@ function put(frame: number, x: number, y: number, [r, g, b]: Rgb) {
   sheet.set([r, g, b, 255], at);
 }
 
-/** Paint a frame from rows of characters: `.` is clear and each other character looks up its color. */
-function paint(frame: number, rows: string[], colors: Record<string, Rgb>) {
-  rows.forEach((row, y) =>
-    [...row].forEach((char, x) => {
-      if (colors[char]) put(frame, x, y, colors[char]);
-    })
-  );
-}
-
-const LUMP = [
-  "................",
-  "................",
-  "................",
-  ".....oooooo.....",
-  "...ooLLLLLLoo...",
-  "..oLLLLLLLLLLo..",
-  "..oLLLLLLLLLLLo.",
-  ".oLLLLLLLLLLLLo.",
-  ".oLLLLLLLLLLLDo.",
-  ".oLLLLLLLLLDDDo.",
-  "..oLLLLLLDDDDo..",
-  "..ooDDDDDDDDoo..",
-  "....oooooooo....",
-  "................",
-  "................",
-  "................",
-];
-/** Where an ore's colored flecks sit on the lump. */
-const FLECKS = [[5, 6], [9, 5], [10, 8], [6, 9], [8, 7], [11, 10]];
-
-const GEM = [
-  "................",
-  "................",
-  "................",
-  "................",
-  "....oooooooo....",
-  "...oAAAAAAAAo...",
-  "..oAABBBBBBAAo..",
-  "...oAABBBBAAo...",
-  "....oAABBAAo....",
-  ".....oAABAo.....",
-  "......oAAo......",
-  ".......oo.......",
-  "................",
-  "................",
-  "................",
-  "................",
-];
-
-const stone = { o: hex("#34343a"), L: hex("#8c8c93"), D: hex("#6a6a72") };
-
-/** Lump of stone with flecks of one color. */
-function ore(frame: number, fleck: Rgb | null, shine: Rgb | null = null) {
-  paint(frame, LUMP, stone);
-  if (!fleck) return;
-  for (const [x, y] of FLECKS) {
-    put(frame, x, y, fleck);
-    if (shine) put(frame, x + 1, y - 1, shine);
-  }
-}
-
-function gem(frame: number, light: Rgb, dark: Rgb) {
-  paint(frame, GEM, { o: hex("#26303a"), A: light, B: dark });
-}
-
 const frameOf = (kind: string) =>
   ITEM_KINDS.find((info) => info.kind === kind)!.frame;
 
-ore(frameOf("stone"), null);
-ore(frameOf("coal"), hex("#1a1a1d"));
-ore(frameOf("iron ore"), hex("#d8a48a"), hex("#f0cdb8"));
-ore(frameOf("gold ore"), hex("#f2c230"), hex("#fff0a0"));
-ore(frameOf("lapis"), hex("#2a4fd6"), hex("#7f9bff"));
-ore(frameOf("redstone"), hex("#d41f1f"), hex("#ff7f7f"));
-gem(frameOf("diamond"), hex("#8af2f0"), hex("#3cc0c6"));
-gem(frameOf("emerald"), hex("#5fe08a"), hex("#1fa356"));
+/**
+ * Excalibur item textures for each item kind. `stone_block.png` is a 16×16
+ * isometric cube rendered from Excalibur's stone block, shaded and outlined.
+ */
+const EXCALIBUR_ITEMS: Record<string, string> = {
+  "stone": "stone_block.png",
+  "coal": "coal.png",
+  "iron ore": "raw_iron.png",
+  "gold ore": "raw_gold.png",
+  "lapis": "lapis_lazuli.png",
+  "redstone": "redstone.png",
+  "diamond": "diamond.png",
+  "emerald": "emerald.png",
+};
+for (const [kind, file] of Object.entries(EXCALIBUR_ITEMS)) {
+  const read = await new Deno.Command("magick", {
+    args: [`art/excalibur/item/${file}`, "-depth", "8", "rgba:-"],
+    stdout: "piped",
+  }).output();
+  if (!read.success) throw new Error(`magick failed on ${file}`);
+  sheet.set(read.stdout, frameOf(kind) * SIZE * SIZE * 4);
+}
 
 // A coin: a gold disc with a darker rim and a highlight.
 {
