@@ -30,8 +30,9 @@ production origins and `localhost:8000` (CORS, set on 2026-10-07).
 - `GET|HEAD /media/<key>` with R2 configured (`R2_ACCESS_KEY_ID`,
   `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `R2_BUCKET`): a `302` to a SigV4
   presigned `GET` URL for that key, valid for 3600 s, with
-  `Cache-Control: public, max-age=300`. The query string (such as `?v=`) is not
-  part of the key and is ignored. The shell does not check that the object
+  `Cache-Control: private, max-age=300` (the edge cache truncated a cached
+  `location`, so only the browser keeps it). The query string (such as `?v=`) is
+  not part of the key and is ignored. The shell does not check that the object
   exists; a missing key is the bucket's own `404`.
 - Without R2: the same path serves the file from `OD_MEDIA_DIR` (default
   `media/`), with `Range` support, so dev and e2e need no bucket.

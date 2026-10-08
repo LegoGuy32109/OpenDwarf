@@ -74,7 +74,7 @@ Deno.test("the query string of the request is not part of the signed key", async
   };
   const response = await get("/media/music/a.ogg?v=abc123");
   assertEquals(response?.status, 302);
-  assertEquals(response?.headers.get("cache-control"), "public, max-age=300");
+  assertEquals(response?.headers.get("cache-control"), "private, max-age=300");
   const location = new URL(response!.headers.get("location")!);
   assertEquals(location.pathname, "/opendwarf/music/a.ogg");
   assertEquals(location.searchParams.has("v"), false);

@@ -11,7 +11,9 @@ content never needs a shell deploy. The design is in
 - `GET|HEAD /media/<key>` with `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
   `R2_ENDPOINT` and `R2_BUCKET` all set: a `302` to a SigV4 presigned `GET` URL
   for the key (`src/server/r2.ts`), valid for 3600 s, with
-  `Cache-Control: public, max-age=300`. The URL is path style
+  `Cache-Control: private, max-age=300`: a browser may keep the redirect, but
+  Deno Deploy's edge cache must not, because a cached `location` came back cut
+  off after `X-Amz-Date`. The URL is path style
   (`<R2_ENDPOINT>/<R2_BUCKET>/<key>`), region `auto`, service `s3`, payload
   `UNSIGNED-PAYLOAD`, and `host` is the only signed header. The query string of
   the request (such as `?v=<hash>`) is not part of the key. The shell does not

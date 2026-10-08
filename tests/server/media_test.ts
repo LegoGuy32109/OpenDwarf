@@ -65,5 +65,5 @@ Deno.test("with a signer, media redirects to the signed link", async () => {
     response?.headers.get("location"),
     "https://r2.example/music/a.ogg?sig=1",
   );
-  assertEquals(response?.headers.get("cache-control"), "public, max-age=300");
+  assertEquals(response?.headers.get("cache-control"), "private, max-age=300");
 });

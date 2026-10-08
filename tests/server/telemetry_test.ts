@@ -1,5 +1,11 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { createApp, joinLink } from "../../src/server/app.ts";
+import {
+  createApp,
+  joinLink,
+  TELEMETRY_METRICS,
+  telemetryDetail,
+  telemetryMetrics,
+} from "../../src/server/app.ts";
 import { openBuilds } from "../../src/server/builds.ts";
 import { createMemoryStore } from "../../src/server/store.ts";
 
@@ -93,6 +99,98 @@ Deno.test("only a summary is stored; connection and error events stay in the log
     console.log = original;
   }
   assertEquals(await store.listTelemetry("test-session"), []);
+});
+
+Deno.test("a spike logs its commit, detail and metrics, and is not stored", async () => {
+  const { store, app } = shell();
+  const logged: string[] = [];
+  const original = console.log;
+  console.log = (...values: unknown[]) => logged.push(values.join(" "));
+  try {
+    const response = await app(post({
+      kind: "spike",
+      session: "test-session",
+      role: "host",
+      commit: "b3882b9",
+      detail: "frame",
+      metrics: { frameMs: 180.456, viewMaster: 1, zoom: 0.25 },
+    }));
+    assertEquals(response.status, 200);
+  } finally {
+    console.log = original;
+  }
+  const line = JSON.parse(logged[0]);
+  assertEquals(line.kind, "spike");
+  assertEquals(line.commit, "b3882b9");
+  assertEquals(line.detail, "frame");
+  assertEquals(line.metrics, { frameMs: 180.46, viewMaster: 1, zoom: 0.25 });
+  assertEquals(await store.listTelemetry("test-session"), []);
+});
+
+Deno.test("a bad commit is dropped and a summary still stores", async () => {
+  const { store, app } = shell();
+  const logged: string[] = [];
+  const original = console.log;
+  console.log = (...values: unknown[]) => logged.push(values.join(" "));
+  try {
+    await app(post({
+      kind: "summary",
+      session: "test-session",
+      commit: "main; drop table",
+      metrics: { frameP95Ms: 20 },
+    }));
+  } finally {
+    console.log = original;
+  }
+  const line = JSON.parse(logged[0]);
+  assertEquals(line.commit, null);
+  assertEquals(line.metrics, { frameP95Ms: 20 });
+  assertEquals((await store.listTelemetry("test-session")).length, 1);
+});
+
+Deno.test("metrics keep short names with finite numbers, up to the limit", () => {
+  assertEquals(
+    telemetryMetrics({
+      ok: 1.234,
+      "bad name": 2,
+      "1st": 3,
+      text: "4",
+      nan: NaN,
+      inf: Infinity,
+      nested: { a: 1 },
+      ["x".repeat(33)]: 5,
+    }),
+    { ok: 1.23 },
+  );
+  assertEquals(telemetryMetrics([1, 2]), {});
+  assertEquals(telemetryMetrics("frameMs=4"), {});
+  const many = Object.fromEntries(
+    Array.from({ length: 40 }, (_, i) => [`m${i}`, i]),
+  );
+  assertEquals(Object.keys(telemetryMetrics(many)).length, TELEMETRY_METRICS);
+});
+
+Deno.test("a detail keeps a file and line but never a URL or its query", () => {
+  assertEquals(
+    telemetryDetail(
+      "TypeError: x is null at https://cdn.jsdelivr.net/gh/a/b@abc/src/client/render.js:120:7",
+    ),
+    "TypeError: x is null at render.js:120:7",
+  );
+  assertEquals(
+    telemetryDetail(
+      "fetch failed https://acct.r2.cloudflarestorage.com/opendwarf/sfx/a.ogg?X-Amz-Signature=secret",
+    ),
+    "fetch failed a.ogg",
+  );
+  assertEquals(
+    telemetryDetail("join https://od.joshhale.me/join/session-1?x=1#y"),
+    "join session-1",
+  );
+  assertEquals(telemetryDetail("line\nbreak\u0000"), "line break");
+  assertEquals(telemetryDetail("x".repeat(500))?.length, 160);
+  assertEquals(telemetryDetail(42), null);
+  assertEquals(telemetryDetail("   "), null);
 });
 
 Deno.test("telemetry keeps its input validation", async () => {

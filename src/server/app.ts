@@ -22,6 +22,56 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+/** The most named numbers one telemetry event may carry in `metrics`. */
+export const TELEMETRY_METRICS = 24;
+
+/**
+ * Named numbers a client adds without a shell deploy: up to `TELEMETRY_METRICS`
+ * short alphanumeric keys with finite values, rounded to two places. Anything
+ * else is dropped.
+ */
+export function telemetryMetrics(value: unknown): Record<string, number> {
+  const metrics: Record<string, number> = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return metrics;
+  }
+  let kept = 0;
+  for (const [name, number] of Object.entries(value)) {
+    if (kept >= TELEMETRY_METRICS) break;
+    if (!/^[a-zA-Z][a-zA-Z0-9]{0,31}$/.test(name)) continue;
+    if (typeof number !== "number" || !Number.isFinite(number)) continue;
+    metrics[name] = Math.round(number * 100) / 100;
+    kept++;
+  }
+  return metrics;
+}
+
+/**
+ * A short error detail, such as `TypeError: x is null at render.js:120:7`. A URL
+ * keeps only its file name and position, so no query string (a signed link, a
+ * session) reaches the log. Control characters go, and it is cut to 160.
+ */
+export function telemetryDetail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value
+    .replace(
+      /[a-z][a-z0-9+.-]*:\/\/[^\s)]*/gi,
+      (url) => {
+        const path = url.split(/[?#]/)[0];
+        const file = path.slice(path.lastIndexOf("/") + 1);
+        const position = url.match(/(:\d+){1,2}$/)?.[0] ?? "";
+        return file.replace(/(:\d+){1,2}$/, "") + position;
+      },
+    )
+    .split("")
+    .map((char) => char.charCodeAt(0) < 32 || char === "\x7f" ? " " : char)
+    .join("")
+    .replace(/ {2,}/g, " ")
+    .trim()
+    .slice(0, 160);
+  return text || null;
+}
+
 async function body(request: Request): Promise<Record<string, unknown>> {
   try {
     const value: unknown = await request.json();
@@ -153,7 +203,7 @@ export function createApp(
       const kind = data.kind;
       if (
         typeof kind !== "string" ||
-        !["summary", "connection", "error"].includes(kind) ||
+        !["summary", "connection", "error", "spike"].includes(kind) ||
         typeof data.session !== "string" ||
         !/^[a-zA-Z0-9_-]{8,80}$/.test(data.session)
       ) return json({ error: "invalid telemetry" }, 400);
@@ -195,9 +245,16 @@ export function createApp(
         rttMs: number(data.rttMs),
         bytesSent: number(data.bytesSent),
         queuedBytes: number(data.queuedBytes),
+        commit: typeof data.commit === "string" &&
+            /^[a-f0-9]{7,40}$/.test(data.commit)
+          ? data.commit
+          : null,
+        detail: telemetryDetail(data.detail),
+        metrics: telemetryMetrics(data.metrics),
       };
       console.log(JSON.stringify(safe));
-      // Only a summary is kept, and for 30 days; connection and error events stay in the log.
+      // Only a summary is kept, and for 30 days; connection, error and spike events, and every
+      // commit, detail and metric, stay in the log.
       if (kind === "summary") {
         try {
           await builds.store.recordTelemetry({

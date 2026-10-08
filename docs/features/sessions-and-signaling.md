@@ -90,7 +90,21 @@ the commit of the working tree). The world host still validates every guest
 action; the build only decides which client the guest runs.
 
 `POST /api/v1/telemetry` keeps its validation and its console line, and stores
-each `summary` for 30 days. `connection` and `error` events stay in the log.
+each `summary` for 30 days. `connection`, `error` and `spike` events stay in the
+log. A `spike` is one slow frame or long task, logged on its own so it can be
+found by time.
+
+Every event may also carry these fields. They go to the log line only, never to
+the database:
+
+- `commit`: the build, 7–40 hex characters. Anything else is logged as `null`.
+- `detail`: up to 160 characters, such as an error's name and file:line. A URL
+  keeps only its file name and position, so a query string (a signed link or a
+  session id) never reaches the log.
+- `metrics`: up to 24 named numbers (`telemetryMetrics` in `src/server/app.ts`).
+  A name is a letter and then up to 31 letters or digits, a value is finite and
+  is rounded to two places, and anything else is dropped. A client adds a metric
+  with a push; the shell needs no deploy.
 
 `src/server/sweep.ts` deletes the Xirsys channel of every ended session. Deno
 Deploy has no cron here, so each session start and heartbeat runs the sweep, at

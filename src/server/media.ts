@@ -144,7 +144,7 @@ export function createMedia(options: MediaOptions = {}): Media {
           status: 302,
           headers: {
             location: await options.signer(key),
-            "cache-control": "public, max-age=300",
+            "cache-control": "private, max-age=300",
           },
         });
       }
