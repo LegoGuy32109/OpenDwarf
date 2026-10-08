@@ -39,7 +39,7 @@ import {
 } from "../shared/reveal.js";
 import { mergeSnapshot } from "../shared/reconcile.js";
 import { itemSeen, seesFrom } from "../shared/reach.js";
-import { renderPosition } from "../shared/world.js";
+import { renderPosition, TICK_MS } from "../shared/world.js";
 import {
   createVisibility,
   tileKey,
@@ -73,6 +73,7 @@ import {
   decodeItems,
   decodeMining,
   decodeMotion,
+  decodeMusicCue,
   decodeSounds,
   decodeState,
   encodeMotionPlayers,
@@ -117,7 +118,7 @@ function deliver(receive, replaceable = false) {
 /** @typedef {{at:number,entries:import('../shared/mining.js').MiningEntry[]}} MineFeed */
 /** @typedef {import('../shared/items.js').DroppedEntry} DroppedEntry */
 /** @typedef {import('../shared/items.js').Stack} Stack */
-/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],heldFeed?:string,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,hearSounds?:(list:import('../shared/sound.js').HeardSound[])=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],heldFeed?:string,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,hearSounds?:(list:import('../shared/sound.js').HeardSound[])=>void,followMusic?:(cue:{key:string,hash:string},offsetSeconds:number)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {import('../shared/signal-frame.js').Signal} Signal */
 
 /** The host tells the shell its session is live this often; the shell ends one after 45 s without. */
@@ -203,6 +204,8 @@ export function startHost(scene, session, sounds = {}) {
   let spawnOrdinal = 0;
   // Generated chunks appear later, so count the authored area before any exist.
   const authoredChunks = scene.world.chunks.size;
+  /** The music cue of the track playing now, sent to each guest that joins (ADR 0009). @type {import('../shared/wire.js').MusicCue|null} */
+  let musicCue = null;
   /** @type {ReturnType<typeof setTimeout>|null} */
   let publishTimer = null;
   let lastPublish = 0;
@@ -738,6 +741,7 @@ export function startHost(scene, session, sounds = {}) {
             playerId,
           );
           rememberedPlayer = null;
+          if (musicCue) sendMusic(musicCue);
           scene.status = "A visitor joined your world";
           publish();
         };
@@ -919,6 +923,12 @@ export function startHost(scene, session, sounds = {}) {
       if (list.length) channel.send(JSON.stringify({ type: "sounds", list }));
     }
 
+    /** @param {import('../shared/wire.js').MusicCue} cue */
+    function sendMusic(cue) {
+      if (!joined || channel?.readyState !== "open") return;
+      channel.send(JSON.stringify({ type: "music", ...cue }));
+    }
+
     function tickPeer() {
       sendMining();
       sendItems();
@@ -987,6 +997,7 @@ export function startHost(scene, session, sounds = {}) {
       },
       tick: tickPeer,
       hear,
+      music: sendMusic,
       sprinting: () => stamina.sprint,
       reveal: revealChanges,
       sees,
@@ -1149,6 +1160,18 @@ export function startHost(scene, session, sounds = {}) {
     announce,
     tell,
     tick,
+    /**
+     * The conductor started a track: tell every guest, and each guest that joins.
+     * @param {{key:string,hash:string}} track
+     */
+    cue(track) {
+      musicCue = {
+        key: track.key,
+        hash: track.hash,
+        startTick: scene.world.tick,
+      };
+      for (const connection of peers.values()) connection.music(musicCue);
+    },
     async diagnostics() {
       const connections = await Promise.all(
         [...peers.values()].map((connection) => connection.diagnostics()),
@@ -1212,6 +1235,19 @@ export function joinWorld(scene, session) {
   /** @type {import('../shared/wire.js').MotionPacket|null} */
   let debugMotion = null;
   let lastChatTick = -1;
+  /** The latest music cue, held until the first state sets the tick clock. @type {import('../shared/wire.js').MusicCue|null} */
+  let pendingCue = null;
+  /** Hand the host's music cue to the player, at the offset the host is in the track. */
+  function followCue() {
+    const cue = pendingCue;
+    pendingCue = null;
+    if (!cue || !scene.followMusic) return;
+    const at = scene.presentation.timeOfTick(cue.startTick);
+    const seconds = at === null
+      ? (scene.world.tick - cue.startTick) * TICK_MS / 1000
+      : (performance.now() - at) / 1000;
+    scene.followMusic(cue, Math.max(0, seconds));
+  }
   const forceRelay = new URL(location.href).searchParams.has("relay");
   let lastPong = performance.now();
   let retryNotBefore = 0;
@@ -1358,6 +1394,14 @@ export function joinWorld(scene, session) {
     if (value.type === "sounds") {
       const list = decodeSounds(value);
       if (list) scene.hearSounds?.(list);
+      return;
+    }
+    if (value.type === "music") {
+      const cue = decodeMusicCue(value);
+      if (cue) {
+        pendingCue = cue;
+        if (connected) followCue();
+      }
       return;
     }
     if (value.type === "items") {
@@ -1538,6 +1582,7 @@ export function joinWorld(scene, session) {
       }
       if (!connected) scene.telemetry?.("connection", { status: "connected" });
       connected = true;
+      if (pendingCue) followCue();
       if (pendingMotion) {
         const waiting = pendingMotion;
         pendingMotion = null;
