@@ -104,7 +104,7 @@ test("the host mines stone, then coal, with the progress square", async ({ page 
   await page.keyboard.up("i");
 });
 
-test("aiming at another tile cancels, and the host rejects bad targets", async ({ page }) => {
+test("moving the aim keeps mining; interact on the mined tile cancels it", async ({ page }) => {
   await startHost(page);
   await placeAt(page, 5, 2);
   await page.keyboard.down("i");
@@ -112,8 +112,12 @@ test("aiming at another tile cancels, and the host rejects bad targets", async (
   await page.keyboard.press("Space");
   await expect.poll(async () => (await mining(page)).length).toBe(1);
   await page.keyboard.down("j"); // the aim moves to the north-west tile
-  await expect.poll(async () => (await mining(page)).length).toBe(0);
+  await page.waitForTimeout(500);
+  expect((await mining(page)).length).toBe(1);
   await page.keyboard.up("j");
+  // Interact on the tile being mined cancels it.
+  await page.keyboard.press("Space");
+  await expect.poll(async () => (await mining(page)).length).toBe(0);
   await page.keyboard.up("i");
   await page.waitForTimeout(500);
   expect(await tile(page, 5)).not.toBe(OPEN);

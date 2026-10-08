@@ -274,8 +274,6 @@ export function createContext() {
     lastInputSent: -100,
     lastTyping: false,
     lastPlayerZ: 0,
-    /** The aim and level the local player started mining with; aiming elsewhere cancels it. */
-    mineLock: /** @type {{x:number,y:number,z:number}|null} */ (null),
     tickNpc: /** @type {(() => void)|null} */ (null),
 
     /** Fixed-step time not yet spent on world ticks, in milliseconds. */

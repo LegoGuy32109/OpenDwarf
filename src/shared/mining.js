@@ -3,6 +3,7 @@
 import { dropItem, inventoryOf, PICKAXE } from "./items.js";
 import { centerTile } from "./locomotion.js";
 import { materialInfo } from "./materials.js";
+import { inReach } from "./reach.js";
 import { MINE_HIT_MS, recordSound } from "./sound.js";
 import { OPEN, readTile, WORLD_TOP, writeTile } from "./terrain.js";
 import { TICK_MS } from "./world.js";
@@ -12,7 +13,7 @@ import { TICK_MS } from "./world.js";
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {Player & {held?:string}} Holder */
 /**
- * One mining action. The target locks when it starts.
+ * One mining action. It keeps its target until the target leaves reach.
  * @typedef {object} MiningAction
  * @property {string} playerId
  * @property {number} x
@@ -48,19 +49,6 @@ export function miningTicks(material) {
     : null;
 }
 
-/**
- * Reach rule: the tile lies on the entity's level, within one tile of the tile
- * its center is in, and is not that tile itself. Moving inside the same tile or
- * to another tile that stays adjacent keeps the target in reach.
- * @param {Player} player @param {Tile} tile
- */
-export function inMiningReach(player, tile) {
-  if (tile.z !== player.z) return false;
-  const dx = tile.x - centerTile(player.x);
-  const dy = tile.y - centerTile(player.y);
-  return Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx !== 0 || dy !== 0);
-}
-
 /** @type {WeakMap<World,Map<string,MiningAction>>} */
 const stores = new WeakMap();
 
@@ -74,27 +62,47 @@ export function miningActions(world) {
   return store;
 }
 
+/** @typedef {(tile:Tile) => boolean} Sees */
+
+/** Sees every tile: for callers that have no sight set, such as unit tests. @type {Sees} */
+const SEES_ALL = () => true;
+
 /**
- * Start mining on the host. The host checks the target, reach, material, and
- * held pickaxe; a guest only names the tile it aimed at. A new target replaces
- * an earlier one. Starting on the tile already being mined changes nothing.
- * @param {World} world @param {string} playerId @param {Tile} tile @returns {StartResult}
+ * Why `player` may not mine `tile` now, or null when the host would start it:
+ * the tile is real, a pickaxe is held, the tile is in reach (path and sight,
+ * ADR 0009), and the material can be mined.
+ * @param {World} world @param {Player} player @param {Tile} tile @param {Sees} [sees]
+ * @returns {string|null}
  */
-export function startMining(world, playerId, tile) {
-  const player = world.players[playerId];
-  if (!player) return { ok: false, reason: "unknown player" };
+export function miningRefusal(world, player, tile, sees = SEES_ALL) {
   if (
     !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
     !Number.isInteger(tile.z) || tile.z < 0 || tile.z > WORLD_TOP
-  ) return { ok: false, reason: "invalid tile" };
-  if (heldItem(player) !== PICKAXE) return { ok: false, reason: "no pickaxe" };
-  if (tile.z !== player.z) return { ok: false, reason: "not on your level" };
-  if (tile.x === centerTile(player.x) && tile.y === centerTile(player.y)) {
-    return { ok: false, reason: "aim at a neighboring tile" };
+  ) return "invalid tile";
+  if (heldItem(player) !== PICKAXE) return "no pickaxe";
+  if (
+    tile.z === player.z && tile.x === centerTile(player.x) &&
+    tile.y === centerTile(player.y)
+  ) return "aim at a neighboring tile";
+  if (!inReach(world, player, tile, sees)) return "out of reach";
+  if (miningTicks(readTile(world, tile.x, tile.y, tile.z)) === null) {
+    return "nothing to mine";
   }
-  if (!inMiningReach(player, tile)) {
-    return { ok: false, reason: "out of reach" };
-  }
+  return null;
+}
+
+/**
+ * Start mining on the host. The host checks the target, reach, material, and
+ * held pickaxe; a guest only names the tile it aimed at. `sees` is the acting
+ * entity's current sight. A new target replaces an earlier one. Starting on the
+ * tile already being mined changes nothing.
+ * @param {World} world @param {string} playerId @param {Tile} tile @param {Sees} [sees] @returns {StartResult}
+ */
+export function startMining(world, playerId, tile, sees = SEES_ALL) {
+  const player = world.players[playerId];
+  if (!player) return { ok: false, reason: "unknown player" };
+  const reason = miningRefusal(world, player, tile, sees);
+  if (reason) return { ok: false, reason };
   const material = readTile(world, tile.x, tile.y, tile.z);
   const durationTicks = miningTicks(material);
   if (durationTicks === null) return { ok: false, reason: "nothing to mine" };
@@ -126,14 +134,15 @@ export function cancelMining(world, playerId) {
 
 /**
  * Why an action must stop, or null to keep going. Moving does not cancel while
- * the target stays adjacent. Leaving reach, a changed held item, a missing
- * entity, or a tile that no longer holds the same material does.
- * @param {World} world @param {MiningAction} action
+ * the target stays in reach. Leaving reach (path or sight), a changed held
+ * item, a missing entity, or a tile that no longer holds the same material
+ * does.
+ * @param {World} world @param {MiningAction} action @param {Sees} [sees]
  */
-export function miningCancelReason(world, action) {
+export function miningCancelReason(world, action, sees = SEES_ALL) {
   const player = world.players[action.playerId];
   if (!player) return "gone";
-  if (!inMiningReach(player, action)) return "out of reach";
+  if (!inReach(world, player, action, sees)) return "out of reach";
   if (heldItem(player) !== action.held) return "held item changed";
   if (readTile(world, action.x, action.y, action.z) !== action.material) {
     return "tile changed";
@@ -165,15 +174,16 @@ export function completeMining(world, action) {
 /**
  * Advance every action by one simulation tick on the host: cancel the ones
  * that lost their target and finish the ones that are done. Returns the
- * finished actions' results.
- * @param {World} world
+ * finished actions' results. `sightOf` names an entity's current sight, as the
+ * host knows it; an entity it names no sight for keeps the path rule alone.
+ * @param {World} world @param {(playerId:string) => Sees|undefined} [sightOf]
  */
-export function stepMining(world) {
+export function stepMining(world, sightOf) {
   const store = miningActions(world);
   /** @type {ReturnType<typeof completeMining>[]} */
   const finished = [];
   for (const [id, action] of [...store]) {
-    if (miningCancelReason(world, action)) {
+    if (miningCancelReason(world, action, sightOf?.(id))) {
       store.delete(id);
     } else if (world.tick - action.startTick >= action.durationTicks) {
       store.delete(id);

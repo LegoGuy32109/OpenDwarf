@@ -53,6 +53,7 @@ its feature there:
 - [Mining and items](docs/features/mining-and-items.md)
 - [Inventory and shop](docs/features/inventory-and-shop.md)
 - [Placing](docs/features/placing.md)
+- [Reach and the free cursor](docs/features/reach.md)
 - [Chat](docs/features/chat.md)
 - [Chatter](docs/features/chatter.md)
 - [Music](docs/features/music.md)

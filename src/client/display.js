@@ -11,6 +11,7 @@ import { TICK_MS } from "../shared/world.js";
 import { tileVisibility } from "../shared/visibility.js";
 import { heldItem, miningEntries, PICKAXE } from "../shared/mining.js";
 import { droppedAt, droppedItems, inventoryOf } from "../shared/items.js";
+import { itemSeen } from "../shared/reach.js";
 import { clamp } from "./context.js";
 
 /** @typedef {import('./context.js').Context} Context */
@@ -24,7 +25,7 @@ export function droppedHere(ctx, tile) {
   )?.stacks ?? [];
 }
 
-/** The dropped items to draw this frame: tiles in sight, or all in master view. @param {Context} ctx */
+/** The dropped items to draw this frame: tiles in sight (or the floor under them), or all in master view. @param {Context} ctx */
 export function itemsDisplay(ctx) {
   const { scene } = ctx;
   if (ctx.isAdmin) return scene.itemFeed ?? [];
@@ -32,7 +33,7 @@ export function itemsDisplay(ctx) {
   if (!store.size) return [];
   return [...store.values()].filter((entry) =>
     scene.viewMode === "master" ||
-    tileVisibility(scene.visibility, entry.x, entry.y, entry.z) === "visible"
+    itemSeen(scene.visibility.visible, entry)
   );
 }
 

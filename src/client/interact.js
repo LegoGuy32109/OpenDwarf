@@ -10,7 +10,8 @@
 
 import { OPEN, readTile } from "../shared/terrain.js";
 import { highlightedTile } from "../shared/target.js";
-import { cancelMining, startMining } from "../shared/mining.js";
+import { cancelMining, miningActions, startMining } from "../shared/mining.js";
+import { seesFrom } from "../shared/reach.js";
 import { placeStone, reservedTiles } from "../shared/placing.js";
 import { pickUp, pickupLine, STONE_ITEM } from "../shared/items.js";
 import { SHOP_TILE } from "../shared/shop.js";
@@ -93,6 +94,13 @@ export function interact(ctx) {
     flash(ctx, "Nothing to mine there");
     return;
   }
+  // The cursor is free: interact on the tile being mined stops it, and on any
+  // other tile stops it before the new action.
+  if (isMining(ctx, target)) {
+    stopMining(ctx);
+    return;
+  }
+  stopMining(ctx);
   if (isShopkeeper(ctx, target)) {
     shop.open(shopDirection(ctx));
     return;
@@ -123,36 +131,44 @@ export function interact(ctx) {
         scene.localId,
         target,
         reservedTiles(scene.layout),
+        ownSees(ctx),
       );
       if (result.ok) ctx.sounds.own(["place", "stone"], target);
       else flash(ctx, result.reason);
     }
     return;
   }
-  ctx.mineLock = { x: scene.aim.x, y: scene.aim.y, z: scene.viewZ };
   if (ctx.isAdmin) ctx.guest?.send({ type: "mine", ...target });
   else {
-    const result = startMining(scene.world, scene.localId, target);
+    const result = startMining(
+      scene.world,
+      scene.localId,
+      target,
+      ownSees(ctx),
+    );
     if (!result.ok) flash(ctx, `Cannot mine: ${result.reason}`);
   }
 }
 
-/**
- * The target locks when mining starts, so walking does not cancel (the host
- * cancels when the target leaves reach), and neither does letting the aim go
- * back to rest: on a phone the thumb leaves the look stick to tap interact.
- * Aiming in another direction or changing the view level cancels.
- * @param {Context} ctx
- */
-export function checkMineLock(ctx) {
-  const { scene, mineLock } = ctx;
-  if (!mineLock) return;
-  const resting = scene.aim.x === 0 && scene.aim.y === 0;
-  if (
-    scene.viewMode === "entity" && scene.viewZ === mineLock.z &&
-    (resting || (scene.aim.x === mineLock.x && scene.aim.y === mineLock.y))
-  ) return;
-  ctx.mineLock = null;
+/** The local player's sight as the reach checks take it. @param {Context} ctx */
+function ownSees(ctx) {
+  const { scene } = ctx;
+  return seesFrom(scene.visibility.visible, scene.viewMode === "master");
+}
+
+/** Whether the local player is mining `tile`, as this client knows it. @param {Context} ctx @param {{x:number,y:number,z:number}} tile */
+function isMining(ctx, tile) {
+  const { scene } = ctx;
+  const same = (/** @type {{x:number,y:number,z:number}|undefined} */ at) =>
+    !!at && at.x === tile.x && at.y === tile.y && at.z === tile.z;
+  if (ctx.isAdmin) {
+    return same(scene.mineFeed?.entries.find((e) => e.id === scene.localId));
+  }
+  return same(miningActions(scene.world).get(scene.localId));
+}
+
+/** Stop the local player's mining. The host also cancels it on its own checks. @param {Context} ctx */
+function stopMining(ctx) {
   if (ctx.isAdmin) ctx.guest?.send({ type: "mine-cancel" });
-  else cancelMining(scene.world, scene.localId);
+  else cancelMining(ctx.scene.world, ctx.scene.localId);
 }
