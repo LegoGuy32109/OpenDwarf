@@ -38,11 +38,14 @@ function pickUpAt(ctx, target, kind) {
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "pickup", ...target, kind });
+    ctx.sounds.own(["pickup"], target);
     return;
   }
   const result = pickUp(scene.world, scene.localId, target, kind);
-  if (result.ok) scene.systemLine(pickupLine(result.kind, result.count));
-  else flash(ctx, `Cannot pick up: ${result.reason}`);
+  if (result.ok) {
+    scene.systemLine(pickupLine(result.kind, result.count));
+    ctx.sounds.own(["pickup"], target);
+  } else flash(ctx, `Cannot pick up: ${result.reason}`);
 }
 
 /** Interact with the grid open: pick up the selected stack. @param {Context} ctx */
@@ -111,15 +114,18 @@ export function interact(ctx) {
       flash(ctx, "Hold the pickaxe to mine");
       return;
     }
-    if (ctx.isAdmin) ctx.guest?.send({ type: "place", ...target });
-    else {
+    if (ctx.isAdmin) {
+      ctx.guest?.send({ type: "place", ...target });
+      ctx.sounds.own(["place", "stone"], target);
+    } else {
       const result = placeStone(
         scene.world,
         scene.localId,
         target,
         reservedTiles(scene.layout),
       );
-      if (!result.ok) flash(ctx, result.reason);
+      if (result.ok) ctx.sounds.own(["place", "stone"], target);
+      else flash(ctx, result.reason);
     }
     return;
   }

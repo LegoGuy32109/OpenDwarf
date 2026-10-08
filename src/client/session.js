@@ -107,7 +107,9 @@ export function startHosting(ctx, renderer) {
   ctx.tickNpc = scene.layout === "room"
     ? createCornerNpc(scene.world, NPC_ORIGIN)
     : createCornerNpc(scene.world);
-  ctx.host = startHost(scene, scene.sessionId);
+  ctx.host = startHost(scene, scene.sessionId, {
+    running: (id) => id === scene.localId && ctx.stamina.sprint,
+  });
   // Only the host generates terrain. `?seed=` replays a world for tests.
   scene.world.generateChunk = createChunkGenerator(seedFromText(
     new URL(location.href).searchParams.get("seed") ?? scene.sessionId,

@@ -17,6 +17,7 @@ import { createPresentation } from "./presentation.js";
 import { parseTextSize, TEXT_SIZE_KEY } from "../shared/chat.js";
 import { createChatter, parseVoicesLevel, VOICES_KEY } from "./chatter.js";
 import { createMusic, MUSIC_KEY, parseMusicLevel } from "./music.js";
+import { createSoundEvents } from "./sound-events.js";
 import { createSfx, EFFECTS_KEY, parseEffectsLevel } from "./sfx.js";
 import { addSystemLine, createHearingLog } from "../shared/hearing-log.js";
 import { createStamina } from "../shared/stamina.js";
@@ -140,6 +141,9 @@ export function createContext() {
     /** A short message that shows over the status line, such as a refused action. */
     notice: /** @type {{text:string,until:number}|undefined} */ (undefined),
     sessionId: "",
+    /** Plays the sound events the world host sends this client. */
+    hearSounds:
+      /** @type {((list:import('../shared/sound.js').HeardSound[])=>void)|undefined} */ (undefined),
     metrics:
       /** @type {{joinMs:number|null,rttMs:number[],route:string}|undefined} */ (undefined),
     telemetry:
@@ -177,6 +181,13 @@ export function createContext() {
     },
   };
 
+  /** Plays sound effects from tagged samples (ADR 0008). `?sfx=0` turns it off; test pages need `sfx=1`. */
+  const sfx = createSfx({
+    level: parseEffectsLevel(storedEffects()),
+    enabled: params.get("sfx") !== "0" &&
+      (!params.has("harness") || params.get("sfx") === "1"),
+  });
+
   const ctx = {
     scene,
     ui,
@@ -189,13 +200,10 @@ export function createContext() {
       enabled: params.get("music") !== "0" &&
         (!params.has("harness") || params.get("music") === "1"),
     }),
-    /** Plays sound effects from tagged samples (ADR 0008). `?sfx=0` turns it off; test pages need `sfx=1`. */
-    sfx: createSfx({
-      level: parseEffectsLevel(storedEffects()),
-      enabled: params.get("sfx") !== "0" &&
-        (!params.has("harness") || params.get("sfx") === "1"),
-    }),
+    sfx,
     liveStatus: $("#live-status"),
+    /** Plays the sound events this client hears and its own sounds (ADR 0008). */
+    sounds: createSoundEvents({ scene, sfx }),
     gameRoot: $("#game"),
     touchQuery: globalThis.matchMedia?.("(pointer: coarse)"),
     standaloneQuery: globalThis.matchMedia?.("(display-mode: standalone)"),
@@ -275,6 +283,7 @@ export function createContext() {
         new Map()
       ),
   };
+  scene.hearSounds = (list) => ctx.sounds.hear(list);
   return ctx;
 }
 

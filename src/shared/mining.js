@@ -3,6 +3,7 @@
 import { dropItem, inventoryOf, PICKAXE } from "./items.js";
 import { centerTile } from "./locomotion.js";
 import { materialInfo } from "./materials.js";
+import { MINE_HIT_MS, recordSound } from "./sound.js";
 import { OPEN, readTile, WORLD_TOP, writeTile } from "./terrain.js";
 import { TICK_MS } from "./world.js";
 
@@ -21,6 +22,7 @@ import { TICK_MS } from "./world.js";
  * @property {string} held the item in hand when mining started
  * @property {number} startTick
  * @property {number} durationTicks
+ * @property {number} [hits] mining hit sounds recorded so far
  */
 /** @typedef {{ok:true,action:MiningAction}|{ok:false,reason:string}} StartResult */
 
@@ -149,7 +151,13 @@ export function miningCancelReason(world, action) {
 export function completeMining(world, action) {
   writeTile(world, action.x, action.y, action.z, OPEN);
   const tile = { x: action.x, y: action.y, z: action.z };
-  const kind = materialInfo(action.material)?.itemKind ?? null;
+  const info = materialInfo(action.material);
+  recordSound(world, {
+    tags: ["mine", "break", info?.name ?? "stone"],
+    ...tile,
+    source: action.playerId,
+  });
+  const kind = info?.itemKind ?? null;
   if (kind) dropItem(world, tile, kind, 1);
   return { playerId: action.playerId, tile, material: action.material, kind };
 }
@@ -170,6 +178,20 @@ export function stepMining(world) {
     } else if (world.tick - action.startTick >= action.durationTicks) {
       store.delete(id);
       finished.push(completeMining(world, action));
+    } else {
+      const due = Math.floor(
+        (world.tick - action.startTick) * TICK_MS /
+          MINE_HIT_MS,
+      ) + 1;
+      for (; (action.hits ?? 0) < due; action.hits = (action.hits ?? 0) + 1) {
+        recordSound(world, {
+          tags: ["mine", "hit", materialInfo(action.material)?.name ?? "stone"],
+          x: action.x,
+          y: action.y,
+          z: action.z,
+          source: action.playerId,
+        });
+      }
     }
   }
   return finished;

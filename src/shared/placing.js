@@ -4,6 +4,7 @@ import { droppedAt, inventoryOf, STONE_ITEM, takeStack } from "./items.js";
 import { centerTile, PLAYER_SIZE } from "./locomotion.js";
 import { heldItem, inMiningReach } from "./mining.js";
 import { SHOP_TILE } from "./shop.js";
+import { recordSound } from "./sound.js";
 import { OPEN, readTile, STONE, WORLD_TOP, writeTile } from "./terrain.js";
 
 /** @typedef {import('./world.js').World} World */
@@ -79,5 +80,12 @@ export function placeStone(world, playerId, tile, reserved = []) {
   if (inventory[index].count > 1) inventory[index].count--;
   else takeStack(inventory, index);
   writeTile(world, tile.x, tile.y, tile.z, STONE);
+  recordSound(world, {
+    tags: ["place", "stone"],
+    x: tile.x,
+    y: tile.y,
+    z: tile.z,
+    source: playerId,
+  });
   return { ok: true, tile: { x: tile.x, y: tile.y, z: tile.z } };
 }

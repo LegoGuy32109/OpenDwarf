@@ -54,6 +54,12 @@ import {
   moveEntity,
   speedTilesPerSecond,
 } from "../shared/locomotion.js";
+import {
+  drainSounds,
+  recordSteps,
+  soundsFor,
+  sourceTile,
+} from "../shared/sound.js";
 import { createStamina, setSprint, stepStamina } from "../shared/stamina.js";
 import { chatView, receiveChat } from "../shared/chat.js";
 import { createAttemptDeadline } from "./attempt-deadline.js";
@@ -66,6 +72,7 @@ import {
   decodeItems,
   decodeMining,
   decodeMotion,
+  decodeSounds,
   decodeState,
   encodeMotionPlayers,
   encodeWorld,
@@ -109,7 +116,7 @@ function deliver(receive, replaceable = false) {
 /** @typedef {{at:number,entries:import('../shared/mining.js').MiningEntry[]}} MineFeed */
 /** @typedef {import('../shared/items.js').DroppedEntry} DroppedEntry */
 /** @typedef {import('../shared/items.js').Stack} Stack */
-/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],heldFeed?:string,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
+/** @typedef {{world:World,localId:string,layout?:"room"|"test",status:string,mineFeed?:MineFeed,itemFeed?:DroppedEntry[],inventoryFeed?:Stack[],heldFeed?:string,notice?:{text:string,until:number},viewMode:"entity"|"master",visibility:import('../shared/visibility.js').Visibility,presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],systemLine?:(text:string)=>void,hearSounds?:(list:import('../shared/sound.js').HeardSound[])=>void,renderOffset:{x:number,y:number,z:number},metrics?:{joinMs:number|null,rttMs:number[],route:string},telemetry?:(kind:"connection"|"error",fields?:Record<string,unknown>)=>void}} Scene */
 /** @typedef {import('../shared/signal-frame.js').Signal} Signal */
 
 /** The host tells the shell its session is live this often; the shell ends one after 45 s without. */
@@ -184,8 +191,11 @@ function gathered(peer) {
   });
 }
 
-/** @param {Scene} scene @param {string} session */
-export function startHost(scene, session) {
+/**
+ * @param {Scene} scene @param {string} session
+ * @param {{running?:(id:string)=>boolean}} [sounds] `running` says whether the host's own entity is sprinting
+ */
+export function startHost(scene, session, sounds = {}) {
   /** @type {Map<string,ReturnType<typeof createPeer>>} */
   const peers = new Map();
   let joinFailures = 0;
@@ -254,6 +264,22 @@ export function startHost(scene, session) {
       for (const connection of peers.values()) connection.reveal(changes);
     }
     for (const connection of peers.values()) connection.tick();
+    recordSteps(
+      scene.world,
+      (id) => peers.get(id)?.sprinting() ?? sounds.running?.(id) ?? false,
+    );
+    const events = drainSounds(scene.world);
+    if (!events.length) return;
+    for (const connection of peers.values()) connection.hear(events);
+    const own = scene.localId;
+    if (scene.hearSounds && scene.world.players[own]) {
+      const heard = soundsFor(scene.world, events, own, (event) => {
+        if (scene.viewMode === "master") return true;
+        const tile = sourceTile(scene.world, event);
+        return scene.visibility.visible.has(tileKey(tile.x, tile.y, tile.z));
+      });
+      if (heard.length) scene.hearSounds(heard);
+    }
   }
 
   function spawn() {
@@ -865,6 +891,17 @@ export function startHost(scene, session) {
       publishToPeer();
     }
 
+    /** Tell the peer the sound events in its range, as the host's own player hears them. @param {import('../shared/sound.js').SoundEvent[]} events */
+    function hear(events) {
+      if (!joined || channel?.readyState !== "open") return;
+      const list = soundsFor(scene.world, events, playerId, (event) => {
+        if (mode === "master") return true;
+        const tile = sourceTile(scene.world, event);
+        return sight.visible.has(tileKey(tile.x, tile.y, tile.z));
+      });
+      if (list.length) channel.send(JSON.stringify({ type: "sounds", list }));
+    }
+
     function tickPeer() {
       sendMining();
       sendItems();
@@ -932,6 +969,8 @@ export function startHost(scene, session) {
         }
       },
       tick: tickPeer,
+      hear,
+      sprinting: () => stamina.sprint,
       reveal: revealChanges,
       expireIfSilent,
       expired: () =>
@@ -1296,6 +1335,11 @@ export function joinWorld(scene, session) {
     if (value.type === "mining") {
       const entries = decodeMining(value);
       if (entries) scene.mineFeed = { at: performance.now(), entries };
+      return;
+    }
+    if (value.type === "sounds") {
+      const list = decodeSounds(value);
+      if (list) scene.hearSounds?.(list);
       return;
     }
     if (value.type === "items") {
