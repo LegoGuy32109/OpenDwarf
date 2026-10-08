@@ -79,6 +79,20 @@ export function seedFromText(text) {
   return hash(h, text.length, 0, 0);
 }
 
+/**
+ * Every world uses this seed for now, so every session gets the same caves
+ * around spawn; `?seed=` replaces it for tests. It is chosen so a large cave
+ * network meets the spawn tunnel.
+ */
+export const WORLD_SEED_TEXT = "opendwarf-1";
+export const WORLD_SEED = seedFromText(WORLD_SEED_TEXT);
+
+/** The page's world seed: `?seed=` when given, otherwise `WORLD_SEED`. @param {URLSearchParams} params */
+export function worldSeedFromParams(params) {
+  const text = params.get("seed");
+  return text === null ? WORLD_SEED : seedFromText(text);
+}
+
 /** A small seeded random generator returning floats in [0, 1). @param {number} seed */
 function createRandom(seed) {
   let state = seed >>> 0;
@@ -131,7 +145,21 @@ function noise(seed, channel, x, y, z) {
 const CAVE_SCALE_XY = 11;
 const CAVE_SCALE_Z = 3;
 /** Tunnels form where both noise fields sit near 0.5; a wider band opens more cave. */
-const TUNNEL_WIDTH = 0.085;
+const TUNNEL_WIDTH = 0.11;
+
+/**
+ * Whether the cave noise opens the tile at global coordinates x, y, z.
+ * @param {number} seed @param {number} x @param {number} y @param {number} z
+ */
+export function isCaveTile(seed, x, y, z) {
+  const nx = x / CAVE_SCALE_XY;
+  const ny = y / CAVE_SCALE_XY;
+  const nz = z / CAVE_SCALE_Z;
+  const a = noise(seed >>> 0, 1, nx, ny, nz) - 0.5;
+  if (Math.abs(a) > TUNNEL_WIDTH) return false;
+  const b = noise(seed >>> 0, 2, nx, ny, nz) - 0.5;
+  return Math.abs(b) <= TUNNEL_WIDTH;
+}
 
 /** @param {number} seed @param {number} cx @param {number} cy @param {Uint8Array} data */
 function carveCaves(seed, cx, cy, data) {
@@ -140,13 +168,7 @@ function carveCaves(seed, cx, cy, data) {
   for (let z = 0; z <= WORLD_TOP; z++) {
     for (let y = 0; y < CHUNK_EDGE; y++) {
       for (let x = 0; x < CHUNK_EDGE; x++) {
-        const nx = (originX + x) / CAVE_SCALE_XY;
-        const ny = (originY + y) / CAVE_SCALE_XY;
-        const nz = z / CAVE_SCALE_Z;
-        const a = noise(seed, 1, nx, ny, nz) - 0.5;
-        if (Math.abs(a) > TUNNEL_WIDTH) continue;
-        const b = noise(seed, 2, nx, ny, nz) - 0.5;
-        if (Math.abs(b) <= TUNNEL_WIDTH) {
+        if (isCaveTile(seed, originX + x, originY + y, z)) {
           data[chunkIndex(x, y, z)] = OPEN;
         }
       }

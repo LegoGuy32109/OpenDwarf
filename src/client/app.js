@@ -10,7 +10,8 @@
 
 import { addPlayer } from "../shared/world.js";
 import { enableLocomotion } from "../shared/locomotion.js";
-import { roomSpawnTile } from "../shared/spawn-room.js";
+import { createSpawnRoomWorld, roomSpawnTile } from "../shared/spawn-room.js";
+import { worldSeedFromParams } from "../shared/generation.js";
 import { createRenderer } from "./render.js";
 import { createContext } from "./context.js";
 import { createInput } from "./input.js";
@@ -33,7 +34,9 @@ export async function startApp() {
   bindSafeArea(ctx);
   if (!ctx.isAdmin) {
     scene.world = scene.layout === "room"
-      ? (await import("../shared/spawn-room.js")).createSpawnRoomWorld()
+      ? createSpawnRoomWorld(
+        worldSeedFromParams(new URL(location.href).searchParams),
+      )
       : (await import("../shared/authored-terrain.js")).createAuthoredWorld(
         new URL(location.href).searchParams.get("world") === "32" ? 32 : 16,
       );

@@ -3,11 +3,21 @@
 A normal page starts the spawn room (`src/shared/spawn-room.js`): a 9×7 room at
 z 4 in the 2×2 spawn chunks, one doorway in its south wall that opens into solid
 stone, two stair tiles down to a tunnel at z 2, and a reserved shopkeeper tile.
-Everything else is solid stone. The host and every joining player spawn inside
-the room, and the corner NPC walks a square in its south west corner.
-`?layout=test` loads the older layout below. A page with `?harness=1` uses that
-test layout unless it adds `?layout=room`, so the motion and sight specs keep
-their pillar and staircase.
+The spawn chunks are generated from the world seed like any other chunk. The
+room, stairs and tunnel are then dug into a solid stone `SHELL`, so caves never
+break into them. The tunnel runs on east until it opens into a generated cave.
+The host and every joining player spawn inside the room, and the corner NPC
+walks a square in its south west corner.
+
+Every world uses the same seed for now, `WORLD_SEED` in
+`src/shared/generation.js`, made from the text `opendwarf-1`. That seed was
+chosen because its cave network meets the tunnel: from the room, a player can
+walk to more than 5,000 tiles on every level within three chunks of spawn.
+`tests/shared/spawn_room_test.ts` checks this. If you change the seed or the
+cave noise, run that test to find out whether the tunnel still reaches a large
+cave. `?layout=test` loads the older layout below. A page with `?harness=1` uses
+that test layout unless it adds `?layout=room`, so the motion and sight specs
+keep their pillar and staircase.
 
 The test layout is one 16×16 tile square across z levels 0–7, with eight view
 levels, a staircase, and a center pillar. `?world=32` starts an expanded 32×32
@@ -34,11 +44,12 @@ The world host creates generated terrain from the session seed in
 `src/shared/generation.js`: every chunk within one chunk of any player is
 created, at most two per 50 ms tick, nearest first, and an existing chunk,
 including the authored area, is never replaced. A chunk is solid stone with
-noise caves that continue across chunk borders, and ore clusters by depth band:
-coal and iron at z 5–7, gold, lapis, redstone and some iron at z 2–4, and
-diamond and emerald at z 0–1. A chunk takes well under one millisecond to
-generate. `?seed=` replays a world for tests. Joining players never generate;
-they receive generated terrain only for tiles they see.
+noise caves that continue across chunk borders (`isCaveTile`), and ore clusters
+by depth band: coal and iron at z 5–7, gold, lapis, redstone and some iron at z
+2–4, and diamond and emerald at z 0–1. A chunk takes well under one millisecond
+to generate. `?seed=` replaces the world seed for tests, and the spawn chunks
+use it too. Joining players never generate; they receive generated terrain only
+for tiles they see.
 
 Terrain changes the world host sends to guests are described in
 [sight](sight.md) and [networking](networking.md); mining writes terrain through

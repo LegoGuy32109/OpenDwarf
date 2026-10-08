@@ -10,7 +10,7 @@
 import {
   createChunkGenerator,
   generateAround,
-  seedFromText,
+  worldSeedFromParams,
 } from "../shared/generation.js";
 import { createCornerNpc } from "../shared/npc.js";
 import { NPC_ORIGIN } from "../shared/spawn-room.js";
@@ -113,10 +113,11 @@ export function startHosting(ctx, renderer) {
   // The host's player is the conductor; every guest hears the track it starts.
   // A tab that joins another world follows that world's cue instead.
   if (!ctx.joinRoute) ctx.music.onTrackStart((track) => ctx.host?.cue(track));
-  // Only the host generates terrain. `?seed=` replays a world for tests.
-  scene.world.generateChunk = createChunkGenerator(seedFromText(
-    new URL(location.href).searchParams.get("seed") ?? scene.sessionId,
-  ));
+  // Only the host generates terrain. Every world shares one seed for now;
+  // `?seed=` replays another world for tests.
+  scene.world.generateChunk = createChunkGenerator(
+    worldSeedFromParams(new URL(location.href).searchParams),
+  );
   // Everything built so far, the authored chunks, never unloads.
   pinLoadedChunks(scene.world);
   generateAround(scene.world, Object.values(scene.world.players), 9);
