@@ -129,6 +129,29 @@ export function setChunk(world, cx, cy, data) {
   generation++;
 }
 
+/** @type {WeakMap<ChunkData,number>} */
+const versions = new WeakMap();
+
+/**
+ * A number that changes whenever the tiles of this chunk's data change in
+ * place. A cache of anything built from tiles compares it, together with the
+ * identity of the data, to know when to rebuild. `writeTile` and `touchChunk`
+ * advance it; `setChunk` and `unloadChunk` change which data a chunk holds.
+ * @param {ChunkData|null} chunk
+ */
+export function chunkVersion(chunk) {
+  return chunk ? versions.get(chunk) ?? 0 : 0;
+}
+
+/**
+ * Record that a chunk's tiles changed in place by a write other than
+ * `writeTile`, such as a guest applying a reveal.
+ * @param {ChunkData} chunk
+ */
+export function touchChunk(chunk) {
+  versions.set(chunk, (versions.get(chunk) ?? 0) + 1);
+}
+
 /**
  * Return the chunk, creating it when missing. The `world.generateChunk` hook
  * makes the new chunk; without it the chunk is solid stone, as it already read.
@@ -201,6 +224,7 @@ export function writeTile(world, x, y, z, material) {
   const index = chunkIndex(localCoord(x), localCoord(y), z);
   if (chunk[index] === material) return false;
   chunk[index] = material;
+  touchChunk(chunk);
   const key = chunkKey(chunkCoord(x), chunkCoord(y));
   // Only in-play edits to a chunk that can unload need a diff.
   if (world.generateChunk && !world.pinned?.has(key)) {
