@@ -29,7 +29,8 @@ a neighbor in entity view or pans in master view. Both sticks have a visible
 center deadzone and eight direction guides. The fullscreen button uses the
 browser API when available; on Safari, adding the page to the Home Screen can
 hide browser controls. Pinch to zoom or drag two fingers vertically to change
-view levels. The on-screen B button opens the menu.
+view levels. The on-screen ESC button opens the menu, and the speech bubble
+button opens chat.
 
 With a gamepad connected to the device, press a button while the page is
 focused. The left stick or D-pad moves, and the right stick points at a neighbor

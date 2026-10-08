@@ -402,15 +402,15 @@ export function layoutUi(view) {
     const rowX = (left + right) / 2 - rowWidth / 2;
     /** @type {[string,string,Partial<UiElement>][]} */
     const buttons = [
-      ["btn:chat", "chat", { text: "A" }],
+      ["btn:chat", "chat", { glyph: "chat" }],
       ["btn:log", "log", { text: "L", on: Boolean(view.logButton?.open) }],
-      ["btn:menu", "menu", { text: "B" }],
+      ["btn:menu", "menu", { text: "ESC", scale: ts }],
       ["btn:bag", "bag", { glyph: "bag", on: Boolean(view.bagOpenButton) }],
     ];
     for (const [index, [id, , extra]] of buttons.entries()) {
       roundButton(id, rowX + index * (actionSize + gap), rowY, actionSize, {
-        ...extra,
         scale: 2 * ts,
+        ...extra,
       });
     }
     controlsTop = Math.min(stickTop, rowY, stickBottom - roundSize);
