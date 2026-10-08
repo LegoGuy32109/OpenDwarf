@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "tracks": [
+    {
+      "key": "music/ToneA.ogg",
+      "hash": "2e930227cac2",
+      "duration": 4,
+      "tags": ["adventure", "soft"]
+    },
+    {
+      "key": "music/ToneB.ogg",
+      "hash": "b27dda8be617",
+      "duration": 4,
+      "tags": ["adventure", "battle"]
+    },
+    {
+      "key": "music/Missing.ogg",
+      "hash": "000000000000",
+      "duration": 4,
+      "tags": ["adventure"],
+      "note": "not in the folder: the player must skip it"
+    }
+  ]
+}

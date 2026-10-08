@@ -29,7 +29,13 @@ export default defineConfig({
       timeout: 30_000,
       // The shell serves the working tree only as the local build, and the
       // local relay carries signaling, so specs need no internet.
-      env: { OD_LOCAL_BUILD: "1", SIGNALING: "local" },
+      // Media comes from a small fixture folder (ADR 0007): two short tones
+      // and an index entry whose file is missing.
+      env: {
+        OD_LOCAL_BUILD: "1",
+        SIGNALING: "local",
+        OD_MEDIA_DIR: "tests/e2e/fixtures/media",
+      },
     },
     // A second shell talks to real Xirsys, only when its credentials are set.
     ...(realXirsys
