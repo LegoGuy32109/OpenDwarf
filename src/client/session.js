@@ -109,6 +109,7 @@ export function startHosting(ctx, renderer) {
     : createCornerNpc(scene.world);
   ctx.host = startHost(scene, scene.sessionId, {
     running: (id) => id === scene.localId && ctx.stamina.sprint,
+    musicPosition: () => ctx.music.position(),
   });
   // The host's player is the conductor; every guest hears the track it starts.
   // A tab that joins another world follows that world's cue instead.

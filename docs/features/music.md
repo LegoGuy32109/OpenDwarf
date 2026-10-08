@@ -74,9 +74,19 @@ player is the **conductor** and every guest plays what it plays.
   and sends the current cue to a guest when it joins or rejoins.
   `decodeMusicCue` (`src/shared/wire.js`) accepts a media key (the shell's
   `/media/` rules), a 12 digit lowercase hex hash, and a whole `startTick`.
+- **Heartbeat.** Every `MUSIC_BEAT_TICKS` (80 ticks, 4 s) the host also sends
+  the cue with `atTick` and `position`: the seconds its own track was at on that
+  tick (`music.position()`, the playing deck's time, or the silent count while
+  its Music is Off). `decodeMusicCue` takes both or neither.
 - **Guest.** The first state sets the tick clock, then `scene.followMusic` calls
-  `follow(track, offsetSeconds)` with the host's position in the track at the
-  presentation time (`presentation.timeOfTick`, the 150 ms delay included). The
+  `follow(track, offsetSeconds)` with the host's position in the track now: the
+  heartbeat's `position` plus the time since `atTick`, or the time since
+  `startTick` for a plain cue, on the host's clock (`presentation.clockOfTick`,
+  no presentation delay). A heartbeat for the track already followed does not
+  restart it: if the playing deck is more than `DRIFT_LIMIT` (0.25 s) from the
+  host's position, the guest skips to it, and `state().resyncs` counts each
+  skip. The guest also checks once right after its track starts, because
+  `play()` can take a second on a phone. Any other cue starts its track. The
   player stops picking, loads the track (the device cache applies) and starts it
   at the offset, crossfading from the previous one. A cue for a track the
   guest's index does not list, or one that fails to load, keeps the current

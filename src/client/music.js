@@ -50,6 +50,8 @@ const SILENT_WAV =
   "data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==";
 /** Two decks: the playing track and the one fading in or out. */
 const DECKS = 2;
+/** Seconds a guest's track may drift from the host's before it skips to match (ADR 0009). */
+export const DRIFT_LIMIT = 0.25;
 /** Seconds a track lasts for the conductor when its index entry has no `duration`. */
 export const DEFAULT_DURATION = 180;
 
@@ -206,6 +208,8 @@ export function createMusic(options = {}) {
   let following = null;
   /** Bumped by each cue, so a load for an older cue gives up. */
   let followTurn = 0;
+  /** Times a guest skipped its track to the host's position. */
+  let resyncs = 0;
   /** Keys played, oldest first. @type {string[]} */
   const recent = [];
   /** Keys that failed since the mood was set. @type {Set<string>} */
@@ -588,10 +592,27 @@ export function createMusic(options = {}) {
         offset: offset(),
         notify: false,
       });
+      // `play()` takes a moment to start, longest on a phone: catch up now.
+      resync();
     } catch {
       failed.add(track.key);
       if (!current) status = "idle";
     }
+  }
+
+  /**
+   * A guest whose track drifted more than `DRIFT_LIMIT` from where the cue
+   * says it should be skips to that point.
+   */
+  function resync() {
+    if (!following || !current || current.element.paused) return;
+    if (current.track.key !== following.track.key) return;
+    const expected = (now() - following.startedAt) / 1000;
+    const { element } = current;
+    if (!(expected >= 0) || expected >= (element.duration || Infinity)) return;
+    if (Math.abs(element.currentTime - expected) <= DRIFT_LIMIT) return;
+    element.currentTime = expected;
+    resyncs++;
   }
 
   /** Crossfade: the new track rises while the old falls, then the old is torn down. */
@@ -761,9 +782,19 @@ export function createMusic(options = {}) {
         else if (!upcoming) prefetch();
         return;
       }
+      const startedAt = now() - Math.max(0, offsetSeconds) * 1000;
+      // The host's heartbeat for the same track: keep playing, skip if it drifted.
+      if (
+        following && following.track.key === track.key &&
+        following.track.hash === track.hash
+      ) {
+        following.startedAt = startedAt;
+        resync();
+        return;
+      }
       following = {
         track: { key: track.key, hash: track.hash },
-        startedAt: now() - Math.max(0, offsetSeconds) * 1000,
+        startedAt,
       };
       clearVirtual();
       upcoming = null;
@@ -802,6 +833,23 @@ export function createMusic(options = {}) {
     get enabled() {
       return enabled;
     },
+    /**
+     * Where the conductor is in its track, for the host's heartbeat: the
+     * playing deck's time, or the count while Music is Off. Null with neither.
+     * @returns {{key:string,seconds:number}|null}
+     */
+    position() {
+      if (current && !current.element.paused && !following) {
+        return { key: current.track.key, seconds: current.element.currentTime };
+      }
+      if (virtual) {
+        return {
+          key: virtual.track.key,
+          seconds: Math.max(0, (now() - virtual.startedAt) / 1000),
+        };
+      }
+      return null;
+    },
     /** What the harness and the F3 panel show. */
     state() {
       const urls = Object.keys(plays);
@@ -821,6 +869,7 @@ export function createMusic(options = {}) {
         next: upcoming?.track.key ?? null,
         skipped: [...failed],
         failures,
+        resyncs,
         firstError,
         context: audio?.state ?? "none",
         recent: recent.slice(),

@@ -58,6 +58,16 @@ export function createPresentation() {
     return Number.isFinite(clockBase) ? clockBase + tick * TICK_MS + 150 : null;
   }
 
+  /**
+   * The local `performance.now()` time the host was on simulation `tick`, with
+   * no presentation delay: what music follows, so it plays with the host.
+   * Null before the first observation sets the clock.
+   * @param {number} tick
+   */
+  function clockOfTick(tick) {
+    return Number.isFinite(clockBase) ? clockBase + tick * TICK_MS : null;
+  }
+
   /** @param {string} id */
   function delayedPosition(id) {
     const list = samples.get(id);
@@ -230,6 +240,7 @@ export function createPresentation() {
     sightEntries,
     observe,
     timeOfTick,
+    clockOfTick,
     reset() {
       entries.clear();
       samples.clear();

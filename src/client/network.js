@@ -193,9 +193,12 @@ function gathered(peer) {
   });
 }
 
+/** Ticks between the host's music heartbeats: every 4 s (ADR 0009). */
+export const MUSIC_BEAT_TICKS = 80;
+
 /**
  * @param {Scene} scene @param {string} session
- * @param {{running?:(id:string)=>boolean}} [sounds] `running` says whether the host's own entity is sprinting
+ * @param {{running?:(id:string)=>boolean,musicPosition?:()=>{key:string,seconds:number}|null}} [sounds] `running` says whether the host's own entity is sprinting; `musicPosition` is where the host's music is in its track
  */
 export function startHost(scene, session, sounds = {}) {
   /** @type {Map<string,ReturnType<typeof createPeer>>} */
@@ -274,6 +277,17 @@ export function startHost(scene, session, sounds = {}) {
       for (const connection of peers.values()) connection.reveal(changes);
     }
     for (const connection of peers.values()) connection.tick();
+    if (musicCue && peers.size && scene.world.tick % MUSIC_BEAT_TICKS === 0) {
+      const position = sounds.musicPosition?.();
+      if (position && position.key === musicCue.key) {
+        const beat = {
+          ...musicCue,
+          atTick: scene.world.tick,
+          position: Math.round(position.seconds * 1000) / 1000,
+        };
+        for (const connection of peers.values()) connection.music(beat);
+      }
+    }
     recordSteps(
       scene.world,
       (id) => peers.get(id)?.sprinting() ?? sounds.running?.(id) ?? false,
@@ -1237,15 +1251,23 @@ export function joinWorld(scene, session) {
   let lastChatTick = -1;
   /** The latest music cue, held until the first state sets the tick clock. @type {import('../shared/wire.js').MusicCue|null} */
   let pendingCue = null;
-  /** Hand the host's music cue to the player, at the offset the host is in the track. */
+  /**
+   * Hand the host's music cue to the player, at the offset the host is in the
+   * track now. A heartbeat names the host's own position on a tick; a plain cue
+   * counts from the start tick. Both use the host's clock with no presentation
+   * delay, so the guest hears what the host hears.
+   */
   function followCue() {
     const cue = pendingCue;
     pendingCue = null;
     if (!cue || !scene.followMusic) return;
-    const at = scene.presentation.timeOfTick(cue.startTick);
-    const seconds = at === null
-      ? (scene.world.tick - cue.startTick) * TICK_MS / 1000
-      : (performance.now() - at) / 1000;
+    const tick = cue.atTick ?? cue.startTick;
+    const base = cue.position ?? 0;
+    const at = scene.presentation.clockOfTick(tick);
+    const seconds = base +
+      (at === null
+        ? (scene.world.tick - tick) * TICK_MS / 1000
+        : (performance.now() - at) / 1000);
     scene.followMusic(cue, Math.max(0, seconds));
   }
   const forceRelay = new URL(location.href).searchParams.has("relay");
