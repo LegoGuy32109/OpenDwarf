@@ -9,8 +9,7 @@ at, or at rest on the tile being mined.
 - The held item's icon (its item sheet frame) sits in the center at half a tile.
   It is at full opacity when `interactPreview` names an action for the tile, and
   at `CURSOR_ICON_DIM` when it returns null. `sees` is the local visibility
-  (`scene.visibility`). Until the reach rules fill `interactPreview`, it returns
-  null and the icon is dimmed.
+  (`scene.visibility`).
 - There is no progress square. Mining progress shows only as the breaking decal
   on the mined tile, for every entity including the local one.
 - The pickup grid's selector keeps its own look.
