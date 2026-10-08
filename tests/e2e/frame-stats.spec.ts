@@ -116,7 +116,7 @@ test("F3 shows the frame line", async ({ page }) => {
   await page.keyboard.press("F3");
   await expect.poll(() => hasUi(page, "panel:diagnostics")).toBe(true);
   await expect.poll(async () => (await uiState(page)).diagnostics).toMatch(
-    /FPS \d+ {2}p95 \d+ {2}max \d+ {2}spikes \d+\/\d+ {2}render [\d.]+ ms {2}quads -/,
+    /FPS \d+ {2}p95 \d+ {2}max \d+ {2}spikes \d+\/\d+ {2}render [\d.]+ ms {2}quads \d+k?/,
   );
   await evidenceShot(page, "f3-frame-line");
 });

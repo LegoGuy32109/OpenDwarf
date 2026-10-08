@@ -3,6 +3,7 @@
 import { isSolid, WORLD_EDGE, Z_LEVELS_BELOW } from "./world.js";
 import { tileVisibility } from "./visibility.js";
 import { centerTile } from "./locomotion.js";
+import { readTile } from "./terrain.js";
 
 /** @typedef {import('./visibility.js').Visibility} Visibility */
 /** @typedef {import('./world.js').Player} Player */
@@ -23,7 +24,10 @@ export function shadowMaskToAtlasId(mask) {
     ((mask & 4) >> 2) | (mask & 8 ? 2 : 0);
 }
 
-/** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
+/** @typedef {{z:number,depth:number,seen:string,material:number}} Surface The top solid tile at a column: its level, its depth below `viewZ`, how it is seen, and its material. */
+/** @typedef {(x:number,y:number)=>(Surface|null)} SurfaceLookup */
+
+/** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility @returns {Surface|null} */
 export function surfaceAt(world, x, y, viewZ, mode, visibility) {
   for (let depth = 0; depth <= Z_LEVELS_BELOW; depth++) {
     const z = viewZ - depth;
@@ -31,36 +35,99 @@ export function surfaceAt(world, x, y, viewZ, mode, visibility) {
     const seen = mode === "master"
       ? "visible"
       : tileVisibility(visibility, x, y, z, world);
-    if (seen !== "unseen") return { z, depth, seen };
+    if (seen !== "unseen") {
+      return { z, depth, seen, material: readTile(world, x, y, z) };
+    }
   }
   return null;
 }
 
-/** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
-export function ceilingMask(world, x, y, viewZ, mode, visibility) {
+/**
+ * Compute `surfaceAt` once for every tile of a rectangle, into a flat array.
+ * The returned lookup reads the grid inside the rectangle and falls back to
+ * `surfaceAt` outside it.
+ * @param {World} world @param {number} left @param {number} top @param {number} width @param {number} height @param {number} viewZ @param {string} mode @param {Visibility} visibility
+ * @returns {SurfaceLookup}
+ */
+export function surfaceGrid(
+  world,
+  left,
+  top,
+  width,
+  height,
+  viewZ,
+  mode,
+  visibility,
+) {
+  /** @type {(Surface|null)[]} */
+  const cells = new Array(width * height);
+  for (let gy = 0, at = 0; gy < height; gy++) {
+    for (let gx = 0; gx < width; gx++, at++) {
+      cells[at] = surfaceAt(
+        world,
+        left + gx,
+        top + gy,
+        viewZ,
+        mode,
+        visibility,
+      );
+    }
+  }
+  return (x, y) => {
+    const gx = x - left;
+    const gy = y - top;
+    if (gx < 0 || gy < 0 || gx >= width || gy >= height) {
+      return surfaceAt(world, x, y, viewZ, mode, visibility);
+    }
+    return cells[gy * width + gx];
+  };
+}
+
+/**
+ * Which corners of the tile at (x, y) have a solid tile one level above their
+ * surface. Pass `lookup` to read surfaces from a `surfaceGrid`.
+ * @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility @param {SurfaceLookup} [lookup]
+ */
+export function ceilingMask(world, x, y, viewZ, mode, visibility, lookup) {
   let mask = 0;
-  for (const [dx, dy, bit] of [[0, 0, 1], [1, 0, 2], [0, 1, 4], [1, 1, 8]]) {
-    const tx = x + dx;
-    const ty = y + dy;
-    const surface = surfaceAt(world, tx, ty, viewZ, mode, visibility);
+  for (let corner = 0; corner < 4; corner++) {
+    const tx = x + (corner & 1);
+    const ty = y + (corner >> 1);
+    const surface = lookup
+      ? lookup(tx, ty)
+      : surfaceAt(world, tx, ty, viewZ, mode, visibility);
     if (!surface || (mode === "entity" && surface.depth !== 0)) continue;
     const upper = mode === "master"
       ? "visible"
       : tileVisibility(visibility, tx, ty, viewZ + 1, world);
-    if (upper !== "unseen" && isSolid(world, tx, ty, viewZ + 1)) mask |= bit;
+    if (upper !== "unseen" && isSolid(world, tx, ty, viewZ + 1)) {
+      mask |= 1 << corner;
+    }
   }
   return mask;
 }
 
-/** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility */
-export function elevationMask(world, x, y, viewZ, mode, visibility) {
-  const depths = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([dx, dy]) =>
-    surfaceAt(world, x + dx, y + dy, viewZ, mode, visibility)?.depth ?? 127
-  );
-  const highest = Math.min(...depths);
-  if (highest === 127) return 0;
+/**
+ * Which corners of the tile at (x, y) sit at the highest surface of the four,
+ * or 0 when all do. Pass `lookup` to read surfaces from a `surfaceGrid`.
+ * @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility @param {SurfaceLookup} [lookup]
+ */
+export function elevationMask(world, x, y, viewZ, mode, visibility, lookup) {
+  let highest = 127;
   let mask = 0;
-  for (let i = 0; i < 4; i++) if (depths[i] === highest) mask |= 1 << i;
+  for (let corner = 0; corner < 4; corner++) {
+    const tx = x + (corner & 1);
+    const ty = y + (corner >> 1);
+    const surface = lookup
+      ? lookup(tx, ty)
+      : surfaceAt(world, tx, ty, viewZ, mode, visibility);
+    const depth = surface ? surface.depth : 127;
+    if (depth < highest) {
+      highest = depth;
+      mask = 1 << corner;
+    } else if (depth === highest) mask |= 1 << corner;
+  }
+  if (highest === 127) return 0;
   return mask === 15 ? 0 : mask;
 }
 
