@@ -84,7 +84,7 @@ export const CHAT_LIMIT = 120;
  * @property {boolean} [bagOpenButton]
  * @property {{move:Knob,look:Knob}} [sticks]
  * @property {{open:boolean,draft:string,page:"letters"|"symbols",shift:boolean}} [chat]
- * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],mode:string,build?:string}} [menu]
+ * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],effects?:string,effectsLevels?:readonly string[],mode:string,build?:string}} [menu]
  * @property {{open:boolean,lines:readonly HearingLine[],scroll:number}} [log]
  * @property {{open:boolean,stacks:readonly Stack[],selected:number,held:string}} [bag]
  * @property {{open:boolean,rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
@@ -1106,15 +1106,29 @@ export function layoutUi(view) {
         "T CHAT  / COMMAND",
         "ESC OR Q MENU",
       ];
-    const rowH = Math.max(34 * s, lh + 12 * s);
     const settings = menu.page === "settings";
-    const bodyRows = settings ? 7 : rootRows.length;
+    // The settings page has five labelled rows and Back; on a short screen the
+    // buttons shrink so they all fit.
+    const settingsFixed = 10 * s + 2 * pitch + 8 * s + 5 * (pitch + 8 * s) +
+      12 * s;
+    const rowH = settings
+      ? Math.max(
+        20 * s,
+        Math.min(
+          Math.max(34 * s, lh + 12 * s),
+          (safeRect.h - 20 - settingsFixed) / 6,
+        ),
+      )
+      : Math.max(34 * s, lh + 12 * s);
+    const bodyRows = settings ? 8 : rootRows.length;
     const hintLines = settings ? 0 : hints.length + (menu.build ? 1 : 0);
-    const h = Math.min(
-      safeRect.h - 20,
-      12 * s + pitch + 8 * s + bodyRows * (rowH + 4 * s) + hintLines * pitch +
-        16 * s,
-    );
+    const h = settings
+      ? Math.min(safeRect.h - 20, settingsFixed + 6 * rowH)
+      : Math.min(
+        safeRect.h - 20,
+        12 * s + pitch + 8 * s + bodyRows * (rowH + 4 * s) +
+          hintLines * pitch + 16 * s,
+      );
     const x = middle - w / 2;
     const y = top + (safeRect.h - h) / 2;
     add({
@@ -1235,6 +1249,28 @@ export function layoutUi(view) {
             level === "off" ? "Off" : level,
             box(bx + index * (fifth + 4 * s), cursor, fifth, rowH),
             { on: level === menu.music },
+          );
+        }
+        cursor += rowH + 8 * s;
+      }
+      if (menu.effectsLevels) {
+        add({
+          id: "text:menu-effects",
+          kind: "text",
+          rect: box(x, cursor, w, lh),
+          text: "Effects",
+          color: "cream",
+          scale: ts,
+          align: "center",
+        });
+        cursor += pitch;
+        const fifth = (inner - 4 * 4 * s) / 5;
+        for (const [index, level] of menu.effectsLevels.entries()) {
+          menuButton(
+            `effects:${level}`,
+            level === "off" ? "Off" : level,
+            box(bx + index * (fifth + 4 * s), cursor, fifth, rowH),
+            { on: level === menu.effects },
           );
         }
         cursor += rowH + 8 * s;

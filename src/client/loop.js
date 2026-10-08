@@ -46,6 +46,7 @@ import {
 } from "./input-read.js";
 import { checkMineLock } from "./interact.js";
 import { updatePickupGrid } from "./panels.js";
+import { playPanelSounds } from "./ui-sounds.js";
 import { currentLayout } from "./ui-view.js";
 import { catchUpMs, createTickClock } from "./tick-clock.js";
 
@@ -274,6 +275,7 @@ export function startLoop(ctx, renderer, input) {
     scene.mining = miningDisplay(ctx, ctx.accumulator / TICK_MS);
     scene.items = itemsDisplay(ctx);
     updatePickupGrid(ctx);
+    playPanelSounds(ctx);
     scene.inventory = inventoryDisplay(ctx);
     bag.update(scene.inventory, heldDisplay(ctx));
     shop.update(scene.inventory);

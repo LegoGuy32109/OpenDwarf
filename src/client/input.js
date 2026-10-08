@@ -12,6 +12,7 @@ import { WORLD_TOP } from "../shared/world.js";
 import { TEXT_SIZE_KEY, TEXT_SIZES } from "../shared/chat.js";
 import { VOICES_KEY, VOICES_LEVELS } from "./chatter.js";
 import { MUSIC_KEY, MUSIC_LEVELS } from "./music.js";
+import { EFFECTS_KEY, EFFECTS_LEVELS } from "./sfx.js";
 import { setSprint } from "../shared/stamina.js";
 import { closePickupGrid, isPickupGridOpen } from "./pickup-grid.js";
 import { createPointerRouter } from "./ui-pointer.js";
@@ -191,6 +192,19 @@ function uiAction(ctx, element) {
     ctx.music.setLevel(level);
     try {
       localStorage.setItem(MUSIC_KEY, level);
+    } catch {
+      // The choice still applies for this visit.
+    }
+    return;
+  }
+  if (id.startsWith("btn:effects:")) {
+    const level = EFFECTS_LEVELS.find((candidate) =>
+      candidate === id.slice(12)
+    );
+    if (!level) return;
+    ctx.sfx.setLevel(level);
+    try {
+      localStorage.setItem(EFFECTS_KEY, level);
     } catch {
       // The choice still applies for this visit.
     }
@@ -484,6 +498,7 @@ export function createInput(ctx) {
     canvas.addEventListener("pointerdown", (event) => {
       ctx.chatter.unlock();
       ctx.music.unlock();
+      ctx.sfx.unlock();
       if (event.pointerType === "mouse" && event.button !== 0) return;
       event.preventDefault();
       if (event.pointerType === "touch") scene.inputMode = "touch";
@@ -517,6 +532,7 @@ export function createInput(ctx) {
     document.addEventListener("keydown", (event) => {
       ctx.chatter.unlock();
       ctx.music.unlock();
+      ctx.sfx.unlock();
       keyDown(ctx, event);
     });
     document.addEventListener("keyup", (event) => {
