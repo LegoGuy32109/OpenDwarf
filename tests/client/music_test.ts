@@ -218,6 +218,25 @@ Deno.test("nothing plays before a gesture, and a gesture starts a track", async 
   assertEquals(elements[0].paused, false);
 });
 
+Deno.test("later gestures keep the playing track, so a held key does not skip", async () => {
+  const { music, elements } = setup([
+    track("music/a.ogg", ["adventure"]),
+    track("music/b.ogg", ["adventure"]),
+    track("music/c.ogg", ["adventure"]),
+  ]);
+  music.start(["adventure"]);
+  music.unlock();
+  await settle();
+  const first = music.state().track;
+  for (let i = 0; i < 5; i++) {
+    music.unlock();
+    await settle();
+  }
+  assertEquals(music.state().track, first);
+  assertEquals(music.state().recent, [first]);
+  assertEquals(elements.filter((element) => !element.paused).length, 1);
+});
+
 Deno.test("a failing track is skipped and the next one plays", async () => {
   const { music } = setup(
     [

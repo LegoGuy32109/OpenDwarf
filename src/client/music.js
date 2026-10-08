@@ -556,7 +556,13 @@ export function createMusic(options = {}) {
         persistAsked = true;
         void Promise.resolve(persist()).catch(() => {});
       }
-      if (started) void loaded.then(() => advance());
+      // Every key press and tap calls this; only start a track when none plays
+      // yet, or holding a movement key would skip to a new track each repeat.
+      if (started && !current) {
+        void loaded.then(() => {
+          if (!current) return advance();
+        });
+      }
     },
     /**
      * Play for this mood from now on: tracks that share a tag. A playing track
