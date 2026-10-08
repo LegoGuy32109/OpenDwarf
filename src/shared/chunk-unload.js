@@ -21,9 +21,10 @@ export function createChunkUnloader(options = {}) {
      * @param {import('./terrain.js').TerrainStore} world
      * @param {{x:number,y:number}[]} tiles every player, master view and NPCs included
      * @param {number} now milliseconds
+     * @param {{minX:number,minY:number,maxX:number,maxY:number}[]} [views] tile rectangles, such as the host's master view; every chunk in one, and one chunk around it, counts as near
      * @returns {number} how many chunks unloaded
      */
-    update(world, tiles, now) {
+    update(world, tiles, now, views = []) {
       if (!world.generateChunk) return 0;
       for (const tile of tiles) {
         const px = chunkCoord(Math.floor(tile.x));
@@ -31,6 +32,16 @@ export function createChunkUnloader(options = {}) {
         for (let dy = -radius; dy <= radius; dy++) {
           for (let dx = -radius; dx <= radius; dx++) {
             const key = chunkKey(px + dx, py + dy);
+            if (world.chunks.has(key)) lastNear.set(key, now);
+          }
+        }
+      }
+      for (const view of views) {
+        const x1 = chunkCoord(Math.floor(view.maxX)) + 1;
+        const y1 = chunkCoord(Math.floor(view.maxY)) + 1;
+        for (let cy = chunkCoord(Math.floor(view.minY)) - 1; cy <= y1; cy++) {
+          for (let cx = chunkCoord(Math.floor(view.minX)) - 1; cx <= x1; cx++) {
+            const key = chunkKey(cx, cy);
             if (world.chunks.has(key)) lastNear.set(key, now);
           }
         }

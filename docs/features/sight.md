@@ -8,14 +8,17 @@ last visible sprite position while it fades out. Entity view contains currently
 visible players and NPCs plus last observed terrain; undiscovered terrain is
 unknown.
 
-`/master` shows the full world and permits camera panning while keeping at least
-one full row and column of the authored square visible. Any player can use
-`/master` for an unrestricted camera and the complete world view, then `/entity`
-to return to the player's field of view. `/master` requests a full snapshot from
-the host. Returning to `/entity` drops master-only data and adds only tiles in
-the player's current sight to entity memory. Master travel does not add tiles to
-entity-view memory, so it does not reveal the path there. These commands grant
-no movement or world-editing powers.
+`/master` shows the full world and permits camera panning at every zoom. The
+camera keeps at least one loaded chunk column and row on screen but may pass the
+loaded terrain by up to half a viewport on each side (`clampCameraAxis`);
+terrain that is not loaded draws as stone. Panning moves the same screen
+distance per second at every zoom (`masterPanStep` divides by the zoom). Any
+player can use `/master` for an unrestricted camera and the complete world view,
+then `/entity` to return to the player's field of view. `/master` requests a
+full snapshot from the host. Returning to `/entity` drops master-only data and
+adds only tiles in the player's current sight to entity memory. Master travel
+does not add tiles to entity-view memory, so it does not reveal the path there.
+These commands grant no movement or world-editing powers.
 
 The browser host computes each joining player's sight and sends only currently
 visible entities and discovered terrain in `/entity`. The host sends only
