@@ -84,7 +84,7 @@ export const CHAT_LIMIT = 120;
  * @property {boolean} [bagOpenButton]
  * @property {{move:Knob,look:Knob}} [sticks]
  * @property {{open:boolean,draft:string,page:"letters"|"symbols",shift:boolean}} [chat]
- * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],effects?:string,effectsLevels?:readonly string[],mode:string,build?:string}} [menu]
+ * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],effects?:string,effectsLevels?:readonly string[],mode:string,build?:string,audio?:string}} [menu]
  * @property {{open:boolean,lines:readonly HearingLine[],scroll:number}} [log]
  * @property {{open:boolean,stacks:readonly Stack[],selected:number,held:string}} [bag]
  * @property {{open:boolean,rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
@@ -1122,7 +1122,9 @@ export function layoutUi(view) {
       )
       : Math.max(34 * s, lh + 12 * s);
     const bodyRows = settings ? 8 : rootRows.length;
-    const hintLines = settings ? 0 : hints.length + (menu.build ? 1 : 0);
+    const hintLines = settings
+      ? 0
+      : hints.length + (menu.build ? 1 : 0) + (menu.audio ? 1 : 0);
     const h = settings
       ? Math.min(safeRect.h - 20, settingsFixed + 6 * rowH)
       : Math.min(
@@ -1301,6 +1303,22 @@ export function layoutUi(view) {
           kind: "text",
           rect: box(x, cursor + 6 * s + hints.length * pitch, w, pitch),
           text: ascii(menu.build),
+          color: "dim",
+          scale: ts,
+          align: "center",
+        });
+      }
+      if (menu.audio) {
+        add({
+          id: "text:menu-audio",
+          kind: "text",
+          rect: box(
+            x,
+            cursor + 6 * s + (hints.length + (menu.build ? 1 : 0)) * pitch,
+            w,
+            pitch,
+          ),
+          text: ascii(menu.audio),
           color: "dim",
           scale: ts,
           align: "center",

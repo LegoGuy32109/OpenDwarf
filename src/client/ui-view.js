@@ -92,6 +92,7 @@ function uiView(ctx) {
         effectsLevels: EFFECTS_LEVELS,
         mode: scene.inputMode,
         build: ui.offline ? `${build.line}  OFFLINE` : build.line,
+        audio: audioLine(ctx),
       }
       : undefined,
     log: {
@@ -189,4 +190,27 @@ export function bindSafeArea(ctx) {
   measure();
   globalThis.addEventListener("resize", measure);
   globalThis.addEventListener("orientationchange", measure);
+}
+
+/**
+ * One short line on the menu's root page with the audio state, for a phone
+ * that has no F3 panel: music status and role, effects samples loaded of the
+ * total, each audio context's state, and the first error.
+ * @param {Context} ctx
+ */
+function audioLine(ctx) {
+  const music = ctx.music.state();
+  const sfx = ctx.sfx.state();
+  const parts = [
+    `Music ${music.enabled === false ? "off" : music.status} ${
+      music.role ?? ""
+    } ${music.context}`,
+    `Fx ${sfx.loaded}/${sfx.samples} ${sfx.context}`,
+  ];
+  if (sfx.decodeFailures || sfx.downloadFailures) {
+    parts.push(`fail ${sfx.downloadFailures}dl ${sfx.decodeFailures}dec`);
+  }
+  const error = sfx.firstError || music.firstError;
+  if (error) parts.push(error.slice(0, 40));
+  return parts.join("  ");
 }

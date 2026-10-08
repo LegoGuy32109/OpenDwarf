@@ -203,6 +203,8 @@ export function createMusic(options = {}) {
   /** Keys that failed since the mood was set. @type {Set<string>} */
   const failed = new Set();
   let failures = 0;
+  /** The first track error, for the menu's audio line. */
+  let firstError = "";
   let stopped = false;
   let advancing = false;
   /** Bumped when the volume turns off, so work in flight gives up. */
@@ -602,9 +604,12 @@ export function createMusic(options = {}) {
             resume ? { offset: Math.max(0, resumeOffset), notify: false } : {},
           );
           return;
-        } catch {
+        } catch (error) {
           failed.add(track.key);
           failures++;
+          firstError ||= error instanceof Error
+            ? `${error.name} ${error.message}`
+            : String(error);
           if (failures >= MAX_FAILURES) {
             stopped = true;
             status = current ? "playing" : "stopped";
@@ -765,6 +770,8 @@ export function createMusic(options = {}) {
         next: upcoming?.track.key ?? null,
         skipped: [...failed],
         failures,
+        firstError,
+        context: audio?.state ?? "none",
         recent: recent.slice(),
         cachedTracks: urls.length,
         cachedBytes: urls.reduce((sum, url) => sum + plays[url].bytes, 0),

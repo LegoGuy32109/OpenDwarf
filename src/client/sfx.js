@@ -213,6 +213,14 @@ export function createSfx(options = {}) {
     return found;
   }
 
+  /** Failures and the first error, for the menu's audio line on a phone with no F3. */
+  let downloadFailures = 0;
+  let decodeFailures = 0;
+  let firstError = "";
+  /** @param {unknown} error */
+  const errorText = (error) =>
+    error instanceof Error ? error.name + " " + error.message : String(error);
+
   /** One sample's bytes: from the device cache when it is there, else downloaded and cached. @param {Sample} sample */
   async function download(sample) {
     const url = mediaUrl(sample.key, sample.hash);
@@ -236,8 +244,10 @@ export function createSfx(options = {}) {
     try {
       buffers.set(sample.key, await audio.decodeAudioData(bytes));
       ready = index.filter((candidate) => buffers.has(candidate.key));
-    } catch {
+    } catch (error) {
       // A sample that does not decode is skipped.
+      decodeFailures++;
+      firstError ||= `decode: ${errorText(error)}`;
     }
   }
 
@@ -257,8 +267,10 @@ export function createSfx(options = {}) {
         try {
           downloaded.set(sample.key, await download(sample));
           await decode(sample);
-        } catch {
+        } catch (error) {
           // A sample that fails is skipped.
+          downloadFailures++;
+          firstError ||= `download: ${errorText(error)}`;
         }
       }
     };
@@ -419,6 +431,10 @@ export function createSfx(options = {}) {
         samples: index.length,
         loaded: ready.length,
         playing: voices.length,
+        context: audio?.state ?? "none",
+        downloadFailures,
+        decodeFailures,
+        firstError,
       };
     },
     /** The F3 panel line. */
