@@ -377,18 +377,35 @@ export function layoutUi(view) {
         ...extra,
       });
     };
+    // Interact: half a stick, centered in the gap between the sticks (or as
+    // much of it as there is). Sprint: in the right stick's bottom-right corner.
+    const middle = lookX - (moveX + stick);
+    const interactSize = Math.max(roundSize, Math.min(stick / 2, middle - 12));
+    // In landscape the chat, log, menu and bag row sits between the sticks at
+    // the bottom, so interact rises above it.
+    const actionRowTop = bottom - (portrait ? 10 : 14) * sized.scale -
+      actionSize;
+    const interactY = portrait
+      ? stickTop + stick / 2 - interactSize / 2
+      : Math.min(
+        stickTop + stick / 2 - interactSize / 2,
+        actionRowTop - sized.gap - interactSize,
+      );
     roundButton(
       "btn:interact",
-      moveX + stick + 6,
-      stickBottom - roundSize,
-      roundSize,
+      (moveX + stick + lookX) / 2 - interactSize / 2,
+      interactY,
+      interactSize,
       { glyph: "item", item: view.held === STONE_ITEM ? STONE_ITEM : PICKAXE },
     );
+    // Sprint at the look stick's bottom right. It overlaps only the stick's
+    // outer edge, and it is drawn after the stick, so it takes those touches.
+    const sprintSize = Math.max(roundSize, stick * 0.34);
     roundButton(
       "btn:sprint",
-      lookX - 6 - roundSize,
-      stickBottom - roundSize,
-      roundSize,
+      Math.min(lookX + stick - sprintSize * 0.55, right - sprintSize - 4),
+      Math.min(stickBottom - sprintSize * 0.55, bottom - sprintSize - 4),
+      sprintSize,
       {
         glyph: "sprint",
         on: stamina.on,
@@ -413,7 +430,7 @@ export function layoutUi(view) {
         ...extra,
       });
     }
-    controlsTop = Math.min(stickTop, rowY, stickBottom - roundSize);
+    controlsTop = Math.min(stickTop, rowY, interactY);
   }
 
   // The top left column: status, then diagnostics. The log goes under both.

@@ -91,13 +91,25 @@ function controlsApart(screen: typeof PORTRAIT, scale: number) {
   const sprint = layout.byId.get("btn:sprint")!;
   // A button box must stay clear of the stick circles, as the old CSS checks did.
   assert(circleClearOfBox(move, interact));
-  assert(circleClearOfBox(look, sprint));
   assert(circleClearOfBox(look, interact));
+  // Sprint may overlap the look stick's outer edge: it is later in draw order,
+  // so it takes those touches, and it stays out of the stick's inner 60%.
+  assert(
+    layout.elements.indexOf(sprint) > layout.elements.indexOf(look),
+    "sprint is hit before the look stick",
+  );
+  assert(
+    Math.hypot(sprint.cx! - look.cx!, sprint.cy! - look.cy!) - sprint.r! >=
+      0.6 * look.r!,
+    `sprint clear of the look stick's middle at ${scale}`,
+  );
   assert(circleClearOfBox(move, sprint));
+  // Interact sits between the sticks, at least as large as sprint; sprint sits
+  // at the look stick's bottom right.
   assert(interact.rect.x >= move.rect.x + move.rect.w);
-  assert(interact.rect.x + interact.rect.w <= sprint.rect.x);
-  // Interact mirrors sprint across the middle of the screen.
-  assertEquals(interact.rect.y, sprint.rect.y);
+  assert(interact.rect.x + interact.rect.w <= look.rect.x);
+  assert(interact.rect.w >= sprint.rect.w);
+  assert(sprint.cx! > look.cx! && sprint.cy! > look.cy!);
   const row = ["btn:chat", "btn:log", "btn:menu", "btn:bag"].map((id) =>
     layout.byId.get(id)!
   );
@@ -107,6 +119,13 @@ function controlsApart(screen: typeof PORTRAIT, scale: number) {
         Math.hypot(button.cx! - other.cx!, button.cy! - other.cy!) >
           button.r! + other.r!,
         `${button.id} and ${other.id} apart`,
+      );
+    }
+    for (const round of [interact, sprint]) {
+      assert(
+        Math.hypot(button.cx! - round.cx!, button.cy! - round.cy!) >
+          button.r! + round.r!,
+        `${button.id} and ${round.id} apart`,
       );
     }
     for (const stick of [move, look]) {

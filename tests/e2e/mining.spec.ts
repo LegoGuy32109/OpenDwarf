@@ -226,7 +226,7 @@ test.describe("phone interact button", () => {
     hasTouch: true,
   });
 
-  test("sits beside the move stick without touching it, and mines on tap", async ({ page }) => {
+  test("sits between the sticks without touching them, and mines on tap", async ({ page }) => {
     await startHost(page);
     const button = box(await uiRect(page, "btn:interact"));
     const sprint = box(await uiRect(page, "btn:sprint"));
@@ -244,11 +244,12 @@ test.describe("phone interact button", () => {
     );
     expect(Math.hypot(nearestX - move.x - radius, nearestY - move.y - radius))
       .toBeGreaterThan(radius);
+    const look = box(await uiRect(page, "stick:look"));
     expect(button.x).toBeGreaterThanOrEqual(move.x + move.width);
-    expect(button.x + button.width).toBeLessThanOrEqual(sprint.x);
+    expect(button.x + button.width).toBeLessThanOrEqual(look.x);
     expect(button.y + button.height).toBeLessThan(view.height);
-    // It mirrors the sprint button across the middle of the screen.
-    expect(Math.abs(button.y - sprint.y)).toBeLessThan(2);
+    // It is at least as large as sprint (ADR 0009 phone layout).
+    expect(button.width).toBeGreaterThanOrEqual(sprint.width);
     await evidenceShot(page, "interact-portrait");
     await page.setViewportSize({ width: 844, height: 390 });
     const landscape = box(await uiRect(page, "btn:interact"));

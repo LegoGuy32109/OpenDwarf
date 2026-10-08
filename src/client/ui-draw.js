@@ -29,6 +29,25 @@ import { CHAT_LIMIT } from "./ui.js";
  * @property {number} now milliseconds, for the blinking caret
  */
 
+/** The touch sticks and round buttons draw at this opacity, so the world shows through. */
+export const CONTROL_OPACITY = 0.6;
+
+/**
+ * A painter that draws everything at `alpha` times its own opacity.
+ * @param {Painter} paint @param {number} alpha @returns {Painter}
+ */
+function faded(paint, alpha) {
+  /** @param {Color} color @returns {Color} */
+  const fade = ([r, g, b, a]) => [r, g, b, a * alpha];
+  return {
+    rect: (x, y, w, h, color) => paint.rect(x, y, w, h, fade(color)),
+    text: (text, x, y, scale, color) =>
+      paint.text(text, x, y, scale, fade(color)),
+    item: (kind, x, y, size, a) => paint.item(kind, x, y, size, a * alpha),
+    qr: paint.qr,
+  };
+}
+
 /** @param {number} hex @param {number} [alpha] @returns {Color} */
 const rgb = (hex, alpha = 1) => [
   ((hex >> 16) & 255) / 255,
@@ -318,11 +337,11 @@ export function drawUi(paint, layout, state) {
         break;
       }
       case "round":
-        drawRound(paint, element, ts, down);
+        drawRound(faded(paint, CONTROL_OPACITY), element, ts, down);
         break;
       case "stick":
         drawStick(
-          paint,
+          faded(paint, CONTROL_OPACITY),
           element,
           ts,
           element.id === "stick:move" ? state.sticks.move : state.sticks.look,

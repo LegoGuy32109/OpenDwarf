@@ -19,22 +19,20 @@ async function expectClearOfLookStick(page: Page) {
   const look = toBox(await uiRect(page, "stick:look"));
   const move = toBox(await uiRect(page, "stick:move"));
   const view = page.viewportSize()!;
-  // The look stick is a circle: its box may overlap, but its edge must not.
+  // Sprint sits at the look stick's bottom right (ADR 0009 phone layout). It
+  // may overlap the stick's outer edge, where it takes the touch, but stays out
+  // of the stick's inner 60%.
   const radius = look.width / 2;
   const centerX = look.x + radius;
   const centerY = look.y + radius;
-  const nearestX = Math.max(
-    sprint.x,
-    Math.min(centerX, sprint.x + sprint.width),
-  );
-  const nearestY = Math.max(
-    sprint.y,
-    Math.min(centerY, sprint.y + sprint.height),
-  );
-  expect(Math.hypot(nearestX - centerX, nearestY - centerY)).toBeGreaterThan(
-    radius,
-  );
-  // Room for the mirrored interact button between the sprint button and the move stick.
+  const sprintRadius = sprint.width / 2;
+  const sprintX = sprint.x + sprintRadius;
+  const sprintY = sprint.y + sprintRadius;
+  expect(sprintX).toBeGreaterThan(centerX);
+  expect(sprintY).toBeGreaterThan(centerY);
+  expect(Math.hypot(sprintX - centerX, sprintY - centerY) - sprintRadius)
+    .toBeGreaterThanOrEqual(0.6 * radius);
+  // Sprint stays on the right half of the screen, on screen, right of the move stick.
   expect(sprint.x).toBeGreaterThan(view.width / 2 - sprint.width);
   expect(sprint.x + sprint.width).toBeLessThan(view.width);
   expect(sprint.y + sprint.height).toBeLessThan(view.height);
