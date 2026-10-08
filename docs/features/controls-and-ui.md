@@ -16,8 +16,8 @@ In entity view, IJKL points the cursor (see [cursor](cursor.md)) at one of the
 eight neighboring tiles. R/V selects the view level; the cursor appears at the
 player's level or one level above or below. In master view, IJKL pans the
 camera. Holding U/N smoothly zooms out/in. The mouse wheel also zooms. Space,
-the gamepad's ZR (button 7), or the large round pickaxe button between the
-sticks interacts (see [mining and items](mining-and-items.md)). B, the gamepad's
+the gamepad's ZR (button 7), or the large round pickaxe button right of the move
+stick interacts (see [mining and items](mining-and-items.md)). B, the gamepad's
 Y (button 2), or the bag button opens the inventory (see
 [inventory and shop](inventory-and-shop.md)). Movement keys are in
 [movement](movement.md); chat keys are in [chat](chat.md).
