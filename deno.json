@@ -32,7 +32,7 @@
     "e2e": "deno run -A npm:playwright@1.63.0 test",
     "stress": "deno run -A scripts/stress.ts",
     "smoke": "deno run -A scripts/smoke.ts",
-    "music": "deno run --env-file=.env --allow-run --allow-read --allow-env scripts/music.ts",
+    "media": "deno run --env-file=.env --allow-run --allow-read --allow-write=media --allow-env scripts/media.ts",
     "orca": "deno run --allow-run --allow-read --allow-env scripts/orca.ts",
     "evidence:publish": "deno run --allow-run --allow-read --allow-write scripts/publish-evidence.ts",
     "capture:sync": "deno run -A scripts/capture-visual-sync.ts",

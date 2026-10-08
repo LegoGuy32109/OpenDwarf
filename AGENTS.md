@@ -67,9 +67,11 @@ module or an API, the coordinator first commits the interface (types, route
 shapes, empty test files), so the tickets can run at the same time instead of
 waiting on each other. Keep a ticket to one session; split anything larger.
 
-## Music
+## Media
 
-Tracks are 64 kbps Opus `.ogg` files in the `opendwarf` R2 bucket under
-`music/`. `public/assets/music/music.json` lists them and is tracked; the audio
-files are git-ignored. `deno task music convert <folder>` converts new mp3s, and
-`deno task music upload` sends changed tracks (R2 keys in `.env`).
+Music and other large assets live in the `opendwarf` R2 bucket, and the shell
+serves them at `/media/<key>` (ADR 0007). The `media/` folder mirrors the
+bucket: `media/index/*.json` is tracked, and everything else in it is
+git-ignored. `deno task media convert <folder>` turns mp3s into 64 kbps Opus,
+`deno task media hash` fills the index hashes, and `deno task media upload`
+sends changed files (R2 keys in `.env`). New content never needs a shell deploy.

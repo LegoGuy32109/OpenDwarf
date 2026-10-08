@@ -118,6 +118,14 @@ export function createBuild(
       new URL(`${config.base}join/${session}`, origin).href,
     /** An API URL. @param {string} path such as `sessions` or `sessions/<id>/ice` */
     apiUrl: (path) => `${api}/api/v1/${path}`,
+    /**
+     * A media object's URL on the shell (ADR 0007). The hash makes a changed file a new URL.
+     * @param {string} key such as `music/ACelticTale.ogg` @param {string} [hash]
+     */
+    mediaUrl: (key, hash) =>
+      `${api}/media/${key.split("/").map(encodeURIComponent).join("/")}${
+        hash ? `?v=${encodeURIComponent(hash)}` : ""
+      }`,
   };
 }
 

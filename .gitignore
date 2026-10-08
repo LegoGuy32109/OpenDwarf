@@ -10,6 +10,7 @@ game_library/
 vendor/
 **/target/
 
-# Music tracks live in the R2 bucket (deno task music); music.json is tracked.
-public/assets/music/*.mp3
-public/assets/music/*.ogg
+# media/ mirrors the R2 bucket (ADR 0007): only the index files are tracked.
+media/*
+!media/index/
+public/assets/music/

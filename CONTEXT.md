@@ -259,3 +259,18 @@ through the shell.
 **Admin dashboard**: The public, read-only page at `/admin` that lists live
 sessions, builds and labels, main and its promotions, shell deploys, and session
 telemetry.
+
+**Media**: Large assets the game downloads apart from a build, such as music.
+They live in the R2 bucket and the shell serves them at `/media/<key>`. See
+[ADR 0007](docs/adr/0007-media-from-r2-and-offline-play.md).
+
+**Media key**: An object's path in the bucket, such as `music/ACelticTale.ogg`.
+
+**Media index**: A JSON file under `index/` that lists media with keys, hashes
+and tags, versioned in its name, such as `index/music.v1.json`.
+
+**Device cache**: The `od-media` Cache Storage cache that keeps downloaded media
+on the player's device.
+
+**Offline play**: Starting and playing a single-player world with no network,
+served by the build's service worker.

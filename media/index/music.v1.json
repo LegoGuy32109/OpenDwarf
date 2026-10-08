@@ -1,7 +1,9 @@
 {
+  "version": 1,
   "tracks": [
     {
-      "file": "ACelticTale.ogg",
+      "key": "music/ACelticTale.ogg",
+      "hash": "da90e0650632",
       "duration": 214,
       "tags": [
         "adventure",
@@ -10,7 +12,8 @@
       ]
     },
     {
-      "file": "Adventure.ogg",
+      "key": "music/Adventure.ogg",
+      "hash": "cbf9081e3250",
       "duration": 278,
       "tags": [
         "adventure",
@@ -19,7 +22,8 @@
       "note": "remaster"
     },
     {
-      "file": "AFaintGlow.ogg",
+      "key": "music/AFaintGlow.ogg",
+      "hash": "b28bdc02f670",
       "duration": 209,
       "tags": [
         "soft",
@@ -28,14 +32,16 @@
       ]
     },
     {
-      "file": "Alpha.ogg",
+      "key": "music/Alpha.ogg",
+      "hash": "a257c3a944a7",
       "duration": 261,
       "tags": [
         "dramatic"
       ]
     },
     {
-      "file": "Alvae.ogg",
+      "key": "music/Alvae.ogg",
+      "hash": "e4614f3cdd8b",
       "duration": 291,
       "tags": [
         "soft",
@@ -44,7 +50,8 @@
       ]
     },
     {
-      "file": "AmongTheWitheredLeaves.ogg",
+      "key": "music/AmongTheWitheredLeaves.ogg",
+      "hash": "0f9ac6e2be9a",
       "duration": 191,
       "tags": [
         "forest",
@@ -53,14 +60,16 @@
       ]
     },
     {
-      "file": "ASongFromTheDeep.ogg",
+      "key": "music/ASongFromTheDeep.ogg",
+      "hash": "44cee7a8caf4",
       "duration": 218,
       "tags": [
         "soft"
       ]
     },
     {
-      "file": "Battlefield.ogg",
+      "key": "music/Battlefield.ogg",
+      "hash": "1736c719bb59",
       "duration": 236,
       "tags": [
         "battle",
@@ -69,7 +78,8 @@
       ]
     },
     {
-      "file": "BeautifulDreams.ogg",
+      "key": "music/BeautifulDreams.ogg",
+      "hash": "876dfe9ce8cc",
       "duration": 217,
       "tags": [
         "night",
@@ -78,7 +88,8 @@
       ]
     },
     {
-      "file": "BeyondTheHorizon.ogg",
+      "key": "music/BeyondTheHorizon.ogg",
+      "hash": "acced8929e24",
       "duration": 279,
       "tags": [
         "dramatic",
@@ -86,14 +97,16 @@
       ]
     },
     {
-      "file": "Blacksmith.ogg",
+      "key": "music/Blacksmith.ogg",
+      "hash": "aae6da1ae093",
       "duration": 161,
       "tags": [
         "battle"
       ]
     },
     {
-      "file": "BlueHour.ogg",
+      "key": "music/BlueHour.ogg",
+      "hash": "1518ca5a018c",
       "duration": 125,
       "tags": [
         "soft",
@@ -101,7 +114,8 @@
       ]
     },
     {
-      "file": "Borgar.ogg",
+      "key": "music/Borgar.ogg",
+      "hash": "b5a38a540513",
       "duration": 341,
       "tags": [
         "dramatic",
@@ -111,7 +125,8 @@
       ]
     },
     {
-      "file": "BreathOfTheForest.ogg",
+      "key": "music/BreathOfTheForest.ogg",
+      "hash": "8574d3df337c",
       "duration": 179,
       "tags": [
         "forest",
@@ -121,7 +136,8 @@
       ]
     },
     {
-      "file": "BrothersInArms.ogg",
+      "key": "music/BrothersInArms.ogg",
+      "hash": "330ec330da34",
       "duration": 151,
       "tags": [
         "adventure",
@@ -130,7 +146,8 @@
       ]
     },
     {
-      "file": "CastleInTheSky.ogg",
+      "key": "music/CastleInTheSky.ogg",
+      "hash": "4664f0e1f9e4",
       "duration": 202,
       "tags": [
         "soft",
@@ -139,7 +156,8 @@
       ]
     },
     {
-      "file": "CelticLore.ogg",
+      "key": "music/CelticLore.ogg",
+      "hash": "952411bea1ef",
       "duration": 200,
       "tags": [
         "adventure",
@@ -148,7 +166,8 @@
       ]
     },
     {
-      "file": "CelticWhispers.ogg",
+      "key": "music/CelticWhispers.ogg",
+      "hash": "8fbf2322f063",
       "duration": 265,
       "tags": [
         "adventure",
@@ -157,7 +176,8 @@
       "note": "I might cut out the slow parts"
     },
     {
-      "file": "CircleOfLife.ogg",
+      "key": "music/CircleOfLife.ogg",
+      "hash": "17af5aeabef1",
       "duration": 210,
       "tags": [
         "soft",
@@ -166,7 +186,8 @@
       ]
     },
     {
-      "file": "Clarity.ogg",
+      "key": "music/Clarity.ogg",
+      "hash": "58095a3f5e47",
       "duration": 193,
       "tags": [
         "soft",
@@ -174,7 +195,8 @@
       ]
     },
     {
-      "file": "ColdJourney.ogg",
+      "key": "music/ColdJourney.ogg",
+      "hash": "6a9927a3026f",
       "duration": 291,
       "tags": [
         "adventure",
@@ -183,7 +205,8 @@
       ]
     },
     {
-      "file": "CrannNaBeatha.ogg",
+      "key": "music/CrannNaBeatha.ogg",
+      "hash": "c86c625983bf",
       "duration": 243,
       "tags": [
         "dramatic",
@@ -191,7 +214,8 @@
       ]
     },
     {
-      "file": "CrystalForest.ogg",
+      "key": "music/CrystalForest.ogg",
+      "hash": "9590dafe4771",
       "duration": 268,
       "tags": [
         "soft",
@@ -200,7 +224,8 @@
       ]
     },
     {
-      "file": "Daudir.ogg",
+      "key": "music/Daudir.ogg",
+      "hash": "1ee261cb2d22",
       "duration": 228,
       "tags": [
         "tactical",
@@ -209,7 +234,8 @@
       "note": "might cut the intro a bit"
     },
     {
-      "file": "Deliverance.ogg",
+      "key": "music/Deliverance.ogg",
+      "hash": "713fcbaeb343",
       "duration": 212,
       "tags": [
         "adventure",
@@ -218,7 +244,8 @@
       ]
     },
     {
-      "file": "Dragonquest.ogg",
+      "key": "music/Dragonquest.ogg",
+      "hash": "97e9c836ebcd",
       "duration": 316,
       "tags": [
         "adventure",
@@ -227,332 +254,398 @@
       ]
     },
     {
-      "file": "Dragonsong.ogg",
+      "key": "music/Dragonsong.ogg",
+      "hash": "25e3c4fb3682",
       "duration": 225,
       "tags": []
     },
     {
-      "file": "EchoesOfValor.ogg",
+      "key": "music/EchoesOfValor.ogg",
+      "hash": "7f8dd9a9c90c",
       "duration": 194,
       "tags": []
     },
     {
-      "file": "EfterStorm.ogg",
+      "key": "music/EfterStorm.ogg",
+      "hash": "7046349b70d5",
       "duration": 194,
       "tags": []
     },
     {
-      "file": "Enchantment.ogg",
+      "key": "music/Enchantment.ogg",
+      "hash": "3b47e46b0d29",
       "duration": 339,
       "tags": []
     },
     {
-      "file": "Etherealism.ogg",
+      "key": "music/Etherealism.ogg",
+      "hash": "9bfe17d5ae64",
       "duration": 189,
       "tags": []
     },
     {
-      "file": "Eventide.ogg",
+      "key": "music/Eventide.ogg",
+      "hash": "c3c0b79c9885",
       "duration": 218,
       "tags": []
     },
     {
-      "file": "EyesUp.ogg",
+      "key": "music/EyesUp.ogg",
+      "hash": "2b3d4ea7583c",
       "duration": 108,
       "tags": []
     },
     {
-      "file": "FairyTale.ogg",
+      "key": "music/FairyTale.ogg",
+      "hash": "4063eba45b03",
       "duration": 270,
       "tags": []
     },
     {
-      "file": "FallOfTheLeaf.ogg",
+      "key": "music/FallOfTheLeaf.ogg",
+      "hash": "f2705321a323",
       "duration": 188,
       "tags": []
     },
     {
-      "file": "ForTheKing.ogg",
+      "key": "music/ForTheKing.ogg",
+      "hash": "f1b2b3f7c939",
       "duration": 209,
       "tags": []
     },
     {
-      "file": "ForThoseWhoStillWander.ogg",
+      "key": "music/ForThoseWhoStillWander.ogg",
+      "hash": "47f395c4d711",
       "duration": 201,
       "tags": []
     },
     {
-      "file": "Freedom.ogg",
+      "key": "music/Freedom.ogg",
+      "hash": "66ff178b28bb",
       "duration": 227,
       "tags": []
     },
     {
-      "file": "Frost.ogg",
+      "key": "music/Frost.ogg",
+      "hash": "f9e644035527",
       "duration": 259,
       "tags": []
     },
     {
-      "file": "FrozenInTime.ogg",
+      "key": "music/FrozenInTime.ogg",
+      "hash": "9c6275cd5b26",
       "duration": 191,
       "tags": []
     },
     {
-      "file": "Grundar.ogg",
+      "key": "music/Grundar.ogg",
+      "hash": "587dc48abf43",
       "duration": 271,
       "tags": []
     },
     {
-      "file": "InTheFlowOfSilentWaters.ogg",
+      "key": "music/InTheFlowOfSilentWaters.ogg",
+      "hash": "36675fb61f64",
       "duration": 219,
       "tags": []
     },
     {
-      "file": "IntoSilenceP1.ogg",
+      "key": "music/IntoSilenceP1.ogg",
+      "hash": "5371afd3113d",
       "duration": 204,
       "tags": []
     },
     {
-      "file": "IntoSilenceP2.ogg",
+      "key": "music/IntoSilenceP2.ogg",
+      "hash": "9fe18d3cbd22",
       "duration": 201,
       "tags": []
     },
     {
-      "file": "IntoTheUnknown.ogg",
+      "key": "music/IntoTheUnknown.ogg",
+      "hash": "7cec622a0f9d",
       "duration": 193,
       "tags": []
     },
     {
-      "file": "KeeperOfTheForest.ogg",
+      "key": "music/KeeperOfTheForest.ogg",
+      "hash": "c1743a1ff3be",
       "duration": 216,
       "tags": []
     },
     {
-      "file": "KingdomOfBards.ogg",
+      "key": "music/KingdomOfBards.ogg",
+      "hash": "57510919f7cf",
       "duration": 268,
       "tags": []
     },
     {
-      "file": "LastLight.ogg",
+      "key": "music/LastLight.ogg",
+      "hash": "3b773e37fd11",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "LeavingForValhalla.ogg",
+      "key": "music/LeavingForValhalla.ogg",
+      "hash": "a38309c2ec7a",
       "duration": 380,
       "tags": []
     },
     {
-      "file": "Lumina.ogg",
+      "key": "music/Lumina.ogg",
+      "hash": "8b325e3e2f08",
       "duration": 209,
       "tags": []
     },
     {
-      "file": "MagicTavern.ogg",
+      "key": "music/MagicTavern.ogg",
+      "hash": "d14f5284e9d5",
       "duration": 388,
       "tags": []
     },
     {
-      "file": "Marked.ogg",
+      "key": "music/Marked.ogg",
+      "hash": "b9e9fee3f7dc",
       "duration": 153,
       "tags": []
     },
     {
-      "file": "Mirrormere.ogg",
+      "key": "music/Mirrormere.ogg",
+      "hash": "f821d9f26a83",
       "duration": 207,
       "tags": []
     },
     {
-      "file": "Moonsong.ogg",
+      "key": "music/Moonsong.ogg",
+      "hash": "c9e23da62f73",
       "duration": 217,
       "tags": []
     },
     {
-      "file": "Mourning.ogg",
+      "key": "music/Mourning.ogg",
+      "hash": "fb054f5eab54",
       "duration": 183,
       "tags": []
     },
     {
-      "file": "Mufaya-DarkAscension.ogg",
+      "key": "music/Mufaya-DarkAscension.ogg",
+      "hash": "a0a0e88376e6",
       "duration": 259,
       "tags": []
     },
     {
-      "file": "MufayaSong1.ogg",
+      "key": "music/MufayaSong1.ogg",
+      "hash": "c559650d86f7",
       "duration": 166,
       "tags": []
     },
     {
-      "file": "Myth.ogg",
+      "key": "music/Myth.ogg",
+      "hash": "9b56773070ed",
       "duration": 143,
       "tags": []
     },
     {
-      "file": "Necromancer.ogg",
+      "key": "music/Necromancer.ogg",
+      "hash": "c21e1f265c1c",
       "duration": 249,
       "tags": []
     },
     {
-      "file": "NeverToReturn.ogg",
+      "key": "music/NeverToReturn.ogg",
+      "hash": "6fad96ef7e1f",
       "duration": 212,
       "tags": []
     },
     {
-      "file": "NightAtTheEolian.ogg",
+      "key": "music/NightAtTheEolian.ogg",
+      "hash": "b936789d398f",
       "duration": 228,
       "tags": []
     },
     {
-      "file": "OdeToTheFallen.ogg",
+      "key": "music/OdeToTheFallen.ogg",
+      "hash": "cee5a1407f4a",
       "duration": 279,
       "tags": []
     },
     {
-      "file": "QuestsEnd.ogg",
+      "key": "music/QuestsEnd.ogg",
+      "hash": "2681b6e90459",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "RealmOfEternalLegends.ogg",
+      "key": "music/RealmOfEternalLegends.ogg",
+      "hash": "bb65c7b41779",
       "duration": 179,
       "tags": []
     },
     {
-      "file": "Reverie.ogg",
+      "key": "music/Reverie.ogg",
+      "hash": "2a4a4e94dee0",
       "duration": 223,
       "tags": []
     },
     {
-      "file": "RiteOfTheFadingLight.ogg",
+      "key": "music/RiteOfTheFadingLight.ogg",
+      "hash": "7b7e4a534f47",
       "duration": 248,
       "tags": []
     },
     {
-      "file": "RoamingTwo.ogg",
+      "key": "music/RoamingTwo.ogg",
+      "hash": "3a99c1d95f80",
       "duration": 156,
       "tags": []
     },
     {
-      "file": "Ruthless.ogg",
+      "key": "music/Ruthless.ogg",
+      "hash": "4e4923cd83bd",
       "duration": 183,
       "tags": []
     },
     {
-      "file": "SacredEarth.ogg",
+      "key": "music/SacredEarth.ogg",
+      "hash": "852c5daac32e",
       "duration": 183,
       "tags": []
     },
     {
-      "file": "ShimmeringInTheShallows.ogg",
+      "key": "music/ShimmeringInTheShallows.ogg",
+      "hash": "b5d341f4dbf7",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "SiochainShuthain.ogg",
+      "key": "music/SiochainShuthain.ogg",
+      "hash": "266c6e3d268f",
       "duration": 224,
       "tags": []
     },
     {
-      "file": "Sleeper.ogg",
+      "key": "music/Sleeper.ogg",
+      "hash": "a09db2221738",
       "duration": 184,
       "tags": []
     },
     {
-      "file": "Sombre.ogg",
+      "key": "music/Sombre.ogg",
+      "hash": "64a2543c1df4",
       "duration": 609,
       "tags": []
     },
     {
-      "file": "Stillwater.ogg",
+      "key": "music/Stillwater.ogg",
+      "hash": "ea6ec92adf71",
       "duration": 241,
       "tags": []
     },
     {
-      "file": "Stodvar.ogg",
+      "key": "music/Stodvar.ogg",
+      "hash": "dbc867a10513",
       "duration": 254,
       "tags": []
     },
     {
-      "file": "Storm.ogg",
+      "key": "music/Storm.ogg",
+      "hash": "5fb8ab28492b",
       "duration": 209,
       "tags": []
     },
     {
-      "file": "TheFall.ogg",
+      "key": "music/TheFall.ogg",
+      "hash": "30d1f4b79577",
       "duration": 199,
       "tags": []
     },
     {
-      "file": "TheForestSpoke.ogg",
+      "key": "music/TheForestSpoke.ogg",
+      "hash": "bc9980b442d2",
       "duration": 218,
       "tags": []
     },
     {
-      "file": "TheRatKing.ogg",
+      "key": "music/TheRatKing.ogg",
+      "hash": "a1748fc77a0a",
       "duration": 207,
       "tags": []
     },
     {
-      "file": "TheShapersRealm.ogg",
+      "key": "music/TheShapersRealm.ogg",
+      "hash": "d0600d91a0d3",
       "duration": 202,
       "tags": []
     },
     {
-      "file": "TitleTrack.ogg",
+      "key": "music/TitleTrack.ogg",
+      "hash": "7b4e8ea5b064",
       "duration": 395,
       "tags": []
     },
     {
-      "file": "UnsungHeroes.ogg",
+      "key": "music/UnsungHeroes.ogg",
+      "hash": "4391910c0e2f",
       "duration": 225,
       "tags": []
     },
     {
-      "file": "Wanderer.ogg",
+      "key": "music/Wanderer.ogg",
+      "hash": "bc00d9c3976c",
       "duration": 164,
       "tags": []
     },
     {
-      "file": "WandererP2.ogg",
+      "key": "music/WandererP2.ogg",
+      "hash": "dbbc699592bc",
       "duration": 180,
       "tags": []
     },
     {
-      "file": "WhatLiesBeyond.ogg",
+      "key": "music/WhatLiesBeyond.ogg",
+      "hash": "645e8488fa26",
       "duration": 205,
       "tags": []
     },
     {
-      "file": "WildfireP1.ogg",
+      "key": "music/WildfireP1.ogg",
+      "hash": "3a803187fb01",
       "duration": 200,
       "tags": []
     },
     {
-      "file": "WildfireP2.ogg",
+      "key": "music/WildfireP2.ogg",
+      "hash": "058c95a62b71",
       "duration": 199,
       "tags": []
     },
     {
-      "file": "WindsOfThePast.ogg",
+      "key": "music/WindsOfThePast.ogg",
+      "hash": "80e69d1e83d2",
       "duration": 206,
       "tags": []
     },
     {
-      "file": "WintersBreath.ogg",
+      "key": "music/WintersBreath.ogg",
+      "hash": "5ab8a0f6d953",
       "duration": 1210,
       "tags": []
     },
     {
-      "file": "WintersNight.ogg",
+      "key": "music/WintersNight.ogg",
+      "hash": "c80975934e5d",
       "duration": 197,
       "tags": []
     },
     {
-      "file": "WoodlandTales.ogg",
+      "key": "music/WoodlandTales.ogg",
+      "hash": "cde7b674501a",
       "duration": 245,
       "tags": []
     },
     {
-      "file": "WorldUnbound.ogg",
+      "key": "music/WorldUnbound.ogg",
+      "hash": "050fe4de0eb0",
       "duration": 203,
       "tags": []
     }

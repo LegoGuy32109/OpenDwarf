@@ -2,6 +2,7 @@ import QRCode from "qrcode-svg";
 import { type AdminApi, createAdminApi } from "./admin-api.ts";
 import { serveAdminPage } from "./admin-page.ts";
 import { type Builds, openBuilds } from "./builds.ts";
+import { type Media, openMedia } from "./media.ts";
 import {
   createSessionRoutes,
   type SessionRoutesOptions,
@@ -88,6 +89,7 @@ export function createApp(
     ownerToken: Deno.env.get("OD_OWNER_TOKEN"),
   }),
   options: SessionRoutesOptions = {},
+  media: Media = openMedia(),
 ): (
   request: Request,
   info?: { remoteAddr?: { hostname?: string } },
@@ -97,6 +99,20 @@ export function createApp(
     const url = new URL(request.url);
     // `/api/v1/*` is the client's API; the unversioned paths stay as aliases.
     const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
+    const mediaResponse = await media.handle(request, url.pathname);
+    if (mediaResponse) return mediaResponse;
+    // The local build's service worker loader (ADR 0007). Remote builds: see the media ticket.
+    if (
+      builds.local && request.method === "GET" &&
+      (url.pathname === "/sw.js" || url.pathname === "/b/local/sw.js")
+    ) {
+      return new Response('importScripts("/js/sw-main.js"); // build local\n', {
+        headers: {
+          "content-type": "text/javascript; charset=utf-8",
+          "cache-control": "no-cache",
+        },
+      });
+    }
     // Build pages: `/b/<name>/...`, and main at the root pages.
     if (builds.handles(url.pathname) && request.method === "GET") {
       return builds.serve(url.pathname);

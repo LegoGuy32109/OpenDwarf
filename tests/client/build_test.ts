@@ -173,3 +173,18 @@ Deno.test("a join response with no build, or a build path that is not a build pa
     ]
   ) assertEquals(guest.joinRedirect(host, "abcdefgh-1234", origin), null);
 });
+
+Deno.test("a media URL is on the shell origin, with the hash as its version", () => {
+  const build = createBuild(
+    parseBuildConfig('{"base":"/b/test/","commit":"abc"}'),
+    "https://od.example.me",
+  );
+  assertEquals(
+    build.mediaUrl("music/ACelticTale.ogg", "da90e0650632"),
+    "https://od.example.me/media/music/ACelticTale.ogg?v=da90e0650632",
+  );
+  assertEquals(
+    build.mediaUrl("music/Blue Hour.ogg"),
+    "https://od.example.me/media/music/Blue%20Hour.ogg",
+  );
+});
