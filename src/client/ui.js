@@ -377,23 +377,28 @@ export function layoutUi(view) {
         ...extra,
       });
     };
-    // Interact: half a stick, centered in the gap between the sticks (or as
-    // much of it as there is). Sprint: in the right stick's bottom-right corner.
+    // Interact: 0.6 of a stick, right of the move stick and level with its
+    // center, as far as the gap to the look stick allows.
     const middle = lookX - (moveX + stick);
-    const interactSize = Math.max(roundSize, Math.min(stick / 2, middle - 12));
+    const interactSize = Math.max(
+      roundSize,
+      Math.min(stick * 0.6, middle - 12),
+    );
+    const interactX = moveX + stick + 6;
     // In landscape the chat, log, menu and bag row sits between the sticks at
-    // the bottom, so interact rises above it.
+    // the bottom; interact rises above it where the two would meet.
     const actionRowTop = bottom - (portrait ? 10 : 14) * sized.scale -
       actionSize;
-    const interactY = portrait
-      ? stickTop + stick / 2 - interactSize / 2
-      : Math.min(
-        stickTop + stick / 2 - interactSize / 2,
-        actionRowTop - sized.gap - interactSize,
-      );
+    const rowLeft = (left + right) / 2 -
+      (4 * actionSize + 3 * sized.gap) / 2;
+    const centered = stickTop + stick / 2 - interactSize / 2;
+    const interactY = !portrait && interactX + interactSize > rowLeft &&
+        centered + interactSize > actionRowTop - sized.gap
+      ? actionRowTop - sized.gap - interactSize
+      : centered;
     roundButton(
       "btn:interact",
-      (moveX + stick + lookX) / 2 - interactSize / 2,
+      interactX,
       interactY,
       interactSize,
       { glyph: "item", item: view.held === STONE_ITEM ? STONE_ITEM : PICKAXE },

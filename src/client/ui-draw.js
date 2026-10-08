@@ -194,6 +194,30 @@ function disc(paint, cx, cy, r, color, cell) {
   }
 }
 
+/**
+ * A ring: the band of a disc between `r - width` and `r`, in pixel cells.
+ * @param {Painter} paint @param {number} cx @param {number} cy @param {number} r
+ * @param {number} width @param {Color} color @param {number} cell
+ */
+function ring(paint, cx, cy, r, width, color, cell) {
+  const inner = r - width;
+  for (let dy = -r; dy < r; dy += cell) {
+    const mid = Math.abs(dy + cell / 2);
+    const outerHalf =
+      Math.round(Math.sqrt(Math.max(0, r * r - mid * mid)) / cell) * cell;
+    const innerHalf = mid < inner
+      ? Math.round(Math.sqrt(inner * inner - mid * mid) / cell) * cell
+      : 0;
+    if (outerHalf <= 0) continue;
+    if (innerHalf <= 0) {
+      paint.rect(cx - outerHalf, cy + dy, 2 * outerHalf, cell, color);
+      continue;
+    }
+    paint.rect(cx - outerHalf, cy + dy, outerHalf - innerHalf, cell, color);
+    paint.rect(cx + innerHalf, cy + dy, outerHalf - innerHalf, cell, color);
+  }
+}
+
 /** A square outline. @param {Painter} paint @param {import('./ui.js').Rect} rect @param {number} width @param {Color} color */
 function outline(paint, rect, width, color) {
   const { x, y, w, h } = rect;
@@ -337,7 +361,7 @@ export function drawUi(paint, layout, state) {
         break;
       }
       case "round":
-        drawRound(faded(paint, CONTROL_OPACITY), element, ts, down);
+        drawRound(paint, element, ts, down);
         break;
       case "stick":
         drawStick(
@@ -519,21 +543,23 @@ function drawRound(paint, element, ts, down) {
   const cy = element.cy ?? 0;
   const r = element.r ?? 0;
   const cell = Math.max(1, ts);
-  const lift = down ? 0 : 3 * ts;
   const locked = Boolean(element.locked);
   const on = Boolean(element.on);
+  // A see-through face (white at 10%) inside a solid border ring; the icon
+  // draws at full opacity on top.
   const face = locked
-    ? rgb(0x6b7076)
+    ? rgb(0x6b7076, 0.3)
     : on
-    ? rgb(0xb8742a)
+    ? rgb(0xe4a34a, 0.35)
     : down
-    ? rgb(0xe3e5e7)
-    : rgb(0xc5c8cb);
-  const edge = locked ? rgb(0x5a5f65) : on ? rgb(0xe4a34a) : rgb(0x8b9095);
-  const ink = locked ? rgb(0x8d9195) : on ? PALETTE.white : PALETTE.ink;
-  disc(paint, cx, cy + lift, r, PALETTE.shadow, cell);
-  disc(paint, cx, cy + (down ? 2 * ts : 0), r, edge, cell);
-  disc(paint, cx, cy + (down ? 2 * ts : 0), r - cell, face, cell);
+    ? rgb(0xffffff, 0.25)
+    : rgb(0xffffff, 0.1);
+  const edge = locked ? rgb(0x5a5f65) : on ? rgb(0xe4a34a) : rgb(0xd8dbde);
+  const ink = locked ? rgb(0x8d9195) : on ? PALETTE.white : PALETTE.cream;
+  const y = cy + (down ? 2 * ts : 0);
+  const border = 2 * cell;
+  disc(paint, cx, y, r - border, face, cell);
+  ring(paint, cx, y, r, border, edge, cell);
   const oy = down ? 2 * ts : 0;
   if (element.glyph === "item" && element.item) {
     const size = 16 * Math.max(1, Math.round(r * 1.1 / (16 * ts))) * ts;

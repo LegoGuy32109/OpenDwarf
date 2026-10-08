@@ -30,7 +30,8 @@ center deadzone and eight direction guides. The fullscreen button uses the
 browser API when available; on Safari, adding the page to the Home Screen can
 hide browser controls. Pinch to zoom or drag two fingers vertically to change
 view levels. The sprint button sits at the right stick's bottom right. The
-sticks and round buttons draw at 60% opacity. The on-screen ESC button opens the
+sticks draw at 60% opacity; round buttons have a see-through face (white at 10%)
+with a solid border and full-opacity icons. The on-screen ESC button opens the
 menu, and the speech bubble button opens chat.
 
 With a gamepad connected to the device, press a button while the page is
