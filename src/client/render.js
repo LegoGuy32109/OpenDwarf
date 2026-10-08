@@ -895,7 +895,13 @@ export async function createRenderer(canvas) {
     } else echoFeed = [];
     /** @type {Map<string,import('../shared/world.js').Tile>} */
     const positions = new Map();
-    for (const entry of players) positions.set(entry.player.id, entry.pos);
+    // A bubble follows the drawn sprite only while it is seen; a hidden
+    // speaker's sprite keeps its last seen spot, but its chat record moves.
+    for (const entry of players) {
+      if ((opacity.get(entry.player.id) ?? 0) > 0) {
+        positions.set(entry.player.id, entry.pos);
+      }
+    }
     const listener = local ?? { x: 0, y: 0, z: scene.viewZ };
     const candidates = chat.map((record) => {
       const pos = positions.get(record.id) ?? record;
