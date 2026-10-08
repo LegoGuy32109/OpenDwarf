@@ -66,6 +66,7 @@ its feature there:
 - [Admin dashboard](docs/features/admin-dashboard.md)
 - [Testing and evidence](docs/features/testing-and-evidence.md)
 - [Sound events](docs/features/sound-events.md)
+- [Cursor](docs/features/cursor.md)
 
 <!-- Add a line here for each new docs/features/*.md file. -->
 

@@ -12,14 +12,14 @@ hearing log) first, and otherwise toggles the menu. While chat is open, Q types
 a "q". The menu's root page shows the same build line in small text at the
 bottom.
 
-In entity view, IJKL points an orange square at one of the eight neighboring
-tiles. R/V selects the view level; the square appears at the player's level or
-one level above or below. In master view, IJKL pans the camera. Holding U/N
-smoothly zooms out/in. The mouse wheel also zooms. Space, gamepad button 0, or
-the round pickaxe button right of the left stick interacts (see
-[mining and items](mining-and-items.md)). B, gamepad button 2, or the bag button
-opens the inventory (see [inventory and shop](inventory-and-shop.md)). Movement
-keys are in [movement](movement.md); chat keys are in [chat](chat.md).
+In entity view, IJKL points the cursor (see [cursor](cursor.md)) at one of the
+eight neighboring tiles. R/V selects the view level; the cursor appears at the
+player's level or one level above or below. In master view, IJKL pans the
+camera. Holding U/N smoothly zooms out/in. The mouse wheel also zooms. Space,
+gamepad button 0, or the round pickaxe button right of the left stick interacts
+(see [mining and items](mining-and-items.md)). B, gamepad button 2, or the bag
+button opens the inventory (see [inventory and shop](inventory-and-shop.md)).
+Movement keys are in [movement](movement.md); chat keys are in [chat](chat.md).
 
 A brief bitmap HUD shows the zoom and the view level during changes.
 

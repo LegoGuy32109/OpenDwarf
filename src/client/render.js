@@ -15,7 +15,7 @@ import {
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import { readTile } from "../shared/terrain.js";
-import { highlightedTile } from "../shared/target.js";
+import { CURSOR_ICON_SIZE, CURSOR_OUTLINE, localCursor } from "./cursor.js";
 import { decalFrame } from "../shared/mining.js";
 import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
 import { SHOP_TILE } from "../shared/shop.js";
@@ -542,77 +542,68 @@ export async function createRenderer(canvas) {
       }
     }
     flush();
-    const localPlayer = scene.world.players[scene.localId];
-    if (
-      scene.viewMode === "entity" && localPlayer && !scene.pickupCells?.length
-    ) {
-      // At rest the aim is the player's own tile: interact still works there, but the
-      // outline only shows for an aimed tile or the tile being mined.
-      const resting = scene.aim.x === 0 && scene.aim.y === 0;
-      const target = resting
-        ? (scene.mining ?? []).find((entry) =>
-          entry.id === scene.localId && entry.z === scene.viewZ
-        )
-        : highlightedTile(localPlayer, scene.aim, scene.viewZ, scene.world);
-      if (target) {
-        const px = target.x * TILE;
-        const py = target.y * TILE;
-        const orange = /** @type {[number,number,number,number]} */ ([
-          1,
-          0.38,
-          0.04,
-          0.95,
-        ]);
-        quad(textures.white, false, px, py, TILE, TILE, [0, 0, 1, 1], [
-          1,
-          0.38,
-          0.04,
-          0.18,
-        ]);
-        quad(textures.white, false, px, py, TILE, 3, [0, 0, 1, 1], orange);
+    const cursor = localCursor(scene);
+    if (cursor) {
+      const px = cursor.tile.x * TILE;
+      const py = cursor.tile.y * TILE;
+      const [r, g, b] = hexColor(cursor.color);
+      const line = /** @type {[number,number,number,number]} */ ([
+        r,
+        g,
+        b,
+        cursor.opacity,
+      ]);
+      const w = CURSOR_OUTLINE;
+      quad(textures.white, false, px, py, TILE, w, [0, 0, 1, 1], line);
+      quad(
+        textures.white,
+        false,
+        px,
+        py + TILE - w,
+        TILE,
+        w,
+        [0, 0, 1, 1],
+        line,
+      );
+      quad(
+        textures.white,
+        false,
+        px,
+        py + w,
+        w,
+        TILE - 2 * w,
+        [0, 0, 1, 1],
+        line,
+      );
+      quad(
+        textures.white,
+        false,
+        px + TILE - w,
+        py + w,
+        w,
+        TILE - 2 * w,
+        [0, 0, 1, 1],
+        line,
+      );
+      if (cursor.iconFrame !== null) {
+        const side = TILE * CURSOR_ICON_SIZE;
         quad(
-          textures.white,
-          false,
-          px,
-          py + TILE - 3,
-          TILE,
-          3,
-          [0, 0, 1, 1],
-          orange,
-        );
-        quad(textures.white, false, px, py, 3, TILE, [0, 0, 1, 1], orange);
-        quad(
-          textures.white,
-          false,
-          px + TILE - 3,
-          py,
-          3,
-          TILE,
-          [0, 0, 1, 1],
-          orange,
-        );
-        flush();
-      }
-    }
-    for (const entry of scene.mining ?? []) {
-      if (entry.z !== scene.viewZ) continue;
-      const px = entry.x * TILE;
-      const py = entry.y * TILE;
-      if (entry.id === scene.localId) {
-        // A square grows from the tile's center inside the orange outline.
-        const side = Math.max(2, (TILE - 12) * entry.progress);
-        quad(
-          textures.white,
+          textures.items,
           false,
           px + (TILE - side) / 2,
           py + (TILE - side) / 2,
           side,
           side,
-          [0, 0, 1, 1],
-          [1, 0.55, 0.12, 0.85],
+          [0, cursor.iconFrame / ITEM_FRAMES, 1, 1 / ITEM_FRAMES],
+          [1, 1, 1, cursor.iconOpacity],
         );
-        continue;
       }
+      flush();
+    }
+    for (const entry of scene.mining ?? []) {
+      if (entry.z !== scene.viewZ) continue;
+      const px = entry.x * TILE;
+      const py = entry.y * TILE;
       const unit = TILE / 16;
       const frame = decalFrame(entry.progress);
       quad(textures.white, false, px, py, TILE, TILE, [0, 0, 1, 1], [
@@ -1080,4 +1071,10 @@ export async function createRenderer(canvas) {
       qrTexture = source ? texture(gl, source) : null;
     },
   };
+}
+
+/** @param {string} hex "#rrggbb" @returns {[number,number,number]} */
+function hexColor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
