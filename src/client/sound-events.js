@@ -24,8 +24,14 @@ import { renderPosition } from "../shared/world.js";
 
 /** Events the harness log keeps. */
 const LOG_LIMIT = 2000;
-/** Mining that reached this progress before it ended finished with a break. */
+/** Mining that reached this progress before it ended may have finished with a break. */
 const BREAK_PROGRESS = 0.9;
+/**
+ * How long to wait for the mined tile to read as open before deciding the
+ * action was cancelled late; a guest's tile change can arrive after its
+ * mining entry is gone.
+ */
+const BREAK_WAIT_MS = 1000;
 
 /**
  * @param {{scene:{world:import('../shared/world.js').World,localId:string,presentation:{timeOfTick:(tick:number)=>number|null},mining:{id:string,x:number,y:number,z:number,progress:number}[]},sfx:{play:(tags:string[],options?:import('./sfx.js').PlayOptions)=>void,setListener:(listener:{x:number,y:number,z:number}|undefined)=>void}}} deps
@@ -36,6 +42,8 @@ export function createSoundEvents({ scene, sfx }) {
   const steps = createStepTracker();
   /** @type {{key:string,x:number,y:number,z:number,material:string,nextHit:number,progress:number}|null} */
   let mining = null;
+  /** Late mining waiting for its tile to open. @type {{x:number,y:number,z:number,material:string,until:number}|null} */
+  let pendingBreak = null;
 
   /** @param {PlayedSound} played */
   function record(played) {
@@ -141,9 +149,17 @@ export function createSoundEvents({ scene, sfx }) {
         }
       } else if (mining) {
         if (mining.progress >= BREAK_PROGRESS) {
-          own(["mine", "break", mining.material], mining);
+          pendingBreak = { ...mining, until: now + BREAK_WAIT_MS };
         }
         mining = null;
+      }
+      // Break only once the tile is open: mining cancelled late leaves it solid.
+      if (pendingBreak) {
+        const { x, y, z } = pendingBreak;
+        if (materialName(x, y, z) === "air") {
+          own(["mine", "break", pendingBreak.material], pendingBreak);
+          pendingBreak = null;
+        } else if (now > pendingBreak.until) pendingBreak = null;
       }
     },
   };

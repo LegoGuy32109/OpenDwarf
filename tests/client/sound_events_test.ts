@@ -108,7 +108,7 @@ Deno.test("own steps play at once, from predicted motion only", () => {
 });
 
 Deno.test("own mining hits at the start and every 500 ms, then breaks", () => {
-  const { sounds, played, scene, listeners } = setup();
+  const { sounds, played, scene, listeners, world } = setup();
   const entry = { id: "me", x: 6, y: 5, z: 1, progress: 0 };
   scene.mining = [entry];
   sounds.frame(1000, 0);
@@ -118,12 +118,15 @@ Deno.test("own mining hits at the start and every 500 ms, then breaks", () => {
   sounds.frame(1700, 0);
   scene.mining = [];
   sounds.frame(1800, 0);
+  assertEquals(played.length, 2, "no break before the tile opens");
+  writeTile(world, 6, 5, 1, OPEN);
+  sounds.frame(1900, 0);
   assertEquals(played.map((call) => call.tags), [
     ["mine", "hit", "stone"],
     ["mine", "hit", "stone"],
     ["mine", "break", "stone"],
   ]);
-  assertEquals(listeners.length, 5);
+  assertEquals(listeners.length, 6);
 });
 
 Deno.test("cancelled mining makes no break, and another's mining is not ours", () => {
@@ -135,5 +138,15 @@ Deno.test("cancelled mining makes no break, and another's mining is not ours", (
   sounds.frame(1000, 0);
   scene.mining = [];
   sounds.frame(1100, 0);
+  assertEquals(played.map((call) => call.tags[1]), ["hit"]);
+});
+
+Deno.test("mining cancelled late, with the tile still solid, makes no break", () => {
+  const { sounds, played, scene } = setup();
+  scene.mining = [{ id: "me", x: 6, y: 5, z: 1, progress: 0.95 }];
+  sounds.frame(1000, 0);
+  scene.mining = [];
+  sounds.frame(1100, 0);
+  sounds.frame(2500, 0);
   assertEquals(played.map((call) => call.tags[1]), ["hit"]);
 });
