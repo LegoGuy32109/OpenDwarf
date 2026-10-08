@@ -29,7 +29,7 @@ for its own player and for every guest. It rejects, in this order:
 | ------------------------- | ---------------------------------------------------------------------------------------- |
 | `no stone held`           | stone is not the held item, or the inventory has none                                    |
 | `Something is in the way` | the target is the entity's own tile                                                      |
-| `out of reach`            | the tile is not on the entity's level and within one tile                                |
+| `out of reach`            | the tile is not in [reach](reach.md): the 3×3×3 around the entity, by an open path, seen |
 | `tile is not open`        | the tile is not air                                                                      |
 | `Something is in the way` | dropped items lie on it, an entity footprint overlaps it, or it is the shopkeeper's tile |
 

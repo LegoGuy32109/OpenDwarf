@@ -28,7 +28,6 @@ import {
 import {
   cancelMining,
   decalFrame,
-  inMiningReach,
   miningActions,
   miningCancelReason,
   miningEntries,
@@ -74,29 +73,6 @@ Deno.test("mining times come from the materials table", () => {
   assertEquals(miningTicks(OPEN), null);
 });
 
-Deno.test("reach is a neighboring tile on the same level, never the entity's own tile", () => {
-  const { player } = miner();
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      assertEquals(
-        inMiningReach(player, { x: 5 + dx, y: 5 + dy, z: 1 }),
-        dx !== 0 || dy !== 0,
-        `offset ${dx},${dy}`,
-      );
-    }
-  }
-  assert(!inMiningReach(player, { x: 7, y: 5, z: 1 }), "two tiles away");
-  assert(!inMiningReach(player, { x: 6, y: 5, z: 2 }), "level above");
-  assert(!inMiningReach(player, { x: 6, y: 5, z: 0 }), "level below");
-  // Reach follows the tile the entity's center is in, not its footprint.
-  player.x = 5.4;
-  assert(inMiningReach(player, { x: 6, y: 5, z: 1 }));
-  assert(!inMiningReach(player, { x: 7, y: 5, z: 1 }), "center still in 5");
-  player.x = 5.6;
-  assert(!inMiningReach(player, { x: 6, y: 5, z: 1 }), "now its own tile");
-  assert(inMiningReach(player, { x: 7, y: 5, z: 1 }));
-});
-
 Deno.test("the host rejects mining that is out of reach or not solid", () => {
   const { world } = miner();
   const reason = (x: number, y: number, z: number) => {
@@ -106,7 +82,7 @@ Deno.test("the host rejects mining that is out of reach or not solid", () => {
   assertEquals(reason(7, 5, 1), "out of reach");
   assertEquals(reason(4, 5, 1), "nothing to mine");
   assertEquals(reason(5, 5, 1), "aim at a neighboring tile");
-  assertEquals(reason(6, 5, 2), "not on your level");
+  assertEquals(reason(6, 5, 2), "nothing to mine");
   assertEquals(reason(6, 5, 99), "invalid tile");
   assertEquals(reason(6.5, 5, 1), "invalid tile");
   assertEquals(miningActions(world).size, 0);
@@ -120,6 +96,48 @@ Deno.test("the host rejects mining that is out of reach or not solid", () => {
   setHeldItem(world, "self", "pickaxe");
   assertEquals(reason(6, 5, 1), "ok");
   assertEquals(miningActions(world).size, 1);
+});
+
+Deno.test("mining works on another level and needs sight (ADR 0009)", () => {
+  const { world } = miner();
+  // Dig down: the tile one level below, diagonal to the dwarf, with open air
+  // on its own level above.
+  writeTile(world, 6, 5, 0, STONE);
+  const seen = () => true;
+  assertEquals(startMining(world, "self", { x: 6, y: 5, z: 0 }, seen), {
+    ok: false,
+    reason: "out of reach",
+  }, "the tile above it is solid");
+  writeTile(world, 6, 5, 1, OPEN);
+  const result = startMining(world, "self", { x: 6, y: 5, z: 0 }, seen);
+  assert(result.ok, "a tile one level down");
+  cancelMining(world, "self");
+  // Never the floor under the dwarf.
+  assertEquals(startMining(world, "self", { x: 5, y: 5, z: 0 }, seen), {
+    ok: false,
+    reason: "out of reach",
+  });
+  // Up: the tile above the dwarf's neighbor, with headroom.
+  writeTile(world, 6, 5, 2, STONE);
+  assert(startMining(world, "self", { x: 6, y: 5, z: 2 }, seen).ok, "up");
+  cancelMining(world, "self");
+  // A tile the dwarf does not see is refused, and mining stops when it leaves sight.
+  writeTile(world, 6, 5, 1, STONE);
+  assertEquals(startMining(world, "self", { x: 6, y: 5, z: 1 }, () => false), {
+    ok: false,
+    reason: "out of reach",
+  });
+  let visible = true;
+  assert(startMining(world, "self", { x: 6, y: 5, z: 1 }, () => visible).ok);
+  const action = miningActions(world).get("self")!;
+  assertEquals(miningCancelReason(world, action, () => visible), null);
+  visible = false;
+  assertEquals(
+    miningCancelReason(world, action, () => visible),
+    "out of reach",
+  );
+  stepMining(world, () => () => visible);
+  assertEquals(miningActions(world).size, 0);
 });
 
 Deno.test("an unknown tile cannot be mined", () => {
@@ -193,10 +211,10 @@ Deno.test("moving out of reach cancels", () => {
   stepMining(world);
   assertEquals(miningActions(world).size, 0);
   assertEquals(readTile(world, 6, 5, 1), STONE);
-  // A change of level cancels as well.
+  // Two levels away cancels as well; one level away keeps the target in reach.
   const other = miner();
   startMining(other.world, "self", { x: 6, y: 5, z: 1 });
-  other.player.z = 2;
+  other.player.z = 3;
   stepMining(other.world);
   assertEquals(miningActions(other.world).size, 0);
 });

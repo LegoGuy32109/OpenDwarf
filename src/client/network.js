@@ -38,6 +38,7 @@ import {
   syncLoadedChunks,
 } from "../shared/reveal.js";
 import { mergeSnapshot } from "../shared/reconcile.js";
+import { itemSeen, seesFrom } from "../shared/reach.js";
 import { renderPosition } from "../shared/world.js";
 import {
   createVisibility,
@@ -256,7 +257,13 @@ export function startHost(scene, session, sounds = {}) {
   function tick() {
     // Finished mining is handled in `completeMining`; the tile it wrote reaches
     // each peer that can see it through its pending reveal.
-    stepMining(scene.world);
+    stepMining(
+      scene.world,
+      (id) =>
+        id === scene.localId
+          ? seesFrom(scene.visibility.visible, scene.viewMode === "master")
+          : peers.get(id)?.sees(),
+    );
     const changes = drainTileChanges(scene.world);
     if (changes.length) {
       // Force the host's own sight to see through a mined tile.
@@ -474,7 +481,7 @@ export function startHost(scene, session, sounds = {}) {
           x: Number(message.x),
           y: Number(message.y),
           z: Number(message.z),
-        });
+        }, sees());
         if (!result.ok && channel?.readyState === "open") {
           channel.send(
             JSON.stringify({ type: "mine-result", reason: result.reason }),
@@ -483,11 +490,17 @@ export function startHost(scene, session, sounds = {}) {
         return;
       }
       if (message.type === "place") {
-        const result = placeStone(scene.world, playerId, {
-          x: Number(message.x),
-          y: Number(message.y),
-          z: Number(message.z),
-        }, reservedTiles(scene.layout));
+        const result = placeStone(
+          scene.world,
+          playerId,
+          {
+            x: Number(message.x),
+            y: Number(message.y),
+            z: Number(message.z),
+          },
+          reservedTiles(scene.layout),
+          sees(),
+        );
         if (!result.ok && channel?.readyState === "open") {
           channel.send(
             JSON.stringify({ type: "place-result", reason: result.reason }),
@@ -821,6 +834,11 @@ export function startHost(scene, session, sounds = {}) {
       peer?.close();
     }
 
+    /** This peer's current sight, as the reach checks take it: its visible set, or everything in a master view. */
+    function sees() {
+      return seesFrom(sight.visible, mode === "master");
+    }
+
     /** Tell the peer which mining actions it can see, when that list changes. */
     function sendMining() {
       if (!joined || channel?.readyState !== "open") return;
@@ -846,8 +864,7 @@ export function startHost(scene, session, sounds = {}) {
       if (!player) return;
       const entries = droppedItems(scene.world).tiles.size
         ? droppedEntries(scene.world).filter((entry) =>
-          mode === "master" ||
-          sight.visible.has(tileKey(entry.x, entry.y, entry.z))
+          mode === "master" || itemSeen(sight.visible, entry)
         )
         : [];
       const items = JSON.stringify(entries);
@@ -972,6 +989,7 @@ export function startHost(scene, session, sounds = {}) {
       hear,
       sprinting: () => stamina.sprint,
       reveal: revealChanges,
+      sees,
       expireIfSilent,
       expired: () =>
         !joined && departedAt > 0 &&

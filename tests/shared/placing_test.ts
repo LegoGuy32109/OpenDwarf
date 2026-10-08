@@ -89,18 +89,27 @@ Deno.test("the host rejects a place with zero stone", () => {
   assertEquals(readTile(world, 6, 5, 1), OPEN);
 });
 
-Deno.test("the host rejects a place out of reach or on another level", () => {
+Deno.test("the host rejects a place out of reach or unseen, and allows another level", () => {
   const { world } = builder();
   assertEquals(placeStone(world, "self", { x: 7, y: 5, z: 1 }), {
     ok: false,
     reason: "out of reach",
   });
-  assertEquals(placeStone(world, "self", { x: 6, y: 5, z: 2 }), {
-    ok: false,
-    reason: "out of reach",
-  });
-  assertEquals(placeStone(world, "self", { x: 6, y: 5, z: 99 }).ok, false);
+  assertEquals(
+    placeStone(world, "self", { x: 6, y: 5, z: 1 }, [], () => false),
+    { ok: false, reason: "out of reach" },
+  );
+  assertEquals(placeStone(world, "self", { x: 8, y: 5, z: 2 }).ok, false);
   assertEquals(stoneCount(world), 3);
+  assert(placeStone(world, "self", { x: 6, y: 5, z: 2 }).ok, "level above");
+  assertEquals(readTile(world, 6, 5, 2), STONE);
+  assertEquals(stoneCount(world), 2);
+  assert(
+    placeStone(world, "self", { x: 6, y: 6, z: 1 }, [], () => true).ok,
+    "seen",
+  );
+  assertEquals(stoneCount(world), 1);
+  assertEquals(placeStone(world, "self", { x: 6, y: 5, z: 99 }).ok, false);
 });
 
 Deno.test("the host rejects a place on a solid tile", () => {

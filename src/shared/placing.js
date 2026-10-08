@@ -2,7 +2,8 @@
 
 import { droppedAt, inventoryOf, STONE_ITEM, takeStack } from "./items.js";
 import { centerTile, PLAYER_SIZE } from "./locomotion.js";
-import { heldItem, inMiningReach } from "./mining.js";
+import { heldItem } from "./mining.js";
+import { inReach } from "./reach.js";
 import { SHOP_TILE } from "./shop.js";
 import { recordSound } from "./sound.js";
 import { OPEN, readTile, STONE, WORLD_TOP, writeTile } from "./terrain.js";
@@ -36,37 +37,35 @@ export function reservedTiles(layout) {
 }
 
 /**
- * Place one held stone on an empty tile, on the world host. The host checks the
- * entity, the tile, the held item and its count, reach, that the tile is open,
- * and that it is unoccupied: no entity footprint (the entity's own included),
- * no dropped items, and none of `reserved` (tiles that hold an entity outside
- * `world.players`, such as the shopkeeper). The tile becomes stone at once
- * through `writeTile`, and one stone leaves the inventory.
- * @param {World} world @param {string} playerId @param {Tile} tile
- * @param {readonly Tile[]} [reserved] @returns {PlaceResult}
+ * Why `player` may not place a stone on `tile` now, or null when the host would
+ * place it: a real tile, a stone held, the tile in reach (path and sight, ADR
+ * 0009), open, and unoccupied (no entity footprint, no dropped items, none of
+ * `reserved`).
+ * @param {World} world @param {Player} player @param {Tile} tile
+ * @param {(tile:Tile) => boolean} [sees] @param {readonly Tile[]} [reserved]
+ * @returns {string|null}
  */
-export function placeStone(world, playerId, tile, reserved = []) {
-  const player = world.players[playerId];
-  if (!player) return { ok: false, reason: "unknown player" };
+export function placeRefusal(
+  world,
+  player,
+  tile,
+  sees = () => true,
+  reserved = [],
+) {
   if (
     !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
     !Number.isInteger(tile.z) || tile.z < 0 || tile.z > WORLD_TOP
-  ) return { ok: false, reason: "invalid tile" };
-  const inventory = inventoryOf(player);
-  const index = inventory.findIndex((stack) => stack.kind === STONE_ITEM);
-  if (heldItem(player) !== STONE_ITEM || index < 0) {
-    return { ok: false, reason: "no stone held" };
-  }
-  if (inventory[index].count < 1) return { ok: false, reason: "no stone" };
+  ) return "invalid tile";
+  const stone = inventoryOf(player).find((stack) => stack.kind === STONE_ITEM);
+  if (heldItem(player) !== STONE_ITEM || !stone) return "no stone held";
+  if (stone.count < 1) return "no stone";
   if (
     tile.z === player.z && tile.x === centerTile(player.x) &&
     tile.y === centerTile(player.y)
-  ) return { ok: false, reason: IN_THE_WAY };
-  if (!inMiningReach(player, tile)) {
-    return { ok: false, reason: "out of reach" };
-  }
+  ) return IN_THE_WAY;
+  if (!inReach(world, player, tile, sees)) return "out of reach";
   if (readTile(world, tile.x, tile.y, tile.z) !== OPEN) {
-    return { ok: false, reason: "tile is not open" };
+    return "tile is not open";
   }
   if (
     droppedAt(world, tile).length ||
@@ -76,7 +75,31 @@ export function placeStone(world, playerId, tile, reserved = []) {
     reserved.some((spot) =>
       spot.x === tile.x && spot.y === tile.y && spot.z === tile.z
     )
-  ) return { ok: false, reason: IN_THE_WAY };
+  ) return IN_THE_WAY;
+  return null;
+}
+
+/**
+ * Place one held stone on an empty tile, on the world host. `placeRefusal`
+ * holds the checks; `sees` is the acting entity's current sight. The tile
+ * becomes stone at once through `writeTile`, and one stone leaves the inventory.
+ * @param {World} world @param {string} playerId @param {Tile} tile
+ * @param {readonly Tile[]} [reserved] tiles that hold an entity outside `world.players`, such as the shopkeeper
+ * @param {(tile:Tile) => boolean} [sees] @returns {PlaceResult}
+ */
+export function placeStone(
+  world,
+  playerId,
+  tile,
+  reserved = [],
+  sees = () => true,
+) {
+  const player = world.players[playerId];
+  if (!player) return { ok: false, reason: "unknown player" };
+  const reason = placeRefusal(world, player, tile, sees, reserved);
+  if (reason) return { ok: false, reason };
+  const inventory = inventoryOf(player);
+  const index = inventory.findIndex((stack) => stack.kind === STONE_ITEM);
   if (inventory[index].count > 1) inventory[index].count--;
   else takeStack(inventory, index);
   writeTile(world, tile.x, tile.y, tile.z, STONE);

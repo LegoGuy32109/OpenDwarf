@@ -7,15 +7,17 @@ every entity holds, it starts mining the highlighted tile. The look control
 points the highlight at a neighbor, and the entity's own tile is highlighted
 with no aim. Mining is not held down; it finishes on its own. Stone takes 1 s,
 coal 1.5 s, iron ore 2 s, gold ore, lapis, and redstone 3 s, and diamond and
-emerald 4.5 s. Aiming at another tile or walking out of reach cancels it. A
-finished tile drops its item, such as stone or coal, on that tile.
+emerald 4.5 s. The cursor is free: moving the aim, or the view level, does not
+cancel mining. Interact on the mined tile cancels it, and interact on another
+tile cancels it and does the new action there. Walking out of [reach](reach.md)
+cancels it. A finished tile drops its item, such as stone or coal, on that tile.
 
 A guest sends only the tile it aimed at (`mine`, or `mine-cancel`); the world
-host checks that the tile lies on the entity's level next to its center tile,
-holds a mineable material (the table in `materials.js` gives each material's
-time), and that the entity holds a pickaxe. The target locks at the start. Each
-host tick `stepMining` cancels an action whose target left reach, whose held
-item changed, or whose tile changed, and finishes the ones that are done.
+host checks that the tile is in [reach](reach.md) (path and the entity's current
+sight, on any of the three levels), holds a mineable material (the table in
+`materials.js` gives each material's time), and that the entity holds a pickaxe.
+Each host tick `stepMining` cancels an action whose target left reach, whose
+held item changed, or whose tile changed, and finishes the ones that are done.
 `completeMining` is the one place a finished action is handled: it writes air
 with `writeTile` and drops one item of the material's item kind on the tile. The
 host adds the tiles `drainTileChanges` returns to each peer's pending reveal,
@@ -67,15 +69,16 @@ request names a kind rather than a list position because another pickup can
 shift the list in between. It handles requests one at a time, so the first of
 two contested requests gets the stack and the other receives "nothing to pick
 up". The host sends each peer an `items` message with only the dropped items on
-tiles that peer sees (all of them in master view) whenever that list changes,
-and an `inventory` message with only that peer's own inventory. A pickup system
-line goes to the player who picked up and nobody else, through `tell` next to
-`announce` in `network.js`. A client draws one icon per tile, cycling the kinds
-every `ICON_CYCLE_MS`. The pickup grid's state and geometry live in
-`src/client/pickup-grid.js`. `loop.js` calls `updatePickupGrid` (`panels.js`)
-each frame to close the grid when the entity leaves reach or the tile empties,
-to move the selector, and to hand `scene.pickupCells` to the renderer. While the
-grid is open, the look control and D-pad drive it, not the aim or movement.
+tiles that peer sees, or whose floor one level down it sees (all of them in
+master view) whenever that list changes, and an `inventory` message with only
+that peer's own inventory. A pickup system line goes to the player who picked up
+and nobody else, through `tell` next to `announce` in `network.js`. A client
+draws one icon per tile, cycling the kinds every `ICON_CYCLE_MS`. The pickup
+grid's state and geometry live in `src/client/pickup-grid.js`. `loop.js` calls
+`updatePickupGrid` (`panels.js`) each frame to close the grid when the entity
+leaves reach or the tile empties, to move the selector, and to hand
+`scene.pickupCells` to the renderer. While the grid is open, the look control
+and D-pad drive it, not the aim or movement.
 
 See [inventory and shop](inventory-and-shop.md) for what happens to the items
 after pickup.

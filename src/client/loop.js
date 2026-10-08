@@ -45,7 +45,6 @@ import {
   shopDirection,
   stickDirection,
 } from "./input-read.js";
-import { checkMineLock } from "./interact.js";
 import { updatePickupGrid } from "./panels.js";
 import { playPanelSounds } from "./ui-sounds.js";
 import { currentLayout } from "./ui-view.js";
@@ -234,7 +233,6 @@ export function startLoop(ctx, renderer, input) {
       scene.aim = isPickupGridOpen(ctx.pickupGrid)
         ? { x: 0, y: 0 }
         : stickDirection(cameraX, cameraY, 0.18);
-      checkMineLock(ctx);
       const pos = local
         ? renderPosition(local, scene.world.tick + ctx.accumulator / TICK_MS)
         : { x: 7, y: 7, z: 0 };
