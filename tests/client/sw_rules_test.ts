@@ -81,6 +81,11 @@ Deno.test("the worker keeps the newest three build caches", () => {
     ["od-build-c"],
   );
   assertEquals(rules.buildCachesToDelete(["od-media"], ["a"], "a"), []);
+  // The list of recent builds lives outside the `od-build-` prefix, so pruning never drops it.
+  assertEquals(
+    rules.buildCachesToDelete(["od-recent-builds", "od-build-a"], ["b"], "b"),
+    ["od-build-a"],
+  );
 });
 
 Deno.test("a Range header reads against the body's size", () => {

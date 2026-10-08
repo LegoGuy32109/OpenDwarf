@@ -138,7 +138,8 @@ const rules = (function () {
 
 const PAGE_TIMEOUT_MS = 3000;
 /** The cache that lists the commits seen, newest first, for pruning. */
-const INDEX_CACHE = "od-build-index";
+// Not `od-build-…`: pruning deletes every cache with that prefix.
+const INDEX_CACHE = "od-recent-builds";
 /** Fixed key for the list inside `INDEX_CACHE`. */
 const INDEX_KEY = "https://od.invalid/recent";
 
@@ -201,10 +202,25 @@ async function page(request) {
   }
 }
 
-/** Media: the cache first, filled on a miss, with a `206` for a `Range`. @param {Request} request */
+/**
+ * Media with a `?v=<hash>` never changes: the cache first, filled on a miss, with a `206` for a
+ * `Range`. Without a version (a media index) it can change: network first, the cache offline.
+ * @param {Request} request
+ */
 async function media(request) {
   const cache = await caches.open(rules.MEDIA_CACHE);
   const range = request.headers.get("range");
+  if (!new URL(request.url).searchParams.has("v")) {
+    try {
+      const fresh = await fetch(request);
+      if (fresh.ok) void cache.put(request.url, fresh.clone());
+      return fresh;
+    } catch (error) {
+      const kept = await cache.match(request.url);
+      if (kept) return rules.answerRange(kept, range);
+      throw error;
+    }
+  }
   const cached = await cache.match(request.url);
   if (cached) return rules.answerRange(cached, range);
   // Fetch the whole file once, so later ranges come from the cache.
