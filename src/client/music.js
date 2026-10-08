@@ -42,6 +42,8 @@ export const CROSSFADE_SECONDS = 3;
 export const RECENT_LIMIT = 5;
 /** Failed tracks in a row after which the player stops until the next mood. */
 export const MAX_FAILURES = 3;
+/** Seconds a track lasts for the conductor when its index entry has no `duration`. */
+export const DEFAULT_DURATION = 180;
 
 /** @param {unknown} value @returns {MusicLevel} */
 export function parseMusicLevel(value) {
@@ -188,6 +190,14 @@ export function createMusic(options = {}) {
   let current = null;
   /** @type {{track:Track,load:Promise<{blob:Blob,url:string}>}|null} */
   let upcoming = null;
+  /** The host's listener for each track the conductor starts (ADR 0009). @type {((track:{key:string,hash:string}) => void)|null} */
+  let trackListener = null;
+  /** The track the conductor is counting out while no audio plays (Music Off). @type {{track:Track,startedAt:number,timer:ReturnType<typeof setTimeout>}|null} */
+  let virtual = null;
+  /** The cue a guest follows: the track and the `now()` time it was at its start. @type {{track:{key:string,hash:string},startedAt:number}|null} */
+  let following = null;
+  /** Bumped by each cue, so a load for an older cue gives up. */
+  let followTurn = 0;
   /** Keys played, oldest first. @type {string[]} */
   const recent = [];
   /** Keys that failed since the mood was set. @type {Set<string>} */
@@ -210,6 +220,8 @@ export function createMusic(options = {}) {
    * @property {HTMLAudioElement} element @property {GainNode} gain
    * @property {string} objectUrl
    * @property {boolean} advanced Whether the next track was already asked for.
+   * @property {number} startedAt The `now()` time the track was at its start.
+   * @property {number} offset Seconds into the track where this play began.
    * @property {() => void} dispose
    */
 
@@ -252,6 +264,8 @@ export function createMusic(options = {}) {
     enabled && volume() > 0 && Boolean(audio) && !stopped &&
     tracks.length > 0 &&
     mood.length > 0;
+  /** Whether a cued track may play: audio is unlocked and the volume is up. */
+  const canHear = () => enabled && volume() > 0 && Boolean(audio);
   const matches = (/** @type {Track} */ track) =>
     track.tags.some((tag) => mood.includes(tag));
 
@@ -366,7 +380,7 @@ export function createMusic(options = {}) {
 
   /** Ask for the next track now, so its download is under way while this one plays. */
   function prefetch() {
-    if (!canPlay()) return;
+    if (!canPlay() || following) return;
     const track = pickTrack(tracks, mood, { recent, exclude: failed, random });
     if (!track) return;
     const load = loadTrack(track);
@@ -374,12 +388,18 @@ export function createMusic(options = {}) {
     upcoming = { track, load };
   }
 
-  /** @param {Track} track @param {{blob:Blob,url:string}} loadedTrack */
-  async function startTrack(track, loadedTrack) {
+  /**
+   * @param {Track} track @param {{blob:Blob,url:string}} loadedTrack
+   * @param {{offset?:number,notify?:boolean}} [where] `offset` seconds into the
+   *   track; `notify` false when the track did not start now (a resume or a cue).
+   */
+  async function startTrack(track, loadedTrack, where = {}) {
+    const { offset = 0, notify = true } = where;
     const context = /** @type {AudioContext} */ (audio);
     const element = createElement();
     const objectUrl = createObjectURL(loadedTrack.blob);
     element.src = objectUrl;
+    if (offset > 0) element.currentTime = offset;
     const source = context.createMediaElementSource(element);
     const gain = context.createGain();
     source.connect(gain);
@@ -394,6 +414,8 @@ export function createMusic(options = {}) {
       gain,
       objectUrl,
       advanced: false,
+      startedAt: now() - offset * 1000,
+      offset,
       dispose() {
         try {
           element.pause();
@@ -448,7 +470,76 @@ export function createMusic(options = {}) {
     recent.push(track.key);
     if (recent.length > RECENT_LIMIT * 4) recent.splice(0, recent.length - 20);
     if (previous) fadeOver(previous, active);
+    if (notify) trackListener?.({ key: track.key, hash: track.hash });
     prefetch();
+  }
+
+  function clearVirtual() {
+    if (virtual) clearTimeout(virtual.timer);
+    virtual = null;
+  }
+
+  /**
+   * The conductor counts a track out without audio: the next one starts when
+   * this one is `crossfade` from its end, as it would if it played.
+   * @param {Track} track @param {number} startedAt
+   */
+  function conductVirtual(track, startedAt) {
+    clearVirtual();
+    const seconds = (track.duration ?? DEFAULT_DURATION) - crossfade;
+    const delay = Math.max(0, startedAt + seconds * 1000 - now());
+    const timer = setTimeout(() => {
+      virtual = null;
+      void advance();
+    }, delay);
+    virtual = { track, startedAt, timer };
+  }
+
+  /** With no audio to play, a host still picks tracks so its guests have a conductor. */
+  function conductSilently() {
+    if (!trackListener || !enabled || stopped) return;
+    if (!tracks.length || !mood.length) return;
+    if (virtual && matches(virtual.track)) return;
+    const track = pickTrack(tracks, mood, { recent, exclude: failed, random });
+    if (!track) return;
+    recent.push(track.key);
+    if (recent.length > RECENT_LIMIT * 4) recent.splice(0, recent.length - 20);
+    conductVirtual(track, now());
+    trackListener({ key: track.key, hash: track.hash });
+  }
+
+  /**
+   * A guest plays the cued track from where the host is in it. `force` starts
+   * it even over a playing track (a new cue); otherwise only when none plays.
+   * A track the index does not list, or that fails, leaves the current one.
+   * @param {boolean} force
+   */
+  async function syncFollow(force) {
+    const target = following;
+    if (!target || !canHear() || (!force && current)) return;
+    const turn = ++followTurn;
+    const turnGeneration = generation;
+    await loaded;
+    const stale = () =>
+      turn !== followTurn || turnGeneration !== generation || !canHear();
+    if (stale()) return;
+    const listed = tracks.find((entry) => entry.key === target.track.key);
+    if (!listed) return;
+    const track = { ...listed, hash: target.track.hash };
+    const offset = () => Math.max(0, (now() - target.startedAt) / 1000);
+    if (listed.duration !== undefined && offset() >= listed.duration) return;
+    status = current ? "playing" : "loading";
+    try {
+      const loadedTrack = await loadTrack(track);
+      if (stale()) return;
+      await startTrack(track, loadedTrack, {
+        offset: offset(),
+        notify: false,
+      });
+    } catch {
+      failed.add(track.key);
+      if (!current) status = "idle";
+    }
   }
 
   /** Crossfade: the new track rises while the old falls, then the old is torn down. */
@@ -471,17 +562,31 @@ export function createMusic(options = {}) {
 
   /** Start the next track: the prefetched one when it still fits the mood. */
   async function advance() {
-    if (advancing || !canPlay()) return;
+    if (advancing || following || !enabled) return;
+    if (!canPlay()) {
+      conductSilently();
+      return;
+    }
     advancing = true;
     const turn = generation;
     try {
       while (canPlay() && turn === generation) {
-        const wanted = upcoming && !failed.has(upcoming.track.key) &&
+        // A host that had no audio resumes the track its conductor was counting.
+        const resumed = virtual?.track;
+        const startedAt = virtual?.startedAt ?? 0;
+        const resumeOffset = (now() - startedAt) / 1000;
+        const resume =
+          resumed && !failed.has(resumed.key) && matches(resumed) &&
+            resumeOffset < (resumed.duration ?? DEFAULT_DURATION) - crossfade
+            ? resumed
+            : null;
+        clearVirtual();
+        const wanted = !resume && upcoming && !failed.has(upcoming.track.key) &&
             matches(upcoming.track)
           ? upcoming
           : null;
         upcoming = null;
-        const track = wanted?.track ??
+        const track = resume ?? wanted?.track ??
           pickTrack(tracks, mood, { recent, exclude: failed, random });
         if (!track) {
           status = "idle";
@@ -490,8 +595,12 @@ export function createMusic(options = {}) {
         status = current ? "playing" : "loading";
         try {
           const loadedTrack = await (wanted?.load ?? loadTrack(track));
-          if (turn !== generation) return;
-          await startTrack(track, loadedTrack);
+          if (turn !== generation || following) return;
+          await startTrack(
+            track,
+            loadedTrack,
+            resume ? { offset: Math.max(0, resumeOffset), notify: false } : {},
+          );
           return;
         } catch {
           failed.add(track.key);
@@ -517,8 +626,13 @@ export function createMusic(options = {}) {
   function silence() {
     generation++;
     upcoming = null;
+    const was = current;
     stopCurrent();
     status = "idle";
+    // A host's conductor keeps counting the track that was playing.
+    if (was && trackListener && !following) {
+      conductVirtual(was.track, was.startedAt);
+    }
   }
 
   return {
@@ -560,24 +674,45 @@ export function createMusic(options = {}) {
       // yet, or holding a movement key would skip to a new track each repeat.
       if (started && !current) {
         void loaded.then(() => {
-          if (!current) return advance();
+          if (!current) return following ? syncFollow(false) : advance();
         });
       }
     },
     /**
      * Host side (ADR 0009): `listener` hears each track the conductor starts,
-     * even with Music Off, so the host can send a music cue. The shared music
-     * ticket fills it in.
-     * @param {(track:{key:string,hash:string}) => void} _listener
+     * even with Music Off, so the host can send a music cue. With a listener,
+     * the player keeps picking tracks and counts each one out by its `duration`
+     * while no audio plays.
+     * @param {(track:{key:string,hash:string}) => void} listener
      */
-    onTrackStart(_listener) {},
+    onTrackStart(listener) {
+      trackListener = listener;
+      if (started && !current && !following) void loaded.then(() => advance());
+    },
     /**
      * Guest side (ADR 0009): stop picking and play `track` from `offsetSeconds`,
      * crossfading from the previous one; null goes back to picking locally.
-     * The shared music ticket fills it in.
-     * @param {{key:string,hash:string}|null} _track @param {number} _offsetSeconds
+     * With Music Off, or before the first gesture, nothing downloads: the cue
+     * is kept and the track starts at its then-current offset.
+     * @param {{key:string,hash:string}|null} track @param {number} offsetSeconds
      */
-    follow(_track, _offsetSeconds) {},
+    follow(track, offsetSeconds) {
+      if (!enabled) return;
+      followTurn++;
+      if (!track) {
+        following = null;
+        if (!current) void advance();
+        else if (!upcoming) prefetch();
+        return;
+      }
+      following = {
+        track: { key: track.key, hash: track.hash },
+        startedAt: now() - Math.max(0, offsetSeconds) * 1000,
+      };
+      clearVirtual();
+      upcoming = null;
+      void syncFollow(true);
+    },
     /**
      * Play for this mood from now on: tracks that share a tag. A playing track
      * that does not fit crossfades into one that does.
@@ -599,7 +734,7 @@ export function createMusic(options = {}) {
       applyVolume(volume());
       if (!enabled) return;
       if (value === "off") silence();
-      else if (!current) void advance();
+      else if (!current) void (following ? syncFollow(false) : advance());
     },
     /** For tests: the source of randomness. @param {() => number} source */
     setRandom(source) {
@@ -620,6 +755,13 @@ export function createMusic(options = {}) {
         status,
         mood: mood.slice(),
         track: current?.track.key ?? null,
+        /** Seconds into the playing track where this client began it: 0 unless it joined mid-track. */
+        offset: current?.offset ?? 0,
+        /** `host` while a world host conducts, `cued` for a guest, else `local`. */
+        role: following ? "cued" : trackListener ? "host" : "local",
+        /** The track the conductor or the cue names, playing or not. */
+        cue: following?.track.key ?? virtual?.track.key ??
+          (trackListener ? current?.track.key ?? null : null),
         next: upcoming?.track.key ?? null,
         skipped: [...failed],
         failures,
@@ -633,7 +775,11 @@ export function createMusic(options = {}) {
       const state = this.state();
       const megabytes = (state.cachedBytes / (1024 * 1024)).toFixed(1);
       if (!enabled) return "Music off";
-      return `Music ${state.track ? trackName(state.track) : state.status}  ${
+      const name = state.track ?? state.cue;
+      const role = state.role === "local"
+        ? ""
+        : ` (${state.role === "host" ? "host" : "cued"})`;
+      return `Music ${name ? trackName(name) : state.status}${role}  ${
         state.mood.join(",")
       }  cached ${state.cachedTracks} tracks, ${megabytes} MB`;
     },

@@ -486,16 +486,35 @@ export function decodeSounds(value) {
 
 /**
  * A music cue: the track the world host started and the tick it started on
- * (ADR 0009). The shared music ticket fills it in.
+ * (ADR 0009).
  * @typedef {{key:string,hash:string,startTick:number}} MusicCue
  */
 
+/** One segment of a media key, as the shell's `/media/` route accepts it. */
+const MEDIA_SEGMENT = /^[A-Za-z0-9 ._()~-]+$/;
+
+/** @param {unknown} value @returns {value is string} */
+function mediaKey(value) {
+  return typeof value === "string" && value.length >= 1 &&
+    value.length <= 512 &&
+    value.split("/").every((part) =>
+      MEDIA_SEGMENT.test(part) && !part.startsWith(".")
+    );
+}
+
 /**
- * Host to guest: the current music cue. Returns null for anything malformed.
- * @param {unknown} _value @returns {MusicCue|null}
+ * Host to guest: the current music cue. Returns null for anything malformed:
+ * a key that is not a media key, a hash that is not 12 hex digits, or a start
+ * tick that is not a bounded whole number.
+ * @param {unknown} value @returns {MusicCue|null}
  */
-export function decodeMusicCue(_value) {
-  return null;
+export function decodeMusicCue(value) {
+  if (
+    !record(value) || value.type !== "music" || !mediaKey(value.key) ||
+    typeof value.hash !== "string" || !/^[0-9a-f]{12}$/.test(value.hash) ||
+    !counter(value.startTick)
+  ) return null;
+  return { key: value.key, hash: value.hash, startTick: value.startTick };
 }
 
 /** Most stacks one tile or one inventory may carry in a message: one per item kind. */

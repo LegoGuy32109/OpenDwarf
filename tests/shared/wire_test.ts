@@ -11,6 +11,7 @@ import {
   decodeChat,
   decodeControl,
   decodeMotion,
+  decodeMusicCue,
   decodeSounds,
   decodeState,
   encodeMotionPlayers,
@@ -404,4 +405,47 @@ Deno.test("sounds accept bounded events and reject anything malformed", () => {
   assertEquals(bad({ tick: Number.MAX_SAFE_INTEGER + 1 }), null);
   assertEquals(bad({ seen: 1 }), null);
   assertEquals(bad({ seen: undefined }), null);
+});
+
+Deno.test("a music cue needs a media key, a 12 digit hash, and a bounded tick", () => {
+  const good = {
+    type: "music",
+    key: "music/A Celtic Tale (2).ogg",
+    hash: "0123456789ab",
+    startTick: 1200,
+  };
+  assertEquals(decodeMusicCue(good), {
+    key: good.key,
+    hash: good.hash,
+    startTick: 1200,
+  });
+  // Extra fields are dropped.
+  assertEquals(decodeMusicCue({ ...good, extra: 1 }), {
+    key: good.key,
+    hash: good.hash,
+    startTick: 1200,
+  });
+  for (
+    const bad of [
+      null,
+      "music",
+      { ...good, type: "sounds" },
+      { ...good, key: "" },
+      { ...good, key: "music/../x.ogg" },
+      { ...good, key: ".hidden/x.ogg" },
+      { ...good, key: "music//x.ogg" },
+      { ...good, key: "music/a?b.ogg" },
+      { ...good, key: "a".repeat(513) },
+      { ...good, key: 5 },
+      { ...good, hash: "0123456789a" },
+      { ...good, hash: "0123456789abc" },
+      { ...good, hash: "0123456789AB" },
+      { ...good, hash: "0123456789zz" },
+      { ...good, startTick: -1 },
+      { ...good, startTick: 1.5 },
+      { ...good, startTick: Number.MAX_SAFE_INTEGER + 1 },
+      { ...good, startTick: "5" },
+      { ...good, startTick: undefined },
+    ]
+  ) assertEquals(decodeMusicCue(bad), null);
 });

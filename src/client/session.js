@@ -110,6 +110,9 @@ export function startHosting(ctx, renderer) {
   ctx.host = startHost(scene, scene.sessionId, {
     running: (id) => id === scene.localId && ctx.stamina.sprint,
   });
+  // The host's player is the conductor; every guest hears the track it starts.
+  // A tab that joins another world follows that world's cue instead.
+  if (!ctx.joinRoute) ctx.music.onTrackStart((track) => ctx.host?.cue(track));
   // Only the host generates terrain. `?seed=` replays a world for tests.
   scene.world.generateChunk = createChunkGenerator(seedFromText(
     new URL(location.href).searchParams.get("seed") ?? scene.sessionId,
