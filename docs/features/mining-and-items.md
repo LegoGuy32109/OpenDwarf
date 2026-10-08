@@ -23,8 +23,9 @@ only for tiles that peer sees now, and publishes a state packet at once (see
 [networking](networking.md)); a tile out of sight keeps its last observed state
 until seen again. A `mining` message lists the actions a peer can see (and its
 own), with elapsed and total time, so a peer draws the breaking decal on other
-players' tiles and the miner draws a growing square. Clients cancel when the aim
-changes by sending `mine-cancel`.
+players' tiles and for the miner's own; there is no progress square (see
+[cursor](cursor.md)). Clients cancel when the aim changes by sending
+`mine-cancel`.
 
 ## Items
 

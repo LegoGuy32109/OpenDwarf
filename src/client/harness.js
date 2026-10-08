@@ -18,6 +18,7 @@ import { viewMotionOpacity } from "../shared/view.js";
 import { openChat } from "./chat-input.js";
 import { joinSession } from "./session.js";
 import { currentLayout } from "./ui-view.js";
+import { localCursor } from "./cursor.js";
 
 /** @typedef {import('./context.js').Context} Context */
 
@@ -51,6 +52,8 @@ export function exposeHarness(ctx) {
     },
     /** @param {string} [prefill] */
     openChat: (prefill) => openChat(ctx, prefill),
+    /** The world cursor as drawn now (ADR 0009): tile, held item, preview and draw parameters. */
+    cursor: () => localCursor(scene),
     stamina: ctx.stamina,
     /** @param {string} id */
     join: (id) => joinSession(ctx, id),
