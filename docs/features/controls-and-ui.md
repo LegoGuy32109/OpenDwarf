@@ -16,10 +16,11 @@ In entity view, IJKL points the cursor (see [cursor](cursor.md)) at one of the
 eight neighboring tiles. R/V selects the view level; the cursor appears at the
 player's level or one level above or below. In master view, IJKL pans the
 camera. Holding U/N smoothly zooms out/in. The mouse wheel also zooms. Space,
-gamepad button 0, or the round pickaxe button right of the left stick interacts
-(see [mining and items](mining-and-items.md)). B, gamepad button 2, or the bag
-button opens the inventory (see [inventory and shop](inventory-and-shop.md)).
-Movement keys are in [movement](movement.md); chat keys are in [chat](chat.md).
+the gamepad's ZR (button 7), or the round pickaxe button right of the left stick
+interacts (see [mining and items](mining-and-items.md)). B, the gamepad's Y
+(button 2), or the bag button opens the inventory (see
+[inventory and shop](inventory-and-shop.md)). Movement keys are in
+[movement](movement.md); chat keys are in [chat](chat.md).
 
 A brief bitmap HUD shows the zoom and the view level during changes.
 
@@ -32,11 +33,19 @@ view levels. The on-screen B button opens the menu.
 
 With a gamepad connected to the device, press a button while the page is
 focused. The left stick or D-pad moves, and the right stick points at a neighbor
-in entity view or pans in master view. Button 0 interacts, buttons 4/5 change
-the view level, 6/7 zoom, and 3 opens the menu. Button 1 has no chat action. The
-browser can report a standard layout or the raw layout of the Afterglow Wireless
-Deluxe Controller. The Afterglow Wireless Deluxe Controller's USB connection
-charges it but does not send input. Pair that model over Bluetooth to play.
+in entity view or pans in master view. In the world, ZR (7) interacts, ZL (6)
+toggles sprint, A (1) zooms in while held, B (0) zooms out while held, Y (2)
+opens the bag, X (3) opens the menu, and L/R (4/5) change the view level (the
+names are the Nintendo Switch labels on the browser's standard indices). With a
+panel open (bag, pickup grid, shop), ZR selects, Y or X closes it, A and B do
+nothing, and zoom is off. In a panel a stick steps once when it leaves center; a
+new direction steps only 200 ms after the last step, so a sweep across a
+diagonal does not step twice; a held direction repeats after 400 ms, then every
+200 ms (`src/client/stick-step.js`, shared by the three panels). The D-pad and
+IJKL keep their own timing. The browser can report a standard layout or the raw
+layout of the Afterglow Wireless Deluxe Controller. The Afterglow Wireless
+Deluxe Controller's USB connection charges it but does not send input. Pair that
+model over Bluetooth to play.
 
 The in-game keyboard has QWERTY letters, shift, a page of numbers and symbols,
 space, backspace, send, and close.

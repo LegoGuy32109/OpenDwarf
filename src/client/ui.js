@@ -1089,8 +1089,9 @@ export function layoutUi(view) {
       ? [
         "LEFT STICK MOVE",
         "RIGHT STICK CAMERA",
-        "4 5 LEVEL  6 7 ZOOM",
-        "3 MENU",
+        "L R LEVEL  A B ZOOM",
+        "ZR ACT  ZL SPRINT",
+        "Y BAG  X MENU",
       ]
       : touchHints
       ? [

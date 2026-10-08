@@ -62,7 +62,7 @@ export function pickupGridStacks(ctx) {
 
 /**
  * Each frame: close the grid when the entity leaves reach or the tile empties,
- * move the selector with IJKL, the look stick, or the D-pad, and compute the
+ * move the selector with IJKL, the look stick, or the D-pad (the gamepad stick by the stick step rule), and compute the
  * squares to draw.
  * @param {Context} ctx
  */
@@ -87,12 +87,16 @@ export function updatePickupGrid(ctx) {
   // IJKL moves the selector on key press (`gridKey`); the sticks and D-pad here.
   const direction = ctx.gamepadDpad.x || ctx.gamepadDpad.y
     ? ctx.gamepadDpad
-    : stickDirection(
-      ctx.cameraStick.x + ctx.gamepadCamera.x,
-      ctx.cameraStick.y + ctx.gamepadCamera.y,
-      0.5,
-    );
+    : stickDirection(ctx.cameraStick.x, ctx.cameraStick.y, 0.5);
   if (!scene.menu) stepSelection(pickupGrid, stacks.length, direction, now);
+  // The gamepad look stick follows the shared stick step rule.
+  const step = pickupGrid.stick.update(
+    stickDirection(ctx.gamepadCamera.x, ctx.gamepadCamera.y, 0.5),
+    now,
+  );
+  if (step && !scene.menu) {
+    moveSelection(pickupGrid, stacks.length, step.x, step.y);
+  }
   scene.pickupCells = scene.viewZ === pickupGrid.tile?.z && player
     ? pickupGridCells(pickupGrid, stacks, gridCenter(player), now)
     : [];

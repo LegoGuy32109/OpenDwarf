@@ -253,6 +253,8 @@ export function createContext() {
     gamepadCamera: { x: 0, y: 0 },
     /** The D-pad direction. It moves the pickup grid's selector while the grid is open. */
     gamepadDpad: { x: 0, y: 0 },
+    /** The left stick's direction, or the right stick's when the left is centered, for the panels. */
+    gamepadStick: { x: 0, y: 0 },
     gamepadZoom: 0,
     gamepadIndex: -1,
     unsupportedGamepadId: "",

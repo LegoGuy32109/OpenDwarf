@@ -2,6 +2,7 @@
 
 import { centerTile } from "../shared/locomotion.js";
 import { inPickupReach, itemInfo } from "../shared/items.js";
+import { createStickStepper } from "./stick-step.js";
 
 /**
  * The pickup grid: when an entity interacts with a tile that holds several
@@ -38,6 +39,7 @@ const REQUEST_HIDE_MS = 1500;
  * @property {string} heldDirection the selection direction currently held, as "dx,dy"
  * @property {boolean} waitForRelease true after opening, until the look control returns to neutral, so the aim that opened the grid does not move the selector
  * @property {number} nextRepeat when a held direction moves the selection again
+ * @property {ReturnType<typeof createStickStepper>} stick the gamepad stick's step rule
  * @property {Map<string,number>} requested kinds a guest asked for, with the time
  */
 
@@ -51,6 +53,7 @@ export function createPickupGrid() {
     heldDirection: "",
     waitForRelease: false,
     nextRepeat: 0,
+    stick: createStickStepper(),
     requested: new Map(),
   };
 }
@@ -68,6 +71,7 @@ export function openPickupGrid(grid, tile, now) {
   grid.openedAt = now;
   grid.heldDirection = "";
   grid.waitForRelease = true;
+  grid.stick.releaseFirst();
   grid.requested.clear();
 }
 

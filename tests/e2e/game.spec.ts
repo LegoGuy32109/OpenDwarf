@@ -52,7 +52,7 @@ test("standard gamepad moves the player and handles buttons", async ({ page }) =
     }).__testPad;
     pad.axes[0] = 0;
     pad.axes[2] = 1;
-    pad.buttons[7].pressed = true;
+    pad.buttons[1].pressed = true;
   });
   await expect.poll(() =>
     page.evaluate(() => {
@@ -70,7 +70,7 @@ test("standard gamepad moves the player and handles buttons", async ({ page }) =
       __testPad: { axes: number[]; buttons: { pressed: boolean }[] };
     }).__testPad;
     pad.axes[2] = 0;
-    pad.buttons[7].pressed = false;
+    pad.buttons[1].pressed = false;
     pad.buttons[5].pressed = true;
   });
   await expect.poll(() =>
@@ -173,7 +173,7 @@ test("attached Afterglow layout uses its D-pad and shoulder buttons", async ({ p
       __testPad: { buttons: { pressed: boolean }[] };
     }).__testPad;
     pad.buttons[5].pressed = false;
-    pad.buttons[7].pressed = true;
+    pad.buttons[1].pressed = true;
   });
   await expect.poll(() =>
     page.evaluate(() =>
@@ -189,8 +189,8 @@ test("attached Afterglow layout uses its D-pad and shoulder buttons", async ({ p
     const pad = (globalThis as unknown as {
       __testPad: { buttons: { pressed: boolean }[] };
     }).__testPad;
-    pad.buttons[7].pressed = false;
-    pad.buttons[6].pressed = true;
+    pad.buttons[1].pressed = false;
+    pad.buttons[0].pressed = true;
     pad.buttons[4].pressed = true;
   });
   await expect.poll(() =>

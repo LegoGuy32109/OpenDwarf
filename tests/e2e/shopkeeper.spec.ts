@@ -330,7 +330,7 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
     }, button);
     await page.waitForTimeout(300);
   };
-  await press(0); // interact opens the shop
+  await press(7); // ZR interact opens the shop
   await expect.poll(() => shopOpen(page)).toBe(true);
   await expect.poll(async () => (await shopRow(page, "all"))?.selected).toBe(
     true,
@@ -348,8 +348,8 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
   await page.evaluate(() => {
     (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
   });
-  await press(0); // sells the diamond
+  await press(7); // ZR sells the diamond
   await expect.poll(() => coins(page)).toBe(20);
-  await press(1); // button 1 closes
+  await press(3); // X closes
   await expect.poll(() => shopOpen(page)).toBe(false);
 });

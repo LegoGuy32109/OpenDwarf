@@ -192,7 +192,7 @@ test("a single stack is picked up at once, with no grid", async ({ page }) => {
   expect(await cells(page)).toEqual([]);
 });
 
-test("gamepad: the D-pad moves the selector, button 0 picks up", async ({ page }) => {
+test("gamepad: the D-pad moves the selector, ZR picks up", async ({ page }) => {
   test.setTimeout(60_000);
   await page.addInitScript(() => {
     const pad = {
@@ -223,10 +223,10 @@ test("gamepad: the D-pad moves the selector, button 0 picks up", async ({ page }
     pad.axes[3] = 1;
   });
   await press((pad) => {
-    pad.buttons[0].pressed = true;
+    pad.buttons[7].pressed = true;
   });
   await press((pad) => {
-    pad.buttons[0].pressed = false;
+    pad.buttons[7].pressed = false;
     pad.axes[3] = 0;
   });
   await expect.poll(async () => (await cells(page)).length).toBe(5);
@@ -254,10 +254,10 @@ test("gamepad: the D-pad moves the selector, button 0 picks up", async ({ page }
   });
   await expect.poll(() => selected(page)).toBe(3);
   await press((pad) => {
-    pad.buttons[0].pressed = true;
+    pad.buttons[7].pressed = true;
   });
   await press((pad) => {
-    pad.buttons[0].pressed = false;
+    pad.buttons[7].pressed = false;
   });
   await expect.poll(() => inventory(page)).toEqual([
     { kind: "pickaxe", count: 1 },
