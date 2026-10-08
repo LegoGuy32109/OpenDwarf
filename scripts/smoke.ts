@@ -11,6 +11,14 @@ const commit = Deno.args[1] ??
   /"commit":"([0-9a-f]{7})/.exec(await (await fetch(`${base}${path}`)).text())
     ?.[1] ??
   "";
+// Media: the shell redirects to the bucket, which must answer with the music index.
+const index = await fetch(`${base}/media/index/music.v1.json`);
+const tracks = index.ok ? (await index.json()).tracks : null;
+if (!Array.isArray(tracks)) {
+  console.log("media index failed:", index.status, index.url.split("?")[0]);
+  Deno.exit(1);
+}
+console.log("media index tracks:", tracks.length);
 const browser = await chromium.launch();
 const host = await browser.newPage();
 const guest = await browser.newPage();

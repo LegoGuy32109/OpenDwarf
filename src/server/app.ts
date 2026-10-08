@@ -101,7 +101,7 @@ export function createApp(
     const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
     const mediaResponse = await media.handle(request, url.pathname);
     if (mediaResponse) return mediaResponse;
-    // The local build's service worker loader (ADR 0007). Remote builds: see the media ticket.
+    // Service worker loaders (ADR 0007): the local build's, then every remote build's.
     if (
       builds.local && request.method === "GET" &&
       (url.pathname === "/sw.js" || url.pathname === "/b/local/sw.js")
@@ -112,6 +112,10 @@ export function createApp(
           "cache-control": "no-cache",
         },
       });
+    }
+    if (request.method === "GET") {
+      const worker = await builds.worker(url.pathname);
+      if (worker) return worker;
     }
     // Build pages: `/b/<name>/...`, and main at the root pages.
     if (builds.handles(url.pathname) && request.method === "GET") {
