@@ -22,12 +22,14 @@ import { localCursor } from "./cursor.js";
 
 /** @typedef {import('./context.js').Context} Context */
 
-/** Expose `globalThis.__od` when the page loads with `?harness`. @param {Context} ctx */
-export function exposeHarness(ctx) {
+/** Expose `globalThis.__od` when the page loads with `?harness`. @param {Context} ctx @param {Awaited<ReturnType<typeof import('./render.js').createRenderer>>|null} [renderer] */
+export function exposeHarness(ctx, renderer = null) {
   if (!new URL(location.href).searchParams.has("harness")) return;
   const { scene, ui, frameMs } = ctx;
   /** @type {{__od?:unknown}} */ (globalThis).__od = {
     scene,
+    /** What the renderer drew in the last frame (`renderer.stats`), or null without a renderer. */
+    renderStats: () => renderer ? { ...renderer.stats } : null,
     /** Chatter that started (ADR 0006), so specs can check it without listening. */
     chatter: {
       log: ctx.chatter.log,

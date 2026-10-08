@@ -70,7 +70,7 @@ export async function startApp() {
   ctx.music.start();
   ctx.sfx.start();
   startLoop(ctx, renderer, input);
-  exposeHarness(ctx);
+  exposeHarness(ctx, renderer);
   // After the first frame is on its way: the worker never delays the game.
   void registerWorker(build);
 }

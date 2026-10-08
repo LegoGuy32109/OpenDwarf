@@ -14,7 +14,6 @@ import {
 } from "../shared/speech.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
-import { readTile } from "../shared/terrain.js";
 import { CURSOR_ICON_SIZE, CURSOR_OUTLINE, localCursor } from "./cursor.js";
 import { DECAL_FRAMES, decalFrame } from "../shared/mining.js";
 import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
@@ -28,10 +27,19 @@ import {
   elevationMask,
   playerOccluded,
   shadowMaskToAtlasId,
-  surfaceAt,
+  surfaceGrid,
 } from "../shared/surface.js";
 
 const TILE = 64;
+const FLOATS_PER_QUAD = 48;
+/** @type {[number,number,number,number]} */
+const WHITE = [1, 1, 1, 1];
+/** @type {[number,number,number,number]} */
+const FLOOR_UV = [0, 5 / 31, 1, 1 / 31];
+/** @type {[number,number,number,number]} */
+const REMEMBERED_TINT = [1, 0.86, 0.34, 0.95];
+/** Floor colors per depth, so a frame allocates none. @type {[number,number,number,number][]} */
+const DEPTH_COLORS = DEPTH_TINTS.map(([r, g, b]) => [r, g, b, 1]);
 const VERTEX = `#version 300 es
 precision highp float;
 layout(location=0) in vec2 a_position;
@@ -95,6 +103,7 @@ function texture(gl, source) {
   return result;
 }
 
+/** @typedef {{tiles:number,quads:number}} RenderStats What one `render` call drew: `tiles` is the terrain tiles with a visible surface, `quads` every quad batched that frame (terrain, edges, masks, sprites, and interface). */
 /** @typedef {import('../shared/world.js').World} World */
 /** @typedef {import('../shared/visibility.js').Visibility} Visibility */
 /** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},ui?:{layout:import('./ui.js').UiLayout,state:import('./ui-draw.js').DrawState},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
@@ -173,30 +182,57 @@ export async function createRenderer(canvas) {
   const locationCamera = gl.getUniformLocation(program, "u_camera");
   const locationZoom = gl.getUniformLocation(program, "u_zoom");
   const locationScreen = gl.getUniformLocation(program, "u_screen");
-  /** @type {number[]} */
-  let vertices = [];
+  /** Vertex floats for the current batch, reused every frame and grown on demand. */
+  let vertices = new Float32Array(FLOATS_PER_QUAD * 4096);
+  let used = 0;
   /** @type {WebGLTexture|null} */
   let activeTexture = null;
   let activeScreen = false;
+  let drawnQuads = 0;
+  let drawnTiles = 0;
 
   function flush() {
-    if (!vertices.length || !activeTexture) return;
+    if (!used || !activeTexture) return;
     gl.bindTexture(gl.TEXTURE_2D, activeTexture);
     gl.uniform1i(locationScreen, activeScreen ? 1 : 0);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
-    gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 8);
-    vertices = [];
+    gl.bufferData(gl.ARRAY_BUFFER, vertices.subarray(0, used), gl.DYNAMIC_DRAW);
+    gl.drawArrays(gl.TRIANGLES, 0, used / 8);
+    used = 0;
+  }
+
+  /** @param {number} at @param {number} x @param {number} y @param {number} u @param {number} v @param {number} r @param {number} g @param {number} b @param {number} a */
+  function vertex(at, x, y, u, v, r, g, b, a) {
+    vertices[at] = x;
+    vertices[at + 1] = y;
+    vertices[at + 2] = u;
+    vertices[at + 3] = v;
+    vertices[at + 4] = r;
+    vertices[at + 5] = g;
+    vertices[at + 6] = b;
+    vertices[at + 7] = a;
   }
 
   /** @param {WebGLTexture} tex @param {boolean} screen @param {number} x @param {number} y @param {number} w @param {number} h @param {[number,number,number,number]} uv @param {[number,number,number,number]} [color] */
-  function quad(tex, screen, x, y, w, h, uv, color = [1, 1, 1, 1]) {
+  function quad(tex, screen, x, y, w, h, uv, color = WHITE) {
     if (activeTexture !== tex || activeScreen !== screen) flush();
     activeTexture = tex;
     activeScreen = screen;
-    const [u, v, uw, vh] = uv;
-    for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [0, 1], [1, 0], [1, 1]]) {
-      vertices.push(x + cx * w, y + cy * h, u + cx * uw, v + cy * vh, ...color);
+    if (used + FLOATS_PER_QUAD > vertices.length) {
+      const grown = new Float32Array(vertices.length * 2);
+      grown.set(vertices.subarray(0, used));
+      vertices = grown;
     }
+    const u = uv[0], v = uv[1], u1 = u + uv[2], v1 = v + uv[3];
+    const r = color[0], g = color[1], b = color[2], a = color[3];
+    const x1 = x + w, y1 = y + h;
+    vertex(used, x, y, u, v, r, g, b, a);
+    vertex(used + 8, x1, y, u1, v, r, g, b, a);
+    vertex(used + 16, x, y1, u, v1, r, g, b, a);
+    vertex(used + 24, x, y1, u, v1, r, g, b, a);
+    vertex(used + 32, x1, y, u1, v, r, g, b, a);
+    vertex(used + 40, x1, y1, u1, v1, r, g, b, a);
+    used += FLOATS_PER_QUAD;
+    drawnQuads++;
   }
 
   /** @param {string} value @param {number} x @param {number} y @param {number} scale @param {[number,number,number,number]} [color] */
@@ -331,8 +367,16 @@ export async function createRenderer(canvas) {
     flush();
   }
 
-  /** @param {Scene} scene @param {number} alpha */
+  /** Draw one frame, then publish what it drew as `renderer.stats`. @param {Scene} scene @param {number} alpha */
   function render(scene, alpha) {
+    drawnQuads = 0;
+    drawnTiles = 0;
+    draw(scene, alpha);
+    renderer.stats = { tiles: drawnTiles, quads: drawnQuads };
+  }
+
+  /** @param {Scene} scene @param {number} alpha */
+  function draw(scene, alpha) {
     const dpr = globalThis.devicePixelRatio || 1;
     const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
     const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
@@ -372,38 +416,26 @@ export async function createRenderer(canvas) {
     const right = Math.ceil((cameraX + width / (2 * zoom)) / TILE) + 1;
     const top = Math.floor((cameraY - height / (2 * zoom)) / TILE) - 1;
     const bottom = Math.ceil((cameraY + height / (2 * zoom)) / TILE) + 1;
-    /** @type {Map<string,ReturnType<typeof surfaceAt>>} */
-    const surfaces = new Map();
-    /** @param {number} x @param {number} y */
-    const surface = (x, y) => {
-      const key = `${x},${y}`;
-      if (!surfaces.has(key)) {
-        surfaces.set(
-          key,
-          surfaceAt(
-            scene.world,
-            x,
-            y,
-            scene.viewZ,
-            scene.viewMode,
-            scene.visibility,
-          ),
-        );
-      }
-      return surfaces.get(key) ?? null;
-    };
+    // One surface per tile per frame, shared by the floor, edges and masks. The
+    // grid has a one-tile border for the right and lower neighbors.
+    const surface = surfaceGrid(
+      scene.world,
+      left,
+      top,
+      right - left + 3,
+      bottom - top + 3,
+      scene.viewZ,
+      scene.viewMode,
+      scene.visibility,
+    );
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
         const tile = surface(x, y);
         if (!tile) continue;
-        const tint = tile.seen === "remembered"
-          ? [1, 0.86, 0.34]
-          : DEPTH_TINTS[tile.depth];
         // An ore keeps the stone's depth tint, so it reads as a wall at the
         // player's level and as a darker top when seen from above.
-        const oreFrame = materialInfo(
-          readTile(scene.world, x, y, tile.z),
-        )?.oreFrame;
+        drawnTiles++;
+        const oreFrame = materialInfo(tile.material)?.oreFrame;
         const ore = oreFrame !== null && oreFrame !== undefined;
         quad(
           ore ? textures.ores : textures.floor,
@@ -412,13 +444,10 @@ export async function createRenderer(canvas) {
           y * TILE,
           TILE,
           TILE,
-          ore
-            ? [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES]
-            : [0, 5 / 31, 1, 1 / 31],
-          /** @type {[number,number,number,number]} */ ([
-            ...tint,
-            tile.seen === "remembered" ? 0.95 : 1,
-          ]),
+          ore ? [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES] : FLOOR_UV,
+          tile.seen === "remembered"
+            ? REMEMBERED_TINT
+            : DEPTH_COLORS[tile.depth],
         );
       }
     }
@@ -433,6 +462,7 @@ export async function createRenderer(canvas) {
           scene.viewZ,
           scene.viewMode,
           scene.visibility,
+          surface,
         );
         if (!mask) continue;
         const frame = shadowMaskToAtlasId(mask) - 1;
@@ -515,6 +545,7 @@ export async function createRenderer(canvas) {
           scene.viewZ,
           scene.viewMode,
           scene.visibility,
+          surface,
         );
         if (!mask) continue;
         const frame = shadowMaskToAtlasId(mask) - 1;
@@ -1043,15 +1074,18 @@ export async function createRenderer(canvas) {
     flush();
   }
 
-  return {
+  const renderer = {
     render,
     ready,
+    /** What the last `render` drew. @type {RenderStats} */
+    stats: { tiles: 0, quads: 0 },
     /** The image to draw as the join QR code, or null to remove it. @param {TexImageSource|null} source */
     setQr(source) {
       if (qrTexture) gl.deleteTexture(qrTexture);
       qrTexture = source ? texture(gl, source) : null;
     },
   };
+  return renderer;
 }
 
 /** @param {string} hex "#rrggbb" @returns {[number,number,number]} */
