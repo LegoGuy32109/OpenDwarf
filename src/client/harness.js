@@ -32,6 +32,8 @@ export function exposeHarness(ctx) {
       log: ctx.chatter.log,
       level: () => ctx.chatter.level,
     },
+    /** The sound events this client chose to play (ADR 0008), so specs can check them while the player is silent. */
+    sounds: ctx.sounds.log,
     /** The music player's state and a few hooks (ADR 0007). */
     music: {
       state: () => ctx.music.state(),

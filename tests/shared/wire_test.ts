@@ -11,12 +11,14 @@ import {
   decodeChat,
   decodeControl,
   decodeMotion,
+  decodeSounds,
   decodeState,
   encodeMotionPlayers,
   encodeWorld,
   MAX_PACKET_BYTES,
   parsePacket,
 } from "../../src/shared/wire.js";
+import { MAX_SOUND_ENTRIES, MAX_SOUND_TAGS } from "../../src/shared/sound.js";
 
 Deno.test("wire parser rejects malformed, non-string and UTF8 oversized payloads", () => {
   assertEquals(parsePacket('{"type":"resync"}'), { type: "resync" });
@@ -352,4 +354,54 @@ Deno.test("wire state requires an own local-player entry", () => {
   for (const playerId of ["toString", "hasOwnProperty", "__defineGetter__"]) {
     assertEquals(decodeState({ ...value, playerId }), null);
   }
+});
+
+Deno.test("sounds accept bounded events and reject anything malformed", () => {
+  const sound = {
+    tags: ["step", "walk", "iron ore"],
+    x: 12.5,
+    y: -3,
+    z: 1,
+    tick: 40,
+    seen: false,
+  };
+  assertEquals(decodeSounds({ type: "sounds", list: [sound] }), [sound]);
+  assertEquals(decodeSounds({ type: "sounds", list: [] }), []);
+  const bad = (change: Record<string, unknown>) =>
+    decodeSounds({ type: "sounds", list: [{ ...sound, ...change }] });
+  assertEquals(decodeSounds(null), null);
+  assertEquals(decodeSounds({ type: "mining", list: [sound] }), null);
+  assertEquals(decodeSounds({ type: "sounds" }), null);
+  assertEquals(decodeSounds({ type: "sounds", list: sound }), null);
+  assertEquals(
+    decodeSounds({
+      type: "sounds",
+      list: Array(MAX_SOUND_ENTRIES + 1).fill(sound),
+    }),
+    null,
+  );
+  assertEquals(
+    decodeSounds({
+      type: "sounds",
+      list: Array(MAX_SOUND_ENTRIES).fill(sound),
+    })?.length,
+    MAX_SOUND_ENTRIES,
+  );
+  assertEquals(bad({ tags: [] }), null);
+  assertEquals(bad({ tags: "step" }), null);
+  assertEquals(bad({ tags: Array(MAX_SOUND_TAGS + 1).fill("step") }), null);
+  assertEquals(bad({ tags: ["step", 3] }), null);
+  assertEquals(bad({ tags: ["step", ""] }), null);
+  assertEquals(bad({ tags: ["x".repeat(33)] }), null);
+  assertEquals(bad({ tags: ["bad\ntag"] }), null);
+  assertEquals(bad({ x: "1" }), null);
+  assertEquals(bad({ x: Infinity }), null);
+  assertEquals(bad({ y: 1e12 }), null);
+  assertEquals(bad({ z: -1 }), null);
+  assertEquals(bad({ z: 99 }), null);
+  assertEquals(bad({ tick: -1 }), null);
+  assertEquals(bad({ tick: 1.5 }), null);
+  assertEquals(bad({ tick: Number.MAX_SAFE_INTEGER + 1 }), null);
+  assertEquals(bad({ seen: 1 }), null);
+  assertEquals(bad({ seen: undefined }), null);
 });

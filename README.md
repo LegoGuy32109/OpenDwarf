@@ -65,6 +65,7 @@ its feature there:
 - [Offline play](docs/features/offline.md)
 - [Admin dashboard](docs/features/admin-dashboard.md)
 - [Testing and evidence](docs/features/testing-and-evidence.md)
+- [Sound events](docs/features/sound-events.md)
 
 <!-- Add a line here for each new docs/features/*.md file. -->
 

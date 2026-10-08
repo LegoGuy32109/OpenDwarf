@@ -92,6 +92,7 @@ function move(ctx) {
     direction.y,
     speed,
   );
+  ctx.sounds.ownSteps(stamina.sprint);
   stepStamina(stamina);
   if (
     !ctx.isAdmin && moved && player &&
@@ -273,6 +274,7 @@ export function startLoop(ctx, renderer, input) {
       now,
     );
     scene.mining = miningDisplay(ctx, ctx.accumulator / TICK_MS);
+    ctx.sounds.frame(now, ctx.accumulator / TICK_MS);
     scene.items = itemsDisplay(ctx);
     updatePickupGrid(ctx);
     playPanelSounds(ctx);

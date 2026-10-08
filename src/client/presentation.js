@@ -48,6 +48,16 @@ export function createPresentation() {
     samples.set(player.id, list);
   }
 
+  /**
+   * The local `performance.now()` time to present something that happened on
+   * simulation `tick`: 150 ms behind, like remote sprites. Null before the
+   * first observation sets the clock.
+   * @param {number} tick
+   */
+  function timeOfTick(tick) {
+    return Number.isFinite(clockBase) ? clockBase + tick * TICK_MS + 150 : null;
+  }
+
   /** @param {string} id */
   function delayedPosition(id) {
     const list = samples.get(id);
@@ -219,6 +229,7 @@ export function createPresentation() {
     positionAt,
     sightEntries,
     observe,
+    timeOfTick,
     reset() {
       entries.clear();
       samples.clear();

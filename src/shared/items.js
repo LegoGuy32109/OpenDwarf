@@ -1,6 +1,7 @@
 // @ts-check
 
 import { centerTile } from "./locomotion.js";
+import { recordSound } from "./sound.js";
 import { WORLD_TOP } from "./terrain.js";
 
 /**
@@ -234,6 +235,13 @@ export function pickUp(world, playerId, tile, kind) {
   entry.stacks.splice(index, 1);
   if (!entry.stacks.length) store.tiles.delete(key);
   store.version++;
+  recordSound(world, {
+    tags: ["pickup"],
+    x: tile.x,
+    y: tile.y,
+    z: tile.z,
+    source: playerId,
+  });
   return { ok: true, kind: stack.kind, count: stack.count };
 }
 
