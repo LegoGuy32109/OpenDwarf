@@ -89,7 +89,7 @@ Design notes: [movement](docs/movement-design.md),
 ## Credits
 
 The stone floor, the ore tiles (`public/assets/floor.png`, `ores.png`), and the
-stone and ore item icons (`items.png`, from `art/excalibur/item/`) come from
+item icons (`items.png`, from `art/excalibur/item/`) come from
 [Excalibur](https://www.curseforge.com/minecraft/texture-packs/excalibur) by
 Maffhew, licensed
 [CC BY-NC-ND 3.0](http://creativecommons.org/licenses/by-nc-nd/3.0/us/). The

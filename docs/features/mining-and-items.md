@@ -32,17 +32,17 @@ changes by sending `mine-cancel`.
 `ITEM_KINDS` (stone, coal, iron ore, gold ore, lapis, redstone, diamond,
 emerald, coin, pickaxe), each with a frame in the item sprite sheet
 `public/assets/items.png`, one column of 16×16 frames that
-`scripts/make-item-sheet.ts` builds. Stone (an isometric cube rendered from
-Excalibur's stone block) and the ore items come from the Excalibur resource pack
-in `art/excalibur/item/` (see the README's credits), the coin is drawn by the
-script, and the pickaxe is cut from the dwarf mining frames on `main`. A stack
-is `{kind, count}`. Dropped items and inventories are both plain stack lists
-with one stack per kind, and `addStack` and `takeStack` change them, so the
-pickup grid (#18), the inventory panel and held item (#19), and the shop (#20)
-reuse them. `droppedItems(world)` keeps the stacks that lie on each tile for the
-session; nothing removes them but a pickup. `inventoryOf(player)` is an entity's
-inventory, which starts with one pickaxe. `heldItem` in `mining.js` still
-returns the pickaxe by default; #19 replaces it with the entity's chosen item.
+`scripts/make-item-sheet.ts` builds from the Excalibur resource pack's icons in
+`art/excalibur/item/` (see the README's credits): stone is an isometric cube
+rendered from its stone block, the pickaxe is its stone pickaxe, and the coin is
+its emerald with the hue turned to gold. A stack is `{kind, count}`. Dropped
+items and inventories are both plain stack lists with one stack per kind, and
+`addStack` and `takeStack` change them, so the pickup grid (#18), the inventory
+panel and held item (#19), and the shop (#20) reuse them. `droppedItems(world)`
+keeps the stacks that lie on each tile for the session; nothing removes them but
+a pickup. `inventoryOf(player)` is an entity's inventory, which starts with one
+pickaxe. `heldItem` in `mining.js` still returns the pickaxe by default; #19
+replaces it with the entity's chosen item.
 
 ## Pickup
 
