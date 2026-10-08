@@ -230,8 +230,9 @@ export function createSfx(options = {}) {
   /** @param {Sample} sample */
   async function decode(sample) {
     const bytes = downloaded.get(sample.key);
-    if (!audio || !bytes || buffers.has(sample.key)) return;
+    if (!audio || !bytes) return;
     downloaded.delete(sample.key);
+    if (buffers.has(sample.key)) return;
     try {
       buffers.set(sample.key, await audio.decodeAudioData(bytes));
       ready = index.filter((candidate) => buffers.has(candidate.key));
@@ -308,6 +309,9 @@ export function createSfx(options = {}) {
     play(tags, playOptions = {}) {
       const context = audio;
       if (!context || !master || !active()) return;
+      // A suspended context (a hidden tab) would queue sounds that all play
+      // together when the tab comes back.
+      if (globalThis.document?.hidden || context.state === "suspended") return;
       const wait = playOptions.at === undefined ? 0 : playOptions.at - now();
       if (wait < -LATE_MS) return;
       const matches = matchSamples(ready, tags);
@@ -384,6 +388,7 @@ export function createSfx(options = {}) {
     },
     /** @param {EffectsLevel} next */
     setLevel(next) {
+      const wasActive = active();
       level = next;
       if (master) master.gain.value = volume();
       if (!active()) {
@@ -391,7 +396,8 @@ export function createSfx(options = {}) {
         voices = [];
         return;
       }
-      if (started) void load().then(decodeAll);
+      // A volume change keeps the loaded samples; only turning effects back on loads.
+      if (started && !wasActive) void load().then(decodeAll);
     },
     /** For tests: the source of randomness. @param {() => number} source */
     setRandom(source) {

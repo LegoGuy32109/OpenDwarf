@@ -328,3 +328,23 @@ Deno.test("a disabled player does nothing at all", () => {
   assertEquals(fetched, []);
   assertEquals(sfx.state().status, "off");
 });
+
+Deno.test("nothing plays while the context is suspended, so a hidden tab queues no burst", async () => {
+  const { sfx, context } = await player();
+  context.state = "suspended";
+  sfx.play(["ui", "open"]);
+  assertEquals(context.sources.length, 0);
+  context.state = "running";
+  sfx.play(["ui", "open"]);
+  assertEquals(context.sources.length, 1);
+});
+
+Deno.test("a volume change keeps the loaded samples and fetches nothing", async () => {
+  const { sfx, fetched } = await player();
+  const before = fetched.length;
+  sfx.setLevel("50");
+  sfx.setLevel("25");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assertEquals(fetched.length, before);
+  assertEquals(sfx.state().status, "ready");
+});
