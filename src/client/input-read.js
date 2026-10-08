@@ -55,16 +55,23 @@ export function lookInput(ctx) {
   };
 }
 
+/** IJKL and the on-screen look stick, without the gamepad sticks, which step the panels by the stick step rule. @param {Context} ctx */
+export function panelLookInput(ctx) {
+  return {
+    x: Number(ctx.held.has("KeyL")) - Number(ctx.held.has("KeyJ")) +
+      ctx.cameraStick.x,
+    y: Number(ctx.held.has("KeyK")) - Number(ctx.held.has("KeyI")) +
+      ctx.cameraStick.y,
+  };
+}
+
 /** The aim input, held still while the shop panel uses the look controls. @param {Context} ctx */
 export function cameraInput(ctx) {
   return ctx.shop.isOpen() ? { x: 0, y: 0 } : lookInput(ctx);
 }
 
-/** Up or down on the look stick or the D-pad, for the shop panel. IJKL act on key presses. @param {Context} ctx */
+/** Up or down on the on-screen look stick or the D-pad, for the shop panel. IJKL act on key presses, and the gamepad sticks use `shop.steerStick`. @param {Context} ctx */
 export function shopDirection(ctx) {
-  return stickDirection(
-    ctx.cameraStick.x + ctx.gamepadCamera.x,
-    ctx.cameraStick.y + ctx.gamepadCamera.y,
-    0.18,
-  ).y || ctx.gamepadDirection.y;
+  return stickDirection(ctx.cameraStick.x, ctx.cameraStick.y, 0.18).y ||
+    ctx.gamepadDpad.y;
 }

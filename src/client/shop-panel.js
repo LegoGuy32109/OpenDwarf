@@ -1,6 +1,7 @@
 // @ts-check
 
 import { rowRequest, shopRows } from "../shared/shop.js";
+import { createStickStepper } from "./stick-step.js";
 
 /** @typedef {import('../shared/items.js').Stack} Stack */
 /** @typedef {import('../shared/shop.js').ShopRow} ShopRow */
@@ -29,6 +30,7 @@ export function createShopPanel({ sell, flash }) {
   let open = false;
   let heldDirection = 0;
   let nextRepeat = 0;
+  const stick = createStickStepper();
   /** The first row shown, and how many rows fit. The UI layer reports the capacity. */
   let scroll = 0;
   let capacity = 1;
@@ -86,6 +88,7 @@ export function createShopPanel({ sell, flash }) {
       open = true;
       heldDirection = direction;
       nextRepeat = Infinity;
+      stick.releaseFirst();
       selectedKey = "";
       scroll = 0;
       settleSelection();
@@ -102,6 +105,14 @@ export function createShopPanel({ sell, flash }) {
     },
     move,
     confirm,
+    /**
+     * Feed a gamepad stick's up/down input every frame by the shared stick step
+     * rule: -1 up, 1 down, 0 none. @param {number} direction @param {number} now
+     */
+    steerStick(direction, now) {
+      const step = stick.update({ x: 0, y: direction }, now);
+      if (open && step) move(step.y);
+    },
     /**
      * A tap on a row: sell it when the shopkeeper buys it. @param {string} name
      */

@@ -2,27 +2,30 @@
 
 ## Inventory
 
-Every player starts with one pickaxe. B, gamepad button 2, or the bag button
-beside B opens the inventory panel: one icon and count per stack. IJKL, the look
-stick, or the D-pad moves the selection, and interact or a tap makes that stack
-the held item. A small icon at the top right always shows the held item. Only a
-held pickaxe lets interact mine, and any held item still allows pickup. Choosing
-another item cancels mining. While the panel is open, interact and the look
-control drive the panel and others see your typing bubble. B, Escape, gamepad
-button 1, or the close button closes it. The world host stores the held item and
-checks that the inventory holds it. Coins are an item and the score; the
-inventory panel shows them.
+Every player starts with one pickaxe. B, the gamepad's Y (button 2), or the bag
+button beside B opens the inventory panel: one icon and count per stack. IJKL or
+the D-pad moves the selection, a gamepad stick steps it by the stick step rule
+(one step when it leaves center, a new direction only 200 ms after the last
+step, a held direction repeating after 400 ms and then every 200 ms), and
+interact (ZR) or a tap makes that stack the held item. A small icon at the top
+right always shows the held item. Only a held pickaxe lets interact mine, and
+any held item still allows pickup. Choosing another item cancels mining. While
+the panel is open, interact and the look control drive the panel and others see
+your typing bubble. B, Escape, the gamepad's Y or X, or the close button closes
+it. The world host stores the held item and checks that the inventory holds it.
+Coins are an item and the score; the inventory panel shows them.
 
 ## Shop
 
 In the spawn room a gold-tinted shopkeeper stands on the north wall. Interact
 with that tile highlighted (or standing on it) opens the shop panel: every stack
-you carry with its count and unit price, and a "Sell all ore" row. IJKL, the
-look stick, or the D-pad move the selection, and interact (or a tap on a row)
-sells it; Escape, gamepad button 1, or the × button closes the panel. Prices:
-coal 1, iron ore 3, lapis 4, redstone 4, gold ore 8, emerald 15, diamond 20.
-Stone, the pickaxe, and coins show dimmed. Each sale adds a line such as "Sold
-coal ×3 for 3 coins" to the seller's hearing log.
+you carry with its count and unit price, and a "Sell all ore" row. IJKL or the
+D-pad move the selection, a gamepad stick steps it by the same stick step rule,
+and interact (ZR, or a tap on a row) sells it; Escape, the gamepad's Y or X, or
+the × button closes the panel. Prices: coal 1, iron ore 3, lapis 4, redstone 4,
+gold ore 8, emerald 15, diamond 20. Stone, the pickaxe, and coins show dimmed.
+Each sale adds a line such as "Sold coal ×3 for 3 coins" to the seller's hearing
+log.
 
 `src/shared/shop.js` holds the price table (`PRICES`, one place) and
 `sellItems`, the one sale rule. The shopkeeper stands on `SHOPKEEPER_TILE` in

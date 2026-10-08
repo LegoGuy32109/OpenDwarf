@@ -6,7 +6,7 @@ destructive one, and a placed stone can be mined again.
 
 ## Player view
 
-Interact acts on the highlighted tile: Space, gamepad A, or the on-screen
+Interact acts on the highlighted tile: Space, gamepad ZR, or the on-screen
 interact button. The order on a target tile is:
 
 1. Dropped items on the tile: pick up.

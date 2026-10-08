@@ -41,6 +41,7 @@ import {
 import {
   cameraInput,
   inputDirection,
+  panelLookInput,
   shopDirection,
   stickDirection,
 } from "./input-read.js";
@@ -222,7 +223,8 @@ export function startLoop(ctx, renderer, input) {
     scene.renderOffset.z *= correctionDecay;
     const look = cameraInput(ctx);
     // The look control steers the open inventory panel, not the aim or camera.
-    bag.steer(stickDirection(look.x, look.y, 0.18), now);
+    const panelLook = panelLookInput(ctx);
+    bag.steer(stickDirection(panelLook.x, panelLook.y, 0.18), now);
     const { x: cameraX, y: cameraY } = bag.isOpen ? { x: 0, y: 0 } : look;
     if (scene.viewMode === "master") {
       scene.camera.x += cameraX * dt * 0.48;
@@ -282,6 +284,7 @@ export function startLoop(ctx, renderer, input) {
     bag.update(scene.inventory, heldDisplay(ctx));
     shop.update(scene.inventory);
     shop.steer(shopDirection(ctx), now);
+    shop.steerStick(ctx.gamepadStick.y, now);
     scene.ui = {
       layout: currentLayout(ctx),
       state: { pressed: input.router.pressed(), sticks: ctx.ui.sticks, now },

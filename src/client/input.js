@@ -17,7 +17,7 @@ import { setSprint } from "../shared/stamina.js";
 import { closePickupGrid, isPickupGridOpen } from "./pickup-grid.js";
 import { createPointerRouter } from "./ui-pointer.js";
 import { clamp, notify } from "./context.js";
-import { cameraInput, stickDirection } from "./input-read.js";
+import { panelLookInput, stickDirection } from "./input-read.js";
 import { interact } from "./interact.js";
 import {
   chatKey,
@@ -92,6 +92,7 @@ function pollGamepad(ctx) {
     ctx.gamepadIndex = -1;
     ctx.gamepadDirection = { x: 0, y: 0 };
     ctx.gamepadCamera = { x: 0, y: 0 };
+    ctx.gamepadStick = { x: 0, y: 0 };
     ctx.gamepadZoom = 0;
     ctx.gamepadButtons.clear();
     return;
@@ -133,26 +134,43 @@ function pollGamepad(ctx) {
   ctx.gamepadCamera = Math.hypot(cameraX, cameraY) < 0.18
     ? { x: 0, y: 0 }
     : { x: cameraX, y: cameraY };
-  ctx.gamepadZoom = Number(buttons.has(7)) - Number(buttons.has(6));
+  const leftStick = stickDirection(pad.axes[0] ?? 0, pad.axes[1] ?? 0, 0.3);
+  ctx.gamepadStick = leftStick.x || leftStick.y
+    ? leftStick
+    : stickDirection(cameraX, cameraY, 0.5);
+  const panelOpen = ctx.bag.isOpen || isPickupGridOpen(ctx.pickupGrid) ||
+    ctx.shop.isOpen();
+  // A zooms in and B zooms out while held. Panels turn zoom off.
+  ctx.gamepadZoom = panelOpen
+    ? 0
+    : Number(buttons.has(1)) - Number(buttons.has(0));
   if (
     ctx.gamepadDirection.x !== previousDirection.x ||
     ctx.gamepadDirection.y !== previousDirection.y ||
     ctx.gamepadCamera.x || ctx.gamepadCamera.y ||
     buttons.size
   ) scene.inputMode = "gamepad";
-  if (newlyPressed(2)) toggleBag(ctx);
-  if (newlyPressed(1) && ctx.bag.isOpen) toggleBag(ctx, false);
-  if (ctx.bag.isOpen) ctx.bag.steer(ctx.gamepadDirection, performance.now());
-  if (newlyPressed(3)) {
-    if (scene.chatOpen) closeChat(ctx);
-    toggleMenu(ctx);
+  if (ctx.bag.isOpen) {
+    ctx.bag.steer(ctx.gamepadDpad, performance.now());
+    ctx.bag.steerStick(ctx.gamepadStick, performance.now());
+  }
+  // Y or X closes the open panel; X opens the menu only with no panel open.
+  if (newlyPressed(2) || newlyPressed(3)) {
+    if (panelOpen) {
+      toggleBag(ctx, false);
+      closePickupGrid(ctx.pickupGrid);
+      ctx.shop.close();
+    } else if (newlyPressed(3)) {
+      if (scene.chatOpen) closeChat(ctx);
+      toggleMenu(ctx);
+    } else toggleBag(ctx);
   }
   if (!scene.chatOpen && !scene.menu) {
     if (newlyPressed(4)) changeLayer(ctx, -1);
     if (newlyPressed(5)) changeLayer(ctx, 1);
-    if (newlyPressed(0)) interact(ctx);
+    if (newlyPressed(7)) interact(ctx);
+    if (newlyPressed(6) && !panelOpen) toggleSprint(ctx);
   }
-  if (newlyPressed(1)) ctx.shop.close();
   ctx.gamepadButtons = buttons;
 }
 
@@ -421,7 +439,7 @@ function keyDown(ctx, event) {
     !event.repeat
   ) {
     // Step on the key press itself, so a tap shorter than a frame still counts.
-    const look = cameraInput(ctx);
+    const look = panelLookInput(ctx);
     bag.steer(stickDirection(look.x, look.y, 0.18), performance.now());
   }
   if (
@@ -551,6 +569,7 @@ export function createInput(ctx) {
       ctx.cameraStick = { x: 0, y: 0 };
       ctx.gamepadDirection = { x: 0, y: 0 };
       ctx.gamepadCamera = { x: 0, y: 0 };
+      ctx.gamepadStick = { x: 0, y: 0 };
       ctx.gamepadZoom = 0;
     });
     canvas.addEventListener("wheel", (event) => {

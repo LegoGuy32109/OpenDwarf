@@ -8,6 +8,8 @@
  * `context.js` the held item action, and this module owns the selection.
  */
 
+import { createStickStepper } from "./stick-step.js";
+
 /** @typedef {import('../shared/items.js').Stack} Stack */
 
 /** Slots per row. */
@@ -49,12 +51,14 @@ export function createInventoryPanel({ onHold, onOpenChange }) {
   /** The last direction the stick pointed, and when it last stepped. */
   let lastDirection = { x: 0, y: 0 };
   let lastStep = 0;
+  const stick = createStickStepper();
 
   /** @param {boolean} [next] */
   function toggle(next = !isOpen) {
     if (next === isOpen) return;
     isOpen = next;
     lastDirection = { x: 0, y: 0 };
+    stick.releaseFirst();
     // Start on the held item.
     if (isOpen) {
       selected = Math.max(
@@ -108,6 +112,16 @@ export function createInventoryPanel({ onHold, onOpenChange }) {
         direction.x,
         direction.y,
       );
+    },
+    /**
+     * Step the selection from a gamepad stick by the shared stick step rule.
+     * @param {{x:number,y:number}} direction @param {number} nowMs
+     */
+    steerStick(direction, nowMs) {
+      if (!isOpen) return;
+      const step = stick.update(direction, nowMs);
+      if (!step) return;
+      selected = stepSelection(selected, stacks.length, step.x, step.y);
     },
     /** A tap on a slot selects the stack and holds it. @param {string} kind */
     tap(kind) {
