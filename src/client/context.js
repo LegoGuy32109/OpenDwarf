@@ -332,7 +332,7 @@ export function setViewMode(ctx, mode) {
 }
 
 /** Choose the held item. The host checks the inventory and cancels mining. @param {Context} ctx @param {string} kind */
-export function holdItem(ctx, kind) {
+function holdItem(ctx, kind) {
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "hold", kind });
@@ -349,7 +349,7 @@ export function holdItem(ctx, kind) {
  * @param {Context} ctx
  * @param {import('../shared/shop.js').SaleRequest} request
  */
-export function sellRequest(ctx, request) {
+function sellRequest(ctx, request) {
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "sell", ...request });

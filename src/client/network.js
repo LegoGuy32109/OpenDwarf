@@ -194,7 +194,7 @@ function gathered(peer) {
 }
 
 /** Ticks between the host's music heartbeats: every 4 s (ADR 0009). */
-export const MUSIC_BEAT_TICKS = 80;
+const MUSIC_BEAT_TICKS = 80;
 
 /**
  * @param {Scene} scene @param {string} session

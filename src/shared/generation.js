@@ -36,7 +36,7 @@ import {
  */
 
 /** @type {readonly OreBand[]} */
-export const ORE_BANDS = Object.freeze([
+const ORE_BANDS = Object.freeze([
   { material: COAL, zMin: 5, zMax: 7, attempts: 6, min: 5, max: 10 },
   { material: IRON_ORE, zMin: 5, zMax: 7, attempts: 3, min: 3, max: 7 },
   { material: IRON_ORE, zMin: 2, zMax: 4, attempts: 1, min: 3, max: 6 },
@@ -48,7 +48,7 @@ export const ORE_BANDS = Object.freeze([
 ]);
 
 /** Chunks generated around a player: every chunk within this many chunks. */
-export const GENERATE_RADIUS = 1;
+const GENERATE_RADIUS = 1;
 
 /**
  * The world host unloads a chunk once no player has been within this many
@@ -84,7 +84,7 @@ export function seedFromText(text) {
  * around spawn; `?seed=` replaces it for tests. It is chosen so a large cave
  * network meets the spawn tunnel.
  */
-export const WORLD_SEED_TEXT = "opendwarf-1";
+const WORLD_SEED_TEXT = "opendwarf-1";
 export const WORLD_SEED = seedFromText(WORLD_SEED_TEXT);
 
 /** The page's world seed: `?seed=` when given, otherwise `WORLD_SEED`. @param {URLSearchParams} params */

@@ -37,9 +37,6 @@ export const PRICES = Object.freeze({
 /** The tile the shopkeeper stands on, in the spawn room layout only. */
 export const SHOP_TILE = SHOPKEEPER_TILE;
 
-/** The most one sale request may name, so a message stays small. */
-export const MAX_SALE_COUNT = MAX_STACK_COUNT;
-
 /** @param {unknown} kind @returns {number} the unit price, or 0 when the kind cannot be sold */
 export function priceOf(kind) {
   return typeof kind === "string" && Object.hasOwn(PRICES, kind)

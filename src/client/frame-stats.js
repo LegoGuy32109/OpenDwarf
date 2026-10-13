@@ -11,16 +11,16 @@
 export const RING_SIZE = 300;
 export const SPIKE_LOG_SIZE = 20;
 /** A frame over this is a spike in the F3 counters. */
-export const SPIKE_MS = 33;
+const SPIKE_MS = 33;
 /** A frame over this is a bad spike. */
-export const BAD_SPIKE_MS = 100;
+const BAD_SPIKE_MS = 100;
 /** A frame over this is sent to the shell as a `spike` event. */
-export const REPORT_SPIKE_MS = 250;
+const REPORT_SPIKE_MS = 250;
 /** The shell gets at most one `spike` event in this time. */
-export const REPORT_INTERVAL_MS = 60_000;
+const REPORT_INTERVAL_MS = 60_000;
 
 /** The phases a frame is timed in. */
-export const PHASES = ["step", "visibility", "display", "layout", "render"];
+const PHASES = ["step", "visibility", "display", "layout", "render"];
 
 /**
  * @typedef {{at:number,ms:number,phase:string,viewMode:string,zoom:number,chunks:number}} SpikeEntry
@@ -33,7 +33,7 @@ export const PHASES = ["step", "visibility", "display", "layout", "render"];
  * browser has no `longtask` entries (Safari).
  * @param {(durationMs:number)=>void} onTask
  */
-export function observeLongTasks(onTask) {
+function observeLongTasks(onTask) {
   try {
     if (typeof PerformanceObserver === "undefined") return false;
     new PerformanceObserver((list) => {

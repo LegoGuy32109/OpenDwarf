@@ -68,7 +68,7 @@ export function routeOf(pathname, base) {
 }
 
 /** The commit the working tree reports: it has no commit of its own. */
-export const LOCAL_COMMIT = "local";
+const LOCAL_COMMIT = "local";
 
 /**
  * What a session's host reports about its build, and where a guest on another build goes.

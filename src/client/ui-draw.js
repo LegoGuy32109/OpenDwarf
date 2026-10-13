@@ -30,7 +30,7 @@ import { CHAT_LIMIT } from "./ui.js";
  */
 
 /** The touch sticks and round buttons draw at this opacity, so the world shows through. */
-export const CONTROL_OPACITY = 0.6;
+const CONTROL_OPACITY = 0.6;
 
 /**
  * A painter that draws everything at `alpha` times its own opacity.
@@ -57,7 +57,7 @@ const rgb = (hex, alpha = 1) => [
 ];
 
 /** Named colors, as the CSS had them. @type {Record<string,Color>} */
-export const PALETTE = {
+const PALETTE = {
   cream: rgb(0xf3e7c9),
   gold: rgb(0xffdb8f),
   amber: rgb(0xe4a34a),

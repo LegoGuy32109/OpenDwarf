@@ -13,7 +13,7 @@ import {
 } from "./terrain.js";
 import { centerTile } from "./locomotion.js";
 
-export const FOV_RADIUS = 20;
+const FOV_RADIUS = 20;
 
 /** @typedef {import('./world.js').Tile} Tile */
 /** @typedef {import('./world.js').Player} Player */

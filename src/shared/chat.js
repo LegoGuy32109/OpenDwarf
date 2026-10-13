@@ -17,12 +17,10 @@ import { bubbleStart, TICK_MS } from "./world.js";
  */
 
 export const CHAT_TEXT_RADIUS = 5;
-export const CHAT_TALKING_RADIUS = 12;
-export const CHAT_Z_LIMIT = 4;
-export const CHAT_BUFFER = 0.1;
+const CHAT_TALKING_RADIUS = 12;
+const CHAT_Z_LIMIT = 4;
+const CHAT_BUFFER = 0.1;
 
-/** Width in bubble pixels of the three thought bubble dots. */
-export const THOUGHT_DOTS_WIDTH = 24;
 const THOUGHT_PERIOD_MS = 1200;
 
 /**

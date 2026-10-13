@@ -55,7 +55,7 @@ export function markAllPending(pending, remembered) {
  * @param {Map<string,ChunkData>} remembered @param {PendingReveal} pending
  * @param {import('./terrain.js').TileChange} change @param {boolean} create
  */
-export function rememberChange(remembered, pending, change, create) {
+function rememberChange(remembered, pending, change, create) {
   const key = chunkKey(chunkCoord(change.x), chunkCoord(change.y));
   let chunk = remembered.get(key);
   if (!chunk) {

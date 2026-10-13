@@ -9,9 +9,9 @@
  */
 
 /** The least time between two steps. */
-export const STEP_GAP_MS = 200;
+const STEP_GAP_MS = 200;
 /** How long a direction held after its first step waits before it repeats. */
-export const REPEAT_DELAY_MS = 400;
+const REPEAT_DELAY_MS = 400;
 
 /** @typedef {{x:number,y:number}} Direction */
 

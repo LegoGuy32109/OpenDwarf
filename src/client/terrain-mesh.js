@@ -18,7 +18,7 @@ import { CHUNK_EDGE, chunkVersion, getChunk } from "../shared/terrain.js";
  * does not use it, because its look depends on what the player sees.
  */
 
-export const TILE = 64;
+const TILE = 64;
 export const FLOATS_PER_QUAD = 48;
 /** @type {[number,number,number,number]} */
 const FLOOR_UV = [0, 5 / 31, 1, 1 / 31];

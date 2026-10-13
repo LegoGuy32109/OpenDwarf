@@ -22,7 +22,7 @@ export const MUSIC_LEVELS = /** @type {MusicLevel[]} */ ([
   "100",
 ]);
 /** The master volume of each music setting. 50% is the default. */
-export const MUSIC_VOLUME = {
+const MUSIC_VOLUME = {
   off: 0,
   "25": 0.25,
   "50": 0.5,
@@ -32,12 +32,12 @@ export const MUSIC_VOLUME = {
 export const MUSIC_KEY = "open-dwarf-music";
 /** The localStorage key of the play times and sizes of the cached tracks. */
 export const PLAYS_KEY = "open-dwarf-music-plays";
-export const INDEX_KEY = "index/music.v1.json";
+const INDEX_KEY = "index/music.v1.json";
 export const CACHE_NAME = "od-media";
 /** The mood the game sets for now. */
-export const GAME_MOOD = ["adventure", "soft", "forest"];
-export const CACHE_CAP_BYTES = 150 * 1024 * 1024;
-export const CROSSFADE_SECONDS = 3;
+const GAME_MOOD = ["adventure", "soft", "forest"];
+const CACHE_CAP_BYTES = 150 * 1024 * 1024;
+const CROSSFADE_SECONDS = 3;
 /** A track is not picked again while it is among this many last played. */
 export const RECENT_LIMIT = 5;
 /** Failed tracks in a row after which the player stops until the next mood. */
@@ -53,7 +53,7 @@ const DECKS = 2;
 /** Seconds a guest's track may drift from the host's before it skips to match (ADR 0009). */
 export const DRIFT_LIMIT = 0.25;
 /** Seconds a track lasts for the conductor when its index entry has no `duration`. */
-export const DEFAULT_DURATION = 180;
+const DEFAULT_DURATION = 180;
 
 /** @param {unknown} value @returns {MusicLevel} */
 export function parseMusicLevel(value) {

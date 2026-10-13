@@ -31,7 +31,7 @@ const BUBBLE_LONG_LENGTH = 40;
 export function bubbleTicks(text) {
   return BUBBLE_BASE_TICKS + Math.max(0, text.length - BUBBLE_LONG_LENGTH);
 }
-export const MOVE_TICKS = 10;
+const MOVE_TICKS = 10;
 
 /** @typedef {{x:number,y:number,z:number}} Tile */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */

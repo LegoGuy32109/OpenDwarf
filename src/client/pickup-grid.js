@@ -19,7 +19,7 @@ import { createStickStepper } from "./stick-step.js";
 /** Tile size in world pixels, the same as the renderer's. */
 const TILE = 64;
 /** Squares per row and per column. */
-export const GRID_SIDE = 3;
+const GRID_SIDE = 3;
 /** Squares one screen of the grid holds. */
 export const GRID_CELLS = GRID_SIDE * GRID_SIDE;
 /** How long the squares take to unfold from the tile. */
