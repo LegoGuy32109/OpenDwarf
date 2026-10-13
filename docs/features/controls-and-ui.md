@@ -87,7 +87,9 @@ Three client modules make the layer, and `render.js` keeps the one draw path:
   snaps to a whole number of device pixels per font pixel. `hitTest` finds the
   last element under a point, and a panel hides what lies under it. The touch
   controls scale with the UI scale as far as the screen has room; panels sit in
-  the space above them.
+  the space above them. `layoutUi` runs one function per section from the
+  `ui-layout-*.js` files (controls, corner readouts, panels, chat, menu), in
+  draw order. A new panel is a new function there and one call in `layoutUi`.
 - `src/client/ui-pointer.js` routes pointer events over a layout. Each pointer
   is tracked on its own, so several fingers work at once. Buttons and keys act
   on pointer down, because iOS sends no click while another finger is down; rows
