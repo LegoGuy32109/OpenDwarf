@@ -3,10 +3,20 @@
 //   deno task test:changed [--base main] [--e2e]
 //
 // `deno test --changed` follows the module graph from each unit test, so it
-// picks those. A browser spec imports almost nothing from `src/`, so
+// picks those. It cannot see a file a test reads at run time (docs, SQL), so
+// `ALWAYS` runs regardless. A browser spec imports almost nothing from `src/`, so
 // `tests/e2e/impact.json` maps source prefixes to specs. A changed file with no
 // rule runs every spec. `--e2e` runs the chosen specs after the unit tests.
 
+/** Tests whose inputs are files read at run time, so no import links them to a change. */
+const ALWAYS = [
+  "tests/lint",
+  "tests/server/build_index_test.ts",
+  "tests/server/migrations_test.ts",
+  "tests/server/orca_script_test.ts",
+  "tests/server/shell_deploy_test.ts",
+  "tests/server/store_turso_test.ts",
+];
 const EVERYTHING = ["deno.json", "deno.lock", "playwright.config.ts"];
 const SPEC = /^tests\/e2e\/[^/]+\.spec\.ts$/;
 /** A change here reaches a spec through no import, so it needs a rule. */
@@ -86,11 +96,17 @@ if (import.meta.main) {
     "--allow-read",
     "--allow-net",
     "--allow-env",
-    "tests/lint",
     "tests/shared",
     "tests/client",
     "tests/server",
   ]);
+  ok = await run([
+    "test",
+    "--allow-read",
+    "--allow-net",
+    "--allow-env",
+    ...ALWAYS,
+  ]) && ok;
   if (Deno.args.includes("--e2e")) {
     const rules: Rule[] = JSON.parse(
       await Deno.readTextFile("tests/e2e/impact.json"),

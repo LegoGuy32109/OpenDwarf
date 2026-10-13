@@ -22,7 +22,10 @@ deno task test:changed [--base main] [--e2e]
 
 The task runs `deno test --changed=<base>` (default `main`) over the unit test
 folders. Deno follows each test's module graph and runs only the tests that
-reach a file changed in git. A doc-only change runs nothing.
+reach a file changed in git. It cannot see a file a test reads at run time, such
+as the Markdown the link check scans or the SQL the migration tests load, so
+`tests/lint` and the tests that read files always run too. A doc-only change
+runs only that set.
 
 A browser spec imports almost nothing from `src/`, and Playwright does not run
 through `deno test`, so `--changed` cannot choose specs. With `--e2e`, the task
