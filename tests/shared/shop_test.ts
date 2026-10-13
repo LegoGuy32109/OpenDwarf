@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
-import { addPlayer, createWorld, type World } from "../../src/shared/world.js";
+import { addPlayer, type World } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import {
   addStack,
   COIN,
@@ -25,6 +26,7 @@ import { heldItem } from "../../src/shared/mining.js";
 /** A world with a player standing next to the shopkeeper, and one far away. */
 function shopWorld(): World {
   const world = createWorld();
+  world.shops = [SHOP_TILE];
   addPlayer(world, "near", {
     x: SHOP_TILE.x,
     y: SHOP_TILE.y + 1,

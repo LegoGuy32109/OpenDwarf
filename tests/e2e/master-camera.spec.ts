@@ -1,23 +1,12 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { holdUntil } from "./time.ts";
 import { ready, say } from "./ui.ts";
-
-type Harness = {
-  __od: {
-    scene: {
-      viewMode: string;
-      zoom: number;
-      zoomTarget: number;
-      camera: { x: number; y: number };
-      world: { chunks: Map<string, Uint8Array> };
-    };
-  };
-};
-
 const scene = (page: Page) =>
-  page.evaluate(() => {
-    const s = (globalThis as unknown as Harness).__od.scene;
+  readWorld(page, (__world) => {
+    const s = __world.scene;
     const cxs = [...s.world.chunks.keys()].map((k) => Number(k.split(",")[0]));
     return {
       x: s.camera.x,
@@ -28,16 +17,14 @@ const scene = (page: Page) =>
       minCx: Math.min(...cxs),
     };
   });
-
 test("master view at zoom 0.25 pans with the keyboard and the host generates terrain under the camera", async ({ page }) => {
-  await page.goto("/?harness=1&seed=master-camera");
+  await openWorld(page, "/?harness=1&seed=master-camera");
   await ready(page);
   await say(page, "/master");
-  await expect.poll(() =>
-    page.evaluate(() => (globalThis as unknown as Harness).__od.scene.viewMode)
-  ).toBe("master");
-  await page.evaluate(() => {
-    (globalThis as unknown as Harness).__od.scene.zoomTarget = 0.25;
+  await expect.poll(() => readWorld(page, (__world) => __world.scene.viewMode))
+    .toBe("master");
+  await readWorld(page, (__world) => {
+    __world.scene.zoomTarget = 0.25;
   });
   await expect.poll(async () => (await scene(page)).zoom).toBeLessThan(0.26);
   const before = await scene(page);

@@ -1,9 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { evidenceShot } from "./evidence.ts";
 import { clickUi, hasUi, qrUrl, ready, uiState } from "./ui.ts";
-
 const GAME_ORIGIN = `http://127.0.0.1:${process.env.PORT ?? "8000"}`;
 const TYPES: Record<string, string> = {
   ".css": "text/css",
@@ -11,7 +11,6 @@ const TYPES: Record<string, string> = {
   ".js": "text/javascript",
   ".png": "image/png",
 };
-
 /** Serve the build's files like jsDelivr does: another origin, with CORS. */
 function serveAssets() {
   const server = Deno.serve({ port: 0, onListen() {} }, async (request) => {
@@ -41,7 +40,6 @@ function serveAssets() {
   });
   return { origin: `http://127.0.0.1:${server.addr.port}`, server };
 }
-
 /**
  * Act as the shell: serve the page at /b/test/ and under it with the build's
  * config, and pass /api/ on to the game server. Chromium blocks a page the
@@ -78,20 +76,13 @@ async function serveShell(assets: string) {
   });
   return { origin: `http://127.0.0.1:${server.addr.port}`, server };
 }
-
 async function startBuild() {
   const assets = serveAssets();
   const shell = await serveShell(assets.origin);
   return { assets, shell: shell.server, PAGE_ORIGIN: shell.origin };
 }
-
 const sceneOf = (page: import("@playwright/test").Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as {
-      __od: { scene: { sessionId: string; localId: string } };
-    }).__od.scene
-  );
-
+  readWorld(page, (__world) => __world.scene);
 test(
   "a build under /b/test/ loads its files from another origin and joins by base",
   { tag: "@smoke" },
@@ -112,7 +103,7 @@ test(
           pageOrigin.push(url.pathname);
         }
       });
-      await host.goto(`${PAGE_ORIGIN}/b/test/?harness=1`);
+      await openWorld(host, `${PAGE_ORIGIN}/b/test/?harness=1`);
       await ready(host);
       const { sessionId } = await sceneOf(host);
       // Only the page itself comes from the page origin; the files do not.
@@ -131,18 +122,18 @@ test(
       );
       expect(qr.status()).toBe(200);
       const guest = await context.newPage();
-      await guest.goto(`${joinLink}?harness=1`);
+      await openWorld(guest, `${joinLink}?harness=1`);
       await ready(guest);
       await expect.poll(async () => (await sceneOf(guest)).localId).toMatch(
         /^peer-/,
       );
       await expect.poll(() =>
-        host.evaluate(() =>
-          Object.keys(
-            (globalThis as unknown as {
-              __od: { scene: { world: { players: object } } };
-            }).__od.scene.world.players,
-          ).filter((id) => id.startsWith("peer-")).length
+        readWorld(
+          host,
+          (__world) =>
+            Object.keys(__world.scene.world.players).filter((id) =>
+              id.startsWith("peer-")
+            ).length,
         )
       ).toBe(1);
     } finally {
@@ -152,7 +143,6 @@ test(
     }
   },
 );
-
 test("the build under /b/test/ shows its join QR code", async ({ browser }) => {
   const { assets, shell, PAGE_ORIGIN } = await startBuild();
   const context = await browser.newContext({
@@ -160,7 +150,7 @@ test("the build under /b/test/ shows its join QR code", async ({ browser }) => {
   });
   try {
     const page = await context.newPage();
-    await page.goto(`${PAGE_ORIGIN}/b/test/?harness=1&tools=1`);
+    await openWorld(page, `${PAGE_ORIGIN}/b/test/?harness=1&tools=1`);
     await ready(page);
     await clickUi(page, "btn:qr");
     await expect.poll(() => hasUi(page, "panel:join")).toBe(true);

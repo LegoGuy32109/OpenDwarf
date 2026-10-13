@@ -1,90 +1,59 @@
-import { expect, type Page, test } from "@playwright/test";
+import { giveItems as give } from "./world.ts";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { holdUntil, waitFrames, waitTicks } from "./time.ts";
 import { ready, shopOpen, shopRow, tapUi, uiRect } from "./ui.ts";
-
-type Stack = { kind: string; count: number };
-type Harness = {
-  __od: {
-    scene: {
-      sessionId: string;
-      localId: string;
-      notice?: { text: string };
-      inventory: Stack[];
-      hearingLog: { lines: { kind: string; text: string }[] };
-      world: {
-        chunks: Map<string, Uint8Array>;
-        players: Record<
-          string,
-          { x: number; y: number; z: number; move: unknown }
-        >;
-      };
-    };
-    send: (message: Record<string, unknown>) => boolean;
-  };
-};
-
 // The shopkeeper stands at (16, 12) on level 4, in the spawn room.
 const SHOP = { x: 16, y: 12, z: 4 };
-
 const position = (page: Page) =>
-  page.evaluate(() => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
+  readWorld(page, (__world) => {
+    const scene = __world.scene;
     return scene.world.players[scene.localId];
   });
-
 const inventory = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Harness).__od.scene.inventory);
-
+  readWorld(page, (__world) => __world.scene.inventory);
 const coins = async (page: Page) =>
   (await inventory(page)).find((stack) => stack.kind === "coin")?.count ?? 0;
-
 const systemLines = (page: Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.hearingLog.lines
-      .filter((line) => line.kind === "system").map((line) => line.text)
-  );
-
+  readWorld(page, (__world) =>
+    __world.scene.hearingLog.lines
+      .filter((line) => line.kind === "system").map((line) => line.text));
 const notice = (page: Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.notice?.text ?? ""
-  );
-
-/** Give a player items in the host's world. `id` defaults to the host's own player. */
-const give = (page: Page, kind: string, count: number, id?: string) =>
-  page.evaluate(async ([k, n, who]) => {
-    const items = await import("/src/shared/items.js");
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    const player = scene.world.players[who ?? scene.localId];
-    items.addStack(
-      items.inventoryOf(player as never),
-      k as string,
-      n as number,
-    );
-  }, [kind, count, id ?? null] as const);
-
+  readWorld(page, (__world) => __world.scene.notice?.text ?? "");
 /** Stand the host's player still on a tile. */
 const placeAt = (page: Page, x: number, y: number) =>
-  page.evaluate(([px, py]) => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    const player = scene.world.players[scene.localId] as Record<string, number>;
-    Object.assign(player, { x: px, y: py, previousX: px, previousY: py });
+  readWorld(page, (__world, [px, py]) => {
+    const scene = __world.scene;
+    const player = scene.world.players[scene.localId];
+    __world.edit({
+      players: [{
+        id: player.id,
+        at: {
+          x: px,
+          y: py,
+          z: player.z,
+        },
+      }],
+    });
   }, [x, y]);
-
 async function startHost(page: Page, query = "") {
-  await page.goto(`/?harness=1&layout=room${query}`);
+  await openWorld(page, `/?harness=1&layout=room${query}`);
   await ready(page);
 }
-
 /** Wait until the local player stands still on a tile center. */
 const settle = (page: Page) =>
   expect.poll(async () => (await position(page))?.move ?? null).toBeNull();
-
 /** Hold a key until the local player satisfies the condition, then let the walk settle. */
 async function walkUntil(
   page: Page,
   key: string,
-  done: (p: { x: number; y: number; z: number }) => boolean,
+  done: (p: {
+    x: number;
+    y: number;
+    z: number;
+  }) => boolean,
 ) {
   await holdUntil(page, key, async () => {
     const p = await position(page);
@@ -92,24 +61,26 @@ async function walkUntil(
   });
   await settle(page);
 }
-
 /** The material on a tile of the host's world. */
 const tileAt = (page: Page, x: number, y: number, z: number) =>
-  page.evaluate(
-    ([tx, ty, tz]) =>
-      (globalThis as unknown as Harness).__od.scene.world.chunks.get(
+  readWorld(
+    page,
+    (__world, [tx, ty, tz]) =>
+      __world.scene.world.chunks.get(
         `${Math.floor(tx / 16)},${Math.floor(ty / 16)}`,
       )?.[tz * 256 + (ty % 16) * 16 + (tx % 16)] ?? -1,
     [x, y, z],
   );
-
 /** With the aim held, interact. Interact reads the held aim keys at once. */
 async function interactAiming(page: Page, ...keys: string[]) {
-  for (const key of keys) await page.keyboard.down(key);
+  for (const key of keys) {
+    await page.keyboard.down(key);
+  }
   await page.keyboard.press("Space");
-  for (const key of keys) await page.keyboard.up(key);
+  for (const key of keys) {
+    await page.keyboard.up(key);
+  }
 }
-
 /** The IJKL keys that aim from the player's tile at the shopkeeper's tile. */
 async function aimAtShopkeeper(page: Page) {
   const at = (await position(page))!;
@@ -120,13 +91,12 @@ async function aimAtShopkeeper(page: Page) {
     ...(dy < 0 ? ["i"] : dy > 0 ? ["k"] : []),
   ];
 }
-
 /** Start mining and keep the aim held until the tile is open, because a new aim cancels. */
-async function mineAiming(
-  page: Page,
-  key: string,
-  tile: { x: number; y: number; z: number },
-) {
+async function mineAiming(page: Page, key: string, tile: {
+  x: number;
+  y: number;
+  z: number;
+}) {
   await page.keyboard.down(key);
   try {
     await page.keyboard.press("Space");
@@ -135,7 +105,6 @@ async function mineAiming(
     await page.keyboard.up(key);
   }
 }
-
 test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ page }) => {
   await startHost(page);
   await expect.poll(() => coins(page)).toBe(0);
@@ -198,32 +167,26 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
     { kind: "coin", count: 4 },
   ]);
 });
-
 test("a guest sells through the host, and the host rejects what it does not hold", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   try {
     await startHost(host);
-    const session = await host.evaluate(() =>
-      (globalThis as unknown as Harness).__od.scene.sessionId
-    );
-    await guest.goto(`/join/${session}?harness=1&layout=room`);
+    const session = await readWorld(host, (__world) => __world.scene.sessionId);
+    await openWorld(guest, `/join/${session}?harness=1&layout=room`);
     await ready(guest);
     await expect.poll(async () => (await position(guest))?.z).toBe(4);
-    const id = await guest.evaluate(() =>
-      (globalThis as unknown as Harness).__od.scene.localId
-    );
+    const id = await readWorld(guest, (__world) => __world.scene.localId);
     await give(host, "coal", 3, id);
     await give(host, "stone", 2, id);
     await expect.poll(async () => (await inventory(guest)).length).toBe(3);
     // Far from the shopkeeper the host refuses.
-    await guest.evaluate(() =>
-      (globalThis as unknown as Harness).__od.send({
+    await readWorld(guest, (__world) =>
+      __world.send({
         type: "sell",
         kind: "coal",
         count: 1,
-      })
-    );
+      }));
     await expect.poll(() => notice(guest)).toContain("too far");
     // Walk next to the shopkeeper.
     await walkUntil(guest, "e", (p) => p.y <= 13.2);
@@ -235,10 +198,7 @@ test("a guest sells through the host, and the host rejects what it does not hold
         { type: "sell", kind: "stone", count: 1 },
       ]
     ) {
-      await guest.evaluate(
-        (m) => (globalThis as unknown as Harness).__od.send(m),
-        message,
-      );
+      await readWorld(guest, (__world, m) => __world.send(m), message);
     }
     await expect.poll(() => notice(guest)).toContain("Cannot sell");
     // Give any coins time to arrive, to prove none do.
@@ -263,7 +223,6 @@ test("a guest sells through the host, and the host rejects what it does not hold
     await Promise.all([host.close(), guest.close()]);
   }
 });
-
 test("the shop works by touch on a phone", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 780 },
@@ -303,7 +262,6 @@ test("the shop works by touch on a phone", async ({ browser }) => {
     await context.close();
   }
 });
-
 test("a gamepad moves the selection and sells", async ({ page }) => {
   await page.addInitScript(() => {
     const pad = {
@@ -315,7 +273,9 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
       mapping: "standard",
     };
     Object.defineProperty(navigator, "getGamepads", { value: () => [pad] });
-    (globalThis as unknown as { __pad: typeof pad }).__pad = pad;
+    (globalThis as unknown as {
+      __pad: typeof pad;
+    }).__pad = pad;
   });
   await startHost(page, "&gamepad-debug=1");
   await give(page, "coal", 2);
@@ -330,7 +290,11 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
     page.evaluate((b) =>
       new Promise<void>((resolve) => {
         const pad = (globalThis as unknown as {
-          __pad: { buttons: { pressed: boolean }[] };
+          __pad: {
+            buttons: {
+              pressed: boolean;
+            }[];
+          };
         }).__pad;
         pad.buttons[b].pressed = true;
         requestAnimationFrame(() => {
@@ -349,12 +313,20 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
   );
   // The look stick moves the selection too.
   await page.evaluate(() => {
-    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 1;
+    (globalThis as unknown as {
+      __pad: {
+        axes: number[];
+      };
+    }).__pad.axes[3] = 1;
   });
   await expect.poll(async () => (await shopRow(page, "diamond"))?.selected)
     .toBe(true);
   await page.evaluate(() => {
-    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
+    (globalThis as unknown as {
+      __pad: {
+        axes: number[];
+      };
+    }).__pad.axes[3] = 0;
   });
   await press(7); // ZR sells the diamond
   await expect.poll(() => coins(page)).toBe(20);

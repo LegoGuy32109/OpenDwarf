@@ -1,50 +1,21 @@
-import { expect, test } from "@playwright/test";
-import type { StatePacket } from "../../src/shared/wire.js";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
 import { ready } from "./ui.ts";
-
-/** The state packet as sent: reveal chunks are run-length strings. */
-type WireState = Omit<StatePacket, "reveal"> & {
-  reveal: Record<string, string>;
-};
-
 test("unordered motion waits for sight, rejects old attempts, and survives older state", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1");
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } })
-      .__od.scene.sessionId
-  );
-  await guest.goto(`/join/${session}?harness=1`);
-  await guest.waitForFunction(() =>
-    Boolean(
-      (globalThis as unknown as {
-        __od: { wireDebug: () => { state: unknown } | null };
-      }).__od.wireDebug()?.state,
-    )
-  );
-  const result = await guest.evaluate(() => {
-    const game = (globalThis as unknown as {
-      __od: {
-        scene: {
-          world: StatePacket["world"] & { chunks: Map<string, Uint8Array> };
-          status: string;
-        };
-        wireDebug: () => {
-          state: WireState;
-          pending: { tick: number } | null;
-          ordered: boolean;
-          maxRetransmits: number;
-          reliable: string;
-          motionChannel: string;
-        };
-        injectPacket: (value: unknown, motion?: boolean) => void;
-      };
-    }).__od;
-    const debug = game.wireDebug();
-    const base = structuredClone(debug.state);
-    base.world.tick += 10_000;
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, `/join/${session}?harness=1`);
+  await expect.poll(() =>
+    readWorld(guest, (__world) => Boolean(__world.wireDebug()?.state))
+  ).toBeTruthy();
+  const result = await readWorld(guest, (__world) => {
+    const game = __world;
+    const debug = game.wireDebug()!;
+    const base = structuredClone(debug.state!);
+    base.world.tick += 10000;
     base.viewRevision += 10;
     base.mode = "master";
     base.visibility = null;
@@ -80,7 +51,7 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
     game.injectPacket(future, true);
     game.injectPacket({ ...future, tick: base.world.tick + 2 }, true);
     const waiting = game.scene.world.players[probe.id].x;
-    const pendingTick = game.wireDebug().pending?.tick;
+    const pendingTick = game.wireDebug()!.pending?.tick;
     game.injectPacket({
       ...base,
       sightRevision: future.sightRevision,
@@ -139,70 +110,63 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
   await host.close();
   await guest.close();
 });
-
 test("an incompatible join ends with a refresh instruction", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1");
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } })
-      .__od.scene.sessionId
-  );
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
   await guest.routeWebSocket(/\/v2\//, (socket) => {
     const server = socket.connectToServer();
     socket.onMessage((message) => {
       const frame = JSON.parse(String(message));
-      if (frame.p?.kind === "join") frame.p.data.version = 1;
+      if (frame.p?.kind === "join") {
+        frame.p.data.version = 1;
+      }
       server.send(JSON.stringify(frame));
     });
     server.onMessage((message) => socket.send(message));
   });
-  await guest.goto(`/join/${session}?harness=1`);
-  await guest.waitForFunction(() =>
-    (globalThis as unknown as { __od: { scene: { status: string } } })
-      .__od.scene.status.includes("Refresh both pages")
+  await openWorld(guest, `/join/${session}?harness=1`);
+  await expect.poll(() =>
+    readWorld(
+      guest,
+      (__world) => __world.scene.status.includes("Refresh both pages"),
+    )
+  ).toBeTruthy();
+  expect(await readWorld(guest, (__world) => __world.scene.status)).toContain(
+    "Different game versions",
   );
-  expect(
-    await guest.evaluate(() =>
-      (globalThis as unknown as { __od: { scene: { status: string } } })
-        .__od.scene.status
-    ),
-  ).toContain("Different game versions");
   await host.close();
   await guest.close();
 });
-
 test("reliable chat survives simulated motion loss and jitter", {
   tag: "@smoke",
 }, async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
-  await host.goto("/?harness=1&loss=0.2&delay=50&jitter=60");
+  await openWorld(host, "/?harness=1&loss=0.2&delay=50&jitter=60");
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } })
-      .__od.scene.sessionId
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(
+    guest,
+    `/join/${session}?harness=1&loss=0.2&delay=50&jitter=60`,
   );
-  await guest.goto(`/join/${session}?harness=1&loss=0.2&delay=50&jitter=60`);
-  await guest.waitForFunction(() =>
-    Boolean(
-      (globalThis as unknown as {
-        __od: { wireDebug: () => { state: unknown } | null };
-      }).__od.wireDebug()?.state,
-    )
-  );
-  await guest.evaluate(() =>
-    (globalThis as unknown as { __od: { openChat: () => void } }).__od
-      .openChat()
-  );
+  await expect.poll(() =>
+    readWorld(guest, (__world) => Boolean(__world.wireDebug()?.state))
+  ).toBeTruthy();
+  await readWorld(guest, (__world) => __world.openChat());
   await guest.keyboard.type("reliable chat");
   await guest.keyboard.press("Enter");
-  await guest.waitForFunction(() =>
-    (globalThis as unknown as {
-      __od: { scene: { chatFeed: { text?: string }[] } };
-    }).__od.scene.chatFeed.some((record) => record.text === "reliable chat")
-  );
+  await expect.poll(() =>
+    readWorld(
+      guest,
+      (__world) =>
+        __world.scene.chatFeed.some((record) =>
+          record.text === "reliable chat"
+        ),
+    )
+  ).toBeTruthy();
   await host.close();
   await guest.close();
 });

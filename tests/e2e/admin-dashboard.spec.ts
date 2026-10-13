@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
 import { type ChildProcess, spawn } from "node:child_process";
 import process from "node:process";
 import { ready } from "./ui.ts";
-
 /** Start tests/e2e/seed-shell.ts on a free port beside the suite's own, and wait until it answers. */
 let nextPort = Number(process.env.PORT ?? "8000") + 20;
 async function startShell(seed: boolean) {
@@ -33,11 +33,10 @@ async function startShell(seed: boolean) {
   }
   return { origin, stop: () => child.kill() };
 }
-
 test("the dashboard shows an empty state for every section", async ({ page }) => {
   const { stop, origin } = await startShell(false);
   try {
-    await page.goto(`${origin}/admin`);
+    await openWorld(page, `${origin}/admin`);
     await expect(page.locator("#live")).toContainText("No live sessions.");
     await expect(page.locator("#builds")).toContainText("No branches found.");
     await expect(page.locator("#labels")).toContainText(
@@ -55,7 +54,6 @@ test("the dashboard shows an empty state for every section", async ({ page }) =>
     stop();
   }
 });
-
 for (
   const device of [
     { name: "desktop", options: {} },
@@ -81,11 +79,11 @@ for (
     try {
       // A real host tab starts a live session on this shell.
       const host = await context.newPage();
-      await host.goto(`${origin}/b/local/?harness=1`);
+      await openWorld(host, `${origin}/b/local/?harness=1`);
       await ready(host);
-      const sessionId = await host.evaluate(() =>
-        (globalThis as unknown as { __od: { scene: { sessionId: string } } })
-          .__od.scene.sessionId
+      const sessionId = await readWorld(
+        host,
+        (__world) => __world.scene.sessionId,
       );
       for (
         const [route, role, rtt] of [
@@ -103,14 +101,13 @@ for (
             frameMeanMs: 8.4,
             frameMaxMs: 21.7,
             rttMs: rtt,
-            bytesSent: 120_000,
+            bytesSent: 120000,
           },
         });
         expect(sent.ok()).toBe(true);
       }
-
       const page = await context.newPage();
-      await page.goto(`${origin}/admin`);
+      await openWorld(page, `${origin}/admin`);
       const join = `/b/local/join/${sessionId}`;
       await expect(page.locator("#live a")).toHaveAttribute("href", join);
       await expect(page.locator("#live")).toContainText("local");
@@ -134,9 +131,8 @@ for (
       await expect(builds).not.toContainText("fork is not listed");
       await expect(builds.locator('a[href$="/pull/71"]')).toHaveCount(1);
       await expect(builds.locator("tbody tr").first()).toContainText("main");
-      await expect(
-        builds.locator("tr", { hasText: "mining-feel" }),
-      ).toContainText("mining-demo");
+      await expect(builds.locator("tr", { hasText: "mining-feel" }))
+        .toContainText("mining-demo");
       await expect(page.locator("#main")).toContainText("Main is b2c3d4e");
       await expect(page.locator("#main")).toContainText("first demo build");
       await expect(page.locator("#main")).toContainText("adds the dashboard");
@@ -144,7 +140,6 @@ for (
       await expect(page.locator("#telemetry")).toContainText("host/srflx");
       await expect(page.locator("#telemetry")).toContainText("38 ms");
       await expect(page.locator("form, input, button")).toHaveCount(0);
-
       // The page never scrolls sideways, on a phone least of all.
       expect(
         await page.evaluate(() =>
@@ -158,10 +153,9 @@ for (
           fullPage: true,
         });
       }
-
       // The join link opens the host's build and joins the world.
       const guest = await context.newPage();
-      await guest.goto(`${origin}${join}?harness=1`);
+      await openWorld(guest, `${origin}${join}?harness=1`);
       await ready(guest);
     } finally {
       await context.close();

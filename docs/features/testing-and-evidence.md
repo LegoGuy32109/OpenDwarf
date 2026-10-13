@@ -101,7 +101,10 @@ of failing it.
 `test.slow` in a spec. A spec about a real-time feature (a join attempt that
 expires, speech revealed in real time) keeps the call with a
 `// wall-clock: <reason>` comment, or uses Playwright's `page.clock`. A spec
-that works on the tiles the corner NPC walks calls `__od.removeNpc()` first.
+constructs its world through `tests/e2e/world.ts`. NPCs are absent unless the
+fixture requests one with `npc: true`. The manual `__od` tool is not a scripted
+test API. See [world building](world-building.md) for custom definitions and the
+headless simulation runner.
 
 ## Group stress run
 

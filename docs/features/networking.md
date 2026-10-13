@@ -58,18 +58,18 @@ has loaded.
 ## Validation and versions
 
 The wire uses validated JSON and rejects incompatible versions with a refresh
-instruction. Protocol version 4 requires a matching join/offer version. Complete
-snapshots are validated before scene mutation. Motion packets carry attempt,
-view, and sight revisions so delayed updates cannot restore an older view;
-motion is fenced by connection attempt, view revision, sight revision, and tick.
-The guest retains only the newest motion awaiting reliable sight. Older reliable
-state can refresh sight without rewinding newer remote positions. A reveal in
-such a state still applies, because the host drained it when it built the
-packet. Invalid motion is discarded. Malformed reliable state requests a full
-resync, and the host then sends the guest's whole remembered terrain again.
-Repeated recovery failure closes the connection with a refresh instruction. An
-incomplete join attempt expires after ten seconds, independently of player
-creation.
+instruction. Protocol version 5 requires a matching join/offer version and
+carries configured shops, NPC flags, and fixed-world bounds. Complete snapshots
+are validated before scene mutation. Motion packets carry attempt, view, and
+sight revisions so delayed updates cannot restore an older view; motion is
+fenced by connection attempt, view revision, sight revision, and tick. The guest
+retains only the newest motion awaiting reliable sight. Older reliable state can
+refresh sight without rewinding newer remote positions. A reveal in such a state
+still applies, because the host drained it when it built the packet. Invalid
+motion is discarded. Malformed reliable state requests a full resync, and the
+host then sends the guest's whole remembered terrain again. Repeated recovery
+failure closes the connection with a refresh instruction. An incomplete join
+attempt expires after ten seconds, independently of player creation.
 
 This is not rollback netcode. Input acknowledgments indicate the latest received
 direction, not completed movement. Input replay remains deferred. WebRTC uses
@@ -111,13 +111,13 @@ for those device measurements.
 ## Background tab
 
 A hidden tab gets no animation frames, so the world host would stop and every
-guest would freeze. The fixed-step work lives in `stepWorld(ctx, now)`
-(`src/client/loop.js`), which the frame calls before it draws. While
-`document.hidden`, `src/client/tick-clock.js` runs a dedicated Worker that posts
-a message every `TICK_MS` (50 ms), and the main thread calls `stepWorld` on each
-message. The Worker comes from an inline Blob URL, because the build's files
-load from another origin and a worker script must be same-origin. If a Worker
-cannot be made, the clock uses `setInterval`. The clock starts on
+guest would freeze. The shared simulation owns fixed-step work.
+`stepWorld(ctx, now)` (`src/client/loop.js`) paces its ticks before each frame.
+While `document.hidden`, `src/client/tick-clock.js` runs a dedicated Worker that
+posts a message every `TICK_MS` (50 ms), and the main thread calls `stepWorld`
+on each message. The Worker comes from an inline Blob URL, because the build's
+files load from another origin and a worker script must be same-origin. If a
+Worker cannot be made, the clock uses `setInterval`. The clock starts on
 `visibilitychange` to hidden and stops when the tab is visible again.
 
 A visible step spends at most 250 ms on ticks. A background step catches up at

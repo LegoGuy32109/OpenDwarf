@@ -19,7 +19,7 @@ import {
   writeTile,
 } from "../../src/shared/terrain.js";
 import { createVisibility } from "../../src/shared/visibility.js";
-import { createWorld } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 const visibility = createVisibility();
 const Z = 3;

@@ -26,11 +26,8 @@ import {
   STONE,
   writeTile,
 } from "../../src/shared/terrain.js";
-import {
-  addPlayer,
-  advanceTicks,
-  createWorld,
-} from "../../src/shared/world.js";
+import { addPlayer, advanceTicks } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 type Tile = { x: number; y: number; z: number };
 const EAST = { x: 6, y: 5, z: 1 };
@@ -371,6 +368,7 @@ Deno.test("interact confirms the bag and shop before acting on terrain", () => {
 Deno.test("interact opens the room shop before picking up on its tile", () => {
   const f = fixture();
   f.scene.layout = "room";
+  f.world.shops = [SHOP_TILE];
   Object.assign(f.player, {
     x: SHOP_TILE.x - 1,
     y: SHOP_TILE.y,

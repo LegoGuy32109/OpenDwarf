@@ -1,30 +1,14 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { waitTicks } from "./time.ts";
 import { clickUi, hasUi, ready, uiRect } from "./ui.ts";
-
-type Play = { tags: string[]; key: string; rate: number; gain: number };
-type Odd = {
-  __od: {
-    sfx: {
-      state(): {
-        status: string;
-        samples: number;
-        loaded: number;
-        level: string;
-      };
-      log: Play[];
-    };
-  };
-};
-
-const state = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Odd).__od.sfx.state());
+const state = (page: Page) => readWorld(page, (__world) => __world.sfx.state());
 const plays = (page: Page) =>
-  page.evaluate(() => [...(globalThis as unknown as Odd).__od.sfx.log]);
-
+  readWorld(page, (__world) => [...__world.sfx.log]);
 test("opening the bag plays ui open, skipping the missing sample, and a reload uses the cache", async ({ page }) => {
-  await page.goto("/?harness=1&sfx=1");
+  await openWorld(page, "/?harness=1&sfx=1");
   await ready(page);
   await page.mouse.click(640, 400);
   await expect.poll(async () => (await state(page)).loaded).toBe(3);
@@ -37,14 +21,15 @@ test("opening the bag plays ui open, skipping the missing sample, and a reload u
   expect(open.rate).toBeGreaterThanOrEqual(0.9);
   expect(open.rate).toBeLessThanOrEqual(1.1);
   expect(open.gain).toBeGreaterThanOrEqual(0.8);
-
   const downloads: string[] = [];
   page.on("request", (request) => {
     // The missing sample has no cached copy, so every load asks for it again.
     if (
       request.url().includes("/media/sfx/") &&
       !request.url().includes("missing")
-    ) downloads.push(request.url());
+    ) {
+      downloads.push(request.url());
+    }
   });
   await page.reload();
   await ready(page);
@@ -53,9 +38,8 @@ test("opening the bag plays ui open, skipping the missing sample, and a reload u
   await waitTicks(page, 6);
   expect(downloads).toEqual([]);
 });
-
 test("the Effects setting persists, and F3 shows the effects line", async ({ page }) => {
-  await page.goto("/?harness=1&sfx=1");
+  await openWorld(page, "/?harness=1&sfx=1");
   await ready(page);
   await page.keyboard.press("Escape");
   await clickUi(page, "btn:settings");
@@ -72,15 +56,10 @@ test("the Effects setting persists, and F3 shows the effects line", async ({ pag
   await expect.poll(async () => (await state(page)).loaded).toBe(3);
   await page.keyboard.press("F3");
   await expect.poll(() =>
-    page.evaluate(() =>
-      (globalThis as unknown as {
-        __od: { ui: { state: { diagnosticsOpen: boolean } } };
-      }).__od.ui.state.diagnosticsOpen
-    )
+    readWorld(page, (__world) => __world.ui.state.diagnosticsOpen)
   ).toBe(true);
   await evidenceShot(page, "effects-f3-line");
 });
-
 test("sfx=0 and an Off setting download nothing", async ({ page }) => {
   const downloads: string[] = [];
   page.on("request", (request) => {
@@ -90,7 +69,7 @@ test("sfx=0 and an Off setting download nothing", async ({ page }) => {
       downloads.push(request.url());
     }
   });
-  await page.goto("/?harness=1&sfx=0");
+  await openWorld(page, "/?harness=1&sfx=0");
   await ready(page);
   await page.mouse.click(640, 400);
   await page.keyboard.press("KeyB");
@@ -98,9 +77,8 @@ test("sfx=0 and an Off setting download nothing", async ({ page }) => {
   await waitTicks(page, 10);
   expect(downloads).toEqual([]);
   expect(await plays(page)).toEqual([]);
-
   await page.evaluate(() => localStorage.setItem("open-dwarf-effects", "off"));
-  await page.goto("/?harness=1&sfx=1");
+  await openWorld(page, "/?harness=1&sfx=1");
   await ready(page);
   await page.mouse.click(640, 400);
   await page.keyboard.press("KeyB");
@@ -110,19 +88,19 @@ test("sfx=0 and an Off setting download nothing", async ({ page }) => {
   expect(await plays(page)).toEqual([]);
   expect((await state(page)).status).toBe("off");
 });
-
 test("a harness page is silent unless sfx=1", async ({ page }) => {
   const downloads: string[] = [];
   page.on("request", (request) => {
-    if (request.url().includes("/media/sfx/")) downloads.push(request.url());
+    if (request.url().includes("/media/sfx/")) {
+      downloads.push(request.url());
+    }
   });
-  await page.goto("/?harness=1");
+  await openWorld(page, "/?harness=1");
   await ready(page);
   await page.mouse.click(640, 400);
   await waitTicks(page, 10);
   expect(downloads).toEqual([]);
 });
-
 test.describe("on a phone", () => {
   test.use({
     viewport: { width: 844, height: 390 },
@@ -130,7 +108,7 @@ test.describe("on a phone", () => {
     isMobile: true,
   });
   test("the Effects row fits the settings menu", async ({ page }) => {
-    await page.goto("/?harness=1&sfx=1");
+    await openWorld(page, "/?harness=1&sfx=1");
     await ready(page);
     await page.keyboard.press("Escape");
     await clickUi(page, "btn:settings");

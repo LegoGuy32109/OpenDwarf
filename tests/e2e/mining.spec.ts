@@ -1,30 +1,10 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { holdUntil, waitFrames, waitTicks } from "./time.ts";
 import { ready, tapUi, type UiRect, uiRect } from "./ui.ts";
-
 const box = ({ x, y, w, h }: UiRect) => ({ x, y, width: w, height: h });
-
-type Entry = { id: string; x: number; y: number; z: number; progress: number };
-type Harness = {
-  __od: {
-    scene: {
-      sessionId: string;
-      localId: string;
-      notice?: { text: string };
-      mining: Entry[];
-      world: {
-        chunks: Map<string, Uint8Array>;
-        players: Record<
-          string,
-          { x: number; y: number; z: number; move: unknown }
-        >;
-      };
-    };
-    send: (message: Record<string, unknown>) => boolean;
-  };
-};
-
 const OPEN = 1;
 const STONE = 2;
 const COAL = 3;
@@ -32,52 +12,49 @@ const REDSTONE = 7;
 const DIAMOND = 8;
 // The authored ore row at level 0: stone x 2, coal 3, iron 4 ... emerald 9, at y 1.
 const ROW_Y = 1;
-
 const tile = (page: Page, x: number, y = ROW_Y) =>
-  page.evaluate(
-    ([tx, ty]) =>
-      (globalThis as unknown as Harness).__od.scene.world.chunks.get("0,0")?.[
-        ty * 16 + tx
-      ] ?? -1,
+  readWorld(
+    page,
+    (__world, [tx, ty]) =>
+      __world.scene.world.chunks.get("0,0")?.[ty * 16 + tx] ?? -1,
     [x, y],
   );
-
 const position = (page: Page) =>
-  page.evaluate(() => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
+  readWorld(page, (__world) => {
+    const scene = __world.scene;
     return scene.world.players[scene.localId];
   });
-
 const mining = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Harness).__od.scene.mining);
-
+  readWorld(page, (__world) => __world.scene.mining);
 async function walk(page: Page, key: string, until: () => Promise<boolean>) {
   await holdUntil(page, key, until);
   // Let the walk settle on a tile center.
   await expect.poll(async () => (await position(page))?.move ?? null)
     .toBeNull();
 }
-
 /** Walk north until the player stands against the ore row. */
 const goToRow = (page: Page) =>
   walk(page, "e", async () => ((await position(page))?.y ?? 9) < 2.4);
-
 /** Stand the host's player still at a position; walking is covered by the first test. */
 const placeAt = (page: Page, x: number, y: number) =>
-  page.evaluate(([px, py]) => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    const player = scene.world.players[scene.localId] as Record<string, number>;
-    Object.assign(player, { x: px, y: py, previousX: px, previousY: py });
+  readWorld(page, (__world, [px, py]) => {
+    const scene = __world.scene;
+    const player = scene.world.players[scene.localId];
+    __world.edit({
+      players: [{
+        id: player.id,
+        at: {
+          x: px,
+          y: py,
+          z: player.z,
+        },
+      }],
+    });
   }, [x, y]);
-
 async function startHost(page: Page) {
-  await page.goto("/?harness=1");
+  await openWorld(page, "/?harness=1");
   await ready(page);
-  await page.evaluate(() =>
-    (globalThis as unknown as { __od: { removeNpc(): void } }).__od.removeNpc()
-  );
 }
-
 test("the host mines stone, then coal, with the breaking decal", {
   tag: "@smoke",
 }, async ({ page }) => {
@@ -109,15 +86,12 @@ test("the host mines stone, then coal, with the breaking decal", {
   await evidenceShot(page, "mining-coal-done");
   await page.keyboard.up("i");
 });
-
 test("a joining player sees the breaking decal and the tile change, and can mine", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await startHost(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.sessionId
-  );
-  await guest.goto(`/join/${session}?harness=1`);
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, `/join/${session}?harness=1`);
   await ready(guest);
   await expect.poll(() => tile(guest, 7)).toBe(REDSTONE);
   await goToRow(host);
@@ -134,9 +108,7 @@ test("a joining player sees the breaking decal and the tile change, and can mine
     .toBeGreaterThan(0.4);
   const seen = (await mining(guest))[0];
   expect(seen.id).not.toBe(
-    await guest.evaluate(() =>
-      (globalThis as unknown as Harness).__od.scene.localId
-    ),
+    await readWorld(guest, (__world) => __world.scene.localId),
   );
   expect(seen.progress).toBeGreaterThan(0.4);
   await evidenceShot(guest, "guest-breaking-decal");
@@ -155,23 +127,19 @@ test("a joining player sees the breaking decal and the tile change, and can mine
   await expect.poll(() => tile(guest, 8)).toBe(OPEN);
   await guest.keyboard.up("i");
   // The host refuses a tile out of the guest's reach.
-  await guest.evaluate(() =>
-    (globalThis as unknown as Harness).__od.send({
+  await readWorld(guest, (__world) =>
+    __world.send({
       type: "mine",
       x: 2,
       y: 1,
       z: 0,
-    })
-  );
+    }));
   await expect.poll(() =>
-    guest.evaluate(() =>
-      (globalThis as unknown as Harness).__od.scene.notice?.text ?? ""
-    )
+    readWorld(guest, (__world) => __world.scene.notice?.text ?? "")
   ).toContain("out of reach");
   expect(await tile(host, 2)).toBe(STONE);
   await Promise.all([host.close(), guest.close()]);
 });
-
 test.describe("phone interact button", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -180,7 +148,6 @@ test.describe("phone interact button", () => {
     isMobile: true,
     hasTouch: true,
   });
-
   test("sits between the sticks without touching them, and mines on tap", async ({ page }) => {
     await startHost(page);
     const button = box(await uiRect(page, "btn:interact"));
@@ -224,7 +191,6 @@ test.describe("phone interact button", () => {
     await expect.poll(() => tile(page, 3)).toBe(OPEN);
     await page.keyboard.up("i");
   });
-
   test("a tap mines while a thumb holds the look stick, and letting go keeps mining", async ({ page }) => {
     await startHost(page);
     await placeAt(page, 4, 2);
@@ -243,10 +209,8 @@ test.describe("phone interact button", () => {
       id: 2,
     };
     const touch = await page.context().newCDPSession(page);
-    const send = (
-      type: "touchStart" | "touchEnd",
-      points: typeof aim[],
-    ) => touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    const send = (type: "touchStart" | "touchEnd", points: typeof aim[]) =>
+      touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
     await send("touchStart", [aim]);
     // Let the frame loop read the aim before the tap.
     await waitFrames(page, 3);

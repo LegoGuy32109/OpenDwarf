@@ -13,9 +13,9 @@ import {
   addPlayer,
   advanceTicks,
   bubbleTicks,
-  createWorld,
   submitMessage,
 } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 Deno.test("chat range uses flat distance, four z levels, and threshold buffer", () => {
   const world = createWorld();

@@ -1,4 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { waitFrames } from "./time.ts";
 import {
@@ -14,32 +16,9 @@ import {
   uiRect,
   uiState,
 } from "./ui.ts";
-
-type Harness = {
-  __od: {
-    scene: {
-      localId: string;
-      zoomTarget: number;
-      inventory: { kind: string; count: number }[];
-      world: {
-        players: Record<
-          string,
-          {
-            x: number;
-            y: number;
-            message: string;
-            typing: boolean;
-            held?: string;
-          }
-        >;
-      };
-    };
-  };
-};
-
 const scene = (page: Page) =>
-  page.evaluate(() => {
-    const { scene } = (globalThis as unknown as Harness).__od;
+  readWorld(page, (__world) => {
+    const { scene } = __world;
     const me = scene.world.players[scene.localId];
     return {
       message: me.message,
@@ -47,7 +26,6 @@ const scene = (page: Page) =>
       zoomTarget: scene.zoomTarget,
     };
   });
-
 /** Elements that take up room on the page, other than the page's own frame. */
 const visibleElements = (page: Page) =>
   page.evaluate(() =>
@@ -58,24 +36,21 @@ const visibleElements = (page: Page) =>
         style.display !== "none";
     }).map((el) => el.tagName.toLowerCase())
   );
-
 const noFocus = (page: Page) =>
   page.evaluate(() => ({
     active: document.activeElement?.tagName,
-    fields: document.querySelectorAll(
-      "input, textarea, select, [contenteditable]",
-    ).length,
+    fields:
+      document.querySelectorAll("input, textarea, select, [contenteditable]")
+        .length,
   }));
-
 // iPhone-like safe areas: a notch and a home indicator in portrait, side cutouts in landscape.
 const SCREENS = [
   { name: "portrait", width: 390, height: 844, safe: "47,0,34,0" },
   { name: "landscape", width: 844, height: 390, safe: "0,47,21,47" },
   { name: "landscape-wide", width: 932, height: 430, safe: "0,59,21,59" },
 ];
-
 test("in play the only visible HTML element is the canvas", async ({ page }) => {
-  await page.goto("/?harness=1&tools=1");
+  await openWorld(page, "/?harness=1&tools=1");
   await ready(page);
   expect(await visibleElements(page)).toEqual(["main", "canvas"]);
   // One hidden live region repeats the status text for a screen reader.
@@ -85,7 +60,6 @@ test("in play the only visible HTML element is the canvas", async ({ page }) => 
   );
   expect(await noFocus(page)).toEqual({ active: "BODY", fields: 0 });
 });
-
 test("the loading screen is drawn in the canvas until the textures load", async ({ page }) => {
   // Hold one texture back, so the world cannot draw yet.
   let release = () => {};
@@ -94,10 +68,9 @@ test("the loading screen is drawn in the canvas until the textures load", async 
     await held;
     await route.continue();
   });
-  await page.goto("/?harness=1");
-  await page.waitForFunction(() =>
-    Boolean((globalThis as unknown as Harness).__od)
-  );
+  await openWorld(page, "/?harness=1", { waitUntil: "domcontentloaded" });
+  await expect.poll(() => readWorld(page, (__world) => Boolean(__world)))
+    .toBeTruthy();
   await expect.poll(() => hasUi(page, "loading")).toBe(true);
   await expect(page.locator("#world")).not.toHaveAttribute(
     "data-ready",
@@ -110,30 +83,39 @@ test("the loading screen is drawn in the canvas until the textures load", async 
   await ready(page);
   expect(await hasUi(page, "loading")).toBe(false);
 });
-
 test("a texture that cannot load says so on the loading screen", async ({ page }) => {
   await page.route("**/assets/floor.png", (route) => route.abort());
-  await page.goto("/?harness=1");
-  await page.waitForFunction(() =>
-    (globalThis as unknown as { __od?: { scene: { loading: string | null } } })
-      .__od?.scene.loading?.startsWith("Cannot load")
-  );
+  await openWorld(page, "/?harness=1");
+  await expect.poll(() =>
+    readWorld(
+      page,
+      (__world) => __world?.scene.loading?.startsWith("Cannot load"),
+    )
+  ).toBeTruthy();
   expect(await hasUi(page, "loading")).toBe(true);
 });
-
 test("evidence: the desktop UI, with chat typed on a physical keyboard", async ({ page }) => {
-  await page.goto("/?harness=1&tools=1&layout=room");
+  await openWorld(page, "/?harness=1&tools=1&layout=room");
   await ready(page);
-  await page.evaluate(async () => {
-    const items = await import("/src/shared/items.js");
-    const { scene } = (globalThis as unknown as Harness).__od;
-    const player = scene.world.players[scene.localId] as never;
+  await readWorld(page, (__world) => {
+    const { scene } = __world;
+    const player = scene.world.players[scene.localId];
     for (
       const [kind, count] of [["coal", 12], ["gold ore", 3], [
         "diamond",
         2,
       ]] as const
-    ) items.addStack(items.inventoryOf(player), kind, count);
+    ) {
+      __world.edit({
+        players: [{
+          id: player.id,
+          inventory: [{
+            kind: kind,
+            count: count,
+          }],
+        }],
+      });
+    }
   });
   // T opens chat, typing goes through keydown, Enter sends, and Escape closes.
   await page.keyboard.press("t");
@@ -159,7 +141,6 @@ test("evidence: the desktop UI, with chat typed on a physical keyboard", async (
   await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
   await evidenceShot(page, "ui-desktop-inventory");
 });
-
 test.describe("phone", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -167,9 +148,8 @@ test.describe("phone", () => {
     isMobile: true,
     hasTouch: true,
   });
-
   test("A opens the in-game keyboard, and typing hello then Send chats without any focus", async ({ page }) => {
-    await page.goto("/?harness=1&safe=47,0,34,0");
+    await openWorld(page, "/?harness=1&safe=47,0,34,0");
     await ready(page);
     await tapUi(page, "btn:chat");
     await expectChat(page, true);
@@ -183,9 +163,8 @@ test.describe("phone", () => {
     await expectChat(page, false);
     expect(await noFocus(page)).toEqual({ active: "BODY", fields: 0 });
   });
-
   test("shift, the symbols page, backspace, and the 120 character limit", async ({ page }) => {
-    await page.goto("/?harness=1");
+    await openWorld(page, "/?harness=1");
     await ready(page);
     await tapUi(page, "btn:chat");
     await tapUi(page, "key:shift");
@@ -200,42 +179,46 @@ test.describe("phone", () => {
     await tapUi(page, "key:backspace");
     expect(await chatDraft(page)).toBe("Hi 1");
     await tapUi(page, "key:page");
-    for (let i = 0; i < 130; i++) await tapUi(page, "key:a");
+    for (let i = 0; i < 130; i++) {
+      await tapUi(page, "key:a");
+    }
     expect((await chatDraft(page)).length).toBe(120);
     await tapUi(page, "key:close");
     await expectChat(page, false);
     // Close drops the draft.
     expect(await chatDraft(page)).toBe("");
   });
-
   test("two fingers press two keys at once", async ({ page }) => {
-    await page.goto("/?harness=1");
+    await openWorld(page, "/?harness=1");
     await ready(page);
     await tapUi(page, "btn:chat");
     await expectChat(page, true);
     const h = await uiCenter(page, "key:h");
     const i = await uiCenter(page, "key:i");
     const touch = await page.context().newCDPSession(page);
-    const send = (
-      type: "touchStart" | "touchEnd",
-      points: { x: number; y: number; id: number }[],
-    ) => touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    const send = (type: "touchStart" | "touchEnd", points: {
+      x: number;
+      y: number;
+      id: number;
+    }[]) =>
+      touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
     await send("touchStart", [{ ...h, id: 1 }]);
     await send("touchStart", [{ ...h, id: 1 }, { ...i, id: 2 }]);
     // Both keys show pressed while both fingers are down.
     expect(await chatDraft(page)).toBe("hi");
     await send("touchEnd", []);
   });
-
   test("a finger that starts on a control never joins a world pinch", async ({ page }) => {
-    await page.goto("/?harness=1");
+    await openWorld(page, "/?harness=1");
     await ready(page);
     const stick = await uiCenter(page, "stick:look");
     const touch = await page.context().newCDPSession(page);
-    const send = (
-      type: "touchStart" | "touchMove" | "touchEnd",
-      points: { x: number; y: number; id: number }[],
-    ) => touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
+    const send = (type: "touchStart" | "touchMove" | "touchEnd", points: {
+      x: number;
+      y: number;
+      id: number;
+    }[]) =>
+      touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
     const world = { x: 100, y: 300 };
     await send("touchStart", [{ ...stick, id: 1 }]);
     await send("touchStart", [{ ...stick, id: 1 }, { ...world, id: 2 }]);
@@ -261,7 +244,6 @@ test.describe("phone", () => {
       .toBeGreaterThan(1.5);
     await send("touchEnd", []);
   });
-
   for (const screen of SCREENS) {
     test(`the layout fits the safe area in ${screen.name}, with insets`, {
       tag: "@smoke",
@@ -270,7 +252,7 @@ test.describe("phone", () => {
         width: screen.width,
         height: screen.height,
       });
-      await page.goto(`/?harness=1&safe=${screen.safe}`);
+      await openWorld(page, `/?harness=1&safe=${screen.safe}`);
       await ready(page);
       const [top, right, bottom, left] = screen.safe.split(",").map(Number);
       for (
@@ -308,9 +290,8 @@ test.describe("phone", () => {
       await evidenceShot(page, `ui-keyboard-${screen.name}`);
     });
   }
-
   test("evidence: chatting with the in-game keyboard", async ({ page }) => {
-    await page.goto("/?harness=1&safe=47,0,34,0");
+    await openWorld(page, "/?harness=1&safe=47,0,34,0");
     await ready(page);
     await tapUi(page, "btn:chat");
     await expectChat(page, true);
@@ -323,40 +304,52 @@ test.describe("phone", () => {
     );
     await evidenceShot(page, "keyboard-sent");
   });
-
   test("evidence: the inventory and shop panels on a phone", async ({ page }) => {
-    await page.goto("/?harness=1&layout=room&safe=47,0,34,0");
+    await openWorld(page, "/?harness=1&layout=room&safe=47,0,34,0");
     await ready(page);
-    await page.evaluate(async () => {
-      const items = await import("/src/shared/items.js");
-      const { scene } = (globalThis as unknown as Harness).__od;
-      const player = scene.world.players[scene.localId] as never;
+    await readWorld(page, (__world) => {
+      const { scene } = __world;
+      const player = scene.world.players[scene.localId];
       for (
         const [kind, count] of [["coal", 12], ["gold ore", 3], [
           "diamond",
           2,
         ], ["stone", 5]] as const
-      ) items.addStack(items.inventoryOf(player), kind, count);
+      ) {
+        __world.edit({
+          players: [{
+            id: player.id,
+            inventory: [{
+              kind: kind,
+              count: count,
+            }],
+          }],
+        });
+      }
     });
     await tapUi(page, "btn:bag");
     await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
     await tapUi(page, "slot:diamond");
     await expect.poll(() =>
-      page.evaluate(() => {
-        const { scene } = (globalThis as unknown as Harness).__od;
+      readWorld(page, (__world) => {
+        const { scene } = __world;
         return scene.world.players[scene.localId].held;
       })
     ).toBe("diamond");
     await evidenceShot(page, "inventory-panel-phone");
     await tapUi(page, "btn:bag-close");
     // Stand on the shopkeeper's tile, so interact opens the shop.
-    await page.evaluate(() => {
-      const { scene } = (globalThis as unknown as Harness).__od;
-      Object.assign(scene.world.players[scene.localId], {
-        x: 16,
-        y: 12,
-        previousX: 16,
-        previousY: 12,
+    await readWorld(page, (__world) => {
+      const { scene } = __world;
+      __world.edit({
+        players: [{
+          id: scene.world.players[scene.localId].id,
+          at: {
+            x: 16,
+            y: 12,
+            z: scene.world.players[scene.localId].z,
+          },
+        }],
       });
     });
     await waitFrames(page, 3);
@@ -367,9 +360,9 @@ test.describe("phone", () => {
     await waitFrames(page, 3);
     await tapUi(page, "row:all");
     await expect.poll(async () =>
-      (await page.evaluate(() =>
-        (globalThis as unknown as Harness).__od.scene.inventory
-      )).find((stack) => stack.kind === "coin")?.count
+      (await readWorld(page, (__world) => __world.scene.inventory)).find((
+        stack,
+      ) => stack.kind === "coin")?.count
     ).toBe(24 + 12 + 40);
     await evidenceShot(page, "shop-sold-phone");
     await tapUi(page, "btn:shop-close");

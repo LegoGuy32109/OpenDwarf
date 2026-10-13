@@ -1,10 +1,10 @@
+import { openWorld, readWorld } from "./world.ts";
 import process from "node:process";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.ts";
 import { evidenceShot } from "./evidence.ts";
 import { clickUi, hasUi, qrUrl, ready, uiRect, uiState } from "./ui.ts";
-
 test("the host opens the small join QR from the QR button", async ({ page }) => {
-  await page.goto("/?harness=1&tools=1");
+  await openWorld(page, "/?harness=1&tools=1");
   await ready(page);
   await expect.poll(() => hasUi(page, "panel:join")).toBe(false);
   await clickUi(page, "btn:qr");
@@ -22,20 +22,15 @@ test("the host opens the small join QR from the QR button", async ({ page }) => 
   await expect.poll(() => hasUi(page, "panel:join")).toBe(false);
   await expect.poll(() => hasUi(page, "panel:menu")).toBe(true);
 });
-
 test("a phone link joins the expanded authored world directly", {
   tag: "@smoke",
 }, async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   try {
-    await host.goto("/?harness=1&world=32");
+    await openWorld(host, "/?harness=1&world=32");
     await ready(host);
-    const session = await host.evaluate(() =>
-      (globalThis as unknown as {
-        __od: { scene: { sessionId: string } };
-      }).__od.scene.sessionId
-    );
+    const session = await readWorld(host, (__world) => __world.scene.sessionId);
     expect(await qrUrl(host)).toMatch(
       new RegExp(
         `^http://127\\.0\\.0\\.1:${
@@ -47,18 +42,11 @@ test("a phone link joins the expanded authored world directly", {
         }$`,
       ),
     );
-    await guest.goto(`/join/${session}?harness=1`);
+    await openWorld(guest, `/join/${session}?harness=1`);
     await ready(guest);
     await expect.poll(() =>
-      guest.evaluate(() => {
-        const scene = (globalThis as unknown as {
-          __od: {
-            scene: {
-              localId: string;
-              world: { chunks: Map<string, unknown> };
-            };
-          };
-        }).__od.scene;
+      readWorld(guest, (__world) => {
+        const scene = __world.scene;
         return {
           id: scene.localId,
           chunks: [...scene.world.chunks.keys()].sort(),

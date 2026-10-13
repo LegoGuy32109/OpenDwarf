@@ -1,7 +1,8 @@
 import { assert, assertEquals } from "@std/assert";
 import { createSoundEvents } from "../../src/client/sound-events.js";
 import { LATE_MS } from "../../src/client/sfx.js";
-import { addPlayer, createWorld } from "../../src/shared/world.js";
+import { addPlayer } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import { enableLocomotion } from "../../src/shared/locomotion.js";
 import {
   ensureChunk,

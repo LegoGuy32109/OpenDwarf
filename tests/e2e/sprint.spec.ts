@@ -1,14 +1,10 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { tick, waitTicks } from "./time.ts";
 import { ready, sprintState, tapUi } from "./ui.ts";
-
-type Hook = {
-  __od: { scene: { world: { players: { self: { x: number } } } } };
-};
-
 const staminaValue = async (page: Page) => (await sprintState(page)).stamina;
-
 /**
  * Wait until `done`, and fail if it takes more than `ticks` world ticks.
  * Stamina moves by ticks, so a slow machine takes longer but no more ticks.
@@ -25,7 +21,6 @@ async function withinTicks(
     await waitTicks(page, 1);
   }
 }
-
 test.describe("phone sprint button", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -33,9 +28,8 @@ test.describe("phone sprint button", () => {
     isMobile: true,
     hasTouch: true,
   });
-
   test("stamina line drains, locks, and refills", async ({ page }) => {
-    await page.goto("/?harness=1");
+    await openWorld(page, "/?harness=1");
     await ready(page);
     expect(await staminaValue(page)).toBe(1);
     await tapUi(page, "btn:sprint");
@@ -72,17 +66,17 @@ test.describe("phone sprint button", () => {
     await expect.poll(async () => (await sprintState(page)).on).toBe(false);
   });
 });
-
 test("H toggles sprint and G does nothing", async ({ page }) => {
-  await page.goto("/?harness=1");
+  await openWorld(page, "/?harness=1");
   await ready(page);
   await page.locator("#world").click();
   await page.keyboard.press("KeyH");
   await expect.poll(async () => (await sprintState(page)).on).toBe(true);
   await page.keyboard.press("KeyH");
   await expect.poll(async () => (await sprintState(page)).on).toBe(false);
-  const before = await page.evaluate(() =>
-    (globalThis as unknown as Hook).__od.scene.world.players.self.x
+  const before = await readWorld(
+    page,
+    (__world) => __world.scene.world.players.self.x,
   );
   await page.keyboard.press("KeyG");
   await expect(page.locator("#live-status")).not.toContainText("ft");

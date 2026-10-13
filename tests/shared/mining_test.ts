@@ -2,10 +2,10 @@ import { assert, assertEquals } from "@std/assert";
 import {
   addPlayer,
   advanceTicks,
-  createWorld,
   TICK_MS,
   type World,
 } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import {
   COAL,
   DIAMOND,

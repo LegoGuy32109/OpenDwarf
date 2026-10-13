@@ -1,37 +1,24 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { hasUi, ready, uiState } from "./ui.ts";
-
-type Harness = {
-  __od: {
-    scene: {
-      sessionId: string;
-      localId: string;
-      world: {
-        chunks: Map<string, Uint8Array>;
-        players: Record<string, { x: number; y: number; z: number }>;
-      };
-    };
-    hostStats: () => Promise<{ connections: { rememberedChunks: number }[] }>;
-  };
-};
-
 const chunkKeys = (page: Page) =>
-  page.evaluate(() =>
-    [...(globalThis as unknown as Harness).__od.scene.world.chunks.keys()]
-      .sort()
-  );
-
+  readWorld(page, (__world) =>
+    [...__world.scene.world.chunks.keys()]
+      .sort());
 /**
  * An open level-0 tile in a loaded chunk of column `cx`, or null. A player
  * placed in stone is pushed back by collision, so the walk needs open ground.
  */
 const openTile = (host: Page, cx: number) =>
-  host.evaluate((cx) => {
-    const chunks = (globalThis as unknown as Harness).__od.scene.world.chunks;
+  readWorld(host, (__world, cx) => {
+    const chunks = __world.scene.world.chunks;
     for (const cy of [0, -1, 1]) {
       const chunk = chunks.get(`${cx},${cy}`);
-      if (!chunk) continue;
+      if (!chunk) {
+        continue;
+      }
       for (let i = 0; i < 256; i++) {
         if (chunk[i] === 1) {
           return { x: cx * 16 + (i % 16), y: cy * 16 + Math.floor(i / 16), cy };
@@ -40,42 +27,45 @@ const openTile = (host: Page, cx: number) =>
     }
     return null;
   }, cx);
-
 /** Move the host's player, or its guest's player, to a tile, as if it had walked there. */
 const place = (host: Page, own: boolean, x: number, y: number) =>
-  host.evaluate(([own, x, y]) => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
+  readWorld(host, (__world, [own, x, y]) => {
+    const scene = __world.scene;
     for (const [id, player] of Object.entries(scene.world.players)) {
       if ((id === scene.localId) === own && !id.startsWith("npc")) {
-        Object.assign(player, { x, y, z: 0 });
+        __world.edit({
+          players: [{
+            id: player.id,
+            at: {
+              x: x,
+              y: y,
+              z: 0,
+            },
+          }],
+        });
       }
     }
   }, [own, x, y] as const);
-
 /** Wait until every player named by `own` stands in chunk column `cx`. */
 const stands = (host: Page, own: boolean, cx: number) =>
-  host.evaluate(([own, cx]) => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
+  readWorld(host, (__world, [own, cx]) => {
+    const scene = __world.scene;
     return Object.entries(scene.world.players).filter(([id]) =>
       (id === scene.localId) === own && !id.startsWith("npc")
     ).every(([, player]) => Math.floor(player.x / 16) === cx);
   }, [own, cx] as const);
-
 test("a guest that explores keeps its remembered terrain, and the host reports it", async ({ browser }) => {
   const host = await browser.newPage({ viewport: { width: 960, height: 600 } });
   const guest = await browser.newPage();
-  await host.goto("/?harness=1&seed=beta");
+  await openWorld(host, "/?harness=1&seed=beta");
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.sessionId
-  );
-  await guest.goto(`/join/${session}?harness=1`);
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, `/join/${session}?harness=1`);
   await ready(guest);
   await expect.poll(() =>
-    host.evaluate(() =>
-      Object.keys((globalThis as unknown as Harness).__od.scene.world.players)
-        .some((id) => id.startsWith("peer-"))
-    )
+    readWorld(host, (__world) =>
+      Object.keys(__world.scene.world.players)
+        .some((id) => id.startsWith("peer-")))
   ).toBe(true);
   // Walk the host's player and the guest east, one chunk at a time.
   for (let cx = 1; cx <= 6; cx++) {
@@ -89,16 +79,13 @@ test("a guest that explores keeps its remembered terrain, and the host reports i
     await expect.poll(() => chunkKeys(host)).toContain(`${cx + 1},${spot.cy}`);
     await place(host, false, spot.x, spot.y);
     await expect.poll(() => stands(host, false, cx)).toBe(true);
-    await expect.poll(() => chunkKeys(guest)).toContain(
-      `${cx},${spot.cy}`,
-    );
+    await expect.poll(() => chunkKeys(guest)).toContain(`${cx},${spot.cy}`);
   }
   // The guest's own copy and the host's remembered terrain for it agree.
   const hostCount = () =>
-    host.evaluate(async () =>
-      (await (globalThis as unknown as Harness).__od.hostStats())
-        .connections[0].rememberedChunks
-    );
+    readWorld(host, async (__world) =>
+      (await __world.hostStats())!
+        .connections[0].rememberedChunks);
   await expect.poll(async () => (await chunkKeys(guest)).length).toBe(
     await hostCount(),
   );

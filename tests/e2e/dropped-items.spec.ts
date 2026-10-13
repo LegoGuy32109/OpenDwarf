@@ -1,87 +1,37 @@
-import { expect, type Page, test } from "@playwright/test";
+import { dropItems as drop } from "./world.ts";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { holdUntil } from "./time.ts";
 import { ready } from "./ui.ts";
-
-type Stack = { kind: string; count: number };
-type Entry = { x: number; y: number; z: number; stacks: Stack[] };
-type Harness = {
-  __od: {
-    scene: {
-      sessionId: string;
-      localId: string;
-      notice?: { text: string };
-      items: Entry[];
-      inventory: Stack[];
-      hearingLog: { lines: { kind: string; text: string }[] };
-      world: {
-        chunks: Map<string, Uint8Array>;
-        players: Record<
-          string,
-          { x: number; y: number; z: number; move: unknown }
-        >;
-      };
-    };
-    send: (message: Record<string, unknown>) => boolean;
-  };
-};
-
 const STONE = 2;
 // The authored ore row at level 0 sits at y 1: stone x 2, coal 3, iron 4 ... emerald 9.
 const ROW_Y = 1;
-
 const tile = (page: Page, x: number, y = ROW_Y) =>
-  page.evaluate(
-    ([tx, ty]) =>
-      (globalThis as unknown as Harness).__od.scene.world.chunks.get("0,0")?.[
-        ty * 16 + tx
-      ] ?? -1,
+  readWorld(
+    page,
+    (__world, [tx, ty]) =>
+      __world.scene.world.chunks.get("0,0")?.[ty * 16 + tx] ?? -1,
     [x, y],
   );
-
-const items = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Harness).__od.scene.items);
-
+const items = (page: Page) => readWorld(page, (__world) => __world.scene.items);
 const inventory = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Harness).__od.scene.inventory);
-
+  readWorld(page, (__world) => __world.scene.inventory);
 const notice = (page: Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.notice?.text ?? ""
-  );
-
+  readWorld(page, (__world) => __world.scene.notice?.text ?? "");
 const systemLines = (page: Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.hearingLog.lines
-      .filter((line) => line.kind === "system").map((line) => line.text)
-  );
-
+  readWorld(page, (__world) =>
+    __world.scene.hearingLog.lines
+      .filter((line) => line.kind === "system").map((line) => line.text));
 const position = (page: Page) =>
-  page.evaluate(() => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
+  readWorld(page, (__world) => {
+    const scene = __world.scene;
     return scene.world.players[scene.localId];
   });
-
-/** Drop items on the host's world, as a finished mining action does. */
-const drop = (page: Page, x: number, y: number, kind: string, count = 1) =>
-  page.evaluate(async ([px, py, k, n]) => {
-    const items = await import("/src/shared/items.js");
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    items.dropItem(
-      scene.world,
-      { x: px as number, y: py as number, z: 0 },
-      k as string,
-      n as number,
-    );
-  }, [x, y, kind, count]);
-
 async function startHost(page: Page) {
-  await page.goto("/?harness=1");
+  await openWorld(page, "/?harness=1");
   await ready(page);
-  await page.evaluate(() =>
-    (globalThis as unknown as { __od: { removeNpc(): void } }).__od.removeNpc()
-  );
 }
-
 async function walkToRow(page: Page) {
   await holdUntil(
     page,
@@ -92,15 +42,12 @@ async function walkToRow(page: Page) {
   await expect.poll(async () => (await position(page))?.move ?? null)
     .toBeNull();
 }
-
 test("a joining player sees drops, and two pickups give the stack to one player", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await startHost(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.sessionId
-  );
-  await guest.goto(`/join/${session}?harness=1`);
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, `/join/${session}?harness=1`);
   await ready(guest);
   await walkToRow(host);
   await walkToRow(guest);
@@ -146,15 +93,14 @@ test("a joining player sees drops, and two pickups give the stack to one player"
   expect(await systemLines(guest)).not.toContain("Picked up iron ore ×2");
   // The host refuses a tile out of the guest's reach.
   await drop(host, 2, 2, "coal");
-  await guest.evaluate(() =>
-    (globalThis as unknown as Harness).__od.send({
+  await readWorld(guest, (__world) =>
+    __world.send({
       type: "pickup",
       x: 2,
       y: 2,
       z: 0,
       kind: "coal",
-    })
-  );
+    }));
   await expect.poll(() => notice(guest)).toContain("out of reach");
   expect(await tile(host, 2)).toBe(STONE);
   await Promise.all([host.close(), guest.close()]);

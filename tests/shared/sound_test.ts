@@ -1,11 +1,7 @@
 // Sound event tests (ADR 0008).
 import { assert, assertEquals } from "@std/assert";
-import {
-  addPlayer,
-  advanceTicks,
-  createWorld,
-  type World,
-} from "../../src/shared/world.js";
+import { addPlayer, advanceTicks, type World } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import {
   drainTileChanges,
   ensureChunk,

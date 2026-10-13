@@ -9,9 +9,9 @@ import {
 import {
   addPlayer,
   advanceTicks,
-  createWorld,
   renderPosition,
 } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 import { writeTile } from "../../src/shared/terrain.js";
 

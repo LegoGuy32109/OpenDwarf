@@ -1,6 +1,7 @@
 // Reach and interact preview tests (ADR 0009).
 import { assert, assertEquals } from "@std/assert";
-import { addPlayer, createWorld, type World } from "../../src/shared/world.js";
+import { addPlayer, type World } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import {
   ensureChunk,
   OPEN,
@@ -29,6 +30,7 @@ const sees = () => true;
 /** Solid rock everywhere; the dwarf stands at (5, 5) on level 2 in an open cell. */
 function rock() {
   const world = createWorld();
+  delete world.shops;
   ensureChunk(world, 0, 0).fill(STONE);
   const player = addPlayer(world, "self", { x: 5, y: 5, z: 2 });
   open(world, 5, 5, 2);
@@ -133,6 +135,7 @@ Deno.test("interactPreview names the action the host would take", () => {
 
 Deno.test("interactPreview names the shopkeeper outside the test layout", () => {
   const world = createWorld();
+  delete world.shops;
   ensureChunk(world, 0, 0).fill(OPEN);
   const player = addPlayer(world, "self", {
     x: SHOP_TILE.x + 1,

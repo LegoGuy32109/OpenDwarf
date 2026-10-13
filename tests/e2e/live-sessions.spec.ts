@@ -1,9 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { evidenceShot } from "./evidence.ts";
 import { hasUi, ready } from "./ui.ts";
-
 const GAME_ORIGIN = `http://127.0.0.1:${process.env.PORT ?? "8000"}`;
 const TYPES: Record<string, string> = {
   ".css": "text/css",
@@ -15,7 +15,6 @@ const TYPES: Record<string, string> = {
 const ALPHA = "aaaaaaa";
 const BRAVO = "bbbbbbb";
 const LABELS: Record<string, string> = { [ALPHA]: "alpha", [BRAVO]: "bravo" };
-
 /** Serve the build's files like jsDelivr does: another origin, with CORS. */
 function serveAssets() {
   return Deno.serve({ port: 0, onListen() {} }, async (request) => {
@@ -44,7 +43,6 @@ function serveAssets() {
     }
   });
 }
-
 /**
  * Act as the shell for two builds at /b/aaaaaaa/ and /b/bbbbbbb/: serve each
  * page with its own commit, and pass /api/ on to the game server.
@@ -82,29 +80,21 @@ async function serveShell(assets: string) {
   });
   return { origin: `http://127.0.0.1:${server.addr.port}`, server };
 }
-
 async function startBuilds() {
   const assets = serveAssets();
   const shell = await serveShell(`http://127.0.0.1:${assets.addr.port}`);
   return { assets, shell: shell.server, origin: shell.origin };
 }
-
 const sceneOf = (page: import("@playwright/test").Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as {
-      __od: { scene: { sessionId: string; localId: string } };
-    }).__od.scene
-  );
-
+  readWorld(page, (__world) => __world.scene);
 const peersOf = (page: import("@playwright/test").Page) =>
-  page.evaluate(() =>
-    Object.keys(
-      (globalThis as unknown as {
-        __od: { scene: { world: { players: object } } };
-      }).__od.scene.world.players,
-    ).filter((id) => id.startsWith("peer-")).length
+  readWorld(
+    page,
+    (__world) =>
+      Object.keys(__world.scene.world.players).filter((id) =>
+        id.startsWith("peer-")
+      ).length,
   );
-
 test("a guest opening a join link on another build lands on the host's build", async ({ browser, request }) => {
   const { assets, shell, origin } = await startBuilds();
   const context = await browser.newContext({
@@ -114,20 +104,21 @@ test("a guest opening a join link on another build lands on the host's build", a
   });
   try {
     const host = await context.newPage();
-    await host.goto(`${origin}/b/${ALPHA}/?harness=1`);
+    await openWorld(host, `${origin}/b/${ALPHA}/?harness=1`);
     await ready(host);
     const { sessionId } = await sceneOf(host);
     // The shell recorded the session with the host's build.
     await expect.poll(async () => {
       const live = await (await request.get(`${GAME_ORIGIN}/api/v1/sessions`))
         .json();
-      return live.sessions.find((s: { id: string }) => s.id === sessionId)
+      return live.sessions.find((s: {
+        id: string;
+      }) => s.id === sessionId)
         ?.build;
     }).toEqual({ commit: ALPHA, label: "alpha", path: `/b/${ALPHA}/` });
-
     // The guest follows a join link that names another build.
     const guest = await context.newPage();
-    await guest.goto(`${origin}/b/${BRAVO}/join/${sessionId}?harness=1`);
+    await openWorld(guest, `${origin}/b/${BRAVO}/join/${sessionId}?harness=1`);
     await expect(guest).toHaveURL(
       `${origin}/b/${ALPHA}/join/${sessionId}?harness=1`,
     );
@@ -143,22 +134,23 @@ test("a guest opening a join link on another build lands on the host's build", a
     await shell.shutdown();
   }
 });
-
 test("a world is a live session until its host leaves, then it is history", async ({ browser, request }) => {
   const { assets, shell, origin } = await startBuilds();
   const context = await browser.newContext();
   try {
     const host = await context.newPage();
-    await host.goto(`${origin}/b/${ALPHA}/?harness=1`);
+    await openWorld(host, `${origin}/b/${ALPHA}/?harness=1`);
     await ready(host);
     const { sessionId } = await sceneOf(host);
     const listed = async (path: string) =>
       ((await (await request.get(`${GAME_ORIGIN}/api/v1/${path}`)).json())
-        .sessions as { id: string }[]).some((s) => s.id === sessionId);
+        .sessions as {
+          id: string;
+        }[]).some((s) => s.id === sessionId);
     await expect.poll(() => listed("sessions")).toBe(true);
     // The /host page lists it as a world to join.
     const lobby = await context.newPage();
-    await lobby.goto(`${origin}/b/${BRAVO}/host?harness=1`);
+    await openWorld(lobby, `${origin}/b/${BRAVO}/host?harness=1`);
     await ready(lobby);
     await expect.poll(() => hasUi(lobby, `btn:session:${sessionId}`)).toBe(
       true,

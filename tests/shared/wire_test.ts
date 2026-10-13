@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
-import { addPlayer, createWorld } from "../../src/shared/world.js";
+import { addPlayer } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import { createVisibility } from "../../src/shared/visibility.js";
 import {

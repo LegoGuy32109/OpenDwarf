@@ -48,6 +48,7 @@ and builds fit together. Each feature has one document, and a ticket documents
 its feature there:
 
 - [World and terrain](docs/features/world-and-terrain.md)
+- [World building](docs/features/world-building.md)
 - [Movement](docs/features/movement.md)
 - [Sight and view modes](docs/features/sight.md)
 - [Mining and items](docs/features/mining-and-items.md)

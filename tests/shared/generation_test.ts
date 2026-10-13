@@ -17,7 +17,7 @@ import {
   seedFromText,
 } from "../../src/shared/generation.js";
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
-import { createWorld } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 /** Count each material per level over `size`×`size` chunks around the origin. */
 function survey(seed: number, size: number) {

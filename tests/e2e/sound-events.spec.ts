@@ -1,8 +1,9 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { holdUntil, waitTicks } from "./time.ts";
 import { ready } from "./ui.ts";
-
 type Played = {
   tags: string[];
   x: number;
@@ -11,51 +12,42 @@ type Played = {
   muffled: boolean;
   own: boolean;
 };
-type Harness = {
-  __od: {
-    sounds: Played[];
-    scene: {
-      sessionId: string;
-      localId: string;
-      world: { players: Record<string, { x: number; y: number; z: number }> };
-    };
-  };
-};
-
 const sounds = (page: Page) =>
-  page.evaluate(() => [...(globalThis as unknown as Harness).__od.sounds]);
-
+  readWorld(page, (__world) => [...__world.sounds]);
 const position = (page: Page) =>
-  page.evaluate(() => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
+  readWorld(page, (__world) => {
+    const scene = __world.scene;
     return scene.world.players[scene.localId];
   });
-
 /** Stand the host's player still at a position. */
 const placeAt = (page: Page, x: number, y: number) =>
-  page.evaluate(([px, py]) => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    const player = scene.world.players[scene.localId] as Record<string, number>;
-    Object.assign(player, { x: px, y: py, previousX: px, previousY: py });
+  readWorld(page, (__world, [px, py]) => {
+    const scene = __world.scene;
+    const player = scene.world.players[scene.localId];
+    __world.edit({
+      players: [{
+        id: player.id,
+        at: {
+          x: px,
+          y: py,
+          z: player.z,
+        },
+      }],
+    });
   }, [x, y]);
-
 const isStep = (sound: Played, own: boolean) =>
   sound.tags[0] === "step" && sound.own === own;
-
 /** Open a host and a guest that joined it. */
 async function pair(browser: import("@playwright/test").Browser) {
   const host = await browser.newPage();
   const guest = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1");
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.sessionId
-  );
-  await guest.goto(`/join/${session}?harness=1`);
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, `/join/${session}?harness=1`);
   await ready(guest);
   return { host, guest };
 }
-
 test("each hears its own steps as own, and the other hears them in range", async ({ browser }) => {
   const { host, guest } = await pair(browser);
   const hostSteps = async () =>
@@ -80,9 +72,7 @@ test("each hears its own steps as own, and the other hears them in range", async
   // The host does not hear its own steps twice: its events come from the host's record, not itself.
   expect(
     (await sounds(host)).some((sound) => isStep(sound, false) && sound.y > 5),
-  ).toBe(
-    false,
-  );
+  ).toBe(false);
   await holdUntil(guest, "e", async () => (await ownSteps(guest)) >= 2);
   await expect.poll(async () =>
     (await sounds(host)).filter((sound) => isStep(sound, false)).length
@@ -90,17 +80,25 @@ test("each hears its own steps as own, and the other hears them in range", async
   await evidenceShot(guest, "sound-events-steps");
   await Promise.all([host.close(), guest.close()]);
 });
-
 test("a source behind rock is muffled, one beyond 12 tiles is not heard", async ({ browser }) => {
   const { host, guest } = await pair(browser);
   // A stone wall between the host's side and the guest, across the whole room.
-  await host.evaluate(async () => {
-    const terrain = await import("/src/shared/terrain.js");
-    const scene = (globalThis as unknown as Harness).__od.scene as unknown as {
-      world: Parameters<typeof terrain.writeTile>[0];
-    };
+  await readWorld(host, (__world) => {
+    const terrain = __world.materials;
     for (let y = 3; y <= 14; y++) {
-      terrain.writeTile(scene.world, 5, y, 0, terrain.STONE);
+      __world.edit({
+        tiles: [{
+          bounds: {
+            minX: 5,
+            maxX: 5,
+            minY: y,
+            maxY: y,
+            minZ: 0,
+            maxZ: 0,
+          },
+          material: terrain.STONE,
+        }],
+      });
     }
   });
   await placeAt(host, 2, 9);
@@ -120,13 +118,22 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
   expect(behind.every((sound) => sound.muffled)).toBe(true);
   await evidenceShot(guest, "sound-events-muffled");
   // The guest walks to the far west, the host to the far east: more than 12 tiles apart.
-  await host.evaluate(async () => {
-    const terrain = await import("/src/shared/terrain.js");
-    const scene = (globalThis as unknown as Harness).__od.scene as unknown as {
-      world: Parameters<typeof terrain.writeTile>[0];
-    };
+  await readWorld(host, (__world) => {
+    const terrain = __world.materials;
     for (let y = 3; y <= 14; y++) {
-      terrain.writeTile(scene.world, 5, y, 0, terrain.OPEN);
+      __world.edit({
+        tiles: [{
+          bounds: {
+            minX: 5,
+            maxX: 5,
+            minY: y,
+            maxY: y,
+            minZ: 0,
+            maxZ: 0,
+          },
+          material: terrain.OPEN,
+        }],
+      });
     }
   });
   await holdUntil(

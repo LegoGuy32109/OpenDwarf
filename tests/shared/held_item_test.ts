@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
-import { addPlayer, createWorld, type World } from "../../src/shared/world.js";
+import { addPlayer, type World } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import {
   ensureChunk,
   OPEN,

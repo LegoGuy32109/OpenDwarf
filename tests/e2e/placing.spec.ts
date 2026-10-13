@@ -1,83 +1,49 @@
-import { expect, type Page, test } from "@playwright/test";
+import { giveItems as give } from "./world.ts";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { ready, tapUi, uiRect } from "./ui.ts";
-
-type Stack = { kind: string; count: number };
-type Harness = {
-  __od: {
-    scene: {
-      sessionId: string;
-      localId: string;
-      notice?: { text: string };
-      inventory: Stack[];
-      world: {
-        chunks: Map<string, Uint8Array>;
-        players: Record<string, { x: number; y: number; z: number }>;
-      };
-    };
-  };
+type Stack = {
+  kind: string;
+  count: number;
 };
-
 const OPEN = 1;
 const STONE = 2;
 // The authored ore row is at y 1 of level 0, with stone at x 2. Row y 2 is open floor.
 const ROW_Y = 1;
-
-const od = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Harness).__od.scene.localId);
-
+const od = (page: Page) => readWorld(page, (__world) => __world.scene.localId);
 const tile = (page: Page, x: number, y = ROW_Y) =>
-  page.evaluate(
-    ([tx, ty]) =>
-      (globalThis as unknown as Harness).__od.scene.world.chunks.get("0,0")?.[
-        ty * 16 + tx
-      ] ?? -1,
+  readWorld(
+    page,
+    (__world, [tx, ty]) =>
+      __world.scene.world.chunks.get("0,0")?.[ty * 16 + tx] ?? -1,
     [x, y],
   );
-
 const notice = (page: Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as Harness).__od.scene.notice?.text ?? ""
-  );
-
+  readWorld(page, (__world) => __world.scene.notice?.text ?? "");
 /** The local player's stone count, as the page shows it. */
 const stones = (page: Page) =>
-  page.evaluate(() => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
+  readWorld(page, (__world) => {
+    const scene = __world.scene;
     const inventory = scene.inventory ??
-      (scene.world.players[scene.localId] as unknown as { inventory: Stack[] })
+      (scene.world.players[scene.localId] as unknown as {
+        inventory: Stack[];
+      })
         .inventory;
     return inventory.find((stack) => stack.kind === "stone")?.count ?? 0;
   });
-
-/** Give the world host's own player items, as a pickup would. */
-const give = (host: Page, kind: string, count: number) =>
-  host.evaluate(async ([k, n]) => {
-    const items = await import("/src/shared/items.js");
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    items.addStack(
-      items.inventoryOf(scene.world.players[scene.localId] as never),
-      k as string,
-      n as number,
-    );
-  }, [kind, count]);
-
 /** Host without the corner NPC: it walks the 2x2 square at (2, 2) these specs build on. */
 async function startHost(page: Page) {
-  await page.goto("/?harness=1");
+  await openWorld(page, "/?harness=1");
   await ready(page);
-  await page.evaluate(() =>
-    (globalThis as unknown as { __od: { removeNpc(): void } }).__od.removeNpc()
-  );
 }
-
 /** Aim with a look key, press interact, and let go. Interact reads the held look keys itself. */
 async function interactAim(page: Page, key: string) {
   await page.keyboard.down(key);
   await page.keyboard.press("Space");
   await page.keyboard.up(key);
 }
-
 test(
   "a guest places stone and the host sees it",
   { tag: "@smoke" },
@@ -85,43 +51,58 @@ test(
     const host = await browser.newPage();
     const guest = await browser.newPage();
     await startHost(host);
-    const session = await host.evaluate(() =>
-      (globalThis as unknown as Harness).__od.scene.sessionId
-    );
-    await guest.goto(`/join/${session}?harness=1`);
+    const session = await readWorld(host, (__world) => __world.scene.sessionId);
+    await openWorld(guest, `/join/${session}?harness=1`);
     await ready(guest);
     await expect.poll(() => od(guest)).toMatch(/^peer-/);
     const guestId = await od(guest);
-    await host.evaluate(async (id) => {
-      const items = await import("/src/shared/items.js");
-      const scene = (globalThis as unknown as Harness).__od.scene;
-      const player = scene.world.players[id] as never;
-      items.addStack(items.inventoryOf(player), "stone", 2);
-      Object.assign(player, { x: 5, y: 3, previousX: 5, previousY: 3 });
+    await readWorld(host, (__world, id) => {
+      const scene = __world.scene;
+      const player = scene.world.players[id];
+      __world.edit({
+        players: [{
+          id: player.id,
+          inventory: [{
+            kind: "stone",
+            count: 2,
+          }],
+        }],
+      });
+      __world.edit({
+        players: [{
+          id: player.id,
+          at: {
+            x: 5,
+            y: 3,
+            z: player.z,
+          },
+        }],
+      });
     }, guestId);
     await expect.poll(() => stones(guest)).toBe(2);
-    await guest.evaluate(() =>
-      (globalThis as unknown as { __od: { send: (m: object) => boolean } }).__od
-        .send({ type: "hold", kind: "stone" })
+    await readWorld(
+      guest,
+      (__world) => __world.send({ type: "hold", kind: "stone" }),
     );
     await expect.poll(() =>
-      host.evaluate(
-        (id) =>
-          ((globalThis as unknown as Harness).__od.scene.world.players[
-            id
-          ] as unknown as { held?: string }).held,
-        guestId,
-      )
+      readWorld(host, (__world, id) =>
+        (__world.scene.world.players[id] as {
+          held?: string;
+        }).held, guestId)
     ).toBe("stone");
     // The guest aims from what it knows: its held item and its own position.
     await expect.poll(() =>
-      guest.evaluate(() => {
-        const scene = (globalThis as unknown as Harness).__od
-          .scene as unknown as {
-            heldFeed?: string;
-            localId: string;
-            world: { players: Record<string, { x: number; y: number }> };
+      readWorld(guest, (__world) => {
+        const scene = __world.scene as unknown as {
+          heldFeed?: string;
+          localId: string;
+          world: {
+            players: Record<string, {
+              x: number;
+              y: number;
+            }>;
           };
+        };
         const self = scene.world.players[scene.localId];
         return `${scene.heldFeed} ${self?.x},${self?.y}`;
       })
@@ -133,9 +114,9 @@ test(
     await expect.poll(() => stones(guest)).toBe(1);
     await evidenceShot(guest, "guest-placed-stone");
     // A place out of the guest's reach is refused by the host.
-    await guest.evaluate(() =>
-      (globalThis as unknown as { __od: { send: (m: object) => boolean } }).__od
-        .send({ type: "place", x: 9, y: 3, z: 0 })
+    await readWorld(
+      guest,
+      (__world) => __world.send({ type: "place", x: 9, y: 3, z: 0 }),
     );
     await expect.poll(() => notice(guest)).toBe("out of reach");
     expect(await tile(host, 9, 3)).toBe(OPEN);
@@ -143,7 +124,6 @@ test(
     await Promise.all([host.close(), guest.close()]);
   },
 );
-
 test.describe("phone interact button", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -151,7 +131,6 @@ test.describe("phone interact button", () => {
     isMobile: true,
     hasTouch: true,
   });
-
   test("shows the stone icon while stone is held", async ({ page }) => {
     await startHost(page);
     await evidenceShot(page, "interact-pickaxe-icon");

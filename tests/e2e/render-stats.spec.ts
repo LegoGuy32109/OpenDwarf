@@ -1,21 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { waitFor } from "./time.ts";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
 import { ready } from "./ui.ts";
-
-type Stats = { tiles: number; quads: number } | null;
-type Harness = { __od: { renderStats(): Stats } };
-
 test("the renderer reports the tiles and quads of every frame", async ({ page }) => {
-  await page.goto("/?harness=1&layout=room&sw=0");
+  await openWorld(page, "/?harness=1&layout=room&sw=0");
   await ready(page);
-  await expect.poll(() =>
-    page.evaluate(() => (globalThis as unknown as Harness).__od.renderStats())
-  ).toMatchObject({
-    tiles: expect.any(Number),
-    quads: expect.any(Number),
-  });
-  const stats = await page.evaluate(() =>
-    (globalThis as unknown as Harness).__od.renderStats()
-  );
+  await waitFor(page, () =>
+    readWorld(page, (world) => {
+      const stats = world.renderStats();
+      return !!stats && stats.tiles > 0;
+    }), { message: "first rendered terrain frame" });
+  const stats = await readWorld(page, (__world) => __world.renderStats());
   expect(stats!.tiles).toBeGreaterThan(0);
   expect(stats!.quads).toBeGreaterThanOrEqual(stats!.tiles);
 });

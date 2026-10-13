@@ -1,41 +1,45 @@
-import { expect, type Page, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
+import { type Page } from "@playwright/test";
 import { holdTicks, waitFor, waitTicks } from "./time.ts";
 import { clickUi, ready, say } from "./ui.ts";
-
-type Position = { tick: number; x: number; y: number; z: number };
-
+type Position = {
+  tick: number;
+  x: number;
+  y: number;
+  z: number;
+};
 /** Sample each id's drawn position once per frame for `ticks` world ticks. */
 async function visualTrace(page: Page, ids: string[], ticks: number) {
-  return await page.evaluate(
-    ({ ids, ticks }) =>
+  return await readWorld(
+    page,
+    (__world, { ids, ticks }) =>
       new Promise<Record<string, Position[]>>((resolve) => {
         const traces: Record<string, Position[]> = Object.fromEntries(
           ids.map((id) => [id, []]),
         );
-        const game = (globalThis as unknown as {
-          __od: {
-            visualPosition: (id: string) => Position | null;
-            scene: { world: { tick: number } };
-          };
-        }).__od;
+        const game = __world;
         const until = game.scene.world.tick + ticks;
         const sample = () => {
           for (const id of ids) {
             const position = game.visualPosition(id);
-            if (position) traces[id].push(position);
+            if (position) {
+              traces[id].push(position);
+            }
           }
-          if (game.scene.world.tick < until) requestAnimationFrame(sample);
-          else resolve(traces);
+          if (game.scene.world.tick < until) {
+            requestAnimationFrame(sample);
+          } else {
+            resolve(traces);
+          }
         };
         requestAnimationFrame(sample);
       }),
     { ids, ticks },
   );
 }
-
 /** The most a drawn entity may cover in one tick: 4.5 tiles a second, over twice a sprint, so a smoothing catch-up passes and a snap does not. */
 const MAX_TILES_PER_TICK = 0.225;
-
 /**
  * Every drawn step stays within walking speed for the ticks between samples, so
  * nothing jumps, and the entity travels. Sparse frames on a slow machine only
@@ -68,45 +72,28 @@ function expectContinuous(
   }
   expect(travel, `${label} did not move`).toBeGreaterThan(minTravel);
 }
-
 test("host and two joining tabs see continuous remote movement", async ({ browser }) => {
   const host = await browser.newPage();
   const first = await browser.newPage();
   const second = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1", { npc: true });
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-      .scene.sessionId
-  );
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
   for (const guest of [first, second]) {
-    await guest.goto("/host?harness=1");
+    await openWorld(guest, "/host?harness=1", { npc: true });
     await ready(guest);
     await clickUi(guest, `btn:session:${session}`);
-    await expect.poll(
-      () =>
-        guest.evaluate(() =>
-          (globalThis as unknown as { __od: { scene: { localId: string } } })
-            .__od
-            .scene.localId
-        ),
+    await expect.poll(() =>
+      readWorld(guest, (__world) => __world.scene.localId)
     ).toMatch(/^peer-/);
   }
-  const firstId = await first.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-      .scene.localId
-  );
-  const secondId = await second.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-      .scene.localId
-  );
+  const firstId = await readWorld(first, (__world) => __world.scene.localId);
+  const secondId = await readWorld(second, (__world) => __world.scene.localId);
   expect(firstId).not.toBe(secondId);
   for (const page of [host, first, second]) {
     await expect.poll(() =>
-      page.evaluate(({ firstId, secondId }) => {
-        const players = (globalThis as unknown as {
-          __od: { scene: { world: { players: Record<string, unknown> } } };
-        }).__od.scene.world.players;
+      readWorld(page, (__world, { firstId, secondId }) => {
+        const players = __world.scene.world.players;
         return Boolean(
           players[firstId] && players[secondId] && players.self &&
             players["npc-corner"],
@@ -114,7 +101,6 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
       }, { firstId, secondId })
     ).toBe(true);
   }
-
   const traces = Promise.all([
     visualTrace(host, [firstId, secondId, "npc-corner"], 36),
     visualTrace(first, ["self", secondId, "npc-corner"], 36),
@@ -142,84 +128,61 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
       ["second sees host", secondTrace.self],
       ["second sees first", secondTrace[firstId]],
       ["second sees NPC", secondTrace["npc-corner"]],
-    ] as [string, Position[]][]
+    ] as [
+      string,
+      Position[],
+    ][]
   ) {
     expectContinuous(label, trace, 0.5);
   }
   await second.close();
-  await expect.poll(
-    () =>
-      host.evaluate((id) =>
-        Boolean(
-          (globalThis as unknown as {
-            __od: { scene: { world: { players: Record<string, unknown> } } };
-          }).__od.scene.world.players[id],
-        ), secondId),
+  await expect.poll(() =>
+    readWorld(
+      host,
+      (__world, id) => Boolean(__world.scene.world.players[id]),
+      secondId,
+    )
   )
     .toBe(false);
-  const before = await host.evaluate((id) =>
-    (globalThis as unknown as {
-      __od: { scene: { world: { players: Record<string, { y: number }> } } };
-    }).__od.scene.world.players[id].y, firstId);
+  const before = await readWorld(
+    host,
+    (__world, id) => __world.scene.world.players[id].y,
+    firstId,
+  );
   await first.keyboard.down("d");
   try {
     await expect.poll(() =>
-      host.evaluate((id) =>
-        (globalThis as unknown as {
-          __od: {
-            scene: { world: { players: Record<string, { y: number }> } };
-          };
-        }).__od.scene.world.players[id].y, firstId)
+      readWorld(
+        host,
+        (__world, id) => __world.scene.world.players[id].y,
+        firstId,
+      )
     ).toBeGreaterThan(before + 0.12);
   } finally {
     await first.keyboard.up("d");
   }
   await Promise.all([host.close(), first.close()]);
 });
-
 test("held and reversed guest movement converges in host and two joining tabs", async ({ browser }) => {
   const host = await browser.newPage();
   const first = await browser.newPage();
   const second = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1", { npc: true });
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-      .scene.sessionId
-  );
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
   for (const guest of [first, second]) {
-    await guest.goto("/host?harness=1");
+    await openWorld(guest, "/host?harness=1", { npc: true });
     await ready(guest);
     await clickUi(guest, `btn:session:${session}`);
     await expect.poll(() =>
-      guest.evaluate(() =>
-        (globalThis as unknown as { __od: { scene: { localId: string } } })
-          .__od.scene.localId
-      )
+      readWorld(guest, (__world) => __world.scene.localId)
     ).toMatch(/^peer-/);
   }
-  const firstId = await first.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-      .scene.localId
-  );
-  const secondId = await second.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-      .scene.localId
-  );
+  const firstId = await readWorld(first, (__world) => __world.scene.localId);
+  const secondId = await readWorld(second, (__world) => __world.scene.localId);
   const positions = async (page: Page) =>
-    await page.evaluate(({ firstId, secondId }) => {
-      const players = (globalThis as unknown as {
-        __od: {
-          scene: {
-            world: {
-              players: Record<
-                string,
-                { x: number; y: number; z: number; move: unknown }
-              >;
-            };
-          };
-        };
-      }).__od.scene.world.players;
+    await readWorld(page, (__world, { firstId, secondId }) => {
+      const players = __world.scene.world.players;
       return [firstId, secondId].map((id) => {
         const player = players[id];
         return player
@@ -278,7 +241,6 @@ test("held and reversed guest movement converges in host and two joining tabs", 
   expect(final[1]?.y).not.toBe(initial[1]?.y);
   await Promise.all([host.close(), first.close(), second.close()]);
 });
-
 async function driveTo(
   page: Page,
   source: Page,
@@ -288,14 +250,8 @@ async function driveTo(
   target: number,
 ) {
   const position = () =>
-    source.evaluate(({ id, axis }) => {
-      const player = (globalThis as unknown as {
-        __od: {
-          scene: {
-            world: { players: Record<string, { x: number; y: number }> };
-          };
-        };
-      }).__od.scene.world.players[id];
+    readWorld(source, (__world, { id, axis }) => {
+      const player = __world.scene.world.players[id];
       return player?.[axis] ?? NaN;
     }, { id, axis });
   const initial = await position();
@@ -309,54 +265,35 @@ async function driveTo(
     await page.keyboard.up(key);
   }
 }
-
 test("a guest circles the pillar without leaving a remote sprite behind", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1", { npc: true });
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-      .scene.sessionId
-  );
-  await guest.goto("/host?harness=1");
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, "/host?harness=1", { npc: true });
   await ready(guest);
   await clickUi(guest, `btn:session:${session}`);
-  await expect.poll(() =>
-    guest.evaluate(() =>
-      (globalThis as unknown as { __od: { scene: { localId: string } } })
-        .__od.scene.localId
-    )
-  ).toMatch(/^peer-/);
-  const id = await guest.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-      .scene.localId
-  );
+  await expect.poll(() => readWorld(guest, (__world) => __world.scene.localId))
+    .toMatch(/^peer-/);
+  const id = await readWorld(guest, (__world) => __world.scene.localId);
   for (
     const [key, axis, target] of [
       ["f", "x", 9],
       ["d", "y", 8],
       ["d", "y", 9],
       ["s", "x", 8],
-    ] as [string, "x" | "y", number][]
+    ] as [
+      string,
+      "x" | "y",
+      number,
+    ][]
   ) {
     await driveTo(guest, host, id, key, axis, target);
   }
   const atRest = (page: Page) =>
-    page.evaluate((playerId) => {
-      const player = (globalThis as unknown as {
-        __od: {
-          scene: {
-            world: {
-              players: Record<string, {
-                x: number;
-                y: number;
-                move: unknown;
-              }>;
-            };
-          };
-        };
-      }).__od.scene.world.players[playerId];
+    readWorld(page, (__world, playerId) => {
+      const player = __world.scene.world.players[playerId];
       return player
         ? { x: player.x, y: player.y, moving: !!player.move }
         : null;
@@ -378,36 +315,29 @@ test("a guest circles the pillar without leaving a remote sprite behind", async 
   expect(final?.y).toBeLessThan(9.35);
   await Promise.all([host.close(), guest.close()]);
 });
-
 test("a guest sees the host move and fade behind the pillar", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1", { npc: true });
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-      .scene.sessionId
-  );
-  await guest.goto("/host?harness=1");
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, "/host?harness=1", { npc: true });
   await ready(guest);
   await clickUi(guest, `btn:session:${session}`);
-  await expect.poll(() =>
-    guest.evaluate(() =>
-      (globalThis as unknown as { __od: { scene: { localId: string } } })
-        .__od.scene.localId
-    )
-  ).toMatch(/^peer-/);
-  const id = await guest.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-      .scene.localId
-  );
+  await expect.poll(() => readWorld(guest, (__world) => __world.scene.localId))
+    .toMatch(/^peer-/);
+  const id = await readWorld(guest, (__world) => __world.scene.localId);
   for (
     const [key, axis, target] of [
       ["e", "y", 6],
       ["f", "x", 8],
       ["f", "x", 9],
       ["d", "y", 7],
-    ] as [string, "x" | "y", number][]
+    ] as [
+      string,
+      "x" | "y",
+      number,
+    ][]
   ) {
     await driveTo(host, host, "self", key, axis, target);
   }
@@ -416,49 +346,43 @@ test("a guest sees the host move and fade behind the pillar", async ({ browser }
       ["s", "x", 7],
       ["s", "x", 6],
       ["e", "y", 6],
-    ] as [string, "x" | "y", number][]
+    ] as [
+      string,
+      "x" | "y",
+      number,
+    ][]
   ) {
     await driveTo(guest, host, id, key, axis, target);
   }
   await expect.poll(() =>
-    guest.evaluate(() =>
-      Boolean(
-        (globalThis as unknown as {
-          __od: {
-            scene: {
-              world: {
-                players: Record<string, unknown>;
-              };
-            };
-          };
-        }).__od.scene.world.players.self,
-      )
-    )
+    readWorld(guest, (__world) => Boolean(__world.scene.world.players.self))
   ).toBe(true);
-  const trace = guest.evaluate(() =>
+  const trace = readWorld(guest, (__world) =>
     new Promise<
       Array<{
         y: number;
         opacity: number;
       }>
     >((resolve) => {
-      const game = (globalThis as unknown as {
-        __od: {
-          visualSample: (id: string) => { y: number; opacity: number } | null;
-          scene: { world: { tick: number } };
-        };
-      }).__od;
-      const points: Array<{ y: number; opacity: number }> = [];
+      const game = __world;
+      const points: Array<{
+        y: number;
+        opacity: number;
+      }> = [];
       const until = game.scene.world.tick + 24;
       const sample = () => {
         const point = game.visualSample("self");
-        if (point) points.push({ y: point.y, opacity: point.opacity });
-        if (game.scene.world.tick < until) requestAnimationFrame(sample);
-        else resolve(points);
+        if (point) {
+          points.push({ y: point.y, opacity: point.opacity });
+        }
+        if (game.scene.world.tick < until) {
+          requestAnimationFrame(sample);
+        } else {
+          resolve(points);
+        }
       };
       requestAnimationFrame(sample);
-    })
-  );
+    }));
   await driveTo(host, host, "self", "d", "y", 8);
   const points = await trace;
   expect(points.length).toBeGreaterThan(0);
@@ -468,72 +392,28 @@ test("a guest sees the host move and fade behind the pillar", async ({ browser }
   expect(points.some((point) => point.opacity > 0.05 && point.opacity < 0.95))
     .toBe(true);
   await expect.poll(() =>
-    guest.evaluate(() =>
-      Boolean(
-        (globalThis as unknown as {
-          __od: {
-            scene: {
-              world: {
-                players: Record<string, unknown>;
-              };
-            };
-          };
-        }).__od.scene.world.players.self,
-      )
-    )
+    readWorld(guest, (__world) => Boolean(__world.scene.world.players.self))
   ).toBe(false);
   await driveTo(host, host, "self", "e", "y", 7);
   await expect.poll(() =>
-    guest.evaluate(() =>
-      Boolean(
-        (globalThis as unknown as {
-          __od: {
-            scene: {
-              world: {
-                players: Record<string, unknown>;
-              };
-            };
-          };
-        }).__od.scene.world.players.self,
-      )
-    )
+    readWorld(guest, (__world) => Boolean(__world.scene.world.players.self))
   ).toBe(true);
   await Promise.all([host.close(), guest.close()]);
 });
-
 test("guest master mode receives full terrain and entity mode restores only discovered terrain", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
-  await host.goto("/?harness=1");
+  await openWorld(host, "/?harness=1", { npc: true });
   await ready(host);
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } }).__od
-      .scene.sessionId
-  );
-  await guest.goto("/host?harness=1");
+  const session = await readWorld(host, (__world) => __world.scene.sessionId);
+  await openWorld(guest, "/host?harness=1", { npc: true });
   await ready(guest);
   await clickUi(guest, `btn:session:${session}`);
-  await expect.poll(() =>
-    guest.evaluate(() =>
-      (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
-        .scene.localId
-    )
-  ).toMatch(/^peer-/);
+  await expect.poll(() => readWorld(guest, (__world) => __world.scene.localId))
+    .toMatch(/^peer-/);
   const state = async () =>
-    await guest.evaluate(() => {
-      const scene = (globalThis as unknown as {
-        __od: {
-          scene: {
-            viewMode: string;
-            world: {
-              chunks: Map<string, Uint8Array>;
-              players: Record<string, { y: number }>;
-            };
-            localId: string;
-            visibility: { visible: Set<string> };
-          };
-        };
-      }).__od.scene;
+    await readWorld(guest, (__world) => {
+      const scene = __world.scene;
       return {
         mode: scene.viewMode,
         terrain: Object.fromEntries(
@@ -568,8 +448,12 @@ test("guest master mode receives full terrain and entity mode restores only disc
     const [cx, cy] = key.split(",").map(Number);
     const earlier = before.terrain[key];
     for (let index = 0; index < chunk.length; index++) {
-      if (earlier?.[index] !== 0 && earlier !== undefined) continue;
-      if (chunk[index] === 0) continue;
+      if (earlier?.[index] !== 0 && earlier !== undefined) {
+        continue;
+      }
+      if (chunk[index] === 0) {
+        continue;
+      }
       const z = Math.floor(index / 256);
       const y = cy * 16 + Math.floor(index % 256 / 16);
       const x = cx * 16 + index % 16;

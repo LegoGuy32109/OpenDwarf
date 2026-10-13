@@ -23,7 +23,7 @@ import {
   recomputeVisibility,
   tileKey,
 } from "../../src/shared/visibility.js";
-import { createWorld } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import { dropItem, droppedAt } from "../../src/shared/items.js";
 
 const FAR = 16 * 40;

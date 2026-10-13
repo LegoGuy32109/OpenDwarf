@@ -1,15 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { PROTOCOL_VERSION } from "../../src/shared/wire.js";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
 import { ready } from "./ui.ts";
-
 test("unanswered offer expires without leaving a player or connection record", async ({ page }) => {
-  await page.goto("/?harness=1");
+  await openWorld(page, "/?harness=1");
   await ready(page);
-  const session = await page.evaluate(() =>
-    (globalThis as unknown as { __od: { scene: { sessionId: string } } })
-      .__od.scene.sessionId
-  );
+  const session = await readWorld(page, (__world) => __world.scene.sessionId);
   // Join through the relay as a peer that never answers the host's offer.
-  await page.evaluate(async (session) => {
+  await page.evaluate(async ({ session, version }) => {
     const playerId = `peer-${crypto.randomUUID()}`;
     const ticket = await (await fetch(`/api/v1/sessions/${session}/join`, {
       method: "POST",
@@ -29,26 +27,20 @@ test("unanswered offer expires without leaving a player or connection record", a
           playerId,
           token: crypto.randomUUID(),
           attempt: crypto.randomUUID(),
-          version: 4,
+          version,
         },
       },
     }));
-  }, session);
+  }, { session, version: PROTOCOL_VERSION });
   const stats = () =>
-    page.evaluate(async () => {
-      const game = (globalThis as unknown as {
-        __od: {
-          hostStats: () => Promise<
-            { joinFailures: number; players: number; connections: unknown[] }
-          >;
-        };
-      }).__od;
+    readWorld(page, async (__world) => {
+      const game = __world;
       return await game.hostStats();
     });
-  await expect.poll(async () => (await stats()).connections.length).toBe(1);
-  await expect.poll(async () => (await stats()).joinFailures, {
+  await expect.poll(async () => (await stats())!.connections.length).toBe(1);
+  await expect.poll(async () => (await stats())!.joinFailures, {
     // wall-clock: a join attempt fails after 10 s of real time (attempt-deadline.js).
-    timeout: 15_000,
+    timeout: 15000,
   }).toBe(1);
-  expect((await stats()).connections).toEqual([]);
+  expect((await stats())!.connections).toEqual([]);
 });

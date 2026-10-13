@@ -6,11 +6,8 @@ import {
   hearChat,
   HEARING_LOG_LIMIT,
 } from "../../src/shared/hearing-log.js";
-import {
-  addPlayer,
-  createWorld,
-  submitMessage,
-} from "../../src/shared/world.js";
+import { addPlayer, submitMessage } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 const nameOf = (id: string) => id;
 

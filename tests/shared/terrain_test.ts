@@ -27,11 +27,11 @@ import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
 import {
   addPlayer,
   advanceTicks,
-  createWorld,
   isSolid,
   startMove,
   type World,
 } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import { enableLocomotion, moveEntity } from "../../src/shared/locomotion.js";
 import {
   createVisibility,

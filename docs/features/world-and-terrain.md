@@ -1,13 +1,14 @@
 # World and terrain
 
-A normal page starts the spawn room (`src/shared/spawn-room.js`): a 9×7 room at
-z 4 in the 2×2 spawn chunks, one doorway in its south wall that opens into solid
-stone, two stair tiles down to a tunnel at z 2, and a reserved shopkeeper tile.
-The spawn chunks are generated from the world seed like any other chunk. The
-room, stairs and tunnel are then dug into a solid stone `SHELL`, so caves never
-break into them. The tunnel runs on east until it opens into a generated cave.
-The host and every joining player spawn inside the room, and the corner NPC
-walks a square in its south west corner.
+A normal page starts the spawn room through `roomRecipe` in
+`src/shared/world-recipes.js` and the shared [world builder](world-building.md):
+a 9×7 room at z 4 in the 2×2 spawn chunks, one doorway in its south wall that
+opens into solid stone, two stair tiles down to a tunnel at z 2, and a reserved
+shopkeeper tile. The spawn chunks are generated from the world seed like any
+other chunk. The room, stairs and tunnel are then dug into a solid stone
+`SHELL`, so caves never break into them. The tunnel runs on east until it opens
+into a generated cave. The host and every joining player spawn inside the room,
+and the corner NPC walks a square in its south west corner.
 
 Every world uses the same seed for now, `WORLD_SEED` in
 `src/shared/generation.js`, made from the text `opendwarf-1`. That seed was
@@ -17,7 +18,8 @@ walk to more than 5,000 tiles on every level within three chunks of spawn.
 cave noise, run that test to find out whether the tunnel still reaches a large
 cave. `?layout=test` loads the older layout below. A page with `?harness=1` uses
 that test layout unless it adds `?layout=room`, so the motion and sight specs
-keep their pillar and staircase.
+keep their pillar and staircase. Browser tests construct these recipes before
+boot through `tests/e2e/world.ts`. They add the corner NPC only when requested.
 
 The test layout is one 16×16 tile square across z levels 0–7, with eight view
 levels, a staircase, and a center pillar. `?world=32` starts an expanded 32×32
@@ -69,8 +71,9 @@ here include the corner NPC, a guest in master view, and the host's own
 master-view camera. The unloader also takes the master view's tile rectangle,
 and every chunk inside it (plus one chunk around it) counts as near, so panning
 does not thrash load and unload. `src/shared/chunk-unload.js` keeps when each
-chunk last had a player near and takes the clock as an argument. The host loop
-runs it next to `generateAround`, at most once a second.
+chunk last had a player near and takes the clock as an argument. The shared
+simulation runs it next to `generateAround`, every 20 ticks, with time derived
+from the tick count.
 
 - **Edit diffs.** `writeTile` records each change in `world.edits`: chunk key to
   a map of tile index to material. `ensureChunk` applies the diff after it
@@ -78,10 +81,10 @@ runs it next to `generateAround`, at most once a second.
   back. Diffs last for the session. The authored build leaves none, because a
   diff is recorded only when the world has a generator and the chunk is not
   pinned.
-- **Pinned chunks.** `pinLoadedChunks` runs when the host starts, so every chunk
-  that exists before play (the spawn room, `?layout=test`, `?world=32`) is in
-  `world.pinned` and never unloads. A world without `world.generateChunk` never
-  unloads anything.
+- **Pinned chunks.** Recipes explicitly name pinned chunks. The built-in spawn
+  room, `?layout=test`, and `?world=32` recipes pin their initial chunks in
+  `world.pinned`, so those chunks never unload. A world without
+  `world.generateChunk` never unloads anything.
 - **Cache.** `unloadChunk` bumps the `getChunk` cache generation, so a read
   never returns the dropped tiles.
 - **Items and mining.** Dropped items and mining progress live outside chunk

@@ -6,10 +6,8 @@ import { createBuilds } from "../../src/server/builds.ts";
 import { createRelay } from "../../src/server/relay.ts";
 import { createLocalProvider } from "../../src/server/signaling.ts";
 import { createMemoryStore } from "../../src/server/store.ts";
-
 const ALPHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 const BRAVO = "b2c3d4e5f60718293a4b5c6d7e8f901234567890";
-
 const encoder = new TextEncoder();
 /** One pkt-line: four hex digits of length, then the payload. */
 const pkt = (text: string) =>
@@ -17,7 +15,6 @@ const pkt = (text: string) =>
 const sha = (digit: string) => digit.repeat(40);
 const LONG_BRANCH =
   "feature-long-running-experiment-with-a-very-long-branch-name";
-
 /** The stubbed branches of GitHub, with their heads, for the build index. */
 const BRANCHES: Record<string, string> = {
   "main": BRAVO,
@@ -44,7 +41,6 @@ const PULLS = [
     head: { ref: "mining-feel", repo: { full_name: "someone/OpenDwarf" } },
   },
 ];
-
 /** GitHub, stubbed: the refs advertisement and the open pull requests. Nothing here leaves the machine. */
 const stubGithub = ((input: Request | URL | string) => {
   const url = String(input);
@@ -53,19 +49,18 @@ const stubGithub = ((input: Request | URL | string) => {
       pkt(`${commit} refs/heads/${name}\n`)
     );
     return Promise.resolve(
-      new Response(
-        encoder.encode(
-          pkt("# service=git-upload-pack\n") + "0000" +
-            pkt(`${BRAVO} HEAD\0multi_ack\n`) +
-            lines.join("") + "0000",
-        ),
-      ),
+      new Response(encoder.encode(
+        pkt("# service=git-upload-pack\n") + "0000" +
+          pkt(`${BRAVO} HEAD\0multi_ack\n`) +
+          lines.join("") + "0000",
+      )),
     );
   }
-  if (url.includes("/pulls?")) return Promise.resolve(Response.json(PULLS));
+  if (url.includes("/pulls?")) {
+    return Promise.resolve(Response.json(PULLS));
+  }
   return Promise.resolve(new Response("{}", { status: 404 }));
 }) as typeof fetch;
-
 const seeded = Deno.args.includes("--seed");
 const store = createMemoryStore();
 if (seeded) {

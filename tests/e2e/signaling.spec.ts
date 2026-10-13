@@ -1,14 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { openWorld, readWorld } from "./world.ts";
+import { expect, test } from "./fixtures.ts";
 import { evidenceShot } from "./evidence.ts";
 import { ready } from "./ui.ts";
-
-type Game = {
-  __od: {
-    scene: { sessionId: string; localId: string; world: { players: object } };
-    dropSignaling?: () => void;
-  };
-};
-
 test(
   "a host and a guest join through the relay",
   { tag: "@smoke" },
@@ -19,23 +12,24 @@ test(
     const sockets: string[] = [];
     guest.on("websocket", (socket) => sockets.push(socket.url()));
     try {
-      await host.goto("/?harness=1");
+      await openWorld(host, "/?harness=1");
       await ready(host);
-      const session = await host.evaluate(() =>
-        (globalThis as unknown as Game).__od.scene.sessionId
+      const session = await readWorld(
+        host,
+        (__world) => __world.scene.sessionId,
       );
-      await guest.goto(`/join/${session}?harness=1`);
+      await openWorld(guest, `/join/${session}?harness=1`);
       // The corner NPC is also a player, so wait for the guest's own entity.
       await expect.poll(() =>
-        guest.evaluate(() => {
-          const { scene } = (globalThis as unknown as Game).__od;
+        readWorld(guest, (__world) => {
+          const { scene } = __world;
           return scene.localId.startsWith("peer-") &&
             scene.localId in scene.world.players;
         })
       ).toBe(true);
       await expect.poll(() =>
-        host.evaluate(() => {
-          const { scene } = (globalThis as unknown as Game).__od;
+        readWorld(host, (__world) => {
+          const { scene } = __world;
           return Object.keys(scene.world.players).some((id) =>
             id.startsWith("peer-")
           );

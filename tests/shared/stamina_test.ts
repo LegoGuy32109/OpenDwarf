@@ -6,12 +6,8 @@ import {
   SPRINT_SECONDS,
   stepStamina,
 } from "../../src/shared/stamina.js";
-import {
-  addPlayer,
-  advanceTicks,
-  createWorld,
-  TICK_MS,
-} from "../../src/shared/world.js";
+import { addPlayer, advanceTicks, TICK_MS } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import { OPEN, STONE, writeTile } from "../../src/shared/terrain.js";
 import {
   enableLocomotion,

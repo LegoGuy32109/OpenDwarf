@@ -12,13 +12,13 @@ import { decodeChat } from "../../src/shared/wire.js";
 import {
   addPlayer,
   bubbleTicks,
-  createWorld,
   MAX_BUBBLES,
   MAX_QUEUED,
   speechTicks,
   submitMessage,
   TICK_MS,
 } from "../../src/shared/world.js";
+import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 const LONG = "Found some iron beneath the mountain, come and see it";
 
