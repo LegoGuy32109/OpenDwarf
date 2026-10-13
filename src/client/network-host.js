@@ -3,33 +3,12 @@
 // The host side of a session: it owns the world, validates every guest action,
 // and sends each guest its view.
 
-import {
-  addPlayer,
-  isSolid,
-  removePlayer,
-  setNickname,
-  setTyping,
-  submitMessage,
-} from "../shared/world.js";
+import { addPlayer, isSolid, removePlayer } from "../shared/world.js";
 import { build } from "./build.js";
 import { acceptMoveIntent } from "../shared/protocol.js";
-import {
-  droppedEntries,
-  droppedItems,
-  inventoryOf,
-  pickUp,
-  pickupLine,
-} from "../shared/items.js";
-import { setHeldItem } from "../shared/held-item.js";
+import { droppedEntries, droppedItems, inventoryOf } from "../shared/items.js";
 import { sellItems } from "../shared/shop.js";
-import {
-  cancelMining,
-  heldItem,
-  miningEntries,
-  startMining,
-  stepMining,
-} from "../shared/mining.js";
-import { placeStone, reservedTiles } from "../shared/placing.js";
+import { heldItem, miningEntries, stepMining } from "../shared/mining.js";
 import { chunkCoord, drainTileChanges } from "../shared/terrain.js";
 import {
   createPendingReveal,
@@ -78,6 +57,7 @@ import {
   selectedRoute,
   ticket,
 } from "./network-common.js";
+import { hostMessages } from "./host-messages.js";
 
 /** @typedef {import('./network-common.js').Scene} Scene */
 /** @typedef {import('./network-common.js').Signal} Signal */
@@ -353,150 +333,62 @@ export function startHost(scene, session, sounds = {}) {
       }
     }
 
+    /** @type {import('./host-messages.js').HostPeer} */
+    const hostPeer = {
+      scene,
+      playerId,
+      get lastSequence() {
+        return lastSequence;
+      },
+      get mode() {
+        return mode;
+      },
+      sees: () => sees(),
+      tell,
+      announce,
+      sellAt,
+      reply(message) {
+        if (channel?.readyState === "open") {
+          channel.send(JSON.stringify(message));
+        }
+      },
+      channel: () => channel,
+      resync() {
+        resendTerrain();
+        publishToPeer();
+      },
+      setInput(dx, dy, sequence, sprint) {
+        lastSequence = sequence;
+        direction = { x: dx, y: dy };
+        setSprint(stamina, sprint);
+      },
+      queueMove(move) {
+        pendingMoves.splice(0, pendingMoves.length, move);
+        drainMoves();
+      },
+      cancelMoves(sequence) {
+        pendingMoves.length = 0;
+        lastSequence = sequence;
+        publish();
+      },
+      setMode(next) {
+        mode = next;
+        resendTerrain();
+        viewRevision++;
+        sightRevision = 0;
+        lastSight = "";
+      },
+      publishToPeer,
+    };
+
     /** @param {Record<string,unknown>} message */
     function handleMessage(message) {
       lastSeen = performance.now();
       if (!scene.world.players[playerId]) return;
-      if (message.type === "resync") {
-        // A rejected packet may have held a reveal; send the whole copy again.
-        resendTerrain();
-        publishToPeer();
-        return;
-      }
-      if (message.type === "ping") {
-        if (channel?.readyState === "open") {
-          channel.send(JSON.stringify({ type: "pong", id: message.id }));
-        }
-        return;
-      }
-      if (message.type === "input") {
-        const dx = Number(message.dx);
-        const dy = Number(message.dy);
-        const incomingSequence = Number(message.sequence);
-        if (
-          Number.isSafeInteger(incomingSequence) &&
-          incomingSequence >= lastSequence &&
-          Number.isInteger(dx) && Number.isInteger(dy) &&
-          Math.abs(dx) <= 1 && Math.abs(dy) <= 1
-        ) {
-          lastSequence = incomingSequence;
-          direction = { x: dx, y: dy };
-          setSprint(stamina, message.sprint === true);
-        }
-        return;
-      }
-      if (message.type === "mine") {
-        const result = startMining(scene.world, playerId, {
-          x: Number(message.x),
-          y: Number(message.y),
-          z: Number(message.z),
-        }, sees());
-        if (!result.ok && channel?.readyState === "open") {
-          channel.send(
-            JSON.stringify({ type: "mine-result", reason: result.reason }),
-          );
-        }
-        return;
-      }
-      if (message.type === "place") {
-        const result = placeStone(
-          scene.world,
-          playerId,
-          {
-            x: Number(message.x),
-            y: Number(message.y),
-            z: Number(message.z),
-          },
-          reservedTiles(scene.layout),
-          sees(),
-        );
-        if (!result.ok && channel?.readyState === "open") {
-          channel.send(
-            JSON.stringify({ type: "place-result", reason: result.reason }),
-          );
-        }
-        return;
-      }
-      if (message.type === "mine-cancel") {
-        cancelMining(scene.world, playerId);
-        return;
-      }
-      if (message.type === "hold") {
-        // The host checks the inventory; a refused choice changes nothing.
-        setHeldItem(scene.world, playerId, String(message.kind));
-        return;
-      }
-      if (message.type === "pickup") {
-        const result = pickUp(scene.world, playerId, {
-          x: Number(message.x),
-          y: Number(message.y),
-          z: Number(message.z),
-        }, message.kind);
-        if (result.ok) tell(playerId, pickupLine(result.kind, result.count));
-        else if (channel?.readyState === "open") {
-          channel.send(
-            JSON.stringify({ type: "pickup-result", reason: result.reason }),
-          );
-        }
-        return;
-      }
-      if (message.type === "sell") {
-        const result = sellAt(playerId, message);
-        if (result.ok) tell(playerId, result.line);
-        else if (channel?.readyState === "open") {
-          channel.send(
-            JSON.stringify({ type: "sell-result", reason: result.reason }),
-          );
-        }
-        return;
-      }
-      if (message.type === "move") {
-        // Only the latest direction is useful while a previous step is finishing.
-        // A queued step must not run after the visitor has turned elsewhere.
-        pendingMoves.splice(0, pendingMoves.length, {
-          dx: Number(message.dx),
-          dy: Number(message.dy),
-          sequence: Number(message.sequence),
-        });
-        drainMoves();
-        return;
-      }
-      if (message.type === "cancel") {
-        const sequence = Number(message.sequence);
-        if (Number.isSafeInteger(sequence) && sequence >= lastSequence) {
-          pendingMoves.length = 0;
-          lastSequence = sequence;
-          publish();
-        }
-        return;
-      }
-      if (message.type === "mode") {
-        if (message.mode === "entity" || message.mode === "master") {
-          if (mode !== message.mode) {
-            mode = message.mode;
-            resendTerrain();
-            viewRevision++;
-            sightRevision = 0;
-            lastSight = "";
-          }
-          publishToPeer();
-        }
-        return;
-      }
-      if (message.type === "typing") {
-        setTyping(scene.world, playerId, message.typing === true);
-      }
-      if (message.type === "message") {
-        submitMessage(scene.world, playerId, String(message.text));
-      }
-      if (message.type === "nick") {
-        const before = scene.world.players[playerId]?.name ?? "";
-        const result = setNickname(scene.world, playerId, String(message.name));
-        if (result.ok && result.name !== before) {
-          announce(`${before || "A visitor"} is now ${result.name}`);
-        }
-        channel?.send(JSON.stringify({ type: "nick-result", result }));
-      }
+      const handler = typeof message.type === "string"
+        ? hostMessages.get(message.type)
+        : undefined;
+      if (handler?.(hostPeer, message)) return;
       publish();
     }
 
