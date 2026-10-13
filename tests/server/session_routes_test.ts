@@ -192,8 +192,9 @@ Deno.test("only the host's key ends a session or renews its token", async () => 
     "/api/v1/sessions/session-key/join",
     json({ peer: `peer-${crypto.randomUUID()}` }),
   );
-  assertEquals(late.status, 404);
-  await late.body?.cancel();
+  // An ended session is gone (410) and says why, so a guest stops retrying.
+  assertEquals(late.status, 410);
+  assertEquals(await late.json(), { error: "session ended" });
 });
 
 Deno.test("a session id that is taken cannot be started again without its key", async () => {

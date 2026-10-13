@@ -63,6 +63,30 @@ Deno.test("half-tile footprints share a tile but block when boxes touch", () => 
   assert(first.x <= 6.802);
 });
 
+Deno.test("entities that already overlap can walk apart but not closer", () => {
+  // A guest can join on a tile the corner NPC is walking into (e2e
+  // chunked-terrain); before, each blocked the other for good.
+  const world = createAuthoredWorld();
+  const guest = enableLocomotion(addPlayer(world, "guest", {
+    x: 3,
+    y: 3,
+    z: 0,
+  }));
+  const npc = enableLocomotion(
+    addPlayer(world, "npc", { x: 2.95, y: 2.82, z: 0 }),
+  );
+  for (let i = 0; i < 4; i++) {
+    advanceTicks(world);
+    moveEntity(world, "npc", 1, 1);
+  }
+  assertEquals({ x: npc.x, y: npc.y }, { x: 2.95, y: 2.82 });
+  for (let i = 0; i < 10; i++) {
+    advanceTicks(world);
+    moveEntity(world, "guest", 1, 0);
+  }
+  assert(guest.x > 3.3, `guest stayed at ${guest.x}`);
+});
+
 Deno.test("a raised face commits a step to the near edge and changes z at 75 percent", () => {
   const world = createAuthoredWorld();
   const player = enableLocomotion(addPlayer(world, "self", {

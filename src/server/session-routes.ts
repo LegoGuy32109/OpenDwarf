@@ -284,7 +284,7 @@ export function createSessionRoutes(options: SessionRoutesOptions = {}) {
           console.error("Could not read the session", error);
         }
         if (session && session.ended !== null) {
-          return json({ error: "session ended" }, 404);
+          return json({ error: "session ended" }, 410);
         }
         // The guest compares this build with its own and goes to the host's build when they differ.
         return credentials(

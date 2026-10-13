@@ -461,8 +461,9 @@ export function joinWorld(scene, session) {
       scene.mineFeed = undefined;
       scene.itemFeed = scene.inventoryFeed = scene.heldFeed = undefined;
       scene.chatFeed = [];
-      scene.status = "Visitor left. World ended.";
-      connected = false;
+      // The host deleted the session: stop the retries and the watchdog's
+      // rejoin, which would otherwise replace this status.
+      endWithError("Visitor left. World ended.");
       return;
     }
     if (message.kind === "incompatible") {
@@ -554,6 +555,16 @@ export function joinWorld(scene, session) {
     credentials: async () => {
       const result = await ticket(`sessions/${session}/join`, {
         peer: playerId,
+      }).catch((error) => {
+        // The host's leave signal can lose the race with the session's end, so
+        // the shell refusing a join because the session ended ends it too.
+        if (
+          /** @type {{reason?:string}} */ (error).reason === "session ended"
+        ) {
+          endWithError("Visitor left. World ended.");
+          signaling.close();
+        }
+        throw error;
       });
       // The host runs another build: join on that one, so both run the same client.
       const target = build.joinRedirect(

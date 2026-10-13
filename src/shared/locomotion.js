@@ -52,11 +52,24 @@ function overlaps(other, mover, x, y, z) {
     Math.abs(x - other.x) < reach && Math.abs(y - other.y) < reach;
 }
 
+/**
+ * Whether `mover`, already overlapping `other`, steps further from it, so two
+ * entities that overlap (a join onto an occupied tile) can walk apart.
+ * @param {Player} other @param {Player} mover @param {number} x @param {number} y
+ */
+function separating(other, mover, x, y) {
+  return overlaps(other, mover, mover.x, mover.y, mover.z) &&
+    Math.hypot(x - other.x, y - other.y) >
+      Math.hypot(mover.x - other.x, mover.y - other.y);
+}
+
 /** @param {World} world @param {Player} player @param {number} x @param {number} y @param {number} z */
 function entityBlocked(world, player, x, y, z) {
   return Object.values(world.players).some((other) => {
     if (other.id === player.id) return false;
-    if (overlaps(other, player, x, y, z)) return true;
+    if (
+      overlaps(other, player, x, y, z) && !separating(other, player, x, y)
+    ) return true;
     const origin = other.move?.origin;
     if (
       origin && z === origin.z &&

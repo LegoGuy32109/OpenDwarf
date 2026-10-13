@@ -44,6 +44,7 @@ export function deliver(receive, replaceable = false) {
 
 /**
  * Ask the shell for a credentials ticket: a signaling address with a fresh token.
+ * A refusal throws an Error whose `reason` is the shell's error text.
  * @param {string} path @param {Record<string,unknown>} body
  * @returns {Promise<{signalUrl:string,channel:string,hostKey?:string,build?:unknown}>}
  */
@@ -54,7 +55,13 @@ export async function ticket(path, body) {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`Signaling unavailable: ${response.status}`);
+    // The shell names why it refused, such as "session ended".
+    const reason = await response.json().then(
+      (value) => typeof value?.error === "string" ? value.error : "",
+      () => "",
+    );
+    const error = new Error(`Signaling unavailable: ${response.status}`);
+    throw Object.assign(error, { reason });
   }
   return await response.json();
 }
