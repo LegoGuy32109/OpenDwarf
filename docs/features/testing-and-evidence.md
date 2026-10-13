@@ -14,6 +14,28 @@ host, two joining tabs, and each tab's view of remote movement on this machine.
 The shared tests also replay delayed and reordered snapshots with a fixed
 schedule. A system Chromium installation is used locally when present.
 
+## Tests for a diff
+
+```sh
+deno task test:changed [--base main] [--e2e] [--list]
+```
+
+The task takes the files changed from the merge base with `--base` (default
+`main`) to the working tree, including untracked files. For each one,
+`fallow inspect --file` lists every file that imports it, directly or not. The
+task runs the unit tests in that set and any changed test. A doc change runs
+nothing, and a change to `deno.json`, `deno.lock` or `playwright.config.ts` runs
+everything.
+
+A browser spec imports almost nothing from `src/`, so the import graph cannot
+choose specs for client and shared code. `tests/e2e/impact.json` maps source
+prefixes to specs. A changed file under `src/client/`, `src/shared/` or
+`public/` with no matching rule runs every spec, so add a rule when a feature
+gains its own spec. Server changes reach specs through `seed-shell.ts`, which
+the graph follows. `--e2e` runs the chosen specs, and `--list` prints the choice
+without running anything. `deno task verify` and the pre-push hook still run
+every unit test.
+
 ## Group stress run
 
 For current continuous movement, start a dedicated local server and run:
