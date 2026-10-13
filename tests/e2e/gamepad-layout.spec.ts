@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { waitFrames } from "./time.ts";
 import { hasUi, ready, shopOpen } from "./ui.ts";
 
 type Pad = { axes: number[]; buttons: { pressed: boolean }[] };
@@ -10,6 +11,7 @@ type Harness = {
       localId: string;
       zoomTarget: number;
       menu: boolean;
+      aim: { x: number; y: number };
       mining: unknown[];
       world: { players: Record<string, Record<string, number>> };
     };
@@ -39,12 +41,22 @@ async function fakePad(page: Page) {
   });
 }
 
-/** Hold a button for a moment, then release it. */
+/** Hold a button for a few frames, then release it, so the frame loop reads both edges. */
+/**
+ * Press a button for exactly one drawn frame, then let it go. A held D-pad
+ * repeats after a real-time delay, so a longer hold can count twice on a slow
+ * machine.
+ */
 async function tap(page: Page, button: number) {
-  await hold(page, button, true);
-  await page.waitForTimeout(250);
-  await hold(page, button, false);
-  await page.waitForTimeout(250);
+  await page.evaluate((b) =>
+    new Promise<void>((resolve) => {
+      const pad = (globalThis as unknown as { __pad: Pad }).__pad;
+      pad.buttons[b].pressed = true;
+      requestAnimationFrame(() => {
+        pad.buttons[b].pressed = false;
+        requestAnimationFrame(() => resolve());
+      });
+    }), button);
 }
 
 const hold = (page: Page, button: number, pressed: boolean) =>
@@ -69,7 +81,6 @@ const placeAt = (page: Page, x: number, y: number) =>
   }, [x, y]);
 
 test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async ({ page }) => {
-  test.setTimeout(60_000);
   await fakePad(page);
   await page.goto("/?harness=1&gamepad-debug=1");
   await ready(page);
@@ -79,7 +90,10 @@ test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async 
   await page.evaluate(() => {
     (globalThis as unknown as { __pad: Pad }).__pad.axes[3] = -1;
   });
-  await page.waitForTimeout(300);
+  await expect.poll(() => scene(page, (s) => ({ ...s.aim }))).toEqual({
+    x: 0,
+    y: -1,
+  });
   // B is not interact.
   await tap(page, B);
   expect(await scene(page, (s) => s.mining.length)).toBe(0);
@@ -116,7 +130,7 @@ test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async 
   await evidenceShot(page, "gamepad-bag-open");
   const inBag = await zoom();
   await hold(page, A, true);
-  await page.waitForTimeout(400);
+  await waitFrames(page, 10);
   await hold(page, A, false);
   expect(await zoom()).toBe(inBag);
   await tap(page, Y);
@@ -132,13 +146,12 @@ test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async 
 });
 
 test("X closes the shop, and B does not", async ({ page }) => {
-  test.setTimeout(60_000);
   await fakePad(page);
   await page.goto("/?harness=1&layout=room&gamepad-debug=1");
   await ready(page);
   await page.locator("#world").click();
   await placeAt(page, 16, 12);
-  await page.waitForTimeout(400);
+  await waitFrames(page, 3);
   await tap(page, ZR);
   await expect.poll(() => shopOpen(page)).toBe(true);
   await evidenceShot(page, "gamepad-shop-open");

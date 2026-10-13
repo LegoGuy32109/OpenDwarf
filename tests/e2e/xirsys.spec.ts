@@ -41,7 +41,8 @@ test("a host and a guest connect through real Xirsys", async ({ browser }) => {
         }).__od;
         return scene.localId.startsWith("peer-") &&
           scene.localId in scene.world.players;
-      }), { timeout: 30_000 }).toBe(true);
+      })
+    ).toBe(true);
     expect(sockets[0]).toContain("xirsys");
   } finally {
     await Promise.all([host.close(), guest.close()]);

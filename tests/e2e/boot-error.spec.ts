@@ -2,14 +2,20 @@ import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { ready } from "./ui.ts";
 
-test("a normal start marks the page booted and keeps the boot-error screen hidden", async ({ page }) => {
-  await page.goto("/");
-  await ready(page);
-  await expect(page.locator("html")).toHaveAttribute("data-booted", "true");
-  await expect(page.locator("#boot-error")).toBeHidden();
-});
+test(
+  "a normal start marks the page booted and keeps the boot-error screen hidden",
+  { tag: "@smoke" },
+  async ({ page }) => {
+    await page.goto("/");
+    await ready(page);
+    await expect(page.locator("html")).toHaveAttribute("data-booted", "true");
+    await expect(page.locator("#boot-error")).toBeHidden();
+  },
+);
 
-test("a module that does not parse shows its error instead of a blank page", async ({ page }) => {
+test("a module that does not parse shows its error instead of a blank page", {
+  tag: "@smoke",
+}, async ({ page }) => {
   await page.route("**/src/shared/speech.js", (route) =>
     route.fulfill({
       contentType: "text/javascript",
@@ -24,14 +30,18 @@ test("a module that does not parse shows its error instead of a blank page", asy
   await evidenceShot(page, "boot-error-syntax");
 });
 
-test("a module that cannot load shows which script failed", async ({ page }) => {
-  await page.route("**/js/app.js", (route) => route.fulfill({ status: 404 }));
-  await page.goto("/");
-  const panel = page.locator("#boot-error");
-  await expect(panel).toBeVisible();
-  await expect(panel).toContainText("Could not load");
-  await expect(panel).toContainText("app.js");
-});
+test(
+  "a module that cannot load shows which script failed",
+  { tag: "@smoke" },
+  async ({ page }) => {
+    await page.route("**/js/app.js", (route) => route.fulfill({ status: 404 }));
+    await page.goto("/");
+    const panel = page.locator("#boot-error");
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText("Could not load");
+    await expect(panel).toContainText("app.js");
+  },
+);
 
 test("files that never arrive are listed after 15 seconds", async ({ page }) => {
   await page.clock.install();

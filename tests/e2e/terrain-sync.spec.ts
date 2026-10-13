@@ -89,7 +89,7 @@ test("a guest that explores keeps its remembered terrain, and the host reports i
     await expect.poll(() => chunkKeys(host)).toContain(`${cx + 1},${spot.cy}`);
     await place(host, false, spot.x, spot.y);
     await expect.poll(() => stands(host, false, cx)).toBe(true);
-    await expect.poll(() => chunkKeys(guest), { timeout: 15_000 }).toContain(
+    await expect.poll(() => chunkKeys(guest)).toContain(
       `${cx},${spot.cy}`,
     );
   }

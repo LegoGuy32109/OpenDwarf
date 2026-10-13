@@ -12,8 +12,8 @@ concurrency:
   group: e2e-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
-  # Four runners split the specs. Each keeps one worker, since the specs that
-  # count frames or time a walk fail under load.
+  # Four runners split the specs, one worker each: the specs draw in software
+  # WebGL, so each runner keeps its CPU for one browser.
   browser-shard:
     if: >-
       github.event_name != 'pull_request' ||

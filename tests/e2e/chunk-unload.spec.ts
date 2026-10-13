@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { ready } from "./ui.ts";
+import { ready, uiState } from "./ui.ts";
 
 type Harness = {
   __od: {
@@ -40,6 +40,13 @@ const hasChunk = (page: Page, key: string) =>
     key,
   );
 
+/** Wait until the F3 panel, which refreshes once a second, shows the loaded chunk count. */
+const panelShowsChunks = async (page: Page) => {
+  await expect.poll(async () =>
+    (await uiState(page)).diagnostics.includes(`Chunks ${await loaded(page)} `)
+  ).toBe(true);
+};
+
 /** Place the host's own player on a tile, as if it had walked there. */
 const placeHost = (page: Page, x: number, y: number) =>
   page.evaluate(([x, y]) => {
@@ -78,16 +85,15 @@ test("a host that walks away unloads the far chunks and finds its tunnel when it
   await expect.poll(() => hasChunk(page, "15,15")).toBe(true);
   const crowded = await loaded(page);
   expect(crowded).toBeGreaterThan(9);
-  // The panel text refreshes once a second; the grace period is longer.
-  await page.waitForTimeout(1300);
+  await panelShowsChunks(page);
   await evidenceShot(page, "chunk-unload-before");
   // Every chunk around the tunnel unloads. The corner NPC keeps the 3×3
   // around the origin loaded, and the host keeps the 3×3 around itself.
-  await expect.poll(() => loaded(page), { timeout: 15_000 }).toBe(18);
+  await expect.poll(() => loaded(page)).toBe(18);
   expect(await hasChunk(page, "5,5")).toBe(false);
   // The authored chunk stays.
   expect(await hasChunk(page, "0,0")).toBe(true);
-  await page.waitForTimeout(1300);
+  await panelShowsChunks(page);
   await evidenceShot(page, "chunk-unload-after");
 
   await placeHost(page, 8.5 + 16 * 5, 8.5 + 16 * 5);
@@ -101,6 +107,6 @@ test("a host that walks away unloads the far chunks and finds its tunnel when it
       )
     )
   ).toBe(true);
-  await page.waitForTimeout(1300);
+  await panelShowsChunks(page);
   await evidenceShot(page, "chunk-unload-returned");
 });

@@ -1,47 +1,52 @@
 import { expect, type Page, test } from "@playwright/test";
+import { holdTicks, waitFor, waitTicks } from "./time.ts";
 import { clickUi, ready, say } from "./ui.ts";
 
-type Position = {
-  tick: number;
-  x: number;
-  y: number;
-  z: number;
-  time?: number;
-};
+type Position = { tick: number; x: number; y: number; z: number };
 
-async function visualTrace(page: Page, ids: string[], durationMs: number) {
+/** Sample each id's drawn position once per frame for `ticks` world ticks. */
+async function visualTrace(page: Page, ids: string[], ticks: number) {
   return await page.evaluate(
-    ({ ids, durationMs }) =>
+    ({ ids, ticks }) =>
       new Promise<Record<string, Position[]>>((resolve) => {
         const traces: Record<string, Position[]> = Object.fromEntries(
           ids.map((id) => [id, []]),
         );
         const game = (globalThis as unknown as {
-          __od: { visualPosition: (id: string) => Position | null };
+          __od: {
+            visualPosition: (id: string) => Position | null;
+            scene: { world: { tick: number } };
+          };
         }).__od;
-        const until = performance.now() + durationMs;
+        const until = game.scene.world.tick + ticks;
         const sample = () => {
           for (const id of ids) {
             const position = game.visualPosition(id);
-            if (position) {
-              traces[id].push({ ...position, time: performance.now() });
-            }
+            if (position) traces[id].push(position);
           }
-          if (performance.now() < until) requestAnimationFrame(sample);
+          if (game.scene.world.tick < until) requestAnimationFrame(sample);
           else resolve(traces);
         };
         requestAnimationFrame(sample);
       }),
-    { ids, durationMs },
+    { ids, ticks },
   );
 }
 
+/** The most a drawn entity may cover in one tick: 4.5 tiles a second, over twice a sprint, so a smoothing catch-up passes and a snap does not. */
+const MAX_TILES_PER_TICK = 0.225;
+
+/**
+ * Every drawn step stays within walking speed for the ticks between samples, so
+ * nothing jumps, and the entity travels. Sparse frames on a slow machine only
+ * widen the allowance; they do not fail the check.
+ */
 function expectContinuous(
   label: string,
   points: Position[],
   minTravel: number,
 ) {
-  expect(points.length, `${label} needs rendered samples`).toBeGreaterThan(15);
+  expect(points.length, `${label} needs rendered samples`).toBeGreaterThan(4);
   let travel = 0;
   for (let i = 1; i < points.length; i++) {
     const previous = points[i - 1];
@@ -51,14 +56,14 @@ function expectContinuous(
       current.y - previous.y,
       current.z - previous.z,
     );
-    const elapsed = Math.max(1, (current.time ?? 0) - (previous.time ?? 0));
+    const ticks = Math.max(0.02, current.tick - previous.tick);
     expect(
       distance,
       `${label} jumped from ${JSON.stringify(previous)} to ${
         JSON.stringify(current)
       }`,
     )
-      .toBeLessThanOrEqual(elapsed * 0.0045 + 0.02);
+      .toBeLessThanOrEqual(ticks * MAX_TILES_PER_TICK + 0.02);
     travel += distance;
   }
   expect(travel, `${label} did not move`).toBeGreaterThan(minTravel);
@@ -85,7 +90,6 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
             .__od
             .scene.localId
         ),
-      { timeout: 15_000 },
     ).toMatch(/^peer-/);
   }
   const firstId = await first.evaluate(() =>
@@ -112,9 +116,9 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
   }
 
   const traces = Promise.all([
-    visualTrace(host, [firstId, secondId, "npc-corner"], 1800),
-    visualTrace(first, ["self", secondId, "npc-corner"], 1800),
-    visualTrace(second, ["self", firstId, "npc-corner"], 1800),
+    visualTrace(host, [firstId, secondId, "npc-corner"], 36),
+    visualTrace(first, ["self", secondId, "npc-corner"], 36),
+    visualTrace(second, ["self", firstId, "npc-corner"], 36),
   ]);
   await Promise.all([
     host.keyboard.down("s"),
@@ -151,7 +155,6 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
             __od: { scene: { world: { players: Record<string, unknown> } } };
           }).__od.scene.world.players[id],
         ), secondId),
-    { timeout: 8_000 },
   )
     .toBe(false);
   const before = await host.evaluate((id) =>
@@ -232,7 +235,7 @@ test("held and reversed guest movement converges in host and two joining tabs", 
   await second.keyboard.down("e");
   let largestSeparation = 0;
   for (let sample = 0; sample < 20; sample++) {
-    await first.waitForTimeout(110);
+    await waitTicks(first, 2);
     const [authoritative, local] = await Promise.all([
       positions(host),
       positions(first),
@@ -249,12 +252,11 @@ test("held and reversed guest movement converges in host and two joining tabs", 
     }
   }
   await first.keyboard.up("e");
-  await first.keyboard.down("d");
-  await first.waitForTimeout(650);
-  await first.keyboard.up("d");
+  await holdTicks(first, "d", 13);
   await second.keyboard.up("e");
   expect(largestSeparation).toBeLessThanOrEqual(1.5);
-  await expect.poll(async () => {
+  // Every tab settles on the host's resting positions.
+  await waitFor(host, async () => {
     const [authoritative, local, observer] = await Promise.all([
       positions(host),
       positions(first),
@@ -270,7 +272,7 @@ test("held and reversed guest movement converges in host and two joining tabs", 
       position.y === observer[index]?.y &&
       position.z === observer[index]?.z
     );
-  }, { timeout: 8000 }).toBe(true);
+  }, { message: "host, mover and observer agreeing on resting positions" });
   const final = await positions(host);
   expect(final[0]?.y).not.toBe(initial[0]?.y);
   expect(final[1]?.y).not.toBe(initial[1]?.y);
@@ -299,7 +301,7 @@ async function driveTo(
   const initial = await position();
   await page.keyboard.down(key);
   try {
-    await expect.poll(position, { timeout: 4000, intervals: [30] })
+    await expect.poll(position, { intervals: [30] })
       [target > initial ? "toBeGreaterThanOrEqual" : "toBeLessThanOrEqual"](
         target > initial ? target - 0.12 : target + 0.12,
       );
@@ -368,7 +370,7 @@ test("a guest circles the pillar without leaving a remote sprite behind", async 
       !predicted.moving &&
       Math.hypot(authoritative.x - predicted.x, authoritative.y - predicted.y) <
         0.4;
-  }, { timeout: 5000 }).toBe(true);
+  }).toBe(true);
   const final = await atRest(host);
   expect(final?.x).toBeGreaterThan(7.65);
   expect(final?.x).toBeLessThan(8.35);
@@ -443,14 +445,15 @@ test("a guest sees the host move and fade behind the pillar", async ({ browser }
       const game = (globalThis as unknown as {
         __od: {
           visualSample: (id: string) => { y: number; opacity: number } | null;
+          scene: { world: { tick: number } };
         };
       }).__od;
       const points: Array<{ y: number; opacity: number }> = [];
-      const until = performance.now() + 1200;
+      const until = game.scene.world.tick + 24;
       const sample = () => {
         const point = game.visualSample("self");
         if (point) points.push({ y: point.y, opacity: point.opacity });
-        if (performance.now() < until) requestAnimationFrame(sample);
+        if (game.scene.world.tick < until) requestAnimationFrame(sample);
         else resolve(points);
       };
       requestAnimationFrame(sample);

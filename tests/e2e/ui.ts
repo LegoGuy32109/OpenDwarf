@@ -31,10 +31,8 @@ type UiHook = {
 };
 
 /** Wait until the game has loaded its textures and can draw the world. */
-export async function ready(page: Page, timeout = 15_000) {
-  await expect(page.locator("#world")).toHaveAttribute("data-ready", "true", {
-    timeout,
-  });
+export async function ready(page: Page) {
+  await expect(page.locator("#world")).toHaveAttribute("data-ready", "true");
 }
 
 /** The rectangle of a UI element. It waits for the element to exist. */
@@ -45,7 +43,7 @@ export async function uiRect(page: Page, id: string): Promise<UiRect> {
         (id) => (globalThis as unknown as UiHook).__od.ui.rect(id),
         id,
       ),
-    { message: `UI element ${id}`, timeout: 15_000 },
+    { message: `UI element ${id}` },
   ).not.toBeNull();
   return (await page.evaluate(
     (id) => (globalThis as unknown as UiHook).__od.ui.rect(id),

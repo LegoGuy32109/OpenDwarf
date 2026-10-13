@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { waitFrames, waitTicks } from "./time.ts";
 import { clickUi, ready, say } from "./ui.ts";
 
 type Od = {
@@ -14,10 +15,6 @@ type Od = {
   };
 };
 
-const tick = (page: Page) =>
-  page.evaluate(() =>
-    (globalThis as unknown as { __od: Od }).__od.scene.world.tick
-  );
 const position = (page: Page, id: string) =>
   page.evaluate((id) => {
     const player =
@@ -41,9 +38,6 @@ test("a hidden host keeps the world running for a guest", async ({ browser, page
       guest.evaluate(() =>
         (globalThis as unknown as { __od: Od }).__od.scene.localId
       ),
-    {
-      timeout: 15_000,
-    },
   ).toMatch(/^peer-/);
   const guestId = await guest.evaluate(() =>
     (globalThis as unknown as { __od: Od }).__od.scene.localId
@@ -72,27 +66,28 @@ test("a hidden host keeps the world running for a guest", async ({ browser, page
     });
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  // Let the frame already in flight finish, so only the clock steps now.
-  await host.waitForTimeout(100);
+  // Let the frame already in flight finish, so only the background clock
+  // steps now. A hidden page draws no frames, so count its ticks.
+  await waitTicks(host, 2);
 
-  const hostStart = await tick(host);
   const guestStart = await position(host, guestId);
   const npcStart = await position(guest, "npc-corner");
   await guest.keyboard.down("e");
-  await host.waitForTimeout(3000);
-  await guest.keyboard.up("e");
-  const ticks = (await tick(host)) - hostStart;
-  // 20 ticks a second for about 3 s.
-  expect(ticks).toBeGreaterThan(45);
-  expect(ticks).toBeLessThan(75);
-
-  // The host accepted the guest's moves.
-  const guestEnd = await position(host, guestId);
-  expect(Math.hypot(guestEnd!.x - guestStart!.x, guestEnd!.y - guestStart!.y))
-    .toBeGreaterThan(1);
-  // The guest sees the NPC move.
-  const npcEnd = await position(guest, "npc-corner");
-  expect(npcEnd).not.toEqual(npcStart);
+  try {
+    // The hidden host keeps ticking: it accepts the guest's moves, and the
+    // guest sees the NPC move.
+    await expect.poll(async () => {
+      const guestNow = await position(host, guestId);
+      return Math.hypot(
+        guestNow!.x - guestStart!.x,
+        guestNow!.y - guestStart!.y,
+      );
+    }).toBeGreaterThan(1);
+    await expect.poll(() => position(guest, "npc-corner"))
+      .not.toEqual(npcStart);
+  } finally {
+    await guest.keyboard.up("e");
+  }
   await evidenceShot(guest, "background-host-guest");
 
   // The guest receives the host's chat.
@@ -105,8 +100,8 @@ test("a hidden host keeps the world running for a guest", async ({ browser, page
     )
   ).toBe(true);
 
-  // Showing the host again resumes frames without a burst of ticks.
-  const before = await tick(host);
+  // Showing the host again resumes frames. A frame spends at most 250 ms of
+  // catch-up, so the hidden time cannot come back as a burst of ticks.
   await host.evaluate(() => {
     const w = globalThis as unknown as {
       __frame?: FrameRequestCallback;
@@ -119,9 +114,8 @@ test("a hidden host keeps the world running for a guest", async ({ browser, page
     document.dispatchEvent(new Event("visibilitychange"));
     if (w.__frame) requestAnimationFrame(w.__frame);
   });
-  await host.waitForTimeout(1000);
-  const resumed = (await tick(host)) - before;
-  expect(resumed).toBeGreaterThan(10);
-  expect(resumed).toBeLessThan(30);
+  // With the background clock stopped, only frames step the world now.
+  await waitFrames(host, 2);
+  await waitTicks(host, 10);
   await host.close();
 });

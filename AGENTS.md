@@ -14,11 +14,14 @@ TypeScript. Serve browser files without a build step. Use custom CSS and keep
 runtime dependencies small.
 
 Run `deno task verify` before pushing. The local pre-push hook can be installed
-with `deno task hooks`. `deno task e2e` is optional and takes about two minutes.
-Run it only when asked, or when a change to rendering, controls, or networking
-needs a browser check. When several worktrees run e2e at once, set a distinct
-`PORT` for each, such as `PORT=8112 deno task e2e`, because Playwright reuses
-any server already on its port.
+with `deno task hooks`. Browser specs are optional: `deno task e2e:smoke` runs
+the smoke tier in about a minute, and `deno task e2e <spec>` runs one spec. Run
+them when asked, or when a change to rendering, controls, or networking needs a
+browser check; the full suite runs nightly. Specs wait in world ticks, never in
+time (`docs/features/testing-and-evidence.md`), and a new or changed spec passes
+`--repeat-each=5`. When several worktrees run e2e at once, set a distinct `PORT`
+for each, such as `PORT=8112 deno task e2e`, because Playwright reuses any
+server already on its port.
 
 ## Deploy
 

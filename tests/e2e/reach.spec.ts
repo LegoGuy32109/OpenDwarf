@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { waitTicks } from "./time.ts";
 import { ready } from "./ui.ts";
 
 type Entry = { id: string; x: number; y: number; z: number; progress: number };
@@ -19,7 +20,7 @@ type Harness = {
   };
 };
 
-const DIAMOND = 8; // 4.5 s: long enough to move the cursor while it runs
+const DIAMOND = 8; // 90 ticks: long enough to move the cursor while it runs
 
 const mining = (page: Page) =>
   page.evaluate(() => (globalThis as unknown as Harness).__od.scene.mining);
@@ -60,7 +61,6 @@ const setTile = (page: Page, x: number, y: number, z: number, m: number) =>
   }, [x, y, z, m]);
 
 test("the free cursor keeps mining a tile one level down and one level up", async ({ page }) => {
-  test.setTimeout(60_000);
   await page.goto("/?harness=1");
   await ready(page);
   await carve(page);
@@ -70,20 +70,18 @@ test("the free cursor keeps mining a tile one level down and one level up", asyn
   await page.keyboard.press("KeyV");
   await expect.poll(() => viewZ(page)).toBe(0);
   await page.keyboard.down("l");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
   await expect.poll(async () => (await mining(page)).length).toBe(1);
   expect((await mining(page))[0]).toMatchObject({ x: 7, y: 6, z: 0 });
   await page.keyboard.up("l");
   // Moving the cursor away does not cancel mining.
   await page.keyboard.down("i");
-  await page.waitForTimeout(700);
+  await waitTicks(page, 14);
   await evidenceShot(page, "reach-mining-below-cursor-away");
   expect((await mining(page)).length).toBe(1);
   await page.keyboard.up("i");
   // Interact on the mined tile cancels it.
   await page.keyboard.down("l");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
   await expect.poll(async () => (await mining(page)).length).toBe(0);
   await page.keyboard.up("l");
@@ -95,20 +93,18 @@ test("the free cursor keeps mining a tile one level down and one level up", asyn
   await page.keyboard.press("KeyR");
   await expect.poll(() => viewZ(page)).toBe(2);
   await page.keyboard.down("l");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
   await expect.poll(async () => (await mining(page)).length).toBe(1);
   expect((await mining(page))[0]).toMatchObject({ x: 7, y: 6, z: 2 });
   await page.keyboard.up("l");
   await page.keyboard.down("k");
-  await page.waitForTimeout(500);
+  await waitTicks(page, 10);
   expect((await mining(page)).length).toBe(1);
   await evidenceShot(page, "reach-mining-above");
   await page.keyboard.up("k");
 });
 
 test("a guest sees an item dropped around a corner once its floor is visible", async ({ browser }) => {
-  test.setTimeout(60_000);
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1");
@@ -124,10 +120,35 @@ test("a guest sees an item dropped around a corner once its floor is visible", a
   const guestId = await guest.evaluate(() =>
     (globalThis as unknown as Harness).__od.scene.localId
   );
-  await carve(host, guestId);
   // A pillar north of the guest: the open tiles beside it are not in sight, but
-  // the floor under them is.
-  await setTile(host, 6, 5, 1, 2);
+  // the floor under them is. It goes in with the room, before the guest moves
+  // in, so the host's first sight from the new tile already has it.
+  await host.evaluate(async (who) => {
+    const terrain = await import("/src/shared/terrain.js");
+    const scene = (globalThis as unknown as Harness).__od.scene;
+    for (let y = 3; y <= 9; y++) {
+      for (let x = 3; x <= 9; x++) {
+        terrain.writeTile(scene.world, x, y, 0, terrain.STONE);
+        terrain.writeTile(scene.world, x, y, 1, terrain.OPEN);
+        terrain.writeTile(scene.world, x, y, 2, terrain.STONE);
+      }
+    }
+    terrain.writeTile(scene.world, 6, 5, 1, terrain.STONE);
+    Object.assign(scene.world.players[who], {
+      x: 6,
+      y: 6,
+      z: 1,
+      previousX: 6,
+      previousY: 6,
+    });
+  }, guestId);
+  await expect.poll(() =>
+    guest.evaluate(() =>
+      (globalThis as unknown as {
+        __od: { scene: { visibility: { visible: Set<string> } } };
+      }).__od.scene.visibility.visible.has("6,6,1")
+    )
+  ).toBe(true);
   await host.evaluate(async () => {
     const items = await import("/src/shared/items.js");
     const scene = (globalThis as unknown as Harness).__od.scene;

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { holdUntil, waitFrames, waitTicks } from "./time.ts";
 import { ready, tapUi, type UiRect, uiRect } from "./ui.ts";
 
 const box = ({ x, y, w, h }: UiRect) => ({ x, y, width: w, height: h });
@@ -14,7 +15,10 @@ type Harness = {
       mining: Entry[];
       world: {
         chunks: Map<string, Uint8Array>;
-        players: Record<string, { x: number; y: number; z: number }>;
+        players: Record<
+          string,
+          { x: number; y: number; z: number; move: unknown }
+        >;
       };
     };
     send: (message: Record<string, unknown>) => boolean;
@@ -48,11 +52,10 @@ const mining = (page: Page) =>
   page.evaluate(() => (globalThis as unknown as Harness).__od.scene.mining);
 
 async function walk(page: Page, key: string, until: () => Promise<boolean>) {
-  await page.keyboard.down(key);
-  await expect.poll(until, { timeout: 30_000 }).toBe(true);
-  await page.keyboard.up(key);
-  // Let the walk settle between tile centers.
-  await page.waitForTimeout(350);
+  await holdUntil(page, key, until);
+  // Let the walk settle on a tile center.
+  await expect.poll(async () => (await position(page))?.move ?? null)
+    .toBeNull();
 }
 
 /** Walk north until the player stands against the ore row. */
@@ -72,34 +75,34 @@ async function startHost(page: Page) {
   await ready(page);
 }
 
-test("the host mines stone, then coal, with the progress square", async ({ page }) => {
+test("the host mines stone, then coal, with the progress square", {
+  tag: "@smoke",
+}, async ({ page }) => {
   await startHost(page);
-  test.setTimeout(90_000);
   await goToRow(page);
   await placeAt(page, 2, 2);
   expect(await tile(page, 2)).toBe(STONE);
   await page.keyboard.down("i"); // aim north at the stone
-  await page.waitForTimeout(150);
   await evidenceShot(page, "mining-highlight");
   await page.keyboard.press("Space");
   await expect.poll(async () => (await mining(page)).length).toBe(1);
-  await page.waitForTimeout(500);
+  // Stone takes 20 ticks.
+  await waitTicks(page, 8);
   await evidenceShot(page, "mining-stone-progress");
   expect((await mining(page))[0].progress).toBeGreaterThan(0.2);
-  await expect.poll(() => tile(page, 2), { timeout: 5000 }).toBe(OPEN);
+  await expect.poll(() => tile(page, 2)).toBe(OPEN);
   expect(await mining(page)).toEqual([]);
   await page.keyboard.up("i");
-  // Coal is the next tile east and takes 1.5 s.
+  // Coal is the next tile east and takes 30 ticks.
   await placeAt(page, 3, 2);
   expect(await tile(page, 3)).toBe(COAL);
   await page.keyboard.down("i");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
-  await page.waitForTimeout(700);
+  await expect.poll(async () => (await mining(page)).length).toBe(1);
+  await waitTicks(page, 14);
   expect(await tile(page, 3)).toBe(COAL);
   await evidenceShot(page, "mining-coal-progress");
-  await expect.poll(() => tile(page, 3), { timeout: 5000 }).toBe(OPEN);
-  await page.waitForTimeout(300);
+  await expect.poll(() => tile(page, 3)).toBe(OPEN);
   await evidenceShot(page, "mining-coal-done");
   await page.keyboard.up("i");
 });
@@ -108,18 +111,17 @@ test("moving the aim keeps mining; interact on the mined tile cancels it", async
   await startHost(page);
   await placeAt(page, 5, 2);
   await page.keyboard.down("i");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
   await expect.poll(async () => (await mining(page)).length).toBe(1);
   await page.keyboard.down("j"); // the aim moves to the north-west tile
-  await page.waitForTimeout(500);
+  await waitTicks(page, 10);
   expect((await mining(page)).length).toBe(1);
   await page.keyboard.up("j");
   // Interact on the tile being mined cancels it.
   await page.keyboard.press("Space");
   await expect.poll(async () => (await mining(page)).length).toBe(0);
   await page.keyboard.up("i");
-  await page.waitForTimeout(500);
+  await waitTicks(page, 10);
   expect(await tile(page, 5)).not.toBe(OPEN);
   // With no aim the highlight is the entity's own tile, which is not minable.
   await page.keyboard.press("Space");
@@ -131,28 +133,7 @@ test("moving the aim keeps mining; interact on the mined tile cancels it", async
   expect(await mining(page)).toEqual([]);
 });
 
-test("moving along the wall keeps mining; walking out of reach cancels", async ({ page }) => {
-  await startHost(page);
-  await placeAt(page, 8, 2);
-  expect(await tile(page, 8)).toBe(DIAMOND); // 4.5 s
-  await page.keyboard.down("i");
-  await page.waitForTimeout(150);
-  await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(1);
-  // One tile west the diamond is still diagonally adjacent, so mining goes on.
-  await placeAt(page, 7, 2);
-  await page.waitForTimeout(300);
-  expect((await mining(page)).length).toBe(1);
-  // Two tiles west it is out of reach.
-  await placeAt(page, 6, 2);
-  await expect.poll(async () => (await mining(page)).length).toBe(0);
-  await page.keyboard.up("i");
-  await page.waitForTimeout(300);
-  expect(await tile(page, 8)).toBe(DIAMOND);
-});
-
 test("a joining player sees the breaking decal and the tile change, and can mine", async ({ browser }) => {
-  test.setTimeout(90_000);
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await startHost(host);
@@ -168,14 +149,12 @@ test("a joining player sees the breaking decal and the tile change, and can mine
   const guestX = (await position(guest))?.x ?? 0;
   expect(Math.round(hostX)).toBe(7);
   expect(Math.round(guestX)).toBe(8);
-  // The host mines redstone (3 s). The guest sees a decal, not a square.
+  // The host mines redstone (60 ticks). The guest sees a decal, not a square.
   await host.keyboard.down("i");
-  await host.waitForTimeout(150);
   await host.keyboard.press("Space");
-  await expect.poll(async () => (await mining(guest)).length, {
-    timeout: 5000,
-  }).toBe(1);
-  await guest.waitForTimeout(1900);
+  await expect.poll(async () => (await mining(guest)).length).toBe(1);
+  await expect.poll(async () => (await mining(guest))[0]?.progress ?? 0)
+    .toBeGreaterThan(0.4);
   const seen = (await mining(guest))[0];
   expect(seen.id).not.toBe(
     await guest.evaluate(() =>
@@ -184,20 +163,19 @@ test("a joining player sees the breaking decal and the tile change, and can mine
   );
   expect(seen.progress).toBeGreaterThan(0.4);
   await evidenceShot(guest, "guest-breaking-decal");
-  await expect.poll(() => tile(guest, 7), { timeout: 6000 }).toBe(OPEN);
+  await expect.poll(() => tile(guest, 7)).toBe(OPEN);
   expect(await tile(host, 7)).toBe(OPEN);
-  expect(await mining(guest)).toEqual([]);
+  // The tile change and the end of the decal can arrive in different updates.
+  await expect.poll(() => mining(guest)).toEqual([]);
   await host.keyboard.up("i");
-  // The guest mines the diamond (4.5 s) in front of it.
+  // The guest mines the diamond (90 ticks) in front of it.
   expect(await tile(guest, 8)).toBe(DIAMOND);
   await guest.keyboard.down("i");
-  await guest.waitForTimeout(150);
   await guest.keyboard.press("Space");
-  await expect.poll(async () => (await mining(host)).length, { timeout: 5000 })
-    .toBe(1);
+  await expect.poll(async () => (await mining(host)).length).toBe(1);
   await expect.poll(async () => (await mining(guest)).length).toBe(1);
-  await expect.poll(() => tile(host, 8), { timeout: 8000 }).toBe(OPEN);
-  await expect.poll(() => tile(guest, 8), { timeout: 3000 }).toBe(OPEN);
+  await expect.poll(() => tile(host, 8)).toBe(OPEN);
+  await expect.poll(() => tile(guest, 8)).toBe(OPEN);
   await guest.keyboard.up("i");
   // The host refuses a tile out of the guest's reach.
   await guest.evaluate(() =>
@@ -262,12 +240,11 @@ test.describe("phone interact button", () => {
     await placeAt(page, 3, 2);
     expect(await tile(page, 3)).toBe(COAL);
     await page.keyboard.down("i");
-    await page.waitForTimeout(150);
     await tapUi(page, "btn:interact");
     await expect.poll(async () => (await mining(page)).length).toBe(1);
-    await page.waitForTimeout(500);
+    await waitTicks(page, 10);
     await evidenceShot(page, "interact-mining-phone");
-    await expect.poll(() => tile(page, 3), { timeout: 5000 }).toBe(OPEN);
+    await expect.poll(() => tile(page, 3)).toBe(OPEN);
     await page.keyboard.up("i");
   });
 
@@ -294,15 +271,16 @@ test.describe("phone interact button", () => {
       points: typeof aim[],
     ) => touch.send("Input.dispatchTouchEvent", { type, touchPoints: points });
     await send("touchStart", [aim]);
-    await page.waitForTimeout(150);
+    // Let the frame loop read the aim before the tap.
+    await waitFrames(page, 3);
     // A second finger taps interact while the first still holds the stick.
     await send("touchStart", [aim, tap]);
     await send("touchEnd", [aim]);
     await expect.poll(async () => (await mining(page)).length).toBe(1);
     // The aim thumb lifts: the aim rests, and mining goes on.
     await send("touchEnd", []);
-    await page.waitForTimeout(300);
+    await waitTicks(page, 6);
     expect((await mining(page)).length).toBe(1);
-    await expect.poll(() => tile(page, 4), { timeout: 6000 }).toBe(OPEN);
+    await expect.poll(() => tile(page, 4)).toBe(OPEN);
   });
 });

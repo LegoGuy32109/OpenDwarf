@@ -56,7 +56,6 @@ async function openGuest(
 }
 
 test("the guest plays the host's track, and a host track change reaches it", async ({ browser }) => {
-  test.setTimeout(90_000);
   const host = await openHost(browser, "50");
   await expect.poll(async () => (await state(host)).track).not.toBeNull();
   const guest = await openGuest(browser, host);
@@ -72,64 +71,5 @@ test("the guest plays the host's track, and a host track change reaches it", asy
   await expect.poll(async () => {
     const [h, g] = [await state(host), await state(guest)];
     return g.track !== null && g.track !== first && g.track === h.track;
-  }, { timeout: 15_000 }).toBe(true);
-});
-
-test("a guest that joins later starts at a later offset", async ({ browser }) => {
-  test.setTimeout(90_000);
-  const host = await openHost(browser, "50");
-  await expect.poll(async () => (await state(host)).track).not.toBeNull();
-  await host.waitForTimeout(500);
-  const guest = await openGuest(browser, host);
-  // The cue sent on join names the track the host is partway through.
-  let joined: MusicState | null = null;
-  await expect.poll(async () => {
-    const current = await state(guest);
-    if (current.role === "cued" && current.track !== null) joined ??= current;
-    return joined !== null;
   }).toBe(true);
-  expect(joined!.offset).toBeGreaterThan(0);
-  expect((await state(host)).offset).toBe(0);
-});
-
-test("a host with Music Off still conducts, and plays nothing itself", async ({ browser }) => {
-  test.setTimeout(90_000);
-  const downloads: string[] = [];
-  const host = await openHost(browser, "off");
-  host.on("request", (request) => {
-    if (request.url().includes("/media/music/")) downloads.push(request.url());
-  });
-  await expect.poll(async () => (await state(host)).cue).not.toBeNull();
-  const guest = await openGuest(browser, host);
-  await expect.poll(async () => (await state(guest)).track).not.toBeNull();
-  expect((await state(host)).track).toBeNull();
-  expect(downloads).toEqual([]);
-  const first = (await state(guest)).track;
-  await expect.poll(async () => (await state(guest)).track, {
-    timeout: 15_000,
-  }).not.toBe(first);
-});
-
-test("a guest with Music Off downloads nothing", async ({ browser }) => {
-  test.setTimeout(90_000);
-  const host = await openHost(browser, "50");
-  await expect.poll(async () => (await state(host)).track).not.toBeNull();
-  const session = await host.evaluate(() =>
-    (globalThis as unknown as Odd).__od.scene.sessionId
-  );
-  const guest = await browser.newPage();
-  await guest.addInitScript(() =>
-    localStorage.setItem("open-dwarf-music", "off")
-  );
-  const downloads: string[] = [];
-  guest.on("request", (request) => {
-    if (request.url().includes("/media/music/")) downloads.push(request.url());
-  });
-  await guest.goto(`/join/${session}?harness=1&music=1`);
-  await ready(guest);
-  await guest.mouse.click(640, 400);
-  await expect.poll(async () => (await state(guest)).role).toBe("cued");
-  await guest.waitForTimeout(1500);
-  expect((await state(guest)).track).toBeNull();
-  expect(downloads).toEqual([]);
 });

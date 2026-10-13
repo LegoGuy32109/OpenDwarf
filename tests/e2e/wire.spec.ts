@@ -173,7 +173,9 @@ test("an incompatible join ends with a refresh instruction", async ({ browser })
   await guest.close();
 });
 
-test("reliable chat survives simulated motion loss and jitter", async ({ browser }) => {
+test("reliable chat survives simulated motion loss and jitter", {
+  tag: "@smoke",
+}, async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await host.goto("/?harness=1&loss=0.2&delay=50&jitter=60");

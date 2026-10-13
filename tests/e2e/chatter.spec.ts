@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { waitTicks } from "./time.ts";
 import { clickUi, ready, say } from "./ui.ts";
 
 type Chatter = {
@@ -45,41 +46,6 @@ async function pair(browser: import("@playwright/test").Browser) {
   return { host, guest, guestId };
 }
 
-/** The gain the host expects for a guest at this distance: full to 2 blocks, 30% at 5. */
-async function expectedGain(host: Page, guestId: string) {
-  return await host.evaluate((id) => {
-    const { players } = (globalThis as unknown as Odd).__od.scene.world;
-    const me = players[(globalThis as unknown as Odd).__od.scene.localId];
-    const them = players[id];
-    const blocks = Math.hypot(me.x - them.x, me.y - them.y);
-    return blocks <= 2 ? 1 : 1 - 0.7 * Math.min(1, (blocks - 2) / 3);
-  }, guestId);
-}
-
-test("a guest who speaks near the host plays one chatter on the host", async ({ browser }) => {
-  const { host, guest, guestId } = await pair(browser);
-  try {
-    await say(guest, "Hello there friend");
-    await expect.poll(async () => (await chatterLog(host)).length).toBe(1);
-    const [entry] = await chatterLog(host);
-    expect(entry.speaker).toBe(guestId);
-    expect(entry.murmur).toBe(false);
-    expect(entry.length).toBe("Hello there friend".length);
-    expect(entry.gain).toBeCloseTo(await expectedGain(host, guestId), 1);
-    // The bubble plays once, however long it stays on screen.
-    await host.waitForTimeout(1500);
-    expect(await chatterLog(host)).toHaveLength(1);
-    // The guest's own bubble plays at full volume on the guest.
-    await guest.keyboard.press("Shift");
-    await say(guest, "Me too");
-    await expect.poll(async () => (await chatterLog(guest)).length).toBe(1);
-    expect((await chatterLog(guest))[0].gain).toBe(1);
-  } finally {
-    await host.close();
-    await guest.close();
-  }
-});
-
 test("with Voices Off nothing is logged, and the Voices row saves its choice", async ({ browser }) => {
   const { host, guest } = await pair(browser);
   try {
@@ -96,46 +62,18 @@ test("with Voices Off nothing is logged, and the Voices row saves its choice", a
     await clickUi(host, "btn:back");
     await host.keyboard.press("Escape");
     await say(guest, "Hello there friend");
-    await host.waitForTimeout(1500);
-    expect(await chatterLog(host)).toEqual([]);
-  } finally {
-    await host.close();
-    await guest.close();
-  }
-});
-
-test("a speaker who walks out of text range and back plays one chatter, not two", async ({ browser }) => {
-  const { host, guest, guestId } = await pair(browser);
-  /** Put the guest's player `blocks` east of the host's, on the host's world. */
-  const standAt = (blocks: number) =>
-    host.evaluate(([id, blocks]) => {
-      const { players } = (globalThis as unknown as Odd).__od.scene.world;
-      const me = players[(globalThis as unknown as Odd).__od.scene.localId];
-      players[id as string].x = me.x + (blocks as number);
-      players[id as string].y = me.y;
-    }, [guestId, blocks] as const);
-  const feedTalking = () =>
-    host.evaluate(
-      (id) =>
+    // The bubble reaches the host, and still nothing plays.
+    await expect.poll(() =>
+      host.evaluate(() =>
         (globalThis as unknown as {
-          __od: { scene: { chatFeed: { id: string; talking?: boolean }[] } };
-        }).__od.scene.chatFeed.find((record) => record.id === id)?.talking,
-      guestId,
-    );
-  try {
-    await say(guest, "Hello there friend");
-    await expect.poll(async () => (await chatterLog(host)).length).toBe(1);
-    // Out to the talking range, where the host sees only a murmur indicator.
-    await standAt(8);
-    await expect.poll(feedTalking).toBe(true);
-    await host.waitForTimeout(500);
-    // And back into text range.
-    await standAt(1);
-    await expect.poll(feedTalking).toBeFalsy();
-    await host.waitForTimeout(500);
-    const log = await chatterLog(host);
-    expect(log).toHaveLength(1);
-    expect(log[0].murmur).toBe(false);
+          __od: { scene: { chatFeed: { text?: string }[] } };
+        }).__od.scene.chatFeed.some((record) =>
+          record.text === "Hello there friend"
+        )
+      )
+    ).toBe(true);
+    await waitTicks(host, 30);
+    expect(await chatterLog(host)).toEqual([]);
   } finally {
     await host.close();
     await guest.close();

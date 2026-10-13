@@ -92,62 +92,66 @@ const sceneOf = (page: import("@playwright/test").Page) =>
     }).__od.scene
   );
 
-test("a build under /b/test/ loads its files from another origin and joins by base", async ({ browser }) => {
-  const { assets, shell, PAGE_ORIGIN } = await startBuild();
-  // A context made here gets no video from the config, so ask for one.
-  const context = await browser.newContext({
-    recordVideo: process.env.EVIDENCE
-      ? { dir: "exports/playwright-results/base-path-join" }
-      : undefined,
-  });
-  try {
-    const host = await context.newPage();
-    const pageOrigin: string[] = [];
-    host.on("request", (request) => {
-      const url = new URL(request.url());
-      if (url.origin === PAGE_ORIGIN && !url.pathname.startsWith("/api/")) {
-        pageOrigin.push(url.pathname);
-      }
+test(
+  "a build under /b/test/ loads its files from another origin and joins by base",
+  { tag: "@smoke" },
+  async ({ browser }) => {
+    const { assets, shell, PAGE_ORIGIN } = await startBuild();
+    // A context made here gets no video from the config, so ask for one.
+    const context = await browser.newContext({
+      recordVideo: process.env.EVIDENCE
+        ? { dir: "exports/playwright-results/base-path-join" }
+        : undefined,
     });
-    await host.goto(`${PAGE_ORIGIN}/b/test/?harness=1`);
-    await ready(host);
-    const { sessionId } = await sceneOf(host);
-    // Only the page itself comes from the page origin; the files do not.
-    expect(pageOrigin).toEqual(["/b/test/"]);
-    // The join link carries the build path, and the QR code encodes it.
-    const joinLink = `${PAGE_ORIGIN}/b/test/join/${sessionId}`;
-    expect(await qrUrl(host)).toBe(
-      `${PAGE_ORIGIN}/api/v1/qr/${sessionId}?link=${
-        encodeURIComponent(joinLink)
-      }`,
-    );
-    const qr = await host.request.get(
-      `${PAGE_ORIGIN}/api/v1/qr/${sessionId}?link=${
-        encodeURIComponent(joinLink)
-      }`,
-    );
-    expect(qr.status()).toBe(200);
-    const guest = await context.newPage();
-    await guest.goto(`${joinLink}?harness=1`);
-    await ready(guest);
-    await expect.poll(async () => (await sceneOf(guest)).localId).toMatch(
-      /^peer-/,
-    );
-    await expect.poll(() =>
-      host.evaluate(() =>
-        Object.keys(
-          (globalThis as unknown as {
-            __od: { scene: { world: { players: object } } };
-          }).__od.scene.world.players,
-        ).filter((id) => id.startsWith("peer-")).length
-      )
-    ).toBe(1);
-  } finally {
-    await context.close();
-    await assets.server.shutdown();
-    await shell.shutdown();
-  }
-});
+    try {
+      const host = await context.newPage();
+      const pageOrigin: string[] = [];
+      host.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.origin === PAGE_ORIGIN && !url.pathname.startsWith("/api/")) {
+          pageOrigin.push(url.pathname);
+        }
+      });
+      await host.goto(`${PAGE_ORIGIN}/b/test/?harness=1`);
+      await ready(host);
+      const { sessionId } = await sceneOf(host);
+      // Only the page itself comes from the page origin; the files do not.
+      expect(pageOrigin).toEqual(["/b/test/"]);
+      // The join link carries the build path, and the QR code encodes it.
+      const joinLink = `${PAGE_ORIGIN}/b/test/join/${sessionId}`;
+      expect(await qrUrl(host)).toBe(
+        `${PAGE_ORIGIN}/api/v1/qr/${sessionId}?link=${
+          encodeURIComponent(joinLink)
+        }`,
+      );
+      const qr = await host.request.get(
+        `${PAGE_ORIGIN}/api/v1/qr/${sessionId}?link=${
+          encodeURIComponent(joinLink)
+        }`,
+      );
+      expect(qr.status()).toBe(200);
+      const guest = await context.newPage();
+      await guest.goto(`${joinLink}?harness=1`);
+      await ready(guest);
+      await expect.poll(async () => (await sceneOf(guest)).localId).toMatch(
+        /^peer-/,
+      );
+      await expect.poll(() =>
+        host.evaluate(() =>
+          Object.keys(
+            (globalThis as unknown as {
+              __od: { scene: { world: { players: object } } };
+            }).__od.scene.world.players,
+          ).filter((id) => id.startsWith("peer-")).length
+        )
+      ).toBe(1);
+    } finally {
+      await context.close();
+      await assets.server.shutdown();
+      await shell.shutdown();
+    }
+  },
+);
 
 test("the build under /b/test/ shows its join QR code", async ({ browser }) => {
   const { assets, shell, PAGE_ORIGIN } = await startBuild();
@@ -161,7 +165,6 @@ test("the build under /b/test/ shows its join QR code", async ({ browser }) => {
     await clickUi(page, "btn:qr");
     await expect.poll(() => hasUi(page, "panel:join")).toBe(true);
     await expect.poll(async () => (await uiState(page)).qrReady).toBe(true);
-    await page.waitForTimeout(300);
     await evidenceShot(page, "base-path-test-qr");
   } finally {
     await context.close();

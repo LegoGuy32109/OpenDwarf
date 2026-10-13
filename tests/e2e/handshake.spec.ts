@@ -47,6 +47,7 @@ test("unanswered offer expires without leaving a player or connection record", a
     });
   await expect.poll(async () => (await stats()).connections.length).toBe(1);
   await expect.poll(async () => (await stats()).joinFailures, {
+    // wall-clock: a join attempt fails after 10 s of real time (attempt-deadline.js).
     timeout: 15_000,
   }).toBe(1);
   expect((await stats()).connections).toEqual([]);

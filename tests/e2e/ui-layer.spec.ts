@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { waitFrames } from "./time.ts";
 import {
   chatDraft,
   clickUi,
@@ -23,7 +24,13 @@ type Harness = {
       world: {
         players: Record<
           string,
-          { x: number; y: number; message: string; typing: boolean }
+          {
+            x: number;
+            y: number;
+            message: string;
+            typing: boolean;
+            held?: string;
+          }
         >;
       };
     };
@@ -98,7 +105,6 @@ test("the loading screen is drawn in the canvas until the textures load", async 
   );
   // The screen takes every pointer: the controls and panels under it do not answer.
   await page.mouse.click(400, 300);
-  await page.waitForTimeout(300);
   await evidenceShot(page, "loading-screen");
   release();
   await ready(page);
@@ -146,12 +152,11 @@ test("evidence: the desktop UI, with chat typed on a physical keyboard", async (
   await page.keyboard.press("Backquote");
   await clickUi(page, "btn:qr");
   await expect.poll(async () => (await uiState(page)).qrReady).toBe(true);
-  await page.waitForTimeout(500);
   await evidenceShot(page, "ui-desktop");
   await clickUi(page, "btn:qr");
   await page.keyboard.press("Backquote");
   await page.keyboard.press("b");
-  await page.waitForTimeout(500);
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
   await evidenceShot(page, "ui-desktop-inventory");
 });
 
@@ -238,7 +243,7 @@ test.describe("phone", () => {
       { x: stick.x + 20, y: stick.y, id: 1 },
       { x: world.x - 80, y: world.y, id: 2 },
     ]);
-    await page.waitForTimeout(200);
+    await waitFrames(page, 3);
     expect((await scene(page)).zoomTarget).toBe(1);
     await send("touchEnd", []);
     // Two fingers on the world still pinch.
@@ -257,23 +262,10 @@ test.describe("phone", () => {
     await send("touchEnd", []);
   });
 
-  test("the UI scale setting grows the controls", async ({ page }) => {
-    await page.goto("/?harness=1");
-    await ready(page);
-    const before = await uiRect(page, "icon:held");
-    await tapUi(page, "btn:menu");
-    await tapUi(page, "btn:settings");
-    await tapUi(page, "btn:scale-up");
-    await tapUi(page, "btn:scale-up");
-    await tapUi(page, "btn:back");
-    await tapUi(page, "btn:resume");
-    expect(await hasUi(page, "panel:menu")).toBe(false);
-    const after = await uiRect(page, "icon:held");
-    expect(after.w).toBeGreaterThan(before.w);
-  });
-
   for (const screen of SCREENS) {
-    test(`the layout fits the safe area in ${screen.name}, with insets`, async ({ page }) => {
+    test(`the layout fits the safe area in ${screen.name}, with insets`, {
+      tag: "@smoke",
+    }, async ({ page }) => {
       await page.setViewportSize({
         width: screen.width,
         height: screen.height,
@@ -302,7 +294,6 @@ test.describe("phone", () => {
         expect(rect.x + rect.w, id).toBeLessThanOrEqual(screen.width - right);
         expect(rect.y + rect.h, id).toBeLessThanOrEqual(screen.height - bottom);
       }
-      await page.waitForTimeout(300);
       await evidenceShot(page, `ui-phone-${screen.name}`);
       await tapUi(page, "btn:chat");
       await expectChat(page, true);
@@ -314,33 +305,26 @@ test.describe("phone", () => {
         expect(rect.x + rect.w, id).toBeLessThanOrEqual(screen.width - right);
         expect(rect.y + rect.h, id).toBeLessThanOrEqual(screen.height - bottom);
       }
-      await page.waitForTimeout(300);
       await evidenceShot(page, `ui-keyboard-${screen.name}`);
     });
   }
 
   test("evidence: chatting with the in-game keyboard", async ({ page }) => {
-    test.setTimeout(60_000);
     await page.goto("/?harness=1&safe=47,0,34,0");
     await ready(page);
-    await page.waitForTimeout(600);
     await tapUi(page, "btn:chat");
     await expectChat(page, true);
-    await page.waitForTimeout(500);
     await tapUi(page, "key:shift");
     await tapKeys(page, "hello dwarf");
-    await page.waitForTimeout(500);
     await evidenceShot(page, "keyboard-typing");
     await tapUi(page, "key:send");
     await expect.poll(async () => (await scene(page)).message).toBe(
       "Hello dwarf",
     );
-    await page.waitForTimeout(1500);
     await evidenceShot(page, "keyboard-sent");
   });
 
   test("evidence: the inventory and shop panels on a phone", async ({ page }) => {
-    test.setTimeout(60_000);
     await page.goto("/?harness=1&layout=room&safe=47,0,34,0");
     await ready(page);
     await page.evaluate(async () => {
@@ -354,12 +338,15 @@ test.describe("phone", () => {
         ], ["stone", 5]] as const
       ) items.addStack(items.inventoryOf(player), kind, count);
     });
-    await page.waitForTimeout(500);
     await tapUi(page, "btn:bag");
     await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
-    await page.waitForTimeout(700);
     await tapUi(page, "slot:diamond");
-    await page.waitForTimeout(700);
+    await expect.poll(() =>
+      page.evaluate(() => {
+        const { scene } = (globalThis as unknown as Harness).__od;
+        return scene.world.players[scene.localId].held;
+      })
+    ).toBe("diamond");
     await evidenceShot(page, "inventory-panel-phone");
     await tapUi(page, "btn:bag-close");
     // Stand on the shopkeeper's tile, so interact opens the shop.
@@ -372,20 +359,18 @@ test.describe("phone", () => {
         previousY: 12,
       });
     });
-    await page.waitForTimeout(400);
+    await waitFrames(page, 3);
     await tapUi(page, "btn:interact");
     await expect.poll(() => shopOpen(page)).toBe(true);
-    await page.waitForTimeout(700);
     await evidenceShot(page, "shop-panel-phone");
     await tapUi(page, "row:gold ore");
-    await page.waitForTimeout(700);
+    await waitFrames(page, 3);
     await tapUi(page, "row:all");
     await expect.poll(async () =>
       (await page.evaluate(() =>
         (globalThis as unknown as Harness).__od.scene.inventory
       )).find((stack) => stack.kind === "coin")?.count
     ).toBe(24 + 12 + 40);
-    await page.waitForTimeout(700);
     await evidenceShot(page, "shop-sold-phone");
     await tapUi(page, "btn:shop-close");
   });

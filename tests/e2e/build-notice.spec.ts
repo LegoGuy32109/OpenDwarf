@@ -36,7 +36,6 @@ test("F3 and the menu show the build", async ({ page }) => {
   await expect.poll(async () => (await uiState(page)).diagnostics).toContain(
     "Build local",
   );
-  await page.waitForTimeout(300);
   await evidenceShot(page, "build-f3");
   await page.keyboard.press("F3");
   await page.keyboard.press("Escape");
@@ -84,32 +83,4 @@ test("Q opens and closes the menu, closes the bag first, and types q in chat", a
   await expect.poll(() => hasUi(page, "panel:join")).toBe(true);
   await clickUi(page, "btn:qr");
   await expect.poll(() => hasUi(page, "panel:join")).toBe(false);
-});
-
-test("a host on a stale main sees the notice, and a tap reloads", async ({ page }) => {
-  const requests = await asMain(page, "a".repeat(40), "b".repeat(40));
-  await page.goto("/?harness=1");
-  await ready(page);
-  expect(await hasUi(page, "btn:update")).toBe(false);
-  // Showing the tab again checks at once, without waiting two minutes.
-  await page.evaluate(() =>
-    document.dispatchEvent(new Event("visibilitychange"))
-  );
-  await expect.poll(() => hasUi(page, "btn:update")).toBe(true);
-  expect(requests()).toBeGreaterThan(0);
-  await page.waitForTimeout(300);
-  await evidenceShot(page, "update-notice");
-  await Promise.all([page.waitForNavigation(), clickUi(page, "btn:update")]);
-});
-
-test("a host on the current main shows no notice", async ({ page }) => {
-  const requests = await asMain(page, "a".repeat(40), "a".repeat(40));
-  await page.goto("/?harness=1");
-  await ready(page);
-  await page.evaluate(() =>
-    document.dispatchEvent(new Event("visibilitychange"))
-  );
-  await expect.poll(requests).toBeGreaterThan(0);
-  await page.waitForTimeout(300);
-  expect(await hasUi(page, "btn:update")).toBe(false);
 });

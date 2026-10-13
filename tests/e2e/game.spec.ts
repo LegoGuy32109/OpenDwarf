@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { holdUntil, waitTicks } from "./time.ts";
 import {
   chatDraft,
   clickUi,
@@ -484,7 +485,7 @@ test("entity look selects an octant without panning the camera", async ({ page }
   await page.keyboard.down("l");
   await expect.poll(async () => (await scene()).aim).toEqual({ x: 1, y: -1 });
   const before = (await scene()).camera;
-  await page.waitForTimeout(200);
+  await waitTicks(page, 4);
   const after = (await scene()).camera;
   expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(1);
   await page.keyboard.up("l");
@@ -588,7 +589,9 @@ test("two-finger drag changes layer and pinch smoothly changes zoom", async ({ b
   await context.close();
 });
 
-test("joining player connects over WebRTC and moves in the host world", async ({ browser }) => {
+test("joining player connects over WebRTC and moves in the host world", {
+  tag: "@smoke",
+}, async ({ browser }) => {
   const visitor = await browser.newPage();
   const admin = await browser.newPage();
   await visitor.goto("/?harness=1");
@@ -599,9 +602,7 @@ test("joining player connects over WebRTC and moves in the host world", async ({
   );
   await admin.goto("/host?harness=1");
   await ready(admin);
-  await expect.poll(() => hasUi(admin, `btn:session:${session}`), {
-    timeout: 10_000,
-  }).toBe(true);
+  await expect.poll(() => hasUi(admin, `btn:session:${session}`)).toBe(true);
   await clickUi(admin, `btn:session:${session}`);
   await expect.poll(
     () =>
@@ -609,7 +610,6 @@ test("joining player connects over WebRTC and moves in the host world", async ({
         (globalThis as unknown as { __od: { scene: { localId: string } } })
           .__od.scene.localId
       ),
-    { timeout: 15_000 },
   ).toMatch(/^peer-/);
   const guestId = await admin.evaluate(() =>
     (globalThis as unknown as { __od: { scene: { localId: string } } }).__od
@@ -624,20 +624,21 @@ test("joining player connects over WebRTC and moves in the host world", async ({
       )
     )
   ).toContain(guestId);
-  await expect.poll(() => sessionStats(admin), {
-    timeout: 12_000,
-  }).toMatch(/RTT median \d+ ms/);
-  await expect.poll(() => sessionStats(admin), {
-    timeout: 12_000,
-  }).toMatch(/route (host|srflx|relay)\/(host|srflx|relay)/);
-  await admin.keyboard.down("f");
-  await expect.poll(() =>
-    visitor.evaluate((id) =>
-      (globalThis as unknown as {
-        __od: { scene: { world: { players: Record<string, { x: number }> } } };
-      }).__od.scene.world.players[id]?.x ?? -1, guestId), { timeout: 12_000 })
-    .toBeGreaterThan(8);
-  await admin.keyboard.up("f");
+  await expect.poll(() => sessionStats(admin)).toMatch(/RTT median \d+ ms/);
+  await expect.poll(() => sessionStats(admin)).toMatch(
+    /route (host|srflx|relay)\/(host|srflx|relay)/,
+  );
+  await holdUntil(
+    admin,
+    "f",
+    async () =>
+      await visitor.evaluate((id) =>
+        (globalThis as unknown as {
+          __od: {
+            scene: { world: { players: Record<string, { x: number }> } };
+          };
+        }).__od.scene.world.players[id]?.x ?? -1, guestId) > 8,
+  );
   await visitor.close();
   await expect.poll(
     () =>
@@ -645,7 +646,6 @@ test("joining player connects over WebRTC and moves in the host world", async ({
         (globalThis as unknown as { __od: { scene: { status: string } } })
           .__od.scene.status
       ),
-    { timeout: 8_000 },
   ).toBe("Visitor left. World ended.");
   await admin.close();
 });

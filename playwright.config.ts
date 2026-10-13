@@ -14,10 +14,16 @@ const realXirsys = Boolean(
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
-  // One worker by default: the specs draw in software WebGL, and with 2 or 4
-  // workers (2026-10-03) the specs that count frames or time a walk failed under
-  // the load. E2E_WORKERS=n runs files in parallel for a quick, rougher pass.
-  workers: Number(process.env.E2E_WORKERS ?? 1),
+  // Specs wait in world ticks, so load slows them but does not fail them: four
+  // workers run the full suite in about 3.5 minutes on a 12-core machine. CI
+  // runners have two cores, so each runs one worker on its shard.
+  // E2E_WORKERS=n overrides either.
+  workers: Number(process.env.E2E_WORKERS ?? (process.env.CI ? 1 : 4)),
+  // Specs wait on world ticks (tests/e2e/time.ts), so these limits only catch a
+  // hang. They are generous because a loaded machine runs ticks slowly; a
+  // passing spec does not wait for them.
+  timeout: 120_000,
+  expect: { timeout: 20_000 },
   reporter: "list",
   outputDir: "exports/playwright-results",
   snapshotPathTemplate: "{testDir}/snapshots/{arg}-{projectName}{ext}",

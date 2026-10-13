@@ -15,16 +15,23 @@ async function startShell(seed: boolean) {
     ...(seed ? ["--seed"] : []),
   ], { env: { ...process.env, OD_LOCAL_BUILD: "1" }, stdio: "ignore" });
   const origin = `http://127.0.0.1:${port}`;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      await (await fetch(`${origin}/api/v1/status`)).body?.cancel();
-      return { origin, stop: () => child.kill() };
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
+  try {
+    await expect.poll(async () => {
+      try {
+        await (await fetch(`${origin}/api/v1/status`)).body?.cancel();
+        return true;
+      } catch {
+        return false;
+      }
+    }, {
+      message: "the seeded shell did not start",
+      intervals: [100],
+    }).toBe(true);
+  } catch (error) {
+    child.kill();
+    throw error;
   }
-  child.kill();
-  throw new Error("the seeded shell did not start");
+  return { origin, stop: () => child.kill() };
 }
 
 test("the dashboard shows an empty state for every section", async ({ page }) => {

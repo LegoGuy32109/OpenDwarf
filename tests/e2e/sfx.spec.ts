@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { clickUi, ready, uiRect } from "./ui.ts";
+import { waitTicks } from "./time.ts";
+import { clickUi, hasUi, ready, uiRect } from "./ui.ts";
 
 type Play = { tags: string[]; key: string; rate: number; gain: number };
 type Odd = {
@@ -49,7 +50,7 @@ test("opening the bag plays ui open, skipping the missing sample, and a reload u
   await ready(page);
   await page.mouse.click(640, 400);
   await expect.poll(async () => (await state(page)).loaded).toBe(3);
-  await page.waitForTimeout(300);
+  await waitTicks(page, 6);
   expect(downloads).toEqual([]);
 });
 
@@ -93,7 +94,8 @@ test("sfx=0 and an Off setting download nothing", async ({ page }) => {
   await ready(page);
   await page.mouse.click(640, 400);
   await page.keyboard.press("KeyB");
-  await page.waitForTimeout(500);
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
+  await waitTicks(page, 10);
   expect(downloads).toEqual([]);
   expect(await plays(page)).toEqual([]);
 
@@ -102,7 +104,8 @@ test("sfx=0 and an Off setting download nothing", async ({ page }) => {
   await ready(page);
   await page.mouse.click(640, 400);
   await page.keyboard.press("KeyB");
-  await page.waitForTimeout(500);
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
+  await waitTicks(page, 10);
   expect(downloads).toEqual([]);
   expect(await plays(page)).toEqual([]);
   expect((await state(page)).status).toBe("off");
@@ -116,7 +119,7 @@ test("a harness page is silent unless sfx=1", async ({ page }) => {
   await page.goto("/?harness=1");
   await ready(page);
   await page.mouse.click(640, 400);
-  await page.waitForTimeout(500);
+  await waitTicks(page, 10);
   expect(downloads).toEqual([]);
 });
 

@@ -7,6 +7,7 @@
  */
 
 import {
+  removePlayer,
   renderPosition,
   startMove,
   TICK_MS,
@@ -82,6 +83,11 @@ export function exposeHarness(ctx, renderer = null) {
       ...ctx.frameStats.snapshot(),
       info: { ...ctx.frameInfo },
     }),
+    /** Stop and remove the corner NPC, for specs that work on the tiles it walks. */
+    removeNpc: () => {
+      ctx.tickNpc = null;
+      removePlayer(scene.world, "npc-corner");
+    },
     /** @param {number} dx @param {number} dy */
     startMove: (dx, dy) =>
       startMove(scene.world, scene.localId, dx, dy, ++ctx.sequence),

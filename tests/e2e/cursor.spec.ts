@@ -46,13 +46,16 @@ const hold = (page: Page, kind: string) =>
   }, kind);
 
 test("the cursor draws the held item's icon and follows a change of held item", async ({ page }) => {
-  test.setTimeout(60_000);
   await page.goto("/?harness=1");
   await ready(page);
   // Row y 1 holds stone at x 2; row y 2 is open floor.
   await placeAt(page, 2, 2);
   await page.keyboard.down("i"); // aim north at the stone
-  await page.waitForTimeout(200);
+  await expect.poll(async () => (await cursor(page))?.tile).toEqual({
+    x: 2,
+    y: 1,
+    z: 0,
+  });
   const pickaxe = await cursor(page);
   expect(pickaxe?.held).toBe("pickaxe");
   expect(pickaxe?.tile).toEqual({ x: 2, y: 1, z: 0 });
@@ -64,7 +67,10 @@ test("the cursor draws the held item's icon and follows a change of held item", 
 
   await hold(page, "stone");
   await page.keyboard.down("k"); // aim south at open floor
-  await page.waitForTimeout(200);
+  await expect.poll(async () => {
+    const c = await cursor(page);
+    return c && { held: c.held, tile: c.tile };
+  }).toEqual({ held: "stone", tile: { x: 2, y: 3, z: 0 } });
   const stone = await cursor(page);
   expect(stone?.held).toBe("stone");
   expect(stone?.tile).toEqual({ x: 2, y: 3, z: 0 });

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { waitFrames } from "./time.ts";
 import { ready, say } from "./ui.ts";
 
 type Harness = {
@@ -61,11 +62,7 @@ async function aimAtStone(page: Page) {
 
 const picture = async (page: Page) => {
   // Wait for a frame that has drawn the latest world.
-  await page.evaluate(() =>
-    new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve))
-    )
-  );
+  await waitFrames(page, 2);
   const size = page.viewportSize()!;
   return await page.screenshot({
     clip: {

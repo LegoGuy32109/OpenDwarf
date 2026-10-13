@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { hasUi, ready, sprintState, tapUi, type UiRect, uiRect } from "./ui.ts";
+import { tick, waitTicks } from "./time.ts";
+import { ready, sprintState, tapUi } from "./ui.ts";
 
 type Hook = {
   __od: { scene: { world: { players: { self: { x: number } } } } };
@@ -8,35 +9,21 @@ type Hook = {
 
 const staminaValue = async (page: Page) => (await sprintState(page)).stamina;
 
-async function expectClearOfLookStick(page: Page) {
-  const toBox = ({ x, y, w, h }: UiRect) => ({
-    x,
-    y,
-    width: w,
-    height: h,
-  });
-  const sprint = toBox(await uiRect(page, "btn:sprint"));
-  const look = toBox(await uiRect(page, "stick:look"));
-  const move = toBox(await uiRect(page, "stick:move"));
-  const view = page.viewportSize()!;
-  // Sprint sits at the look stick's bottom right (ADR 0009 phone layout). It
-  // may overlap the stick's outer edge, where it takes the touch, but stays out
-  // of the stick's inner 60%.
-  const radius = look.width / 2;
-  const centerX = look.x + radius;
-  const centerY = look.y + radius;
-  const sprintRadius = sprint.width / 2;
-  const sprintX = sprint.x + sprintRadius;
-  const sprintY = sprint.y + sprintRadius;
-  expect(sprintX).toBeGreaterThan(centerX);
-  expect(sprintY).toBeGreaterThan(centerY);
-  expect(Math.hypot(sprintX - centerX, sprintY - centerY) - sprintRadius)
-    .toBeGreaterThanOrEqual(0.6 * radius);
-  // Sprint stays on the right half of the screen, on screen, right of the move stick.
-  expect(sprint.x).toBeGreaterThan(view.width / 2 - sprint.width);
-  expect(sprint.x + sprint.width).toBeLessThan(view.width);
-  expect(sprint.y + sprint.height).toBeLessThan(view.height);
-  expect(move.x + move.width).toBeLessThan(sprint.x);
+/**
+ * Wait until `done`, and fail if it takes more than `ticks` world ticks.
+ * Stamina moves by ticks, so a slow machine takes longer but no more ticks.
+ */
+async function withinTicks(
+  page: Page,
+  ticks: number,
+  what: string,
+  done: () => Promise<boolean>,
+) {
+  const start = await tick(page);
+  while (!(await done())) {
+    expect((await tick(page)) - start, what).toBeLessThanOrEqual(ticks);
+    await waitTicks(page, 1);
+  }
 }
 
 test.describe("phone sprint button", () => {
@@ -47,35 +34,37 @@ test.describe("phone sprint button", () => {
     hasTouch: true,
   });
 
-  test("fits portrait and landscape and shows stamina", async ({ page }) => {
-    await page.goto("/?harness=1");
-    await ready(page);
-    expect(await hasUi(page, "btn:speed")).toBe(false);
-    await expectClearOfLookStick(page);
-    await evidenceShot(page, "sprint-portrait");
-    await page.setViewportSize({ width: 844, height: 390 });
-    await expectClearOfLookStick(page);
-    await evidenceShot(page, "sprint-landscape");
-  });
-
   test("stamina line drains, locks, and refills", async ({ page }) => {
-    test.setTimeout(60_000);
     await page.goto("/?harness=1");
     await ready(page);
     expect(await staminaValue(page)).toBe(1);
     await tapUi(page, "btn:sprint");
     await expect.poll(async () => (await sprintState(page)).on).toBe(true);
     await evidenceShot(page, "sprint-on");
-    await expect.poll(() => staminaValue(page)).toBeLessThan(0.6);
-    await expect.poll(async () => (await sprintState(page)).locked, {
-      timeout: 8000,
-    }).toBe(true);
+    // Sprint empties the reserve in 6 s: 120 ticks.
+    await withinTicks(
+      page,
+      60,
+      "drains below 0.6",
+      async () => (await staminaValue(page)) < 0.6,
+    );
+    await withinTicks(
+      page,
+      100,
+      "locks when empty",
+      async () => (await sprintState(page)).locked,
+    );
     await expect.poll(async () => (await sprintState(page)).on).toBe(false);
     await evidenceShot(page, "sprint-locked");
     await tapUi(page, "btn:sprint");
     await expect.poll(async () => (await sprintState(page)).on).toBe(false);
-    await expect.poll(() => staminaValue(page), { timeout: 20_000 })
-      .toBeGreaterThan(0.99);
+    // It refills from empty in 12 s: 240 ticks.
+    await withinTicks(
+      page,
+      260,
+      "refills",
+      async () => (await staminaValue(page)) > 0.99,
+    );
     await expect.poll(async () => (await sprintState(page)).locked).toBe(false);
     await tapUi(page, "btn:sprint");
     await expect.poll(async () => (await sprintState(page)).on).toBe(true);

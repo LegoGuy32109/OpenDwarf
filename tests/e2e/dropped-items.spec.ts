@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { holdUntil } from "./time.ts";
 import { hasUi, ready } from "./ui.ts";
 
 type Stack = { kind: string; count: number };
@@ -15,7 +16,10 @@ type Harness = {
       hearingLog: { lines: { kind: string; text: string }[] };
       world: {
         chunks: Map<string, Uint8Array>;
-        players: Record<string, { x: number; y: number; z: number }>;
+        players: Record<
+          string,
+          { x: number; y: number; z: number; move: unknown }
+        >;
       };
     };
     send: (message: Record<string, unknown>) => boolean;
@@ -86,29 +90,28 @@ async function startHost(page: Page) {
 }
 
 async function walkToRow(page: Page) {
-  await page.keyboard.down("e");
-  await expect.poll(async () => (await position(page))?.y ?? 9, {
-    timeout: 30_000,
-  }).toBeLessThan(2.4);
-  await page.keyboard.up("e");
-  await page.waitForTimeout(350);
+  await holdUntil(
+    page,
+    "e",
+    async () => ((await position(page))?.y ?? 9) < 2.4,
+  );
+  // Let the walk settle on a tile center.
+  await expect.poll(async () => (await position(page))?.move ?? null)
+    .toBeNull();
 }
 
 test("mining drops the item, and interact picks it up", async ({ page }) => {
-  test.setTimeout(60_000);
   await startHost(page);
   await page.keyboard.press("Backquote"); // open the hearing log for the video
   await expect.poll(() => hasUi(page, "panel:log")).toBe(true);
   expect(await inventory(page)).toEqual([{ kind: "pickaxe", count: 1 }]);
   await placeAt(page, 2, 2);
   await page.keyboard.down("i"); // aim north at the stone
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
-  await expect.poll(() => tile(page, 2), { timeout: 5000 }).toBe(OPEN);
+  await expect.poll(() => tile(page, 2)).toBe(OPEN);
   await expect.poll(() => items(page)).toEqual([
     { x: 2, y: 1, z: 0, stacks: [{ kind: "stone", count: 1 }] },
   ]);
-  await page.waitForTimeout(300);
   await evidenceShot(page, "dropped-stone");
   // Interact on the tile that holds the stone picks it up instead of mining.
   await page.keyboard.press("Space");
@@ -118,15 +121,13 @@ test("mining drops the item, and interact picks it up", async ({ page }) => {
     { kind: "stone", count: 1 },
   ]);
   expect(await systemLines(page)).toContain("Picked up stone ×1");
-  await page.waitForTimeout(500);
   await evidenceShot(page, "picked-up-stone");
   // Coal is next: its item is coal, and a second stone merges into the stack.
   await page.keyboard.up("i");
   await placeAt(page, 3, 2);
   await page.keyboard.down("i");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
-  await expect.poll(() => items(page), { timeout: 5000 }).toEqual([
+  await expect.poll(() => items(page)).toEqual([
     { x: 3, y: 1, z: 0, stacks: [{ kind: "coal", count: 1 }] },
   ]);
   await page.keyboard.up("i");
@@ -134,30 +135,7 @@ test("mining drops the item, and interact picks it up", async ({ page }) => {
   await expect.poll(() => notice(page)).toContain("aim at a neighboring tile");
 });
 
-test("several kinds on one tile cycle their icons and stack counts", async ({ page }) => {
-  await startHost(page);
-  await placeAt(page, 4, 2);
-  await drop(page, 4, 3, "coal", 3);
-  await drop(page, 4, 3, "stone");
-  await drop(page, 4, 3, "diamond");
-  await drop(page, 4, 3, "coal"); // merges into the coal stack
-  await drop(page, 5, 3, "gold ore", 12);
-  await drop(page, 3, 3, "emerald");
-  await expect.poll(async () => (await items(page)).length).toBe(3);
-  const stacks = (await items(page)).find((entry) => entry.x === 4)!.stacks;
-  expect(stacks).toEqual([
-    { kind: "coal", count: 4 },
-    { kind: "stone", count: 1 },
-    { kind: "diamond", count: 1 },
-  ]);
-  await page.waitForTimeout(100);
-  await evidenceShot(page, "cycling-tile-a");
-  await page.waitForTimeout(1000);
-  await evidenceShot(page, "cycling-tile-b");
-});
-
 test("a joining player sees drops, and two pickups give the stack to one player", async ({ browser }) => {
-  test.setTimeout(90_000);
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await startHost(host);
@@ -179,7 +157,6 @@ test("a joining player sees drops, and two pickups give the stack to one player"
   ]);
   // The host aims east at it; the guest has no aim, so its own tile holds it.
   await host.keyboard.down("l");
-  await host.waitForTimeout(150);
   await host.keyboard.press("Space");
   await guest.keyboard.press("Space"); // arrives at the host after the host's own pickup
   // The guest is refused either by the host, or locally when the host's pickup

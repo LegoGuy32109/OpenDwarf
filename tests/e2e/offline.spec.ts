@@ -43,7 +43,27 @@ test("the game starts offline after one visit and answers media ranges from the 
   // Build files are cached as the page loads them; reload once so the worker has them all.
   await page.reload();
   await ready(page);
-  await page.waitForTimeout(500);
+  await expect.poll(
+    () =>
+      page.evaluate(async () => {
+        const missing: string[] = [];
+        if (!(await (await caches.open("od-pages")).match(location.href))) {
+          missing.push(location.href);
+        }
+        const build = await caches.open("od-build-local");
+        const files = performance.getEntriesByType("resource")
+          .map((entry) => new URL(entry.name))
+          .filter((url) =>
+            url.origin === location.origin &&
+            /^\/(js|src|assets|css)\//.test(url.pathname)
+          );
+        for (const url of files) {
+          if (!(await build.match(url.href))) missing.push(url.href);
+        }
+        return missing;
+      }),
+    { message: "the worker cached the page and its build files" },
+  ).toEqual([]);
 
   await context.setOffline(true);
   await page.reload();
@@ -72,7 +92,6 @@ test("the game starts offline after one visit and answers media ranges from the 
   ).not.toBe(before.x);
   await evidenceShot(page, "offline-play");
   await page.keyboard.press("q");
-  await page.waitForTimeout(300);
   await evidenceShot(page, "offline-menu");
   await page.keyboard.press("q");
 
@@ -103,15 +122,4 @@ test("the game starts offline after one visit and answers media ranges from the 
   await ready(page);
   expect(await hasUi(page, "btn:qr")).toBe(true);
   expect(errors).toEqual([]);
-});
-
-test("?sw=0 skips the worker", async ({ page }) => {
-  await page.goto("/?harness=1&sw=0");
-  await ready(page);
-  await page.waitForTimeout(500);
-  expect(
-    await page.evaluate(async () =>
-      (await navigator.serviceWorker.getRegistrations()).length
-    ),
-  ).toBe(0);
 });

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { holdUntil, waitFrames, waitTicks } from "./time.ts";
 import { ready, shopOpen, shopRow, tapUi, uiRect } from "./ui.ts";
 
 type Stack = { kind: string; count: number };
@@ -13,7 +14,10 @@ type Harness = {
       hearingLog: { lines: { kind: string; text: string }[] };
       world: {
         chunks: Map<string, Uint8Array>;
-        players: Record<string, { x: number; y: number; z: number }>;
+        players: Record<
+          string,
+          { x: number; y: number; z: number; move: unknown }
+        >;
       };
     };
     send: (message: Record<string, unknown>) => boolean;
@@ -72,25 +76,36 @@ async function startHost(page: Page, query = "") {
   await ready(page);
 }
 
-/** Hold a key until the local player satisfies the condition. */
-async function holdUntil(
+/** Wait until the local player stands still on a tile center. */
+const settle = (page: Page) =>
+  expect.poll(async () => (await position(page))?.move ?? null).toBeNull();
+
+/** Hold a key until the local player satisfies the condition, then let the walk settle. */
+async function walkUntil(
   page: Page,
   key: string,
   done: (p: { x: number; y: number; z: number }) => boolean,
 ) {
-  await page.keyboard.down(key);
-  await expect.poll(async () => {
+  await holdUntil(page, key, async () => {
     const p = await position(page);
     return p !== null && done(p);
-  }, { timeout: 20_000 }).toBe(true);
-  await page.keyboard.up(key);
-  await page.waitForTimeout(250);
+  });
+  await settle(page);
 }
 
-/** With the aim held, interact, and wait for the host to answer. */
+/** The material on a tile of the host's world. */
+const tileAt = (page: Page, x: number, y: number, z: number) =>
+  page.evaluate(
+    ([tx, ty, tz]) =>
+      (globalThis as unknown as Harness).__od.scene.world.chunks.get(
+        `${Math.floor(tx / 16)},${Math.floor(ty / 16)}`,
+      )?.[tz * 256 + (ty % 16) * 16 + (tx % 16)] ?? -1,
+    [x, y, z],
+  );
+
+/** With the aim held, interact. Interact reads the held aim keys at once. */
 async function interactAiming(page: Page, ...keys: string[]) {
   for (const key of keys) await page.keyboard.down(key);
-  await page.waitForTimeout(200);
   await page.keyboard.press("Space");
   for (const key of keys) await page.keyboard.up(key);
 }
@@ -106,45 +121,40 @@ async function aimAtShopkeeper(page: Page) {
   ];
 }
 
-/** Start mining and keep the aim held until the tile is gone, because a new aim cancels. */
-async function mineAiming(page: Page, key: string, ms: number) {
+/** Start mining and keep the aim held until the tile is open, because a new aim cancels. */
+async function mineAiming(
+  page: Page,
+  key: string,
+  tile: { x: number; y: number; z: number },
+) {
   await page.keyboard.down(key);
-  await page.waitForTimeout(200);
-  await page.keyboard.press("Space");
-  await page.waitForTimeout(ms);
-  await page.keyboard.up(key);
-  await page.waitForTimeout(300);
+  try {
+    await page.keyboard.press("Space");
+    await expect.poll(() => tileAt(page, tile.x, tile.y, tile.z)).toBe(1);
+  } finally {
+    await page.keyboard.up(key);
+  }
 }
 
 test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ page }) => {
-  test.setTimeout(120_000);
   await startHost(page);
   await expect.poll(() => coins(page)).toBe(0);
   // Down the stairs into the tunnel, then mine coal and iron ore.
-  await holdUntil(page, "e", (p) => p.y <= 12.1);
-  await holdUntil(page, "f", (p) => p.z === 2 && p.x >= 21.2);
+  await walkUntil(page, "e", (p) => p.y <= 12.1);
+  await walkUntil(page, "f", (p) => p.z === 2 && p.x >= 21.2);
   await placeAt(page, 22, 12); // the coal is one tile north of tile 22
-  await page.waitForTimeout(300);
-  await mineAiming(page, "i", 2000); // coal at (22, 11)
-  await expect.poll(
-    () =>
-      page.evaluate(() =>
-        (globalThis as unknown as Harness).__od.scene.world.chunks.get("1,0")
-          ?.[2 * 256 + 11 * 16 + 6] ?? -1
-      ),
-    { timeout: 8000 },
-  ).toBe(1);
-  await page.waitForTimeout(300);
+  await waitFrames(page, 2);
+  await mineAiming(page, "i", { x: 22, y: 11, z: 2 }); // coal
   await interactAiming(page, "i"); // pick the coal up
   await expect.poll(async () => (await inventory(page)).length).toBe(2);
   await placeAt(page, 25, 12); // the iron ore is one tile north of tile 25
-  await page.waitForTimeout(300);
-  await mineAiming(page, "i", 2500); // iron ore at (25, 11)
+  await waitFrames(page, 2);
+  await mineAiming(page, "i", { x: 25, y: 11, z: 2 }); // iron ore
   await interactAiming(page, "i"); // pick the iron ore up
   await expect.poll(async () => (await inventory(page)).length).toBe(3);
   expect(await coins(page)).toBe(0);
   // Back up the stairs to the shopkeeper, who stands on the north wall.
-  await holdUntil(page, "s", (p) => p.z === 4 && p.x <= 17.2);
+  await walkUntil(page, "s", (p) => p.z === 4 && p.x <= 17.2);
   await interactAiming(page, ...(await aimAtShopkeeper(page)));
   await expect.poll(() => shopOpen(page)).toBe(true);
   expect((await shopRow(page, "all"))?.text).toBe("Sell all ore");
@@ -153,7 +163,6 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
     true,
   );
   expect((await shopRow(page, "iron ore"))?.price).toBe("3 each");
-  await page.waitForTimeout(300);
   await evidenceShot(page, "shop-open");
   // IJKL choose a row and interact sells it.
   await page.keyboard.press("k");
@@ -180,7 +189,6 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await expect.poll(() => coins(page)).toBe(4);
   await expect.poll(() => coins(page)).toBe(4);
   expect(await systemLines(page)).toContain("Sold coal ×1 for 1 coin");
-  await page.waitForTimeout(600);
   await evidenceShot(page, "shop-score");
   // Escape closes the panel and the player can walk again.
   await page.keyboard.press("Escape");
@@ -218,12 +226,7 @@ test("a guest sells through the host, and the host rejects what it does not hold
     );
     await expect.poll(() => notice(guest)).toContain("too far");
     // Walk next to the shopkeeper.
-    await guest.keyboard.down("e");
-    await expect.poll(async () => (await position(guest))?.y ?? 99, {
-      timeout: 20_000,
-    }).toBeLessThanOrEqual(13.2);
-    await guest.keyboard.up("e");
-    await guest.waitForTimeout(400);
+    await walkUntil(guest, "e", (p) => p.y <= 13.2);
     // A request for more than it holds, or for stone, changes nothing.
     for (
       const message of [
@@ -238,7 +241,8 @@ test("a guest sells through the host, and the host rejects what it does not hold
       );
     }
     await expect.poll(() => notice(guest)).toContain("Cannot sell");
-    await guest.waitForTimeout(400);
+    // Give any coins time to arrive, to prove none do.
+    await waitTicks(guest, 8);
     expect(await coins(guest)).toBe(0);
     expect(await inventory(guest)).toContainEqual({ kind: "coal", count: 3 });
     // Aim at the shopkeeper from wherever the guest stands.
@@ -317,19 +321,23 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
   await give(page, "coal", 2);
   await give(page, "diamond", 1);
   await placeAt(page, SHOP.x, SHOP.y);
-  await page.waitForTimeout(400);
-  const press = async (button: number) => {
-    await page.evaluate((b) => {
-      (globalThis as unknown as { __pad: { buttons: { pressed: boolean }[] } })
-        .__pad.buttons[b].pressed = true;
-    }, button);
-    await page.waitForTimeout(300);
-    await page.evaluate((b) => {
-      (globalThis as unknown as { __pad: { buttons: { pressed: boolean }[] } })
-        .__pad.buttons[b].pressed = false;
-    }, button);
-    await page.waitForTimeout(300);
-  };
+  await waitFrames(page, 2);
+  // The frame loop reads the pad once per frame, and a held D-pad repeats after
+  // a wall-clock delay. So the button is down for exactly one game frame: the
+  // game's frame callback runs before the one that lets go, which was queued
+  // after it.
+  const press = (button: number) =>
+    page.evaluate((b) =>
+      new Promise<void>((resolve) => {
+        const pad = (globalThis as unknown as {
+          __pad: { buttons: { pressed: boolean }[] };
+        }).__pad;
+        pad.buttons[b].pressed = true;
+        requestAnimationFrame(() => {
+          pad.buttons[b].pressed = false;
+          requestAnimationFrame(() => resolve());
+        });
+      }), button);
   await press(7); // ZR interact opens the shop
   await expect.poll(() => shopOpen(page)).toBe(true);
   await expect.poll(async () => (await shopRow(page, "all"))?.selected).toBe(

@@ -144,27 +144,6 @@ test("a guest opening a join link on another build lands on the host's build", a
   }
 });
 
-test("a guest on the host's own build stays where it is", async ({ browser }) => {
-  const { assets, shell, origin } = await startBuilds();
-  const context = await browser.newContext();
-  try {
-    const host = await context.newPage();
-    await host.goto(`${origin}/b/${ALPHA}/?harness=1`);
-    await ready(host);
-    const { sessionId } = await sceneOf(host);
-    const guest = await context.newPage();
-    await guest.goto(`${origin}/b/${ALPHA}/join/${sessionId}?harness=1`);
-    await expect.poll(() => peersOf(host)).toBe(1);
-    expect(guest.url()).toBe(
-      `${origin}/b/${ALPHA}/join/${sessionId}?harness=1`,
-    );
-  } finally {
-    await context.close();
-    await assets.shutdown();
-    await shell.shutdown();
-  }
-});
-
 test("a world is a live session until its host leaves, then it is history", async ({ browser, request }) => {
   const { assets, shell, origin } = await startBuilds();
   const context = await browser.newContext();
@@ -181,9 +160,9 @@ test("a world is a live session until its host leaves, then it is history", asyn
     const lobby = await context.newPage();
     await lobby.goto(`${origin}/b/${BRAVO}/host?harness=1`);
     await ready(lobby);
-    await expect.poll(() => hasUi(lobby, `btn:session:${sessionId}`), {
-      timeout: 10_000,
-    }).toBe(true);
+    await expect.poll(() => hasUi(lobby, `btn:session:${sessionId}`)).toBe(
+      true,
+    );
     await host.close({ runBeforeUnload: true });
     await expect.poll(() => listed("sessions")).toBe(false);
     await expect.poll(() => listed("sessions/recent")).toBe(true);

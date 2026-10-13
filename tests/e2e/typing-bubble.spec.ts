@@ -34,7 +34,6 @@ test("other players see the thought icon while a player types", async ({ page, c
   );
   await guest.keyboard.type("hello");
   await expect.poll(typingRecords).toBe(1);
-  await page.waitForTimeout(1500);
   await evidenceShot(page, "typing-bubble");
 
   for (let i = 0; i < "hello".length; i++) {

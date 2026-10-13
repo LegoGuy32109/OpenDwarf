@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { holdUntil } from "./time.ts";
 import { ready, say } from "./ui.ts";
 
 type Harness = {
@@ -41,25 +42,26 @@ test("master view at zoom 0.25 pans with the keyboard and the host generates ter
   await expect.poll(async () => (await scene(page)).zoom).toBeLessThan(0.26);
   const before = await scene(page);
   await evidenceShot(page, "master-camera-start");
-  // Hold L: the camera pans east at the same screen speed as at any zoom.
-  await page.keyboard.down("KeyL");
-  await page.waitForTimeout(2500);
-  await page.keyboard.up("KeyL");
+  // Hold L: the camera pans east at the same screen speed as at any zoom
+  // (480 screen px/s), until it has passed the old loaded extent and chunks
+  // have followed it east.
+  await holdUntil(page, "KeyL", async () => {
+    const now = await scene(page);
+    return now.x - before.x > 2 * 480 / 0.25 * 0.5 &&
+      now.maxCx > before.maxCx + 2 && now.chunks > before.chunks;
+  });
   const after = await scene(page);
-  // 0.48 px/ms is 480 screen px/s at any zoom, so 2.5 s is well over 2 s of it.
   expect(after.x - before.x).toBeGreaterThan(2 * 480 / 0.25 * 0.5);
-  // The camera passed the old loaded extent, and chunks followed it east.
-  expect(after.maxCx).toBeGreaterThan(before.maxCx + 2);
-  expect(after.chunks).toBeGreaterThan(before.chunks);
   await expect.poll(async () => {
     const now = await scene(page);
     return now.maxCx * 16 * 64 > now.x;
   }).toBe(true);
   await evidenceShot(page, "master-camera-panned");
   // Pan back west past the start: the camera is not pinned to the center.
-  await page.keyboard.down("KeyJ");
-  await page.waitForTimeout(3000);
-  await page.keyboard.up("KeyJ");
+  await holdUntil(page, "KeyJ", async () => {
+    const now = await scene(page);
+    return now.x < before.x && now.minCx < before.minCx;
+  });
   const west = await scene(page);
   expect(west.x).toBeLessThan(before.x);
   expect(west.minCx).toBeLessThan(before.minCx);

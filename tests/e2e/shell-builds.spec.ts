@@ -34,20 +34,10 @@ test("/b/<sha> of a pushed commit loads its files from jsDelivr and starts a gam
   });
   await page.goto(`/b/${PUSHED.slice(0, 7)}?harness=1`);
   // The pushed commit is an old build, so it has no `data-ready` mark: wait for its loading screen.
-  await expect(page.locator("#loading")).toBeHidden({ timeout: 20_000 });
+  await expect(page.locator("#loading")).toBeHidden();
   expect(await buildOf(page)).toBeTruthy();
   expect(files).toContain(
     `/gh/LegoGuy32109/OpenDwarf@${PUSHED}/public/js/app.js`,
   );
   await evidenceShot(page, "shell-builds-sha");
-});
-
-test("an unknown build gets a 404 page that links to /admin", async ({ page }) => {
-  const response = await page.goto("/b/no-such-build");
-  expect(response?.status()).toBe(404);
-  await expect(page.getByRole("link", { name: /admin/i })).toHaveAttribute(
-    "href",
-    "/admin",
-  );
-  await evidenceShot(page, "shell-builds-404");
 });

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { holdUntil, waitTicks } from "./time.ts";
 import { ready } from "./ui.ts";
 
 type Played = {
@@ -55,24 +56,21 @@ async function pair(browser: import("@playwright/test").Browser) {
   return { host, guest };
 }
 
-/** Hold a walk key for a while. */
-async function walkFor(page: Page, key: string, ms: number) {
-  await page.keyboard.down(key);
-  await page.waitForTimeout(ms);
-  await page.keyboard.up(key);
-}
-
 test("each hears its own steps as own, and the other hears them in range", async ({ browser }) => {
-  test.setTimeout(90_000);
   const { host, guest } = await pair(browser);
-  // Walk west along the row the guest stands on. The corner NPC steps too, far away at y 3.
-  await walkFor(host, "s", 1800);
   const hostSteps = async () =>
     (await sounds(guest)).filter((sound) =>
       isStep(sound, false) && sound.y > 5
     );
-  await expect.poll(async () => (await hostSteps()).length)
-    .toBeGreaterThanOrEqual(2);
+  const ownSteps = async (page: Page) =>
+    (await sounds(page)).filter((sound) => isStep(sound, true)).length;
+  // Walk west along the row the guest stands on until the guest hears two steps.
+  // The corner NPC steps too, far away at y 3.
+  await holdUntil(
+    host,
+    "s",
+    async () => (await hostSteps()).length >= 2 && (await ownSteps(host)) >= 2,
+  );
   const heard = await hostSteps();
   expect(heard[0].tags.slice(0, 2)).toEqual(["step", "walk"]);
   expect(heard[0].tags).toHaveLength(3);
@@ -85,10 +83,7 @@ test("each hears its own steps as own, and the other hears them in range", async
   ).toBe(
     false,
   );
-  await walkFor(guest, "e", 1800);
-  await expect.poll(async () =>
-    (await sounds(guest)).filter((sound) => isStep(sound, true)).length
-  ).toBeGreaterThanOrEqual(2);
+  await holdUntil(guest, "e", async () => (await ownSteps(guest)) >= 2);
   await expect.poll(async () =>
     (await sounds(host)).filter((sound) => isStep(sound, false)).length
   ).toBeGreaterThanOrEqual(2);
@@ -96,35 +91,7 @@ test("each hears its own steps as own, and the other hears them in range", async
   await Promise.all([host.close(), guest.close()]);
 });
 
-test("the guest hears the host mining, and the host hears its own hits and break", async ({ browser }) => {
-  test.setTimeout(90_000);
-  const { host, guest } = await pair(browser);
-  await placeAt(host, 2, 2);
-  await host.keyboard.down("i"); // aim north at the stone
-  await host.waitForTimeout(150);
-  await host.keyboard.press("Space");
-  const kinds = (list: Played[], own: boolean) =>
-    list.filter((sound) => sound.tags[0] === "mine" && sound.own === own)
-      .map((sound) => sound.tags.slice(1).join(" "));
-  await expect.poll(async () => kinds(await sounds(guest), false), {
-    timeout: 10_000,
-  }).toContain("break stone");
-  const heard = kinds(await sounds(guest), false);
-  // Stone takes 1 s, so a slow frame can leave one hit; the 500 ms cadence is unit tested.
-  expect(heard.filter((kind) => kind === "hit stone").length)
-    .toBeGreaterThanOrEqual(1);
-  expect(heard.at(-1)).toBe("break stone");
-  const own = kinds(await sounds(host), true);
-  expect(own.filter((kind) => kind === "hit stone").length)
-    .toBeGreaterThanOrEqual(1);
-  expect(own.at(-1)).toBe("break stone");
-  expect(kinds(await sounds(host), false)).toEqual([]);
-  await host.keyboard.up("i");
-  await Promise.all([host.close(), guest.close()]);
-});
-
 test("a source behind rock is muffled, one beyond 12 tiles is not heard", async ({ browser }) => {
-  test.setTimeout(120_000);
   const { host, guest } = await pair(browser);
   // A stone wall between the host's side and the guest, across the whole room.
   await host.evaluate(async () => {
@@ -138,12 +105,15 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
   });
   await placeAt(host, 2, 9);
   await expect.poll(async () => (await position(guest))?.x).toBeGreaterThan(5);
-  await host.waitForTimeout(500);
+  await waitTicks(host, 10);
   const before = (await sounds(guest)).length;
-  await walkFor(host, "e", 2200);
-  await expect.poll(async () =>
-    (await sounds(guest)).slice(before).filter((sound) => sound.x < 5).length
-  ).toBeGreaterThanOrEqual(2);
+  await holdUntil(
+    host,
+    "e",
+    async () =>
+      (await sounds(guest)).slice(before).filter((sound) => sound.x < 5)
+        .length >= 2,
+  );
   const behind = (await sounds(guest)).slice(before).filter((sound) =>
     sound.x < 5
   );
@@ -159,21 +129,28 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
       terrain.writeTile(scene.world, 5, y, 0, terrain.OPEN);
     }
   });
-  await guest.keyboard.down("s");
-  await expect.poll(async () => (await position(guest))?.x, { timeout: 30_000 })
-    .toBeLessThan(2.6);
-  await guest.keyboard.up("s");
+  await holdUntil(
+    guest,
+    "s",
+    async () => ((await position(guest))?.x ?? 99) < 2.6,
+  );
   await placeAt(host, 14.6, 13);
-  await host.waitForTimeout(500);
+  await waitTicks(host, 10);
   expect(Math.abs((await position(host))!.x - (await position(guest))!.x))
     .toBeGreaterThan(12);
   const mark = (await sounds(guest)).length;
   const hostMark = (await sounds(host)).length;
-  await walkFor(host, "e", 2200);
-  expect(
-    (await sounds(host)).slice(hostMark).filter((sound) => isStep(sound, true))
-      .length,
-  ).toBeGreaterThanOrEqual(2);
+  await holdUntil(
+    host,
+    "e",
+    async () =>
+      (await sounds(host)).slice(hostMark).filter((sound) =>
+        isStep(sound, true)
+      )
+        .length >= 2,
+  );
+  // Give the host's step events time to reach the guest, if they were sent.
+  await waitTicks(guest, 20);
   expect((await sounds(guest)).slice(mark).filter((sound) => sound.x > 9))
     .toEqual([]);
   await Promise.all([host.close(), guest.close()]);

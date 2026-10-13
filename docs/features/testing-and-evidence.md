@@ -31,11 +31,57 @@ unit test.
 
 Browser specs are not chosen by diff. They import almost nothing from `src/`, so
 no import graph links client code to a spec, and Playwright's `--only-changed`
-has the same limit. `.github/workflows/e2e.yml` splits them across four runners
-with `--shard=i/4`, one worker each. It runs nightly on main, by hand, and on a
-pull request with the `e2e` label, and it blocks no merge: the merge gate in
-`ci.yml` is `deno task verify`. A failed nightly run opens or updates an issue.
-`deno task e2e --shard=1/4` runs one quarter locally.
+has the same limit. They run in two tiers instead:
+
+- **Smoke** (`deno task e2e:smoke`, about a minute): the specs tagged
+  `{ tag: "@smoke" }`, one per journey: boot and the boot-error page, a join
+  through the relay and over WebRTC, the host mining, a guest placing stone, the
+  phone layout, reliable chat under loss, a build under `/b/<branch>/`, and a
+  phone join link. `.github/workflows/smoke.yml` runs it on every pull request
+  and push to main. It is not a required check yet.
+- **Full** (`deno task e2e`): every spec. `.github/workflows/e2e.yml` splits it
+  across four runners with `--shard=i/4`, one worker each, nightly on main, by
+  hand, and on a pull request with the `e2e` label. A failed nightly run opens
+  or updates an issue. `deno task e2e --shard=1/4` runs one quarter locally. On
+  a workstation it runs four workers, about 3.5 minutes for the whole suite;
+  `E2E_WORKERS=n` changes that.
+
+Neither tier blocks a merge: the merge gate in `ci.yml` is `deno task verify`. A
+smoke test must stay fast; one that grows past a few seconds moves to the full
+tier. A new or changed spec passes `--repeat-each=5` before it merges. A flaky
+spec gets `test.fixme` and an issue, never retries.
+
+## Browser specs wait on game time
+
+World time follows the wall clock and drops whatever a slow frame cannot catch
+up on, so a fixed sleep or a time limit lets less of the game happen on a loaded
+machine or a CI runner. Specs therefore never sleep, read the clock, or set a
+timeout. They wait with `tests/e2e/time.ts`, and every wait is bounded in world
+ticks, so a wait that cannot succeed fails after the same amount of game on any
+machine:
+
+- poll the state they check, which is the first choice: `expect.poll` for state
+  that arrives within a few frames, `waitFor(page, check, { maxTicks })` for
+  game progress such as a tile being mined;
+- `holdUntil(page, key, done, { maxTicks })` to walk until a position or other
+  state is reached;
+- `waitTicks(page, n)` when game time must pass, such as proving nothing
+  happens;
+- `waitFrames(page, n)` when the frame loop must read input or redraw the UI.
+
+The default bound is 200 ticks, 10 s of game time. The only time limits are in
+`playwright.config.ts`: they end a page that has hung, and a passing spec never
+waits for them. Assertions count ticks, not milliseconds or frames per second.
+For example, the check that remote motion is continuous allows a fixed distance
+per tick between two drawn samples, so sparse frames widen the allowance instead
+of failing it.
+
+`tests/lint/e2e_wall_clock_test.ts` fails `verify` on `waitForTimeout`,
+`setTimeout`, `setInterval`, `performance.now`, `Date.now`, `timeout:` or
+`test.slow` in a spec. A spec about a real-time feature (a join attempt that
+expires, speech revealed in real time) keeps the call with a
+`// wall-clock: <reason>` comment, or uses Playwright's `page.clock`. A spec
+that works on the tiles the corner NPC walks calls `__od.removeNpc()` first.
 
 ## Group stress run
 

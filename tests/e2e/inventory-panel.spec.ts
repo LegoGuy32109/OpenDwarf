@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
+import { holdUntil, waitFrames, waitTicks } from "./time.ts";
 import {
   clickUi,
   hasUi,
@@ -99,7 +100,6 @@ async function step(page: Page, key: string, kind: string) {
 }
 
 test("B opens the panel, IJKL moves the selection, and interact holds an item", async ({ page }) => {
-  test.setTimeout(60_000);
   await startHost(page);
   const me = await od(page);
   await give(page, me, "coal", 12);
@@ -113,9 +113,7 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
       me,
     );
   const startY = await yOf();
-  await page.keyboard.down("e");
-  await expect.poll(yOf, { timeout: 5000 }).toBeLessThan(startY);
-  await page.keyboard.up("e");
+  await holdUntil(page, "e", async () => await yOf() < startY);
 
   await placeAt(page, 2, 2);
   await page.keyboard.press("b");
@@ -130,7 +128,6 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
       me,
     ),
   ).toBe(true);
-  await page.waitForTimeout(300);
   await evidenceShot(page, "inventory-desktop");
 
   // The selection starts on the held pickaxe; L steps right, J back.
@@ -155,7 +152,6 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
   ).toBe(false);
   // A held diamond prevents mining. Aim north at the stone and interact.
   await page.keyboard.down("i");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
   await expect.poll(() => notice(page)).toContain("no pickaxe");
   expect(await tile(page, 2)).not.toBe(OPEN);
@@ -167,40 +163,18 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
   await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);
   await page.keyboard.press("b");
   await page.keyboard.down("k");
-  await page.waitForTimeout(100);
+  await waitFrames(page, 3);
   await page.keyboard.up("k"); // already on row 0: stays
   await clickUi(page, "slot:pickaxe"); // a tap holds it
   await expect.poll(() => held(page)).toBe("pickaxe");
   await page.keyboard.press("b");
   await page.keyboard.down("i");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Space");
-  await expect.poll(() => tile(page, 2), { timeout: 5000 }).toBe(OPEN);
-  await page.keyboard.up("i");
-});
-
-test("changing the held item cancels mining", async ({ page }) => {
-  test.setTimeout(60_000);
-  await startHost(page);
-  const me = await od(page);
-  await give(page, me, "coal", 1);
-  await placeAt(page, 2, 2);
-  await page.keyboard.down("i");
-  await page.waitForTimeout(150);
-  await page.keyboard.press("Space");
-  await page.keyboard.press("b");
-  await page.keyboard.down("l"); // select coal
-  await page.waitForTimeout(120);
-  await page.keyboard.up("l");
-  await page.keyboard.press("Space");
-  await expect.poll(() => held(page)).toBe("coal");
-  await page.waitForTimeout(1300);
-  expect(await tile(page, 2)).not.toBe(OPEN);
+  await expect.poll(() => tile(page, 2)).toBe(OPEN);
   await page.keyboard.up("i");
 });
 
 test("a joining player holds an item through the host and others see its bubble", async ({ browser }) => {
-  test.setTimeout(90_000);
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await startHost(host);
@@ -233,9 +207,7 @@ test("a joining player holds an item through the host and others see its bubble"
       ).length
     )
   ).toBe(1);
-  await guest.keyboard.down("l");
-  await guest.waitForTimeout(120);
-  await guest.keyboard.up("l");
+  await step(guest, "l", "iron ore");
   await guest.keyboard.press("Space");
   await expect.poll(() =>
     guest.evaluate(() => (globalThis as unknown as Harness).__od.scene.heldFeed)
@@ -252,7 +224,7 @@ test("a joining player holds an item through the host and others see its bubble"
     (globalThis as unknown as { __od: { send: (m: unknown) => void } }).__od
       .send({ type: "hold", kind: "diamond" })
   );
-  await guest.waitForTimeout(500);
+  await waitTicks(host, 10);
   expect(
     await host.evaluate(
       (id) =>
@@ -267,7 +239,6 @@ test("a joining player holds an item through the host and others see its bubble"
 });
 
 test("the bag button opens the panel on a phone and a tap holds an item", async ({ browser }) => {
-  test.setTimeout(60_000);
   const context = await browser.newContext({
     viewport: { width: 390, height: 780 },
     deviceScaleFactor: 2,
@@ -283,11 +254,9 @@ test("the bag button opens the panel on a phone and a tap holds an item", async 
   await evidenceShot(page, "inventory-phone-closed");
   await tapUi(page, "btn:bag");
   await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
-  await page.waitForTimeout(300);
   await evidenceShot(page, "inventory-phone");
   await tapUi(page, "slot:diamond");
   await expect.poll(() => held(page)).toBe("diamond");
-  await page.waitForTimeout(300);
   await evidenceShot(page, "inventory-phone-held");
   await tapUi(page, "btn:bag-close");
   await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);

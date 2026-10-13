@@ -1,0 +1,27 @@
+name: Smoke
+# The @smoke browser specs, about a minute, on every pull request and push to
+# main. It is not a required check yet: it joins the merge gate after a long
+# clean streak. The full suite runs nightly in e2e.yml.
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno run -A npm:playwright@1.63.0 install --with-deps chromium
+      - run: deno task e2e:smoke
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-smoke
+          path: exports/playwright-results
+          retention-days: 7

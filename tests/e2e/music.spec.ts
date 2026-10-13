@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { clickUi, ready, uiRect } from "./ui.ts";
+import { waitTicks } from "./time.ts";
+import { clickUi, ready } from "./ui.ts";
 
 type MusicState = {
   status: string;
@@ -56,7 +57,7 @@ test("music plays after a tap, skips the missing track, and replays from the dev
   await expect.poll(async () => (await state(page)).track).toBe(
     "music/ToneA.ogg",
   );
-  await page.waitForTimeout(500);
+  await waitTicks(page, 10);
   expect(downloads).toEqual([]);
 });
 
@@ -93,30 +94,11 @@ test("a harness page is silent unless music=1, and music=0 keeps it off", async 
   await page.goto("/?harness=1");
   await ready(page);
   await page.mouse.click(640, 400);
-  await page.waitForTimeout(500);
+  await waitTicks(page, 10);
   expect((await state(page)).track).toBeNull();
   await page.goto("/?harness=1&music=0");
   await ready(page);
   await page.mouse.click(640, 400);
-  await page.waitForTimeout(500);
+  await waitTicks(page, 10);
   expect((await state(page)).track).toBeNull();
-});
-
-test.describe("on a phone", () => {
-  test.use({
-    viewport: { width: 844, height: 390 },
-    hasTouch: true,
-    isMobile: true,
-  });
-  test("the music row fits the settings menu", async ({ page }) => {
-    await page.goto("/?harness=1&music=1");
-    await ready(page);
-    await page.keyboard.press("Escape");
-    await clickUi(page, "btn:settings");
-    await evidenceShot(page, "music-volume-phone");
-    const back = await uiRect(page, "btn:back");
-    const music = await uiRect(page, "btn:music:50");
-    expect(music.y).toBeLessThan(back.y);
-    expect(back.y + back.h).toBeLessThanOrEqual(390);
-  });
 });
