@@ -1,3 +1,5 @@
+import { joinedParticipant } from "./browser-harness.ts";
+import { cliArgs } from "./cli-args.ts";
 import { type Browser, chromium, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 
@@ -70,10 +72,7 @@ function alignedPosition(position: Position, skewMs: number): Position {
   };
 }
 
-const argumentsMap = new Map(Deno.args.map((arg) => {
-  const [key, ...value] = arg.replace(/^--/, "").split("=");
-  return [key, value.join("=")];
-}));
+const argumentsMap = cliArgs(Deno.args);
 const smoke = argumentsMap.has("smoke");
 const durationSeconds = Number(
   argumentsMap.get("duration") ?? (smoke ? 12 : 900),
@@ -226,6 +225,8 @@ async function captureOutlier(page: Page, id: string, atMs: number) {
 async function ready(url: string) {
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
+      // The stress operator supplies the server URL. This CLI does not accept HTTP request input.
+      // fallow-ignore-next-line security-sink
       const response = await fetch(url);
       if (response.ok) return;
     } catch { /* Server is starting. */ }
@@ -588,15 +589,7 @@ try {
     );
     await waitForHarness(page);
     try {
-      await page.waitForFunction(() =>
-        (globalThis as unknown as {
-          __od: { scene: { localId: string } };
-        }).__od.scene.localId.startsWith("peer-"), { timeout: 20_000 });
-      const id = await page.evaluate(() =>
-        (globalThis as unknown as {
-          __od: { scene: { localId: string } };
-        }).__od.scene.localId
-      );
+      const id = await joinedParticipant(page);
       pages.push({ page, id, rendered: usesWebGL });
       if (usesWebGL) await startTrace(page);
       await sample(host, began);

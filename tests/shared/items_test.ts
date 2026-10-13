@@ -1,6 +1,6 @@
+import { createOpenField as field } from "./fixtures.ts";
 import { assert, assertEquals } from "@std/assert";
-import { addPlayer, advanceTicks, type World } from "../../src/shared/world.js";
-import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
+import { addPlayer, advanceTicks } from "../../src/shared/world.js";
 import {
   COAL,
   DIAMOND,
@@ -13,8 +13,6 @@ import {
 } from "../../src/shared/materials.js";
 import {
   drainTileChanges,
-  ensureChunk,
-  OPEN,
   STONE,
   writeTile,
 } from "../../src/shared/terrain.js";
@@ -48,15 +46,6 @@ import {
   decodeInventory,
   decodeItems,
 } from "../../src/shared/wire.js";
-
-/** Open air at level 1 and above, a stone floor at level 0. */
-function field(): World {
-  const world = createWorld();
-  const data = ensureChunk(world, 0, 0);
-  data.fill(OPEN);
-  data.fill(STONE, 0, 256);
-  return world;
-}
 
 const tile = { x: 6, y: 5, z: 1 };
 
@@ -150,10 +139,7 @@ Deno.test("mining the same tile twice over a refilled tile merges the stack", ()
 });
 
 Deno.test("pickup moves the named whole stack into the inventory", () => {
-  const world = field();
-  const player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
-  dropItem(world, tile, "coal", 3);
-  dropItem(world, tile, "stone");
+  const { world, player } = pickupChoice();
   const result = pickUp(world, "self", tile, "coal");
   assertEquals(result, { ok: true, kind: "coal", count: 3 });
   assertEquals(inventoryOf(player), [
@@ -177,10 +163,7 @@ Deno.test("pickup moves the named whole stack into the inventory", () => {
 });
 
 Deno.test("pickup takes the chosen stack and leaves the others in place", () => {
-  const world = field();
-  const player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
-  dropItem(world, tile, "coal", 3);
-  dropItem(world, tile, "stone");
+  const { world, player } = pickupChoice();
   dropItem(world, tile, "gold ore", 2);
   assertEquals(pickUp(world, "self", tile, "gold ore"), {
     ok: true,
@@ -322,3 +305,12 @@ Deno.test("the wire accepts a pickup request, dropped items, and an inventory", 
   );
   assertEquals(decodeInventory({ type: "other", stacks }), null);
 });
+
+function pickupChoice() {
+  const world = field(),
+    player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
+  for (const [kind, count] of [["coal", 3], ["stone", 1]] as const) {
+    dropItem(world, tile, kind, count);
+  }
+  return { world, player };
+}

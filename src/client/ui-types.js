@@ -90,3 +90,10 @@
  * @property {number} controlsTop
  * @property {number|null} chatTop the top of the in-game keyboard and chat line, or null while none shows
  */
+
+/**
+ * @typedef {object} DrawState
+ * @property {ReadonlySet<string>} pressed ids held down now
+ * @property {{move:{active:boolean,x:number,y:number},look:{active:boolean,x:number,y:number}}} sticks
+ * @property {number} now milliseconds, for the blinking caret
+ */

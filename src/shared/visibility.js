@@ -69,41 +69,49 @@ export function visibilityPosition(player, tick) {
 /** @param {World} world @param {Tile} from @param {Tile} to */
 export function hasLineOfSight(world, from, to) {
   if (from.x === to.x && from.y === to.y && from.z === to.z) return true;
-  if (from.z === to.z) {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const ax = Math.abs(dx);
-    const ay = Math.abs(dy);
-    const sx = Math.sign(dx);
-    const sy = Math.sign(dy);
-    let x = from.x;
-    let y = from.y;
-    let crossedX = 0;
-    let crossedY = 0;
-    while (x !== to.x || y !== to.y) {
-      const nextX = crossedX < ax ? (2 * crossedX + 1) * ay : Infinity;
-      const nextY = crossedY < ay ? (2 * crossedY + 1) * ax : Infinity;
-      if (nextX === nextY) {
-        if (
-          isSolid(world, x + sx, y, from.z) ||
-          isSolid(world, x, y + sy, from.z)
-        ) return false;
-        x += sx;
-        y += sy;
-        crossedX++;
-        crossedY++;
-      } else if (nextX < nextY) {
-        x += sx;
-        crossedX++;
-      } else {
-        y += sy;
-        crossedY++;
-      }
-      if (x === to.x && y === to.y) return true;
-      if (isSolid(world, x, y, from.z)) return false;
+  return from.z === to.z
+    ? sameLevelSight(world, from, to)
+    : differentHeightSight(world, from, to);
+}
+
+/** @param {World} world @param {Tile} from @param {Tile} to */
+function sameLevelSight(world, from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  const sx = Math.sign(dx);
+  const sy = Math.sign(dy);
+  let x = from.x;
+  let y = from.y;
+  let crossedX = 0;
+  let crossedY = 0;
+  while (x !== to.x || y !== to.y) {
+    const nextX = crossedX < ax ? (2 * crossedX + 1) * ay : Infinity;
+    const nextY = crossedY < ay ? (2 * crossedY + 1) * ax : Infinity;
+    if (nextX === nextY) {
+      if (
+        isSolid(world, x + sx, y, from.z) ||
+        isSolid(world, x, y + sy, from.z)
+      ) return false;
+      x += sx;
+      y += sy;
+      crossedX++;
+      crossedY++;
+    } else if (nextX < nextY) {
+      x += sx;
+      crossedX++;
+    } else {
+      y += sy;
+      crossedY++;
     }
-    return true;
+    if (x === to.x && y === to.y) return true;
+    if (isSolid(world, x, y, from.z)) return false;
   }
+  return true;
+}
+/** @param {World} world @param {Tile} from @param {Tile} to */
+function differentHeightSight(world, from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const dz = to.z - from.z;
@@ -158,14 +166,15 @@ function loadedAround(world, position) {
   return bits;
 }
 
-/** @param {World} world @param {Visibility} state @param {Tile} position */
-export function recomputeVisibility(world, state, position) {
-  const sample = tileKey(position.x, position.y, position.z);
-  const loaded = loadedAround(world, position);
-  if (
-    state.sample === sample &&
-    (state.loaded === undefined || state.loaded === loaded)
-  ) return false;
+/** @param {World} world @param {Tile} position @param {number} x @param {number} y @param {number} z @param {number} radiusSquared */
+function visibleTile(world, position, x, y, z, radiusSquared) {
+  const dx = x - position.x, dy = y - position.y, dz = z - position.z;
+  return dx * dx + dy * dy + dz * dz <= radiusSquared &&
+    nearLoadedTerrain(world, x, y) &&
+    hasLineOfSight(world, position, { x, y, z });
+}
+/** @param {World} world @param {Tile} position */
+function visibleWithinRadius(world, position) {
   const next = new Set();
   const radiusSquared = FOV_RADIUS * FOV_RADIUS;
   // One stone tile beyond loaded chunks is the farthest exterior surface visible.
@@ -174,17 +183,16 @@ export function recomputeVisibility(world, state, position) {
   for (let z = -1; z <= WORLD_TOP + 1; z++) {
     for (let y = minY; y <= minY + 2 * FOV_RADIUS + 1; y++) {
       for (let x = minX; x <= minX + 2 * FOV_RADIUS + 1; x++) {
-        const dx = x - position.x;
-        const dy = y - position.y;
-        const dz = z - position.z;
-        if (dx * dx + dy * dy + dz * dz > radiusSquared) continue;
-        if (!nearLoadedTerrain(world, x, y)) continue;
-        if (hasLineOfSight(world, position, { x, y, z })) {
+        if (visibleTile(world, position, x, y, z, radiusSquared)) {
           next.add(tileKey(x, y, z));
         }
       }
     }
   }
+  return next;
+}
+/** @param {World} world @param {Set<string>} next @param {Tile} position */
+function revealAdjacentWalls(world, next, position) {
   // Reveal walls next to visible air, even when the wall center is behind a ray.
   for (const key of [...next]) {
     const [x, y, z] = parseTileKey(key);
@@ -196,6 +204,18 @@ export function recomputeVisibility(world, state, position) {
     }
     if (z <= position.z) next.add(tileKey(x, y, z - 1));
   }
+}
+
+/** @param {World} world @param {Visibility} state @param {Tile} position */
+export function recomputeVisibility(world, state, position) {
+  const sample = tileKey(position.x, position.y, position.z);
+  const loaded = loadedAround(world, position);
+  if (
+    state.sample === sample &&
+    (state.loaded === undefined || state.loaded === loaded)
+  ) return false;
+  const next = visibleWithinRadius(world, position);
+  revealAdjacentWalls(world, next, position);
   for (const key of state.visible) if (!next.has(key)) state.memory.add(key);
   for (const key of next) state.memory.delete(key);
   state.visible = next;
@@ -240,6 +260,52 @@ export function entityOpacity(player, tick, visible, position = player) {
   return originSeen ? 1 - blend : blend;
 }
 
+/** @param {Tile} position @param {(x:number,y:number,z:number)=>boolean} visible @param {number} x @param {number} y @param {number} z */
+function edgeDistance(position, visible, x, y, z) {
+  let closest = Infinity;
+  const left = x - 0.5;
+  const right = x + 0.5;
+  const top = y - 0.5;
+  const bottom = y + 0.5;
+  if (!visible(x - 1, y, z)) {
+    closest = Math.min(
+      closest,
+      Math.hypot(
+        position.x - left,
+        position.y - Math.max(top, Math.min(bottom, position.y)),
+      ),
+    );
+  }
+  if (!visible(x + 1, y, z)) {
+    closest = Math.min(
+      closest,
+      Math.hypot(
+        position.x - right,
+        position.y - Math.max(top, Math.min(bottom, position.y)),
+      ),
+    );
+  }
+  if (!visible(x, y - 1, z)) {
+    closest = Math.min(
+      closest,
+      Math.hypot(
+        position.x - Math.max(left, Math.min(right, position.x)),
+        position.y - top,
+      ),
+    );
+  }
+  if (!visible(x, y + 1, z)) {
+    closest = Math.min(
+      closest,
+      Math.hypot(
+        position.x - Math.max(left, Math.min(right, position.x)),
+        position.y - bottom,
+      ),
+    );
+  }
+  return closest;
+}
+
 /** @param {{x:number,y:number,z:number}} position @param {(x:number,y:number,z:number)=>boolean} visible */
 export function boundaryOpacity(position, visible) {
   const cx = centerTile(position.x);
@@ -250,47 +316,13 @@ export function boundaryOpacity(position, visible) {
   for (let y = cy - 1; y <= cy + 1; y++) {
     for (let x = cx - 1; x <= cx + 1; x++) {
       if (!visible(x, y, z)) continue;
-      const left = x - 0.5;
-      const right = x + 0.5;
-      const top = y - 0.5;
-      const bottom = y + 0.5;
-      if (!visible(x - 1, y, z)) {
-        closest = Math.min(
-          closest,
-          Math.hypot(
-            position.x - left,
-            position.y - Math.max(top, Math.min(bottom, position.y)),
-          ),
-        );
-      }
-      if (!visible(x + 1, y, z)) {
-        closest = Math.min(
-          closest,
-          Math.hypot(
-            position.x - right,
-            position.y - Math.max(top, Math.min(bottom, position.y)),
-          ),
-        );
-      }
-      if (!visible(x, y - 1, z)) {
-        closest = Math.min(
-          closest,
-          Math.hypot(
-            position.x - Math.max(left, Math.min(right, position.x)),
-            position.y - top,
-          ),
-        );
-      }
-      if (!visible(x, y + 1, z)) {
-        closest = Math.min(
-          closest,
-          Math.hypot(
-            position.x - Math.max(left, Math.min(right, position.x)),
-            position.y - bottom,
-          ),
-        );
-      }
+      closest = Math.min(closest, edgeDistance(position, visible, x, y, z));
     }
   }
   return Math.max(0, Math.min(1, closest * 2));
+}
+
+/** Whether a sampled tile is currently visible. @param {ReadonlySet<string>} visible @param {import('./world.js').Tile} at */
+export function tileSeen(visible, at) {
+  return visible.has(tileKey(at.x, at.y, at.z));
 }

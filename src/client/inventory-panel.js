@@ -24,15 +24,17 @@ const REPEAT_MS = 180;
  * @param {number} index @param {number} count @param {number} dx @param {number} dy
  * @returns {number}
  */
-export function stepSelection(index, count, dx, dy) {
+export function stepInventorySelection(index, count, dx, dy) {
   if (count <= 0) return 0;
   const column = index % COLUMNS + Math.sign(dx);
   const row = Math.floor(index / COLUMNS) + Math.sign(dy);
   const next = row * COLUMNS + column;
   if (column >= 0 && column < COLUMNS && row >= 0 && next < count) return next;
   if (dx && dy) {
-    const sideways = stepSelection(index, count, dx, 0);
-    return sideways !== index ? sideways : stepSelection(index, count, 0, dy);
+    const sideways = stepInventorySelection(index, count, dx, 0);
+    return sideways !== index
+      ? sideways
+      : stepInventorySelection(index, count, 0, dy);
   }
   return index;
 }
@@ -106,7 +108,7 @@ export function createInventoryPanel({ onHold, onOpenChange }) {
       if (same && nowMs - lastStep < REPEAT_MS) return;
       lastDirection = direction;
       lastStep = nowMs;
-      selected = stepSelection(
+      selected = stepInventorySelection(
         selected,
         stacks.length,
         direction.x,
@@ -121,7 +123,12 @@ export function createInventoryPanel({ onHold, onOpenChange }) {
       if (!isOpen) return;
       const step = stick.update(direction, nowMs);
       if (!step) return;
-      selected = stepSelection(selected, stacks.length, step.x, step.y);
+      selected = stepInventorySelection(
+        selected,
+        stacks.length,
+        step.x,
+        step.y,
+      );
     },
     /** A tap on a slot selects the stack and holds it. @param {string} kind */
     tap(kind) {

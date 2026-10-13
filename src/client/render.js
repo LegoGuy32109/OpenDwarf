@@ -1,4 +1,5 @@
 // @ts-check
+import { terrainBands } from "../shared/terrain-bands.js";
 
 import {
   chatView,
@@ -110,9 +111,15 @@ function texture(gl, source) {
 }
 
 /** @typedef {{tiles:number,quads:number}} RenderStats What one `render` call drew: `tiles` is the terrain tiles with a visible surface, `quads` every quad batched that frame (terrain, edges, masks, sprites, and interface). */
-/** @typedef {import('../shared/world.js').World} World */
-/** @typedef {import('../shared/visibility.js').Visibility} Visibility */
-/** @typedef {{world:World,localId:string,menu:boolean,menuPage:string,uiScale:number,zoom:number,viewZ:number,viewMode:"entity"|"master",inputMode:string,hudUntil:number,touchGesture:boolean,visibility:Visibility,camera:{x:number,y:number},aim:{x:number,y:number},renderOffset:{x:number,y:number,z:number},presentation:ReturnType<typeof import('./presentation.js').createPresentation>,chatFeed:import('../shared/chat.js').DisplayChatRecord[],textSize:import('../shared/chat.js').TextSize,chatOpen:boolean,chatDraft:string,status:string,notice?:{text:string,until:number},ui?:{layout:import('./ui.js').UiLayout,state:import('./ui-draw.js').DrawState},mining?:{id:string,x:number,y:number,z:number,progress:number}[],items?:import('../shared/items.js').DroppedEntry[],pickupCells?:import('./pickup-grid.js').GridCell[],layout?:"room"|"test"}} Scene */
+/** @typedef {import('./scene-types.js').Scene} Scene */
+
+/** Bind the shared quad vertex format. @param {WebGL2RenderingContext} gl */
+function vertexAttributes(gl) {
+  for (const [index, count, offset] of [[0, 2, 0], [1, 2, 8], [2, 4, 16]]) {
+    gl.enableVertexAttribArray(index);
+    gl.vertexAttribPointer(index, count, gl.FLOAT, false, 32, offset);
+  }
+}
 
 /** @param {HTMLCanvasElement} canvas */
 export async function createRenderer(canvas) {
@@ -138,10 +145,7 @@ export async function createRenderer(canvas) {
   const vao = gl.createVertexArray();
   gl.bindVertexArray(vao);
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  for (const [index, count, offset] of [[0, 2, 0], [1, 2, 8], [2, 4, 16]]) {
-    gl.enableVertexAttribArray(index);
-    gl.vertexAttribPointer(index, count, gl.FLOAT, false, 32, offset);
-  }
+  vertexAttributes(gl);
   gl.useProgram(program);
   gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
   gl.enable(gl.BLEND);
@@ -407,10 +411,7 @@ export async function createRenderer(canvas) {
       if (!partBuffer || !partVao) throw new Error("WebGL2 buffer unavailable");
       gl.bindVertexArray(partVao);
       gl.bindBuffer(gl.ARRAY_BUFFER, partBuffer);
-      for (const [index, count, offset] of [[0, 2, 0], [1, 2, 8], [2, 4, 16]]) {
-        gl.enableVertexAttribArray(index);
-        gl.vertexAttribPointer(index, count, gl.FLOAT, false, 32, offset);
-      }
+      vertexAttributes(gl);
       gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
       parts[pass] = {
         vao: partVao,
@@ -522,161 +523,113 @@ export async function createRenderer(canvas) {
       scene.visibility,
     );
     for (let y = top; y <= bottom; y++) {
-      for (let x = left; x <= right; x++) {
-        const tile = surface(x, y);
-        if (!tile) continue;
-        // An ore keeps the stone's depth tint, so it reads as a wall at the
-        // player's level and as a darker top when seen from above.
-        drawnTiles++;
-        const oreFrame = materialInfo(tile.material)?.oreFrame;
-        const ore = oreFrame !== null && oreFrame !== undefined;
-        quad(
-          ore ? textures.ores : textures.floor,
-          false,
-          x * TILE,
-          y * TILE,
-          TILE,
-          TILE,
-          ore ? [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES] : FLOOR_UV,
-          tile.seen === "remembered"
-            ? REMEMBERED_TINT
-            : DEPTH_COLORS[tile.depth],
-        );
-      }
+      for (let x = left; x <= right; x++) drawFloorTile(surface, x, y);
     }
     flush();
     // The authored edge atlas covers the corner mask; narrow bands preserve the old ledge shading.
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
-        const mask = elevationMask(
-          scene.world,
-          x,
-          y,
-          scene.viewZ,
-          scene.viewMode,
-          scene.visibility,
-          surface,
-        );
-        if (!mask) continue;
-        const frame = shadowMaskToAtlasId(mask) - 1;
-        quad(
-          textures.edge,
-          false,
-          (x + 0.5) * TILE,
-          (y + 0.5) * TILE,
-          TILE,
-          TILE,
-          [0, frame / 15, 1, 1 / 15],
-          [1, 1, 1, 0.4],
-        );
+        drawElevationTile(scene, surface, x, y);
       }
     }
     flush();
     for (let y = top; y <= bottom; y++) {
-      for (let x = left; x <= right; x++) {
-        const here = surface(x, y);
-        if (!here) continue;
-        const rightTile = surface(x + 1, y);
-        const downTile = surface(x, y + 1);
-        if (rightTile?.depth !== here.depth) {
-          const lowerRight = !rightTile || rightTile.depth > here.depth;
-          const edgeX = (x + 1) * TILE;
-          quad(
-            textures.white,
-            false,
-            edgeX + (lowerRight ? 0 : -4),
-            y * TILE,
-            4,
-            TILE,
-            [0, 0, 1, 1],
-            [0, 0, 0, 0.28],
-          );
-          quad(
-            textures.white,
-            false,
-            edgeX + (lowerRight ? 4 : -8),
-            y * TILE,
-            4,
-            TILE,
-            [0, 0, 1, 1],
-            [0, 0, 0, 0.11],
-          );
-        }
-        if (downTile?.depth !== here.depth) {
-          const lowerDown = !downTile || downTile.depth > here.depth;
-          const edgeY = (y + 1) * TILE;
-          quad(
-            textures.white,
-            false,
-            x * TILE,
-            edgeY + (lowerDown ? 0 : -4),
-            TILE,
-            4,
-            [0, 0, 1, 1],
-            [0, 0, 0, 0.28],
-          );
-          quad(
-            textures.white,
-            false,
-            x * TILE,
-            edgeY + (lowerDown ? 4 : -8),
-            TILE,
-            4,
-            [0, 0, 1, 1],
-            [0, 0, 0, 0.11],
-          );
-        }
-      }
+      for (let x = left; x <= right; x++) drawBandsTile(surface, x, y);
     }
     flush();
     for (let y = top; y <= bottom; y++) {
-      for (let x = left; x <= right; x++) {
-        const mask = ceilingMask(
-          scene.world,
-          x,
-          y,
-          scene.viewZ,
-          scene.viewMode,
-          scene.visibility,
-          surface,
-        );
-        if (!mask) continue;
-        const frame = shadowMaskToAtlasId(mask) - 1;
-        quad(
-          textures.ceiling,
-          false,
-          (x + 0.5) * TILE,
-          (y + 0.5) * TILE,
-          TILE,
-          TILE,
-          [0, frame / 15, 1, 1 / 15],
-          [1, 1, 1, 0.55],
-        );
-      }
+      for (let x = left; x <= right; x++) drawCeilingTile(scene, surface, x, y);
     }
     flush();
   }
+  /** @param {import('../shared/surface.js').SurfaceLookup} surface @param {number} x @param {number} y */
+  function drawFloorTile(surface, x, y) {
+    const tile = surface(x, y);
+    if (!tile) return;
+    // An ore keeps the stone's depth tint, so it reads as a wall at the
+    // player's level and as a darker top when seen from above.
+    drawnTiles++;
+    const oreFrame = materialInfo(tile.material)?.oreFrame;
+    const ore = oreFrame !== null && oreFrame !== undefined;
+    quad(
+      ore ? textures.ores : textures.floor,
+      false,
+      x * TILE,
+      y * TILE,
+      TILE,
+      TILE,
+      ore ? [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES] : FLOOR_UV,
+      tile.seen === "remembered" ? REMEMBERED_TINT : DEPTH_COLORS[tile.depth],
+    );
+  }
 
+  /** @param {Scene} scene @param {import('../shared/surface.js').SurfaceLookup} surface @param {number} x @param {number} y */
+  function drawElevationTile(scene, surface, x, y) {
+    const mask = elevationMask(
+      scene.world,
+      x,
+      y,
+      scene.viewZ,
+      scene.viewMode,
+      scene.visibility,
+      surface,
+    );
+    if (!mask) return;
+    const frame = shadowMaskToAtlasId(mask) - 1;
+    quad(
+      textures.edge,
+      false,
+      (x + 0.5) * TILE,
+      (y + 0.5) * TILE,
+      TILE,
+      TILE,
+      [0, frame / 15, 1, 1 / 15],
+      [1, 1, 1, 0.4],
+    );
+  }
+
+  /** @param {number} x @param {number} y @param {number} w @param {number} h @param {number} alpha */
+  function emitTerrainBand(x, y, w, h, alpha) {
+    quad(textures.white, false, x, y, w, h, [0, 0, 1, 1], [0, 0, 0, alpha]);
+  }
+  /** @param {import('../shared/surface.js').SurfaceLookup} surface @param {number} x @param {number} y */
+  function drawBandsTile(surface, x, y) {
+    terrainBands(surface, x, y, TILE, emitTerrainBand);
+  }
+
+  /** @param {Scene} scene @param {import('../shared/surface.js').SurfaceLookup} surface @param {number} x @param {number} y */
+  function drawCeilingTile(scene, surface, x, y) {
+    const mask = ceilingMask(
+      scene.world,
+      x,
+      y,
+      scene.viewZ,
+      scene.viewMode,
+      scene.visibility,
+      surface,
+    );
+    if (!mask) return;
+    const frame = shadowMaskToAtlasId(mask) - 1;
+    quad(
+      textures.ceiling,
+      false,
+      (x + 0.5) * TILE,
+      (y + 0.5) * TILE,
+      TILE,
+      TILE,
+      [0, frame / 15, 1, 1 / 15],
+      [1, 1, 1, 0.55],
+    );
+  }
+
+  /** @typedef {ReturnType<typeof createFrame>} Frame */
+  /** @typedef {Frame & ReturnType<typeof drawDrops> & ReturnType<typeof drawSprites>} WorldFrame */
+  /** @typedef {WorldFrame & ReturnType<typeof prepareChat>} ChatFrame */
   /** @param {Scene} scene @param {number} alpha */
-  function draw(scene, alpha) {
+  function createFrame(scene, alpha) {
     const dpr = globalThis.devicePixelRatio || 1;
     const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
     const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-    }
-    gl.viewport(0, 0, width, height);
-    gl.clearColor(0.106, 0.109, 0.122, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(program);
-    gl.bindVertexArray(vao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.uniform2f(locationSize, width, height);
-    if (!loaded) {
-      drawInterface(scene, dpr);
-      return;
-    }
     const zoom = dpr * scene.zoom;
     const cameraX = scene.camera.x;
     // The in-game keyboard covers the bottom of the screen: center on what is above it.
@@ -685,8 +638,6 @@ export async function createRenderer(canvas) {
       ? 0
       : (canvas.clientHeight - chatTop) * dpr / 2;
     const cameraY = scene.camera.y + lift / zoom;
-    gl.uniform2f(locationCamera, cameraX, cameraY);
-    gl.uniform1f(locationZoom, zoom);
     // Sprites start on a whole device pixel relative to the camera. At a
     // fractional scale, NEAREST sampling otherwise changes which texel columns
     // are one pixel wider on each frame, so a slow sprite shimmers.
@@ -698,9 +649,38 @@ export async function createRenderer(canvas) {
     const right = Math.ceil((cameraX + width / (2 * zoom)) / TILE) + 1;
     const top = Math.floor((cameraY - height / (2 * zoom)) / TILE) - 1;
     const bottom = Math.ceil((cameraY + height / (2 * zoom)) / TILE) + 1;
+    const scale = Math.max(1, Math.round(dpr * 1.5 * scene.uiScale));
+    const bubbleScale = scale * TEXT_SIZE_SCALE[scene.textSize];
+    return {
+      scene,
+      alpha,
+      dpr,
+      width,
+      height,
+      zoom,
+      cameraX,
+      cameraY,
+      snap,
+      left,
+      right,
+      top,
+      bottom,
+      scale,
+      bubbleScale,
+    };
+  }
+
+  /** @param {Frame} frame */
+  function drawTerrain(frame) {
+    const { scene, left, top, right, bottom } = frame;
     if (scene.viewMode === "master") {
       drawMeshes(scene, left, top, right, bottom);
     } else drawTilesPerFrame(scene, left, top, right, bottom);
+  }
+
+  /** @param {Frame} frame */
+  function drawCursor(frame) {
+    const { scene } = frame;
     const cursor = localCursor(scene);
     if (cursor) {
       const px = cursor.tile.x * TILE;
@@ -759,6 +739,11 @@ export async function createRenderer(canvas) {
       }
       flush();
     }
+  }
+
+  /** @param {Frame} frame */
+  function drawMining(frame) {
+    const { scene } = frame;
     for (const entry of scene.mining ?? []) {
       if (entry.z !== scene.viewZ) continue;
       const px = entry.x * TILE;
@@ -773,6 +758,11 @@ export async function createRenderer(canvas) {
       ]);
     }
     flush();
+  }
+
+  /** @param {Frame} frame */
+  function drawDrops(frame) {
+    const { scene } = frame;
     // Dropped items: one icon per tile, and the kinds on a tile take turns.
     const itemTiles = (scene.items ?? []).filter((entry) =>
       entry.z === scene.viewZ
@@ -794,6 +784,34 @@ export async function createRenderer(canvas) {
       );
     }
     flush();
+    return { itemTiles, itemNow };
+  }
+
+  /** @param {Scene} scene @param {import('../shared/world.js').Player} player
+   * @param {import('../shared/world.js').Tile} pos @param {number} sightOpacity @param {number} alpha */
+  function spriteOpacity(scene, player, pos, sightOpacity, alpha) {
+    let visible = player.id === scene.localId || scene.viewMode === "master"
+      ? 1
+      : player.viewMotion
+      ? viewMotionOpacity(player.viewMotion, scene.world.tick + alpha)
+      : player.free
+      ? sightOpacity
+      : entityOpacity(
+        player,
+        scene.world.tick + alpha,
+        (x, y, z) => tileVisibility(scene.visibility, x, y, z) === "visible",
+        pos,
+      );
+    if (
+      playerOccluded(scene.world, player, scene.viewZ) ||
+      player.z < scene.viewZ - Z_LEVELS_BELOW
+    ) visible = 0;
+    return visible;
+  }
+
+  /** @param {Frame} frame */
+  function drawSprites(frame) {
+    const { scene, alpha, width, height, cameraX, cameraY, snap } = frame;
     const players = scene.presentation.sightEntries(
       Object.values(scene.world.players),
       scene.localId,
@@ -804,22 +822,7 @@ export async function createRenderer(canvas) {
     /** @type {Map<string,number>} */
     const opacity = new Map();
     for (const { player, pos, opacity: sightOpacity } of players) {
-      let visible = player.id === scene.localId || scene.viewMode === "master"
-        ? 1
-        : player.viewMotion
-        ? viewMotionOpacity(player.viewMotion, scene.world.tick + alpha)
-        : player.free
-        ? sightOpacity
-        : entityOpacity(
-          player,
-          scene.world.tick + alpha,
-          (x, y, z) => tileVisibility(scene.visibility, x, y, z) === "visible",
-          pos,
-        );
-      if (
-        playerOccluded(scene.world, player, scene.viewZ) ||
-        player.z < scene.viewZ - Z_LEVELS_BELOW
-      ) visible = 0;
+      const visible = spriteOpacity(scene, player, pos, sightOpacity, alpha);
       opacity.set(player.id, visible);
       if (visible <= 0) continue;
       const offset = player.id === scene.localId
@@ -858,6 +861,12 @@ export async function createRenderer(canvas) {
       );
     }
     flush();
+    return { players, opacity, shopkeepers };
+  }
+
+  /** @param {Frame} frame */
+  function drawPickup(frame) {
+    const { scene } = frame;
     // Pickup grid: dark squares with one stack each; the selector is the orange outline.
     for (const cell of scene.pickupCells ?? []) {
       quad(textures.white, false, cell.x, cell.y, cell.size, cell.size, [
@@ -952,8 +961,21 @@ export async function createRenderer(canvas) {
       }
     }
     flush();
-    const scale = Math.max(1, Math.round(dpr * 1.5 * scene.uiScale));
-    const bubbleScale = scale * TEXT_SIZE_SCALE[scene.textSize];
+  }
+
+  /** @param {WorldFrame} frame */
+  function drawItemCounts(frame) {
+    const {
+      dpr,
+      width,
+      height,
+      zoom,
+      cameraX,
+      cameraY,
+      scale,
+      itemTiles,
+      itemNow,
+    } = frame;
     for (const entry of itemTiles) {
       const stack = entry.stacks[cycleIndex(entry.stacks.length, itemNow)];
       if (!stack || stack.count < 2) continue;
@@ -967,6 +989,11 @@ export async function createRenderer(canvas) {
         scale,
       );
     }
+  }
+
+  /** @param {WorldFrame} frame */
+  function drawPickupCounts(frame) {
+    const { scene, dpr, width, height, zoom, cameraX, cameraY, scale } = frame;
     for (const cell of scene.pickupCells ?? []) {
       if (cell.count < 2 || cell.alpha < 1) continue;
       const label = String(cell.count);
@@ -979,6 +1006,12 @@ export async function createRenderer(canvas) {
         scale,
       );
     }
+  }
+
+  /** @param {WorldFrame} frame */
+  function drawShopNames(frame) {
+    const { dpr, width, height, zoom, cameraX, cameraY, scale, shopkeepers } =
+      frame;
     for (const shopkeeper of shopkeepers) {
       text(
         "Shopkeeper",
@@ -990,6 +1023,22 @@ export async function createRenderer(canvas) {
         [1, 0.82, 0.4, 1],
       );
     }
+  }
+
+  /** @param {WorldFrame} frame */
+  function drawPlayerNames(frame) {
+    const {
+      scene,
+      dpr,
+      width,
+      height,
+      zoom,
+      cameraX,
+      cameraY,
+      scale,
+      players,
+      opacity,
+    } = frame;
     for (const { player, pos } of players) {
       const visible = opacity.get(player.id) ?? 0;
       if (visible <= 0) continue;
@@ -1014,6 +1063,11 @@ export async function createRenderer(canvas) {
         );
       }
     }
+  }
+
+  /** @param {WorldFrame} frame */
+  function prepareChat(frame) {
+    const { scene, players, opacity } = frame;
     const local = scene.world.players[scene.localId];
     const now = performance.now();
     const chat = scene.chatFeed.filter((record) =>
@@ -1041,6 +1095,24 @@ export async function createRenderer(canvas) {
       }
     }
     const listener = local ?? { x: 0, y: 0, z: scene.viewZ };
+    return { chat, now, positions, listener };
+  }
+
+  /** @param {ChatFrame} frame */
+  function drawBubbles(frame) {
+    const {
+      dpr,
+      width,
+      height,
+      zoom,
+      cameraX,
+      cameraY,
+      bubbleScale,
+      chat,
+      now,
+      positions,
+      listener,
+    } = frame;
     const candidates = chat.map((record) => {
       const pos = positions.get(record.id) ?? record;
       const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
@@ -1188,6 +1260,12 @@ export async function createRenderer(canvas) {
         );
       }
     }
+  }
+
+  /** @param {ChatFrame} frame */
+  function drawThoughts(frame) {
+    const { width, height, zoom, cameraX, cameraY, chat, now, positions } =
+      frame;
     // The thought icon sits beside the upper left of the head, not above it.
     const iconUnit = TILE * zoom / 32;
     for (const record of chat) {
@@ -1202,6 +1280,42 @@ export async function createRenderer(canvas) {
       }
       thoughtIcon(x, y, iconUnit, now);
     }
+  }
+  /** Draw the ordered passes of one frame. @param {Scene} scene @param {number} alpha */
+  function draw(scene, alpha) {
+    const frame = createFrame(scene, alpha);
+    const { dpr, width, height, cameraX, cameraY, zoom } = frame;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    gl.viewport(0, 0, width, height);
+    gl.clearColor(0.106, 0.109, 0.122, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(program);
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.uniform2f(locationSize, width, height);
+    if (!loaded) {
+      drawInterface(scene, dpr);
+      return;
+    }
+    gl.uniform2f(locationCamera, cameraX, cameraY);
+    gl.uniform1f(locationZoom, zoom);
+    drawTerrain(frame);
+    drawCursor(frame);
+    drawMining(frame);
+    const drops = drawDrops(frame);
+    const entities = drawSprites(frame);
+    const worldFrame = { ...frame, ...drops, ...entities };
+    drawPickup(frame);
+    drawItemCounts(worldFrame);
+    drawPickupCounts(worldFrame);
+    drawShopNames(worldFrame);
+    drawPlayerNames(worldFrame);
+    const chatFrame = { ...worldFrame, ...prepareChat(worldFrame) };
+    drawBubbles(chatFrame);
+    drawThoughts(chatFrame);
     drawInterface(scene, dpr);
     flush();
   }

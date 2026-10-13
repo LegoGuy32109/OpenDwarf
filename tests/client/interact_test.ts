@@ -118,6 +118,14 @@ function fixture(guest = false) {
     act,
     aim,
     finish,
+    keepMiningWhileAiming(code: string, ticks: number) {
+      const action = miningActions(world).get("self");
+      assert(action);
+      aim(code);
+      advanceTicks(world, ticks);
+      stepMining(world);
+      assertEquals(miningActions(world).get("self"), action);
+    },
   };
 }
 
@@ -189,10 +197,7 @@ Deno.test("interact reads current aim and cancels on the mined tile after the cu
   f.act();
   const action = miningActions(f.world).get("self")!;
   assertEquals({ x: action.x, y: action.y, z: action.z }, EAST);
-  f.aim("KeyI");
-  advanceTicks(f.world, 10);
-  stepMining(f.world);
-  assertEquals(miningActions(f.world).get("self"), action);
+  f.keepMiningWhileAiming("KeyI", 10);
   f.aim("KeyL");
   f.act();
   assertEquals(miningActions(f.world).size, 0);
@@ -232,10 +237,7 @@ Deno.test("interact targets the view level above and below and keeps mining with
     const action = miningActions(f.world).get("self")!;
     assert(action);
     assertEquals([action.x, action.y, action.z], [6, 5, z]);
-    f.aim("KeyI");
-    advanceTicks(f.world, 14);
-    stepMining(f.world);
-    assertEquals(miningActions(f.world).get("self"), action);
+    f.keepMiningWhileAiming("KeyI", 14);
     f.aim("KeyL");
     f.act();
     assertEquals(miningActions(f.world).size, 0);

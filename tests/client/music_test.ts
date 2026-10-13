@@ -1,3 +1,4 @@
+import { createFakeCache } from "./media_fakes.ts";
 // Tests for the music player (ADR 0007).
 import { assert, assertEquals } from "@std/assert";
 import {
@@ -108,22 +109,6 @@ Deno.test("the least recently played tracks go first when the cache is over its 
 });
 
 // A fake world: a cache, a bucket that can fail, audio nodes that record calls.
-class FakeCache {
-  store = new Map<string, Blob | string>();
-  match(url: string) {
-    const kept = this.store.get(url);
-    return Promise.resolve(kept === undefined ? undefined : new Response(kept));
-  }
-  put(url: string, response: Response) {
-    return response.blob().then((blob) => void this.store.set(url, blob));
-  }
-  delete(url: string) {
-    return Promise.resolve(this.store.delete(url));
-  }
-  keys() {
-    return Promise.resolve([...this.store.keys()].map((url) => ({ url })));
-  }
-}
 
 class FakeElement extends EventTarget {
   src = "";
@@ -150,7 +135,7 @@ function setup(
   bad: string[] = [],
   extra: Record<string, unknown> = {},
 ) {
-  const cache = new FakeCache();
+  const cache = createFakeCache();
   const requests: string[] = [];
   const elements: FakeElement[] = [];
   const { preset, ...rest } = extra;

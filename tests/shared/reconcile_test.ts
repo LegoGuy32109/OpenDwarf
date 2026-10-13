@@ -9,11 +9,17 @@ import {
   startMove,
 } from "../../src/shared/world.js";
 
-Deno.test("unacknowledged local movement survives an older host snapshot", () => {
+function reconciliationPair(x: number) {
   const local = createAuthoredWorld();
   const snapshot = createAuthoredWorld();
-  addPlayer(local, "admin", { x: 8, y: 7, z: 0 });
-  addPlayer(snapshot, "admin", { x: 8, y: 7, z: 0 });
+  for (const world of [local, snapshot]) {
+    addPlayer(world, "admin", { x, y: 7, z: 0 });
+  }
+  return { local, snapshot };
+}
+
+Deno.test("unacknowledged local movement survives an older host snapshot", () => {
+  const { local, snapshot } = reconciliationPair(8);
   assertEquals(startMove(local, "admin", 1, 0, 4).ok, true);
   advanceTicks(local, 5);
   mergeSnapshot(local, snapshot, 3, 4, "admin");
@@ -22,10 +28,7 @@ Deno.test("unacknowledged local movement survives an older host snapshot", () =>
 });
 
 Deno.test("confirmed move keeps the client's animation clock", () => {
-  const local = createAuthoredWorld();
-  const snapshot = createAuthoredWorld();
-  addPlayer(local, "admin", { x: 8, y: 7, z: 0 });
-  addPlayer(snapshot, "admin", { x: 8, y: 7, z: 0 });
+  const { local, snapshot } = reconciliationPair(8);
   assertEquals(startMove(local, "admin", 1, 0, 4).ok, true);
   advanceTicks(local, 5);
   assertEquals(startMove(snapshot, "admin", 1, 0, 4).ok, true);
@@ -36,10 +39,7 @@ Deno.test("confirmed move keeps the client's animation clock", () => {
 });
 
 Deno.test("a completed local step stays put until the host acknowledges it", () => {
-  const local = createAuthoredWorld();
-  const snapshot = createAuthoredWorld();
-  addPlayer(local, "admin", { x: 8, y: 7, z: 0 });
-  addPlayer(snapshot, "admin", { x: 8, y: 7, z: 0 });
+  const { local, snapshot } = reconciliationPair(8);
   assertEquals(startMove(local, "admin", 1, 0, 4).ok, true);
   advanceTicks(local, 10);
   assertEquals(local.players.admin.move, null);
@@ -48,10 +48,7 @@ Deno.test("a completed local step stays put until the host acknowledges it", () 
 });
 
 Deno.test("remote move adopts local tick once and ignores repeat snapshots", () => {
-  const local = createAuthoredWorld();
-  const snapshot = createAuthoredWorld();
-  addPlayer(local, "admin", { x: 10, y: 7, z: 0 });
-  addPlayer(snapshot, "admin", { x: 10, y: 7, z: 0 });
+  const { local, snapshot } = reconciliationPair(10);
   addPlayer(snapshot, "self", { x: 7, y: 7, z: 0 });
   advanceTicks(local, 100);
   advanceTicks(snapshot, 20);
@@ -66,10 +63,7 @@ Deno.test("remote move adopts local tick once and ignores repeat snapshots", () 
 });
 
 Deno.test("rejected movement produces an authoritative correction", () => {
-  const local = createAuthoredWorld();
-  const snapshot = createAuthoredWorld();
-  addPlayer(local, "admin", { x: 8, y: 7, z: 0 });
-  addPlayer(snapshot, "admin", { x: 8, y: 7, z: 0 });
+  const { local, snapshot } = reconciliationPair(8);
   assertEquals(startMove(local, "admin", 1, 0, 4).ok, true);
   advanceTicks(local, 5);
   assertEquals(mergeSnapshot(local, snapshot, 4, 4, "admin").corrected, true);
@@ -78,10 +72,7 @@ Deno.test("rejected movement produces an authoritative correction", () => {
 });
 
 Deno.test("a pending move cannot hide a different host path", () => {
-  const local = createAuthoredWorld();
-  const snapshot = createAuthoredWorld();
-  addPlayer(local, "admin", { x: 7, y: 7, z: 0 });
-  addPlayer(snapshot, "admin", { x: 7, y: 7, z: 0 });
+  const { local, snapshot } = reconciliationPair(7);
   assertEquals(startMove(local, "admin", 1, 0, 5).ok, true);
   assertEquals(startMove(snapshot, "admin", 0, 1, 4).ok, true);
   const result = mergeSnapshot(local, snapshot, 4, 5, "admin");

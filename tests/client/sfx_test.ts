@@ -2,7 +2,7 @@
 import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
   createSfx,
-  distanceGain,
+  effectsDistanceGain,
   FULL_GAIN_TILES,
   LATE_MS,
   matchSamples,
@@ -228,11 +228,11 @@ Deno.test("the gain scales by a random 0.8 to 1.0", async () => {
 });
 
 Deno.test("gain is full to 2 tiles and falls to silence at 12, horizontally", async () => {
-  assertEquals(distanceGain(0), 1);
-  assertEquals(distanceGain(FULL_GAIN_TILES), 1);
-  assertAlmostEquals(distanceGain(7), 0.5, 1e-9);
-  assertEquals(distanceGain(SOUND_RANGE), 0);
-  assertEquals(distanceGain(40), 0);
+  assertEquals(effectsDistanceGain(0), 1);
+  assertEquals(effectsDistanceGain(FULL_GAIN_TILES), 1);
+  assertAlmostEquals(effectsDistanceGain(7), 0.5, 1e-9);
+  assertEquals(effectsDistanceGain(SOUND_RANGE), 0);
+  assertEquals(effectsDistanceGain(40), 0);
 
   const { sfx } = await player();
   sfx.setListener({ x: 10, y: 10, z: 0 });

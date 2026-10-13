@@ -16,7 +16,7 @@ import {
 export { WORLD_TOP };
 /** Edge of one chunk, and of the default authored area. */
 export const WORLD_EDGE = CHUNK_EDGE;
-export const EXPANDED_WORLD_EDGE = 32;
+const EXPANDED_WORLD_EDGE = 32;
 export const Z_LEVELS_BELOW = 5;
 export const TICK_MS = 50;
 /** Bubbles that have started and are still up; waiting ones do not count. */

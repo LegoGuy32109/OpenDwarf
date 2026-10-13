@@ -13,7 +13,7 @@ import { heldItem } from "../shared/mining.js";
 import { highlightedTile } from "../shared/target.js";
 import { tileVisibility } from "../shared/visibility.js";
 
-/** @typedef {import('./render.js').Scene} Scene */
+/** @typedef {import('./scene-types.js').Scene} Scene */
 
 /** Outline width in CSS pixels at the world's tile scale, and the icon's share of a tile. */
 export const CURSOR_OUTLINE = 2;

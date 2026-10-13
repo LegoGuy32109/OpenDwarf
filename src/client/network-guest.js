@@ -577,6 +577,8 @@ export function joinWorld(scene, session) {
       );
       if (target) {
         scene.status = "Opening the host's build…";
+        // joinRedirect validates the build path and constructs the target on location.origin.
+        // fallow-ignore-next-line security-sink
         location.replace(target);
         throw new Error("Joining on the host's build");
       }

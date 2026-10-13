@@ -171,13 +171,8 @@ function tryDescend(world, player, x, y) {
 }
 
 /** Move an entity once at the shared simulation tick. */
-/** @param {World} world @param {string} id @param {number} dx @param {number} dy @param {number} [speed] tiles per second */
-export function moveEntity(world, id, dx, dy, speed = WALK_SPEED) {
-  const player = world.players[id];
-  if (!player?.free || player.move) return false;
-  if (!supported(world, player.x, player.y, player.z)) {
-    return beginStep(world, player, player.x, player.y, player.z - 1);
-  }
+/** @param {Player} player @param {number} dx @param {number} dy @param {number} speed */
+function updateVelocity(player, dx, dy, speed) {
   const length = Math.hypot(dx, dy);
   const targetX = length ? dx / length * speed : 0;
   const targetY = length ? dy / length * speed : 0;
@@ -187,8 +182,81 @@ export function moveEntity(world, id, dx, dy, speed = WALK_SPEED) {
   if (Math.abs(player.vx) < 0.015) player.vx = 0;
   if (Math.abs(player.vy) < 0.015) player.vy = 0;
   if (dx) player.facingLeft = dx < 0;
-  let remainingX = player.vx * TICK_MS / 1000;
-  let remainingY = player.vy * TICK_MS / 1000;
+}
+
+/** @param {World} world @param {Player} player @param {number} x @param {number} y @returns {0|1|2} */
+function advanceClearPosition(world, player, x, y) {
+  if (!supported(world, x, y, player.z)) {
+    return tryDescend(world, player, x, y) ? 2 : 0;
+  }
+  player.x = x;
+  player.y = y;
+  return 1;
+}
+/** @param {World} world @param {Player} player @param {number} dx @param {number} dy @returns {0|2|-1} */
+function raisedContact(world, player, dx, dy) {
+  if (tryClimb(world, player, dx, dy)) return 2;
+  // An occupied raised diagonal waits as one contact, rather than sliding around its corner.
+  if (
+    dx && dy &&
+    isSolid(
+      world,
+      centerTile(player.x) + Math.sign(dx),
+      centerTile(player.y) + Math.sign(dy),
+      player.z,
+    )
+  ) {
+    player.vx = 0;
+    player.vy = 0;
+    return -1;
+  }
+  return 0;
+}
+/** @param {World} world @param {Player} player @param {number} dx @param {number} dy @param {number} speed @param {number} parts @returns {1|-1} */
+function slideTangent(world, player, dx, dy, speed, parts) {
+  const sideX = player.x + Math.sign(dx) * speed * TICK_MS / 1000 / parts;
+  const sideY = player.y + Math.sign(dy) * speed * TICK_MS / 1000 / parts;
+  if (
+    dx && clear(world, player, sideX, player.y, player.z) &&
+    supported(world, sideX, player.y, player.z)
+  ) {
+    player.x = sideX;
+    return 1;
+  }
+  if (
+    dy && clear(world, player, player.x, sideY, player.z) &&
+    supported(world, player.x, sideY, player.z)
+  ) {
+    player.y = sideY;
+    return 1;
+  }
+  player.vx = 0;
+  player.vy = 0;
+  return -1;
+}
+/** @param {World} world @param {Player} player @param {number} dx @param {number} dy @param {number} speed @param {number} parts @returns {1|2|-1} */
+function movePart(world, player, dx, dy, speed, parts) {
+  const x = player.x + dx, y = player.y + dy;
+  if (clear(world, player, x, y, player.z)) {
+    const moved = advanceClearPosition(world, player, x, y);
+    if (moved) return moved;
+  } else if (terrainBlocked(world, player, x, y, player.z)) {
+    const contact = raisedContact(world, player, dx, dy);
+    if (contact) return contact;
+  }
+  return slideTangent(world, player, dx, dy, speed, parts);
+}
+
+/** @param {World} world @param {string} id @param {number} dx @param {number} dy @param {number} [speed] tiles per second */
+export function moveEntity(world, id, dx, dy, speed = WALK_SPEED) {
+  const player = world.players[id];
+  if (!player?.free || player.move) return false;
+  if (!supported(world, player.x, player.y, player.z)) {
+    return beginStep(world, player, player.x, player.y, player.z - 1);
+  }
+  updateVelocity(player, dx, dy, speed);
+  let remainingX = (player.vx ?? 0) * TICK_MS / 1000;
+  let remainingY = (player.vy ?? 0) * TICK_MS / 1000;
   const parts = Math.max(
     1,
     Math.ceil(Math.hypot(remainingX, remainingY) / 0.04),
@@ -197,59 +265,17 @@ export function moveEntity(world, id, dx, dy, speed = WALK_SPEED) {
   remainingY /= parts;
   let changed = false;
   for (let part = 0; part < parts; part++) {
-    const x = player.x + remainingX;
-    const y = player.y + remainingY;
-    if (clear(world, player, x, y, player.z)) {
-      if (!supported(world, x, y, player.z)) {
-        if (tryDescend(world, player, x, y)) {
-          return true;
-        }
-      } else {
-        player.x = x;
-        player.y = y;
-        changed = true;
-        continue;
-      }
-    } else if (terrainBlocked(world, player, x, y, player.z)) {
-      if (tryClimb(world, player, remainingX, remainingY)) return true;
-      // A raised diagonal corner is one contact, not two independent walls.
-      // If its landing is occupied, wait for the whole corner to clear.
-      if (
-        remainingX && remainingY &&
-        isSolid(
-          world,
-          centerTile(player.x) + Math.sign(remainingX),
-          centerTile(player.y) + Math.sign(remainingY),
-          player.z,
-        )
-      ) {
-        player.vx = 0;
-        player.vy = 0;
-        break;
-      }
-    }
-    // A flat wall keeps the free tangent component at the current speed.
-    const sideX = player.x + Math.sign(remainingX) * speed * TICK_MS /
-        1000 / parts;
-    const sideY = player.y + Math.sign(remainingY) * speed * TICK_MS /
-        1000 / parts;
-    if (
-      remainingX && clear(world, player, sideX, player.y, player.z) &&
-      supported(world, sideX, player.y, player.z)
-    ) {
-      player.x = sideX;
-      changed = true;
-    } else if (
-      remainingY && clear(world, player, player.x, sideY, player.z) &&
-      supported(world, player.x, sideY, player.z)
-    ) {
-      player.y = sideY;
-      changed = true;
-    } else {
-      player.vx = 0;
-      player.vy = 0;
-      break;
-    }
+    const result = movePart(
+      world,
+      player,
+      remainingX,
+      remainingY,
+      speed,
+      parts,
+    );
+    if (result === 2) return true;
+    if (result === -1) break;
+    changed = true;
   }
   return changed;
 }

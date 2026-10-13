@@ -14,7 +14,7 @@ import { joinWorld, startHost } from "./network.js";
 import { frameLine, spikeMetrics, summaryMetrics } from "./frame-stats.js";
 import { rememberedLine, worldTerrainLine } from "./terrain-diagnostics.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** @param {Context} ctx @param {string} id */
 export function joinSession(ctx, id) {
@@ -47,6 +47,8 @@ export function startAdminList(ctx) {
   }, 500);
   const refresh = async () => {
     try {
+      // The URL is constructed from build.apiUrl by this module, using the shell-configured origin.
+      // fallow-ignore-next-line security-sink
       const response = await fetch(build.apiUrl("sessions"));
       const data = await response.json();
       ui.sessions.items = data.sessions.map((
@@ -72,6 +74,8 @@ export function startAdminList(ctx) {
  * @param {string} url @param {{setQr:(source:TexImageSource|null)=>void}} renderer
  */
 async function loadQr(ctx, url, renderer) {
+  // The URL is constructed from build.apiUrl by this module, using the shell-configured origin.
+  // fallow-ignore-next-line security-sink
   const response = await fetch(url);
   const svg = await response.text();
   const picture = new Image();
@@ -192,6 +196,8 @@ export function startTelemetry(ctx) {
   /** @param {"summary"|"connection"|"error"|"spike"} kind @param {Record<string,unknown>} fields */
   const report = (kind, fields = {}) => {
     if (!scene.sessionId) return;
+    // The URL is constructed from build.apiUrl by this module, using the shell-configured origin.
+    // fallow-ignore-next-line security-sink
     void fetch(build.apiUrl("telemetry"), {
       method: "POST",
       headers: { "content-type": "application/json" },

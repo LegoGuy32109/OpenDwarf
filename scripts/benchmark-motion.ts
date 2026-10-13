@@ -1,3 +1,4 @@
+import { cliArgs } from "./cli-args.ts";
 import { chromium, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 
@@ -45,10 +46,7 @@ type PageHarness = typeof globalThis & {
   __motionBenchmarkTrace: Trace[];
   __motionBenchmarkStop: boolean;
 };
-const args = new Map(Deno.args.map((arg) => {
-  const [key, ...value] = arg.replace(/^--/, "").split("=");
-  return [key, value.join("=")];
-}));
+const args = cliArgs(Deno.args);
 const allowed = new Set([
   "url",
   "count",
@@ -233,6 +231,8 @@ async function chatCheck(host: Page) {
   }
 }
 try {
+  // The benchmark operator supplies this destination through CLI configuration, not an HTTP request.
+  // fallow-ignore-next-line security-sink
   const response = await fetch(config.url);
   if (!response.ok) throw new Error(`Server returned ${response.status}`);
   await response.body?.cancel();

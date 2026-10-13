@@ -1,9 +1,8 @@
+import { createOpenField as field } from "./fixtures.ts";
 import { assert, assertEquals } from "@std/assert";
 import { addPlayer, type World } from "../../src/shared/world.js";
-import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import {
   drainTileChanges,
-  ensureChunk,
   OPEN,
   readTile,
   STONE,
@@ -26,15 +25,6 @@ import {
 } from "../../src/shared/placing.js";
 import { SHOP_TILE } from "../../src/shared/shop.js";
 import { decodeControl } from "../../src/shared/wire.js";
-
-/** Open air at level 1 and above, a stone floor at level 0. */
-function field(): World {
-  const world = createWorld();
-  const data = ensureChunk(world, 0, 0);
-  data.fill(OPEN);
-  data.fill(STONE, 0, 256);
-  return world;
-}
 
 /** A player at (5, 5, 1) holding 3 stone, with open air at (6, 5, 1). */
 function builder() {
@@ -73,9 +63,7 @@ Deno.test("the last stone leaves the inventory, so the pickaxe is held again", (
 Deno.test("the host rejects a place with no stone held", () => {
   const { world } = builder();
   setHeldItem(world, "self", "pickaxe");
-  const result = placeStone(world, "self", { x: 6, y: 5, z: 1 });
-  assertEquals(result, { ok: false, reason: "no stone held" });
-  assertEquals(readTile(world, 6, 5, 1), OPEN);
+  assertPlacementRefused(world, { x: 6, y: 5, z: 1 }, "no stone held");
   assertEquals(stoneCount(world), 3);
 });
 
@@ -85,9 +73,7 @@ Deno.test("the host rejects a place with zero stone", () => {
     inventoryOf(player).findIndex((s) => s.kind === STONE_ITEM),
     1,
   );
-  const result = placeStone(world, "self", { x: 6, y: 5, z: 1 });
-  assertEquals(result, { ok: false, reason: "no stone held" });
-  assertEquals(readTile(world, 6, 5, 1), OPEN);
+  assertPlacementRefused(world, { x: 6, y: 5, z: 1 }, "no stone held");
 });
 
 Deno.test("the host rejects a place out of reach or unseen, and allows another level", () => {
@@ -215,3 +201,12 @@ Deno.test("the wire accepts a place request with whole-number coordinates only",
   assertEquals(decodeControl({ ...request, z: 8 }), null);
   assertEquals(decodeControl({ type: "place", x: 6, y: 5 }), null);
 });
+
+function assertPlacementRefused(
+  world: World,
+  tile: { x: number; y: number; z: number },
+  reason: string,
+) {
+  assertEquals(placeStone(world, "self", tile), { ok: false, reason });
+  assertEquals(readTile(world, tile.x, tile.y, tile.z), OPEN);
+}

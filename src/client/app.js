@@ -18,7 +18,7 @@ import { createContext } from "./context.js";
 import { createInput } from "./input.js";
 import { startLoop } from "./loop.js";
 import { bindTestDriver } from "./test-driver.js";
-import { exposeHarness } from "./harness.js";
+import { createHarnessApi, exposeHarness } from "./harness.js";
 import { registerWorker } from "./offline.js";
 import { build } from "./build.js";
 import { bindSafeArea } from "./ui-view.js";
@@ -86,7 +86,18 @@ export async function startApp(startup = {}) {
   ctx.sfx.start();
   startLoop(ctx, renderer, input);
   exposeHarness(ctx, renderer);
-  bindTestDriver(ctx, renderer);
+  if (new URL(location.href).searchParams.has("harness")) {
+    bindTestDriver(createHarnessApi(ctx, renderer), {
+      world: () => scene.world,
+      isGuest: ctx.isAdmin,
+      invalidate: () => {
+        scene.visibility.sample = "";
+      },
+      publish: () => {
+        ctx.host?.publish();
+      },
+    });
+  }
   // After the first frame is on its way: the worker never delays the game.
   void registerWorker(build);
 }

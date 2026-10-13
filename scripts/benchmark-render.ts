@@ -1,13 +1,11 @@
+import { cliArgs } from "./cli-args.ts";
 // Time master view rendering while the camera pans (docs/features/render-performance.md).
 // Start the shell first (`deno task start`), then:
 //   deno run -A scripts/benchmark-render.ts [--url=http://127.0.0.1:8000] [--zoom=0.25] [--seconds=6]
 // Run it on a GPU with vsync off for real numbers; software WebGL only compares builds.
 import { chromium } from "@playwright/test";
 
-const args = new Map(Deno.args.map((arg) => {
-  const [key, ...value] = arg.replace(/^--/, "").split("=");
-  return [key, value.join("=")];
-}));
+const args = cliArgs(Deno.args);
 const url = args.get("url") ?? "http://127.0.0.1:8000";
 const zoom = Number(args.get("zoom") ?? 0.25);
 const seconds = Number(args.get("seconds") ?? 6);

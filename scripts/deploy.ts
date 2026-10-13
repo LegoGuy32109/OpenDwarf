@@ -1,3 +1,4 @@
+import { restoreConfig } from "./config-restore.ts";
 // Deploys the shell to the Deno Deploy application `opendwarf` in the organization `legoguy32109`
 // as a production revision, then records a Shell deploy (commit, Deno revision, time, note) in
 // `od-prod`. The rules live in scripts/shell-deploy.ts. Client changes never need a deploy.
@@ -89,13 +90,10 @@ const commands: DeployCommands = {
       stdout: "piped",
       stderr: "inherit",
     }).output();
-    const after = await Deno.readFile(CONFIG);
-    if (
-      before.length !== after.length || before.some((b, i) => b !== after[i])
-    ) {
-      await Deno.writeFile(CONFIG, before);
+    const restored = await restoreConfig(CONFIG, before);
+    if (restored.changed) {
       console.log(
-        `Restored deno.json after the deploy CLI rewrote it (${after.length} bytes back to ${before.length}).`,
+        `Restored deno.json after the deploy CLI rewrote it (${restored.afterBytes} bytes back to ${before.length}).`,
       );
     }
     return {

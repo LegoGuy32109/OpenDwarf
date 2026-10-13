@@ -30,6 +30,8 @@ const TELEMETRY_ROWS = 24;
  * @returns {Promise<T>}
  */
 async function read(path) {
+  // This runs in the browser. Callers construct fixed /api/v1 paths on the dashboard origin.
+  // fallow-ignore-next-line security-sink
   const response = await fetch(path, { cache: "no-store" });
   if (!response.ok) throw new Error(`${path} answered ${response.status}`);
   return /** @type {Promise<T>} */ (response.json());

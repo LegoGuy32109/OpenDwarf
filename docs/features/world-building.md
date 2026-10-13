@@ -216,6 +216,12 @@ stacks, write a tile, and place a player. The driver's `edit` applies fixture
 patches through shared terrain and inventory rules. Actual interactions still
 use browser input.
 
+`app.js` constructs the inspection API and injects it into the driver with a
+small fixture service contract: access the current world, identify a guest,
+invalidate visibility, and publish changes. The driver imports shared rules and
+has no dependency on the client context or manual harness modules. The test
+helper derives its types from the injected API.
+
 Every scripted `__od` read has migrated to this driver. The manual `__od` tool
 remains available for agents and human testers. Unit fixture constructors also
 use the builder, including the retained authored and spawn-room helper APIs.

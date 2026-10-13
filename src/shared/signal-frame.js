@@ -35,11 +35,9 @@ export function encodeSignal(channel, from, to, signal) {
  */
 export function readOutgoing(raw) {
   if (typeof raw !== "string" || raw.length > MAX_FRAME_BYTES) return null;
-  const frame = parse(raw);
-  if (!frame || frame.t !== "u") return null;
-  const meta = object(frame.m);
-  const payload = object(frame.p);
-  if (!meta || !payload || meta.o !== "message") return null;
+  const message = messageFrame(raw);
+  if (!message) return null;
+  const { meta, payload } = message;
   if (meta.t === undefined || meta.t === null) return { to: null, payload };
   if (typeof meta.t !== "string" || !PEER_PATTERN.test(meta.t)) return null;
   return { to: meta.t, payload };
@@ -69,11 +67,9 @@ export function encodeIncoming(channel, from, to, payload) {
  */
 export function readSignal(raw) {
   if (typeof raw !== "string") return null;
-  const frame = parse(raw);
-  if (!frame || frame.t !== "u") return null;
-  const meta = object(frame.m);
-  const payload = object(frame.p);
-  if (!meta || !payload || meta.o !== "message") return null;
+  const message = messageFrame(raw);
+  if (!message) return null;
+  const { meta, payload } = message;
   if (typeof payload.id !== "string" || typeof payload.kind !== "string") {
     return null;
   }
@@ -103,6 +99,16 @@ export function readPeerConnected(raw) {
   return typeof frame.p === "string" && PEER_PATTERN.test(frame.p)
     ? frame.p
     : null;
+}
+
+/** Read the common message envelope, before relay or recipient validation. @param {string} raw */
+function messageFrame(raw) {
+  const frame = parse(raw);
+  if (!frame || frame.t !== "u") return null;
+  const meta = object(frame.m);
+  const payload = object(frame.p);
+  if (!meta || !payload || meta.o !== "message") return null;
+  return { meta, payload };
 }
 
 /** @param {string} raw */

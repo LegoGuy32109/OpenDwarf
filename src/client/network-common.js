@@ -49,6 +49,8 @@ export function deliver(receive, replaceable = false) {
  * @returns {Promise<{signalUrl:string,channel:string,hostKey?:string,build?:unknown}>}
  */
 export async function ticket(path, body) {
+  // The shell supplies the HTTP(S) API origin through build configuration, not peer messages.
+  // fallow-ignore-next-line security-sink
   const response = await fetch(build.apiUrl(path), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -68,6 +70,8 @@ export async function ticket(path, body) {
 
 /** Fresh ICE servers for a session; TURN credentials expire quickly. @param {string} session */
 export async function ice(session) {
+  // The shell supplies the HTTP(S) API origin through build configuration, not peer messages.
+  // fallow-ignore-next-line security-sink
   const response = await fetch(build.apiUrl(`sessions/${session}/ice`));
   if (!response.ok) throw new Error("ICE configuration unavailable");
   const data = await response.json();

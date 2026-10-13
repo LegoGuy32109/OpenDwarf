@@ -5,7 +5,7 @@
  * pointer routing over the UI layer, and the pinch and two-finger gestures on
  * the world. They write the held keys and stick values to `ctx` and call the
  * actions that `interact.js`, `chat-input.js`, `panels.js`, and `session.js`
- * own. `input-read.js` turns that state into directions.
+ * own. `input-values.js` turns that state into directions.
  */
 
 import { WORLD_TOP } from "../shared/world.js";
@@ -17,7 +17,7 @@ import { setSprint } from "../shared/stamina.js";
 import { closePickupGrid, isPickupGridOpen } from "./pickup-grid.js";
 import { createPointerRouter } from "./ui-pointer.js";
 import { clamp, notify } from "./context.js";
-import { panelLookInput, stickDirection } from "./input-read.js";
+import { panelLookInput, stickDirection } from "./input-values.js";
 import { interact } from "./interact.js";
 import {
   chatKey,
@@ -37,7 +37,7 @@ import {
 import { currentLayout, scrollList, toggleFullscreen } from "./ui-view.js";
 import { joinSession } from "./session.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** @param {Context} ctx @param {number} step */
 function changeLayer(ctx, step) {
@@ -50,11 +50,8 @@ function toggleSprint(ctx) {
   setSprint(ctx.stamina, !ctx.stamina.sprint);
 }
 
-/** @param {Context} ctx */
-function pollGamepad(ctx) {
-  const { scene } = ctx;
-  if (!ctx.gamepadEnabled) return;
-  const pads = navigator.getGamepads?.() ?? [];
+/** @param {Context} ctx @param {(Gamepad|null)[]} pads */
+function selectGamepad(ctx, pads) {
   const supported = (/** @type {Gamepad|null} */ pad) =>
     pad?.connected && (pad.mapping === "standard" ||
       /Afterglow Wireless Deluxe Controller|0e6f.*0186/i.test(pad.id));
@@ -66,55 +63,51 @@ function pollGamepad(ctx) {
   const pad = active ??
     (supported(pads[ctx.gamepadIndex]) ? pads[ctx.gamepadIndex] : null) ??
     [...pads].find(supported);
-  if (ctx.gamepadDebug) {
-    const inspected = active ?? pad ??
-      [...pads].find((candidate) => candidate?.connected);
-    scene.displayStatus = inspected
-      ? `${inspected.id}\nMapping: ${inspected.mapping || "raw"}\nAxes: ${
-        inspected.axes.map((axis) => axis.toFixed(2)).join(", ")
-      }\nButtons: ${
-        inspected.buttons.flatMap((button, index) =>
-          button.pressed ? [index] : []
-        ).join(", ") || "none"
-      }\nPage focus: ${document.hasFocus()}`
-      : `No controller reported by browser\nPage focus: ${document.hasFocus()}\nPress A or the D-pad`;
+  return { active, pad };
+}
+
+/** @param {Context} ctx @param {(Gamepad|null)[]} pads @param {Gamepad|null|undefined} pad @param {Gamepad|null|undefined} active */
+function showGamepadDebug(ctx, pads, pad, active) {
+  const { scene } = ctx;
+
+  const inspected = active ?? pad ??
+    [...pads].find((candidate) => candidate?.connected);
+  scene.displayStatus = inspected
+    ? `${inspected.id}\nMapping: ${inspected.mapping || "raw"}\nAxes: ${
+      inspected.axes.map((axis) => axis.toFixed(2)).join(", ")
+    }\nButtons: ${
+      inspected.buttons.flatMap((button, index) =>
+        button.pressed ? [index] : []
+      ).join(", ") || "none"
+    }\nPage focus: ${document.hasFocus()}`
+    : `No controller reported by browser\nPage focus: ${document.hasFocus()}\nPress A or the D-pad`;
+}
+
+/** @param {Context} ctx @param {(Gamepad|null)[]} pads */
+function disconnectGamepad(ctx, pads) {
+  const { scene } = ctx;
+
+  const unknown = [...pads].find((candidate) => candidate?.connected);
+  if (ctx.gamepadIndex !== -1) {
+    notify(ctx, "Controller disconnected");
+    if (scene.inputMode === "gamepad") scene.inputMode = "keyboard";
+  } else if (unknown && unknown.id !== ctx.unsupportedGamepadId) {
+    ctx.unsupportedGamepadId = unknown.id;
+    notify(ctx, `Controller layout unavailable: ${unknown.id}`);
   }
-  if (!pad) {
-    const unknown = [...pads].find((candidate) => candidate?.connected);
-    if (ctx.gamepadIndex !== -1) {
-      notify(ctx, "Controller disconnected");
-      if (scene.inputMode === "gamepad") scene.inputMode = "keyboard";
-    } else if (unknown && unknown.id !== ctx.unsupportedGamepadId) {
-      ctx.unsupportedGamepadId = unknown.id;
-      notify(ctx, `Controller layout unavailable: ${unknown.id}`);
-    }
-    if (!unknown) ctx.unsupportedGamepadId = "";
-    ctx.gamepadIndex = -1;
-    ctx.gamepadDirection = { x: 0, y: 0 };
-    ctx.gamepadCamera = { x: 0, y: 0 };
-    ctx.gamepadStick = { x: 0, y: 0 };
-    ctx.gamepadZoom = 0;
-    ctx.gamepadButtons.clear();
-    return;
-  }
-  ctx.unsupportedGamepadId = "";
+  if (!unknown) ctx.unsupportedGamepadId = "";
+  ctx.gamepadIndex = -1;
+  ctx.gamepadDirection = { x: 0, y: 0 };
+  ctx.gamepadCamera = { x: 0, y: 0 };
+  ctx.gamepadStick = { x: 0, y: 0 };
+  ctx.gamepadZoom = 0;
+  ctx.gamepadButtons.clear();
+  return;
+}
+
+/** @param {Gamepad} pad @param {Set<number>} buttons */
+function gamepadDpad(pad, buttons) {
   const standard = pad.mapping === "standard";
-  if (ctx.gamepadIndex !== pad.index) {
-    ctx.gamepadIndex = pad.index;
-    notify(ctx, `Controller connected: ${pad.id}`);
-  }
-  const buttons = new Set(
-    pad.buttons.flatMap((button, index) => button.pressed ? [index] : []),
-  );
-  /** @param {number} index */
-  const newlyPressed = (index) =>
-    buttons.has(index) && !ctx.gamepadButtons.has(index);
-  const previousDirection = ctx.gamepadDirection;
-  ctx.gamepadDirection = stickDirection(
-    pad.axes[0] ?? 0,
-    pad.axes[1] ?? 0,
-    0.3,
-  );
   const dpadX = standard
     ? Number(buttons.has(15)) - Number(buttons.has(14))
     : Math.abs(pad.axes[4] ?? 0) > 0.5
@@ -125,6 +118,19 @@ function pollGamepad(ctx) {
     : Math.abs(pad.axes[5] ?? 0) > 0.5
     ? Math.sign(pad.axes[5])
     : 0;
+  return { x: dpadX, y: dpadY };
+}
+
+/** @param {Context} ctx @param {Gamepad} pad @param {Set<number>} buttons */
+function readGamepadAxes(ctx, pad, buttons) {
+  const { scene } = ctx;
+  const previousDirection = ctx.gamepadDirection;
+  ctx.gamepadDirection = stickDirection(
+    pad.axes[0] ?? 0,
+    pad.axes[1] ?? 0,
+    0.3,
+  );
+  const { x: dpadX, y: dpadY } = gamepadDpad(pad, buttons);
   ctx.gamepadDpad = { x: dpadX, y: dpadY };
   if ((dpadX || dpadY) && !isPickupGridOpen(ctx.pickupGrid)) {
     ctx.gamepadDirection = { x: dpadX, y: dpadY };
@@ -154,6 +160,12 @@ function pollGamepad(ctx) {
     ctx.bag.steer(ctx.gamepadDpad, performance.now());
     ctx.bag.steerStick(ctx.gamepadStick, performance.now());
   }
+  return panelOpen;
+}
+
+/** @param {Context} ctx @param {(index:number)=>boolean} newlyPressed @param {boolean} panelOpen */
+function gamepadActions(ctx, newlyPressed, panelOpen) {
+  const { scene } = ctx;
   // Y or X closes the open panel; X opens the menu only with no panel open.
   if (newlyPressed(2) || newlyPressed(3)) {
     if (panelOpen) {
@@ -171,110 +183,135 @@ function pollGamepad(ctx) {
     if (newlyPressed(7)) interact(ctx);
     if (newlyPressed(6) && !panelOpen) toggleSprint(ctx);
   }
+}
+
+/** @param {Context} ctx */
+function pollGamepad(ctx) {
+  if (!ctx.gamepadEnabled) return;
+  const pads = navigator.getGamepads?.() ?? [];
+  const { active, pad } = selectGamepad(ctx, pads);
+  if (ctx.gamepadDebug) showGamepadDebug(ctx, pads, pad, active);
+  if (!pad) return disconnectGamepad(ctx, pads);
+  ctx.unsupportedGamepadId = "";
+  if (ctx.gamepadIndex !== pad.index) {
+    ctx.gamepadIndex = pad.index;
+    notify(ctx, `Controller connected: ${pad.id}`);
+  }
+  const buttons = new Set(
+    pad.buttons.flatMap((button, index) => button.pressed ? [index] : []),
+  );
+  const panelOpen = readGamepadAxes(ctx, pad, buttons);
+  gamepadActions(
+    ctx,
+    (index) => buttons.has(index) && !ctx.gamepadButtons.has(index),
+    panelOpen,
+  );
   ctx.gamepadButtons = buttons;
 }
 
-/** A tap on a UI element. @param {Context} ctx @param {import('./ui.js').UiElement} element */
-function uiAction(ctx, element) {
+/** @type {Record<string,(ctx:Context)=>unknown>} */
+const UI_ACTIONS = {
+  "btn:interact": interact,
+  "btn:sprint": toggleSprint,
+  "btn:chat": openChat,
+  "btn:log": toggleLog,
+  "btn:menu": toggleMenu,
+  "btn:bag": toggleBag,
+  "btn:fullscreen": (ctx) => void toggleFullscreen(ctx),
+  "btn:qr": toggleJoinPanel,
+  "btn:update": () => location.reload(),
+  "btn:log-close": (ctx) => toggleLog(ctx, false),
+  "btn:bag-close": (ctx) => toggleBag(ctx, false),
+  "btn:shop-close": (ctx) => ctx.shop.close(),
+  "scrim:menu": (ctx) => {
+    ctx.scene.menu = false;
+  },
+  "btn:resume": (ctx) => {
+    ctx.scene.menu = false;
+  },
+  "btn:settings": (ctx) => {
+    ctx.scene.menuPage = "settings";
+  },
+  "btn:back": (ctx) => {
+    ctx.scene.menuPage = "root";
+  },
+  "btn:leave": (ctx) => {
+    ctx.guest?.close();
+    location.reload();
+  },
+  "btn:scale-down": (ctx) => {
+    ctx.scene.uiScale = clamp(ctx.scene.uiScale - 0.25, 1, 2);
+  },
+  "btn:scale-up": (ctx) => {
+    ctx.scene.uiScale = clamp(ctx.scene.uiScale + 0.25, 1, 2);
+  },
+};
+
+/** @param {Context} ctx @param {string} id */
+function chooseSize(ctx, id) {
   const { scene } = ctx;
+
+  const size = TEXT_SIZES.find((candidate) => candidate === id.slice(9));
+  if (!size) return;
+  scene.textSize = size;
+  try {
+    localStorage.setItem(TEXT_SIZE_KEY, scene.textSize);
+  } catch {
+    // The choice still applies for this visit.
+  }
+  return;
+}
+
+/** @param {Context} ctx @param {string} id */
+function chooseVoices(ctx, id) {
+  const level = VOICES_LEVELS.find((candidate) => candidate === id.slice(11));
+  if (!level) return;
+  ctx.chatter.setLevel(level);
+  try {
+    localStorage.setItem(VOICES_KEY, level);
+  } catch {
+    // The choice still applies for this visit.
+  }
+  return;
+}
+
+/** @param {Context} ctx @param {string} id */
+function chooseMusic(ctx, id) {
+  const level = MUSIC_LEVELS.find((candidate) => candidate === id.slice(10));
+  if (!level) return;
+  ctx.music.setLevel(level);
+  try {
+    localStorage.setItem(MUSIC_KEY, level);
+  } catch {
+    // The choice still applies for this visit.
+  }
+  return;
+}
+
+/** @param {Context} ctx @param {string} id */
+function chooseEffects(ctx, id) {
+  const level = EFFECTS_LEVELS.find((candidate) => candidate === id.slice(12));
+  if (!level) return;
+  ctx.sfx.setLevel(level);
+  try {
+    localStorage.setItem(EFFECTS_KEY, level);
+  } catch {
+    // The choice still applies for this visit.
+  }
+  return;
+}
+/** A tap on a UI element. @param {Context} ctx @param {import('./ui-types.js').UiElement} element */
+function uiAction(ctx, element) {
   const id = element.id;
   if (id.startsWith("key:")) return pressKey(ctx, element);
   if (id.startsWith("slot:")) return ctx.bag.tap(id.slice(5));
   if (id.startsWith("row:")) return ctx.shop.tapRow(id.slice(4));
   if (id.startsWith("btn:session:")) return joinSession(ctx, id.slice(12));
-  if (id.startsWith("btn:size:")) {
-    const size = TEXT_SIZES.find((candidate) => candidate === id.slice(9));
-    if (!size) return;
-    scene.textSize = size;
-    try {
-      localStorage.setItem(TEXT_SIZE_KEY, scene.textSize);
-    } catch {
-      // The choice still applies for this visit.
-    }
-    return;
-  }
-  if (id.startsWith("btn:voices:")) {
-    const level = VOICES_LEVELS.find((candidate) => candidate === id.slice(11));
-    if (!level) return;
-    ctx.chatter.setLevel(level);
-    try {
-      localStorage.setItem(VOICES_KEY, level);
-    } catch {
-      // The choice still applies for this visit.
-    }
-    return;
-  }
-  if (id.startsWith("btn:music:")) {
-    const level = MUSIC_LEVELS.find((candidate) => candidate === id.slice(10));
-    if (!level) return;
-    ctx.music.setLevel(level);
-    try {
-      localStorage.setItem(MUSIC_KEY, level);
-    } catch {
-      // The choice still applies for this visit.
-    }
-    return;
-  }
-  if (id.startsWith("btn:effects:")) {
-    const level = EFFECTS_LEVELS.find((candidate) =>
-      candidate === id.slice(12)
-    );
-    if (!level) return;
-    ctx.sfx.setLevel(level);
-    try {
-      localStorage.setItem(EFFECTS_KEY, level);
-    } catch {
-      // The choice still applies for this visit.
-    }
-    return;
-  }
-  switch (id) {
-    case "btn:interact":
-      return interact(ctx);
-    case "btn:sprint":
-      return toggleSprint(ctx);
-    case "btn:chat":
-      return openChat(ctx);
-    case "btn:log":
-      return toggleLog(ctx);
-    case "btn:menu":
-      return toggleMenu(ctx);
-    case "btn:bag":
-      return toggleBag(ctx);
-    case "btn:fullscreen":
-      return void toggleFullscreen(ctx);
-    case "btn:qr":
-      return toggleJoinPanel(ctx);
-    case "btn:update":
-      location.reload();
-      return;
-    case "btn:log-close":
-      return toggleLog(ctx, false);
-    case "btn:bag-close":
-      return toggleBag(ctx, false);
-    case "btn:shop-close":
-      return ctx.shop.close();
-    case "scrim:menu":
-    case "btn:resume":
-      scene.menu = false;
-      return;
-    case "btn:settings":
-      scene.menuPage = "settings";
-      return;
-    case "btn:back":
-      scene.menuPage = "root";
-      return;
-    case "btn:leave":
-      ctx.guest?.close();
-      location.reload();
-      return;
-    case "btn:scale-down":
-      scene.uiScale = clamp(scene.uiScale - 0.25, 1, 2);
-      return;
-    case "btn:scale-up":
-      scene.uiScale = clamp(scene.uiScale + 0.25, 1, 2);
-      return;
-  }
+  if (id.startsWith("btn:size:")) return chooseSize(ctx, id);
+  if (id.startsWith("btn:voices:")) return chooseVoices(ctx, id);
+  if (id.startsWith("btn:music:")) return chooseMusic(ctx, id);
+  if (id.startsWith("btn:effects:")) return chooseEffects(ctx, id);
+  if (Object.hasOwn(UI_ACTIONS, id)) return UI_ACTIONS[id](ctx);
 }
 
 /**
@@ -355,6 +392,35 @@ function bindWorldGesture(ctx) {
 }
 
 /** @param {Context} ctx @param {KeyboardEvent} event */
+function escapeKey(ctx, event) {
+  event.preventDefault();
+  if (event.repeat) return;
+  if (ctx.bag.isOpen) return toggleBag(ctx, false);
+  if (isPickupGridOpen(ctx.pickupGrid)) return closePickupGrid(ctx.pickupGrid);
+  if (ctx.shop.isOpen()) return ctx.shop.close();
+  if (ctx.ui.logOpen) return toggleLog(ctx, false);
+  ctx.scene.menu = !ctx.scene.menu;
+  ctx.scene.menuPage = "root";
+}
+/** @type {Record<string,(ctx:Context)=>unknown>} */
+const KEY_ACTIONS = {
+  Backquote: toggleLog,
+  KeyB: toggleBag,
+  KeyT: openChat,
+  Slash: (ctx) => openChat(ctx, "/"),
+  KeyH: toggleSprint,
+  Space: interact,
+};
+/** @param {Context} ctx @param {KeyboardEvent} event */
+function commandKey(ctx, event) {
+  if (!Object.hasOwn(KEY_ACTIONS, event.code)) return false;
+  if (event.code === "KeyB" && event.repeat) return false;
+  event.preventDefault();
+  if (!event.repeat) KEY_ACTIONS[event.code](ctx);
+  return true;
+}
+
+/** @param {Context} ctx @param {KeyboardEvent} event */
 function keyDown(ctx, event) {
   const { scene, ui, bag, shop, held, pressed } = ctx;
   if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) return;
@@ -370,59 +436,11 @@ function keyDown(ctx, event) {
   // Q does what Escape does.
   const code = event.code === "KeyQ" ? "Escape" : event.code;
   scene.inputMode = "keyboard";
-  if (event.code === "Backquote") {
-    event.preventDefault();
-    if (!event.repeat) toggleLog(ctx);
-    return;
-  }
-  if (event.code === "KeyB" && !event.repeat) {
-    event.preventDefault();
-    toggleBag(ctx);
-    return;
-  }
-  if (code === "Escape" && bag.isOpen) {
-    event.preventDefault();
-    if (!event.repeat) toggleBag(ctx, false);
-    return;
-  }
-  if (code === "Escape" && isPickupGridOpen(ctx.pickupGrid)) {
-    event.preventDefault();
-    if (!event.repeat) closePickupGrid(ctx.pickupGrid);
-    return;
-  }
-  if (code === "Escape" && shop.isOpen()) {
-    event.preventDefault();
-    if (!event.repeat) shop.close();
-    return;
-  }
-  if (code === "Escape" && ui.logOpen) {
-    event.preventDefault();
-    if (!event.repeat) toggleLog(ctx, false);
-    return;
-  }
   if (code === "Escape") {
-    event.preventDefault();
-    if (!event.repeat) {
-      scene.menu = !scene.menu;
-      scene.menuPage = "root";
-    }
+    escapeKey(ctx, event);
     return;
   }
-  if (event.code === "KeyT" || event.code === "Slash") {
-    event.preventDefault();
-    if (!event.repeat) openChat(ctx, event.code === "Slash" ? "/" : "");
-    return;
-  }
-  if (event.code === "KeyH") {
-    event.preventDefault();
-    if (!event.repeat) toggleSprint(ctx);
-    return;
-  }
-  if (event.code === "Space") {
-    event.preventDefault();
-    if (!event.repeat) interact(ctx);
-    return;
-  }
+  if (commandKey(ctx, event)) return;
   if (
     shop.isOpen() && ["KeyI", "KeyK", "KeyJ", "KeyL"].includes(event.code)
   ) {

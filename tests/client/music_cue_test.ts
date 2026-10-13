@@ -1,3 +1,4 @@
+import { createFakeCache } from "./media_fakes.ts";
 // Shared music cue tests (ADR 0009): the conductor and the guest that follows.
 import { assert, assertEquals } from "@std/assert";
 import { createMusic, DRIFT_LIMIT } from "../../src/client/music.js";
@@ -9,23 +10,6 @@ const entry = (name: string, duration = 100): Entry => ({
   tags: ["adventure"],
   duration,
 });
-
-class FakeCache {
-  store = new Map<string, Blob>();
-  match(url: string) {
-    const kept = this.store.get(url);
-    return Promise.resolve(kept === undefined ? undefined : new Response(kept));
-  }
-  put(url: string, response: Response) {
-    return response.blob().then((blob) => void this.store.set(url, blob));
-  }
-  delete(url: string) {
-    return Promise.resolve(this.store.delete(url));
-  }
-  keys() {
-    return Promise.resolve([...this.store.keys()].map((url) => ({ url })));
-  }
-}
 
 /** The music decks are reused (primed on the first gesture for iOS): find the one playing a track. */
 const playing = (elements: FakeElement[]) =>
@@ -54,7 +38,7 @@ function setup(
 ) {
   const requests: string[] = [];
   const elements: FakeElement[] = [];
-  const cache = new FakeCache();
+  const cache = createFakeCache();
   const index = JSON.stringify({ version: 1, tracks });
   const music = createMusic({
     level,
@@ -109,9 +93,7 @@ Deno.test("the conductor keeps picking and advances by duration with Music Off",
   );
   const started: string[] = [];
   music.onTrackStart((track) => started.push(track.key));
-  music.start(["adventure"]);
-  music.unlock();
-  await settle(5);
+  await startMusic(music, 5);
   assertEquals(started.length, 1);
   await settle(200);
   assert(started.length >= 3, `only ${started.length} tracks started`);
@@ -134,9 +116,7 @@ Deno.test("a host with Music on reports each track it plays, and turning it on r
   });
   const started: string[] = [];
   music.onTrackStart((track) => started.push(track.key));
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   assertEquals(started, ["music/a.ogg"]);
   clock += 30_000;
   music.setLevel("50");
@@ -159,9 +139,7 @@ Deno.test("a host with Music on reports each track it plays, and turning it on r
 
 Deno.test("follow starts the cued track at the offset", async () => {
   const { music, elements, requests } = setup([entry("a"), entry("b")]);
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   music.follow(cue("b"), 12.5);
   await settle();
   assertEquals(music.state().track, "music/b.ogg");
@@ -181,9 +159,7 @@ Deno.test("a guest stops picking its own tracks while it follows", async () => {
     [entry("a", 0.04), entry("b", 0.04)],
     "50",
   );
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   music.follow(cue("a"), 0);
   await settle();
   const count = elements.length;
@@ -197,9 +173,7 @@ Deno.test("a new cue crossfades from the previous track", async () => {
   const { music, elements } = setup([entry("a"), entry("b")], "50", {
     crossfade: 0.1,
   });
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   music.follow(cue("a"), 1);
   await settle();
   assertEquals(music.state().track, "music/a.ogg");
@@ -222,9 +196,7 @@ Deno.test("a heartbeat for the same track skips a drifted guest to the host's po
   const { music, elements } = setup([entry("a"), entry("b")], "50", {
     now: () => clock,
   });
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   music.follow(cue("a"), 10);
   await settle();
   const deck = playing(elements).find((element) =>
@@ -258,9 +230,7 @@ Deno.test("the conductor reports where it is in its track", async () => {
   });
   assertEquals(music.position(), null);
   music.onTrackStart(() => {});
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   // Music Off: the silent count.
   clock += 12_000;
   assertEquals(music.position(), { key: "music/a.ogg", seconds: 12 });
@@ -274,9 +244,7 @@ Deno.test("the conductor reports where it is in its track", async () => {
 
 Deno.test("a cue for a track the index does not list keeps the current track", async () => {
   const { music, requests } = setup([entry("a"), entry("b")]);
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   music.follow(cue("a"), 0);
   await settle();
   const before = trackRequests(requests).length;
@@ -302,9 +270,7 @@ Deno.test("a cue whose download fails keeps the current track", async () => {
     }) as typeof fetch,
   });
   const { music } = failing;
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   music.follow(cue("a"), 0);
   await settle();
   music.follow(cue("b"), 0);
@@ -320,9 +286,7 @@ Deno.test("a guest with Music Off downloads no track and starts at the current o
     "off",
     { now: () => clock },
   );
-  music.start(["adventure"]);
-  music.unlock();
-  await settle();
+  await startMusic(music);
   music.follow(cue("a"), 10);
   await settle();
   assertEquals(trackRequests(requests), []);
@@ -353,3 +317,12 @@ Deno.test("with music disabled a guest follows nothing", async () => {
   await settle();
   assertEquals(requests, []);
 });
+
+async function startMusic(
+  music: ReturnType<typeof createMusic>,
+  settleMs = 20,
+) {
+  music.start(["adventure"]);
+  music.unlock();
+  await settle(settleMs);
+}

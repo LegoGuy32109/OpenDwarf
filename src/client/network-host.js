@@ -19,6 +19,7 @@ import { itemSeen, seesFrom } from "../shared/reach.js";
 import {
   createVisibility,
   tileKey,
+  tileSeen,
   visibilityPosition,
 } from "../shared/visibility.js";
 import { entityPlayers, entityView } from "../shared/view.js";
@@ -743,16 +744,8 @@ export function startHost(scene, session, sounds = {}) {
         const left = scene.world.tick === move.startTick +
             Math.ceil(move.durationTicks * 0.75);
         if (!entered && !left) continue;
-        const originSeen = sight.visible.has(tileKey(
-          move.origin.x,
-          move.origin.y,
-          move.origin.z,
-        ));
-        const targetSeen = sight.visible.has(tileKey(
-          move.target.x,
-          move.target.y,
-          move.target.z,
-        ));
+        const originSeen = tileSeen(sight.visible, move.origin);
+        const targetSeen = tileSeen(sight.visible, move.target);
         if (originSeen !== targetSeen) {
           publishToPeer();
           return;
@@ -876,6 +869,8 @@ export function startHost(scene, session, sounds = {}) {
   /** Tell the shell this session is live, with its build and player count. The host key proves it. */
   const heartbeat = () => {
     if (!hostKey || ended) return;
+    // The URL uses the shell-configured API origin. Session IDs affect only its path.
+    // fallow-ignore-next-line security-sink
     void fetch(build.apiUrl(`sessions/${session}/heartbeat`), {
       method: "POST",
       headers: { "content-type": "application/json", "x-host-key": hostKey },
@@ -929,6 +924,8 @@ export function startHost(scene, session, sounds = {}) {
     for (const playerId of peers.keys()) {
       void signaling.send(playerId, "leave", {}).catch(() => {});
     }
+    // The URL uses the shell-configured API origin. Session IDs affect only its path.
+    // fallow-ignore-next-line security-sink
     void fetch(build.apiUrl("sessions/" + session), {
       method: "DELETE",
       headers: { "x-host-key": hostKey },

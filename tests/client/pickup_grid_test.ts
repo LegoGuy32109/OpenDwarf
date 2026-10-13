@@ -12,7 +12,7 @@ import {
   pickupGridCells,
   selectStack,
   shownStacks,
-  stepSelection,
+  stepPickupSelection,
   UNFOLD_MS,
 } from "../../src/client/pickup-grid.js";
 import { ITEM_KINDS } from "../../src/shared/items.js";
@@ -109,25 +109,28 @@ Deno.test("the aim held while opening does not move the selector", () => {
   const { grid } = opened(5);
   grid.waitForRelease = true;
   const down = { x: 0, y: 1 };
-  assert(!stepSelection(grid, 5, down, 10), "still held from opening");
-  assert(!stepSelection(grid, 5, down, 1000), "no repeat either");
+  assert(!stepPickupSelection(grid, 5, down, 10), "still held from opening");
+  assert(!stepPickupSelection(grid, 5, down, 1000), "no repeat either");
   assertEquals(grid.selected, 0);
-  assert(!stepSelection(grid, 5, { x: 0, y: 0 }, 1100), "released");
-  assert(stepSelection(grid, 5, down, 1200), "a new press moves it");
+  assert(!stepPickupSelection(grid, 5, { x: 0, y: 0 }, 1100), "released");
+  assert(stepPickupSelection(grid, 5, down, 1200), "a new press moves it");
   assertEquals(grid.selected, 3);
 });
 
 Deno.test("a held direction moves once, then repeats after a delay", () => {
   const { grid } = opened(10);
   const down = { x: 0, y: 1 };
-  assert(stepSelection(grid, 10, down, 1000));
+  assert(stepPickupSelection(grid, 10, down, 1000));
   assertEquals(grid.selected, 3);
-  assert(!stepSelection(grid, 10, down, 1100), "no move before the delay");
-  assert(stepSelection(grid, 10, down, 1400), "first repeat");
+  assert(
+    !stepPickupSelection(grid, 10, down, 1100),
+    "no move before the delay",
+  );
+  assert(stepPickupSelection(grid, 10, down, 1400), "first repeat");
   assertEquals(grid.selected, 6);
-  assert(!stepSelection(grid, 10, down, 1450));
-  assert(!stepSelection(grid, 10, { x: 0, y: 0 }, 1500));
-  assert(stepSelection(grid, 10, { x: 1, y: 0 }, 1510), "new direction");
+  assert(!stepPickupSelection(grid, 10, down, 1450));
+  assert(!stepPickupSelection(grid, 10, { x: 0, y: 0 }, 1500));
+  assert(stepPickupSelection(grid, 10, { x: 1, y: 0 }, 1510), "new direction");
 });
 
 Deno.test("the grid closes out of reach, on another level, or when empty", () => {

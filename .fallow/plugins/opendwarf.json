@@ -1,0 +1,15 @@
+{
+  "name": "opendwarf-runtime-hooks",
+  "detection": {
+    "type": "fileExists",
+    "pattern": "deno.json"
+  },
+  "usedExports": [
+    {
+      "pattern": "src/client/test-driver.js",
+      "exports": [
+        "inspectWorld"
+      ]
+    }
+  ]
+}

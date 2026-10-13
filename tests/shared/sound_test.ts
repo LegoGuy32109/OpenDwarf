@@ -1,10 +1,9 @@
+import { createOpenField as field } from "./fixtures.ts";
 // Sound event tests (ADR 0008).
 import { assert, assertEquals } from "@std/assert";
-import { addPlayer, advanceTicks, type World } from "../../src/shared/world.js";
-import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
+import { addPlayer, advanceTicks } from "../../src/shared/world.js";
 import {
   drainTileChanges,
-  ensureChunk,
   OPEN,
   STONE,
   writeTile,
@@ -38,15 +37,6 @@ import {
   STEP_DISTANCE,
   stepsTaken,
 } from "../../src/shared/sound.js";
-
-/** Open air at level 1 and above, a stone floor at level 0. */
-function field(): World {
-  const world = createWorld();
-  const data = ensureChunk(world, 0, 0);
-  data.fill(OPEN);
-  data.fill(STONE, 0, 256);
-  return world;
-}
 
 /** A walker at (3, 5, 1) on the stone floor. */
 function walker() {

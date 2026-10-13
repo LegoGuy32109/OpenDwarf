@@ -434,15 +434,9 @@ export const cases: Record<string, Case> = {
     await h.store.startSession({ id, buildCommit: hex(40), hostPeer: "p" });
     // A live session is not swept.
     assertEquals(await h.store.claimSessionSweep(id, 5000), false);
-    assertEquals(
-      (await h.store.listSessionsToSweep(1000)).some((s) => s.id === id),
-      false,
-    );
+    await assertSweepListed(h, id, false);
     await h.store.endSession(id);
-    assertEquals(
-      (await h.store.listSessionsToSweep(1000)).some((s) => s.id === id),
-      true,
-    );
+    await assertSweepListed(h, id, true);
     assertEquals(await h.store.claimSessionSweep(id, 5000), true);
     assertEquals(await h.store.claimSessionSweep(id, 5000), false);
     h.setNow(14_000);
@@ -452,10 +446,7 @@ export const cases: Record<string, Case> = {
     await h.store.markChannelDeleted(id);
     h.setNow(60_000);
     assertEquals(await h.store.claimSessionSweep(id, 5000), false);
-    assertEquals(
-      (await h.store.listSessionsToSweep(1000)).some((s) => s.id === id),
-      false,
-    );
+    await assertSweepListed(h, id, false);
     // A session whose heartbeat timed out is swept too.
     const quiet = `swq-${tag}`;
     h.setNow(70_000);
@@ -469,3 +460,8 @@ export const cases: Record<string, Case> = {
     assertEquals(await h.store.claimSessionSweep(quiet, 5000), true);
   },
 };
+
+async function assertSweepListed(h: Harness, id: string, expected: boolean) {
+  const rows = await h.store.listSessionsToSweep(1000);
+  assertEquals(rows.some((session) => session.id === id), expected);
+}

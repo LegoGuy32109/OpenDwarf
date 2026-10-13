@@ -1,4 +1,9 @@
 // @ts-check
+import {
+  createCacheAccess,
+  loadMediaIndex,
+  mediaEntries,
+} from "./media-cache.js";
 
 /**
  * The music player (ADR 0007). It reads the music index from the bucket, picks
@@ -67,27 +72,10 @@ export function parseMusicLevel(value) {
  */
 export function parseIndex(json) {
   const list = /** @type {{tracks?:unknown}|null} */ (json)?.tracks;
-  if (!Array.isArray(list)) return [];
-  /** @type {Track[]} */
-  const tracks = [];
-  const seen = new Set();
-  for (const entry of list) {
-    if (!entry || typeof entry !== "object") continue;
-    const { key, hash, tags, duration } = entry;
-    if (typeof key !== "string" || !key || seen.has(key)) continue;
-    if (typeof hash !== "string" || !hash) continue;
-    if (!Array.isArray(tags)) continue;
-    const kept = tags.filter((tag) => typeof tag === "string" && tag);
-    if (!kept.length) continue;
-    seen.add(key);
-    tracks.push({
-      key,
-      hash,
-      tags: kept,
-      ...(typeof duration === "number" ? { duration } : {}),
-    });
-  }
-  return tracks;
+  return mediaEntries(list).map(({ entry, media }) => ({
+    ...media,
+    ...(typeof entry.duration === "number" ? { duration: entry.duration } : {}),
+  }));
 }
 
 /**
@@ -223,8 +211,7 @@ export function createMusic(options = {}) {
   let generation = 0;
   /** @type {"idle"|"loading"|"playing"|"stopped"} */
   let status = "idle";
-  /** @type {Promise<Cache|null>|null} */
-  let cacheHandle = null;
+  const openCache = createCacheAccess(cacheStorage, CACHE_NAME);
   /** @type {Record<string,PlayRecord>} */
   const plays = readPlays();
   /**
@@ -303,13 +290,6 @@ export function createMusic(options = {}) {
     }
   }
 
-  function openCache() {
-    cacheHandle ??= Promise.resolve().then(() =>
-      cacheStorage?.open(CACHE_NAME) ?? null
-    ).catch(() => null);
-    return cacheHandle;
-  }
-
   const volume = () => MUSIC_VOLUME[level];
   /** Whether the player may start a track now. */
   const canPlay = () =>
@@ -323,32 +303,12 @@ export function createMusic(options = {}) {
 
   /** The index from the bucket, else the last good copy in the device cache. */
   async function loadIndex() {
-    const url = mediaUrl(INDEX_KEY);
-    const cache = await openCache();
-    /** @type {Track[]} */
-    let found = [];
-    try {
-      const response = await fetchMedia(url, { cache: "no-cache" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text();
-      found = parseIndex(JSON.parse(text));
-      if (found.length && cache) {
-        await cache.put(
-          url,
-          new Response(text, {
-            headers: { "content-type": "application/json" },
-          }),
-        ).catch(() => {});
-      }
-    } catch {
-      try {
-        const kept = await cache?.match(url);
-        if (kept) found = parseIndex(await kept.json());
-      } catch {
-        // No index and no copy: the player stays quiet.
-      }
-    }
-    tracks = found;
+    tracks = await loadMediaIndex(
+      mediaUrl(INDEX_KEY),
+      parseIndex,
+      fetchMedia,
+      await openCache(),
+    );
   }
 
   /** Match the play record to the cache: drop what is gone, add what we did not write. */

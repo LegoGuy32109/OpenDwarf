@@ -21,7 +21,7 @@ import { joinSession } from "./session.js";
 import { currentLayout } from "./ui-view.js";
 import { localCursor } from "./cursor.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** Expose `globalThis.__od` when the page loads with `?harness`. @param {Context} ctx @param {Awaited<ReturnType<typeof import('./render.js').createRenderer>>|null} [renderer] */
 export function createHarnessApi(ctx, renderer = null) {

@@ -1,7 +1,10 @@
 import type { Page } from "@playwright/test";
-import type { inspectWorld } from "../../src/client/test-driver.js";
+import type { bindTestDriver } from "../../src/client/test-driver.js";
+import type { createHarnessApi } from "../../src/client/harness.js";
 import type { WorldDefinition } from "../../src/shared/world-builder.js";
-export type TestWorld = NonNullable<ReturnType<typeof inspectWorld>>;
+export type TestWorld = NonNullable<
+  ReturnType<typeof bindTestDriver<ReturnType<typeof createHarnessApi>>>
+>;
 
 /** Run an observation or fixture command through the shared test driver. */
 export function readWorld<T, A = undefined>(

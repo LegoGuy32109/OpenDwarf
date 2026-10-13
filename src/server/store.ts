@@ -389,11 +389,7 @@ function memoryStore(options: StoreOptions): Store {
     },
 
     startSession(input) {
-      checkId(input.id, "session id");
-      checkBuildCommit(input.buildCommit);
-      checkId(input.hostPeer, "hostPeer");
-      const playerCount = input.playerCount ?? 1;
-      checkCount(playerCount, "playerCount");
+      const playerCount = initialPlayerCount(input);
       if (sessions.has(input.id)) {
         return Promise.reject(new Error("session id is taken"));
       }
@@ -731,11 +727,7 @@ export function createTursoStore(
     },
 
     async startSession(input) {
-      checkId(input.id, "session id");
-      checkBuildCommit(input.buildCommit);
-      checkId(input.hostPeer, "hostPeer");
-      const playerCount = input.playerCount ?? 1;
-      checkCount(playerCount, "playerCount");
+      const playerCount = initialPlayerCount(input);
       const at = now();
       try {
         await rows(
@@ -877,4 +869,16 @@ export function openStore(options: StoreOptions = {}): Store {
   const authToken = Deno.env.get("TURSO_DB_TOKEN");
   if (!url || !authToken) return createMemoryStore(options);
   return createTursoStore(createClient({ url, authToken }), options);
+}
+
+/** Validate initial session metadata before either store writes it. */
+function initialPlayerCount(
+  input: Parameters<Store["startSession"]>[0],
+): number {
+  checkId(input.id, "session id");
+  checkBuildCommit(input.buildCommit);
+  checkId(input.hostPeer, "hostPeer");
+  const count = input.playerCount ?? 1;
+  checkCount(count, "playerCount");
+  return count;
 }

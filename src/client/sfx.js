@@ -1,4 +1,9 @@
 // @ts-check
+import {
+  createCacheAccess,
+  loadMediaIndex,
+  mediaEntries,
+} from "./media-cache.js";
 // Sound effects from tagged samples in the bucket (ADR 0008). The player reads
 // the index, downloads every sample into the `od-media` cache, decodes each into
 // an AudioBuffer, and plays one per request with a random pitch and gain.
@@ -63,27 +68,10 @@ export function parseEffectsLevel(value) {
  */
 export function parseSfxIndex(json) {
   const list = /** @type {{samples?:unknown}|null} */ (json)?.samples;
-  if (!Array.isArray(list)) return [];
-  /** @type {Sample[]} */
-  const samples = [];
-  const seen = new Set();
-  for (const entry of list) {
-    if (!entry || typeof entry !== "object") continue;
-    const { key, hash, tags, note } = entry;
-    if (typeof key !== "string" || !key || seen.has(key)) continue;
-    if (typeof hash !== "string" || !hash) continue;
-    if (!Array.isArray(tags)) continue;
-    const kept = tags.filter((tag) => typeof tag === "string" && tag);
-    if (!kept.length) continue;
-    seen.add(key);
-    samples.push({
-      key,
-      hash,
-      tags: kept,
-      ...(typeof note === "string" ? { note } : {}),
-    });
-  }
-  return samples;
+  return mediaEntries(list).map(({ entry, media }) => ({
+    ...media,
+    ...(typeof entry.note === "string" ? { note: entry.note } : {}),
+  }));
 }
 
 /**
@@ -107,7 +95,7 @@ export function matchSamples(samples, tags) {
  * linearly to silence at `SOUND_RANGE`. Horizontal only.
  * @param {number} distance
  */
-export function distanceGain(distance) {
+export function effectsDistanceGain(distance) {
   if (distance <= FULL_GAIN_TILES) return 1;
   if (distance >= SOUND_RANGE) return 0;
   return (SOUND_RANGE - distance) / (SOUND_RANGE - FULL_GAIN_TILES);
@@ -161,8 +149,7 @@ export function createSfx(options = {}) {
   const log = [];
   /** @type {"off"|"idle"|"loading"|"ready"} */
   let status = "off";
-  /** @type {Promise<Cache|null>|null} */
-  let cacheHandle = null;
+  const openCache = createCacheAccess(cacheStorage, CACHE_NAME);
 
   /**
    * @typedef {object} Voice
@@ -176,41 +163,14 @@ export function createSfx(options = {}) {
   /** @param {[number,number]} range */
   const between = (range) => range[0] + random01() * (range[1] - range[0]);
 
-  function openCache() {
-    cacheHandle ??= Promise.resolve().then(() =>
-      cacheStorage?.open(CACHE_NAME) ?? null
-    ).catch(() => null);
-    return cacheHandle;
-  }
-
   /** The index from the bucket, else the last good copy in the device cache. */
   async function loadIndex() {
-    const url = mediaUrl(SFX_INDEX_KEY);
-    const cache = await openCache();
-    /** @type {Sample[]} */
-    let found = [];
-    try {
-      const response = await fetchMedia(url, { cache: "no-cache" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const text = await response.text();
-      found = parseSfxIndex(JSON.parse(text));
-      if (found.length && cache) {
-        await cache.put(
-          url,
-          new Response(text, {
-            headers: { "content-type": "application/json" },
-          }),
-        ).catch(() => {});
-      }
-    } catch {
-      try {
-        const kept = await cache?.match(url);
-        if (kept) found = parseSfxIndex(await kept.json());
-      } catch {
-        // No index and no copy: the player stays quiet.
-      }
-    }
-    return found;
+    return await loadMediaIndex(
+      mediaUrl(SFX_INDEX_KEY),
+      parseSfxIndex,
+      fetchMedia,
+      await openCache(),
+    );
   }
 
   /** Failures and the first error, for the menu's audio line on a phone with no F3. */
@@ -338,7 +298,7 @@ export function createSfx(options = {}) {
       let gain = between(SOUND_GAIN);
       const { x, y } = playOptions;
       if (listener && x !== undefined && y !== undefined) {
-        gain *= distanceGain(Math.hypot(x - listener.x, y - listener.y));
+        gain *= effectsDistanceGain(Math.hypot(x - listener.x, y - listener.y));
       }
       const muffled = playOptions.muffled === true;
       if (muffled) gain *= MUFFLE_GAIN;

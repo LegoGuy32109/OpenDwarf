@@ -13,16 +13,16 @@ import { MUSIC_LEVELS } from "./music.js";
 import { EFFECTS_LEVELS } from "./sfx.js";
 import { heldDisplay } from "./display.js";
 import { build } from "./build.js";
-import { layoutUi } from "./ui.js";
+import { layoutUi } from "./ui-layout.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 function isStandalone(/** @type {Context} */ ctx) {
   return Boolean(/** @type {{standalone?:boolean}} */ (navigator).standalone) ||
     Boolean(ctx.standaloneQuery?.matches);
 }
 
-/** What the layout needs to know about the game right now. @param {Context} ctx @returns {import('./ui.js').UiView} */
+/** What the layout needs to know about the game right now. @param {Context} ctx @returns {import('./ui-types.js').UiView} */
 function uiView(ctx) {
   const { scene, ui, bag, shop, stamina } = ctx;
   const now = performance.now();

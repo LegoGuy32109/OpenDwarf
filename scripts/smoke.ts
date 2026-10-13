@@ -8,10 +8,14 @@ import { chromium } from "@playwright/test";
 const base = Deno.env.get("SMOKE_BASE") ?? "https://od.joshhale.me";
 const path = Deno.args[0] ?? "/";
 const commit = Deno.args[1] ??
+  // The operator supplies SMOKE_BASE and the build path. This CLI does not serve untrusted requests.
+  // fallow-ignore-next-line security-sink
   /"commit":"([0-9a-f]{7})/.exec(await (await fetch(`${base}${path}`)).text())
     ?.[1] ??
   "";
 // Media: the shell redirects to the bucket, which must answer with the music index.
+// The operator supplies SMOKE_BASE and the build path. This CLI does not serve untrusted requests.
+// fallow-ignore-next-line security-sink
 const index = await fetch(`${base}/media/index/music.v1.json`);
 const tracks = index.ok ? (await index.json()).tracks : null;
 if (!Array.isArray(tracks)) {
@@ -30,6 +34,8 @@ for (const [n, p] of [["host", host], ["guest", guest]] as const) {
   });
 }
 const sessions = async () =>
+  // The operator supplies SMOKE_BASE and the build path. This CLI does not serve untrusted requests.
+  // fallow-ignore-next-line security-sink
   (await (await fetch(`${base}/api/v1/sessions`)).json()).sessions as {
     id: string;
     build: { commit: string; path: string };

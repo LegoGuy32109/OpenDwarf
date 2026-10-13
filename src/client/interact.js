@@ -21,12 +21,12 @@ import {
   openPickupGrid,
   selectedStack,
 } from "./pickup-grid.js";
-import { flash } from "./context.js";
+import { flash } from "./client-actions.js";
 import { droppedHere, heldDisplay } from "./display.js";
-import { cameraInput, shopDirection, stickDirection } from "./input-read.js";
-import { pickupGridStacks } from "./panels.js";
+import { cameraInput, shopDirection, stickDirection } from "./input-values.js";
+import { pickupGridStacks } from "./pickup-grid-view.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** Whether the highlighted tile holds the shopkeeper. @param {Context} ctx @param {{x:number,y:number,z:number}} target */
 function isShopkeeper(ctx, target) {

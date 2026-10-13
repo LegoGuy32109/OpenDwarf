@@ -1,3 +1,4 @@
+import { commitResponse } from "./network_fakes.ts";
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { createApp } from "../../src/server/app.ts";
 import { createAdminApi } from "../../src/server/admin-api.ts";
@@ -28,14 +29,8 @@ function shell(options: { ownerToken?: string | null } = {}) {
     now: () => time,
     fetch: ((input: Request | URL | string) => {
       const url = String(input);
-      const ref = /\/commits\/(.+)$/.exec(url)?.[1];
-      if (ref !== undefined) {
-        return Promise.resolve(
-          refs[ref]
-            ? new Response(refs[ref])
-            : new Response("{}", { status: 422 }),
-        );
-      }
+      const commit = commitResponse(url, refs);
+      if (commit) return Promise.resolve(commit);
       return Promise.resolve(new Response(PAGE));
     }) as typeof fetch,
   });

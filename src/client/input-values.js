@@ -6,7 +6,7 @@
  * events (`input.js` does); `interact.js`, `panels.js`, and `loop.js` read here.
  */
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** @param {number} x @param {number} y @param {number} deadzone */
 export function stickDirection(x, y, deadzone) {

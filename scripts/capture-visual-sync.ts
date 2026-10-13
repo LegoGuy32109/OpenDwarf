@@ -1,3 +1,4 @@
+import { joinedParticipant } from "./browser-harness.ts";
 import { type BrowserContext, chromium, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 
@@ -120,14 +121,7 @@ try {
       }`,
     );
     await ready(page);
-    await page.waitForFunction(() =>
-      (globalThis as unknown as {
-        __od: { scene: { localId: string } };
-      }).__od.scene.localId.startsWith("peer-"), { timeout: 20_000 });
-    const id = await page.evaluate(() =>
-      (globalThis as unknown as { __od: { scene: { localId: string } } })
-        .__od.scene.localId
-    );
+    const id = await joinedParticipant(page);
     participants.push({ page, id });
     if ([1, 5, 10, 20].includes(index + 1)) {
       console.log(`Joined ${index + 1} peers`);

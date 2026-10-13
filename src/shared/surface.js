@@ -91,11 +91,17 @@ export function surfaceGrid(
 export function ceilingMask(world, x, y, viewZ, mode, visibility, lookup) {
   let mask = 0;
   for (let corner = 0; corner < 4; corner++) {
-    const tx = x + (corner & 1);
-    const ty = y + (corner >> 1);
-    const surface = lookup
-      ? lookup(tx, ty)
-      : surfaceAt(world, tx, ty, viewZ, mode, visibility);
+    const tx = x + (corner & 1), ty = y + (corner >> 1);
+    const surface = cornerSurface(
+      world,
+      x,
+      y,
+      viewZ,
+      mode,
+      visibility,
+      lookup,
+      corner,
+    );
     if (!surface || (mode === "entity" && surface.depth !== 0)) continue;
     const upper = mode === "master"
       ? "visible"
@@ -116,11 +122,16 @@ export function elevationMask(world, x, y, viewZ, mode, visibility, lookup) {
   let highest = 127;
   let mask = 0;
   for (let corner = 0; corner < 4; corner++) {
-    const tx = x + (corner & 1);
-    const ty = y + (corner >> 1);
-    const surface = lookup
-      ? lookup(tx, ty)
-      : surfaceAt(world, tx, ty, viewZ, mode, visibility);
+    const surface = cornerSurface(
+      world,
+      x,
+      y,
+      viewZ,
+      mode,
+      visibility,
+      lookup,
+      corner,
+    );
     const depth = surface ? surface.depth : 127;
     if (depth < highest) {
       highest = depth;
@@ -186,4 +197,13 @@ export function masterViewTiles(camera, widthPx, heightPx, zoom) {
   const x = camera.x / 64;
   const y = camera.y / 64;
   return { minX: x - halfX, minY: y - halfY, maxX: x + halfX, maxY: y + halfY };
+}
+
+/** Read a corner without allocating iterator or coordinate objects.
+ * @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility @param {SurfaceLookup|undefined} lookup @param {number} corner */
+function cornerSurface(world, x, y, viewZ, mode, visibility, lookup, corner) {
+  const tx = x + (corner & 1), ty = y + (corner >> 1);
+  return lookup
+    ? lookup(tx, ty)
+    : surfaceAt(world, tx, ty, viewZ, mode, visibility);
 }

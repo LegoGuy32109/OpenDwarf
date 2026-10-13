@@ -1,4 +1,5 @@
 // @ts-check
+import { terrainBands } from "../shared/terrain-bands.js";
 
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import {
@@ -139,6 +140,9 @@ export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
   const floor = buffer(), ores = buffer(), edge = buffer(), bands = buffer();
   const ceiling = buffer();
   let tiles = 0;
+  /** @param {number} x @param {number} y @param {number} w @param {number} h @param {number} alpha */
+  const emitBand = (x, y, w, h, alpha) =>
+    quad(bands, x, y, w, h, WHITE_UV, alpha === 0.28 ? BAND_DARK : BAND_LIGHT);
   for (let y = top; y < top + SIDE; y++) {
     for (let x = left; x < left + SIDE; x++) {
       const tile = surface(x, y);
@@ -194,54 +198,7 @@ export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
   }
   for (let y = top; y < top + SIDE; y++) {
     for (let x = left; x < left + SIDE; x++) {
-      const here = surface(x, y);
-      if (!here) continue;
-      const rightTile = surface(x + 1, y);
-      const downTile = surface(x, y + 1);
-      if (rightTile?.depth !== here.depth) {
-        const lowerRight = !rightTile || rightTile.depth > here.depth;
-        const edgeX = (x + 1) * TILE;
-        quad(
-          bands,
-          edgeX + (lowerRight ? 0 : -4),
-          y * TILE,
-          4,
-          TILE,
-          WHITE_UV,
-          BAND_DARK,
-        );
-        quad(
-          bands,
-          edgeX + (lowerRight ? 4 : -8),
-          y * TILE,
-          4,
-          TILE,
-          WHITE_UV,
-          BAND_LIGHT,
-        );
-      }
-      if (downTile?.depth !== here.depth) {
-        const lowerDown = !downTile || downTile.depth > here.depth;
-        const edgeY = (y + 1) * TILE;
-        quad(
-          bands,
-          x * TILE,
-          edgeY + (lowerDown ? 0 : -4),
-          TILE,
-          4,
-          WHITE_UV,
-          BAND_DARK,
-        );
-        quad(
-          bands,
-          x * TILE,
-          edgeY + (lowerDown ? 4 : -8),
-          TILE,
-          4,
-          WHITE_UV,
-          BAND_LIGHT,
-        );
-      }
+      terrainBands(surface, x, y, TILE, emitBand);
     }
   }
   for (let y = top; y < top + SIDE; y++) {

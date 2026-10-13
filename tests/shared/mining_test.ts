@@ -1,11 +1,6 @@
+import { createOpenField as field } from "./fixtures.ts";
 import { assert, assertEquals } from "@std/assert";
-import {
-  addPlayer,
-  advanceTicks,
-  TICK_MS,
-  type World,
-} from "../../src/shared/world.js";
-import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
+import { addPlayer, advanceTicks, TICK_MS } from "../../src/shared/world.js";
 import {
   COAL,
   DIAMOND,
@@ -18,7 +13,6 @@ import {
 } from "../../src/shared/materials.js";
 import {
   drainTileChanges,
-  ensureChunk,
   OPEN,
   readTile,
   STONE,
@@ -39,15 +33,6 @@ import { setHeldItem } from "../../src/shared/held-item.js";
 import { addStack, inventoryOf } from "../../src/shared/items.js";
 import { highlightedTile } from "../../src/shared/target.js";
 import { decodeControl, decodeMining } from "../../src/shared/wire.js";
-
-/** Open air at levels 1 and above, a stone floor at level 0. */
-function field(): World {
-  const world = createWorld();
-  const data = ensureChunk(world, 0, 0);
-  data.fill(OPEN);
-  data.fill(STONE, 0, 256);
-  return world;
-}
 
 /** A player standing at (5, 5) on level 1 with stone at (6, 5, 1). */
 function miner() {

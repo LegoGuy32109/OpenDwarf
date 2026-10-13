@@ -1,3 +1,4 @@
+import { commitResponse } from "./network_fakes.ts";
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import {
   type BuildOptions,
@@ -26,14 +27,8 @@ function network(
     const url = String(input);
     calls.push(url);
     headers.push(Object.fromEntries(new Headers(init?.headers)));
-    const ref = /\/commits\/(.+)$/.exec(url)?.[1];
-    if (ref !== undefined) {
-      return Promise.resolve(
-        refs[ref]
-          ? new Response(refs[ref])
-          : new Response("{}", { status: 422 }),
-      );
-    }
+    const commit = commitResponse(url, refs);
+    if (commit) return Promise.resolve(commit);
     const sha = /@([0-9a-f]{40})\/public\/index\.html$/.exec(url)?.[1];
     return Promise.resolve(
       sha && pages[sha]

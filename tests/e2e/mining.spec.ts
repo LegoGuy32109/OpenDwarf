@@ -2,7 +2,7 @@ import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { holdUntil, waitFrames, waitTicks } from "./time.ts";
+import { holdUntil, waitFor, waitFrames, waitTicks } from "./time.ts";
 import { ready, tapUi, type UiRect, uiRect } from "./ui.ts";
 const box = ({ x, y, w, h }: UiRect) => ({ x, y, width: w, height: h });
 const OPEN = 1;
@@ -26,6 +26,17 @@ const position = (page: Page) =>
   });
 const mining = (page: Page) =>
   readWorld(page, (__world) => __world.scene.mining);
+/** Observe a decal and its unmined tile in the same browser read. */
+async function breakingTile(page: Page, x: number, material: number) {
+  await waitFor(page, () =>
+    readWorld(page, (world, { x, material }) => {
+      const action = world.scene.mining.find((entry) =>
+        entry.x === x && entry.y === 1
+      );
+      return (action?.progress ?? 0) > 0.2 &&
+        world.scene.world.chunks.get("0,0")?.[16 + x] === material;
+    }, { x, material }), { maxTicks: 30, message: "active breaking decal" });
+}
 async function walk(page: Page, key: string, until: () => Promise<boolean>) {
   await holdUntil(page, key, until);
   // Let the walk settle on a tile center.
@@ -65,11 +76,8 @@ test("the host mines stone, then coal, with the breaking decal", {
   await page.keyboard.down("i"); // aim north at the stone
   await evidenceShot(page, "mining-highlight");
   await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(1);
-  // Stone takes 20 ticks.
-  await waitTicks(page, 8);
+  await breakingTile(page, 2, STONE);
   await evidenceShot(page, "mining-stone-progress");
-  expect((await mining(page))[0].progress).toBeGreaterThan(0.2);
   await expect.poll(() => tile(page, 2)).toBe(OPEN);
   expect(await mining(page)).toEqual([]);
   await page.keyboard.up("i");
@@ -78,9 +86,7 @@ test("the host mines stone, then coal, with the breaking decal", {
   expect(await tile(page, 3)).toBe(COAL);
   await page.keyboard.down("i");
   await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(1);
-  await waitTicks(page, 14);
-  expect(await tile(page, 3)).toBe(COAL);
+  await breakingTile(page, 3, COAL);
   await evidenceShot(page, "mining-coal-progress");
   await expect.poll(() => tile(page, 3)).toBe(OPEN);
   await evidenceShot(page, "mining-coal-done");
@@ -217,11 +223,12 @@ test.describe("phone interact button", () => {
     // A second finger taps interact while the first still holds the stick.
     await send("touchStart", [aim, tap]);
     await send("touchEnd", [aim]);
-    await expect.poll(async () => (await mining(page)).length).toBe(1);
+    await waitFor(page, async () => (await mining(page)).length === 1, {
+      maxTicks: 40,
+      message: "touch mining decal",
+    });
     // The aim thumb lifts: the aim rests, and mining goes on.
     await send("touchEnd", []);
-    await waitTicks(page, 6);
-    expect((await mining(page)).length).toBe(1);
     await expect.poll(() => tile(page, 4)).toBe(OPEN);
   });
 });

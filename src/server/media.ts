@@ -56,15 +56,11 @@ export function byteRange(
 ): { start: number; end: number } | null {
   const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
   if (!match || (match[1] === "" && match[2] === "")) return null;
-  let start: number;
-  let end: number;
-  if (match[1] === "") {
-    start = Math.max(0, size - Number(match[2]));
-    end = size - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
-  }
+  const start = match[1] === ""
+    ? Math.max(0, size - Number(match[2]))
+    : Number(match[1]);
+  const requestedEnd = match[2] === "" ? size - 1 : Number(match[2]);
+  const end = match[1] === "" ? size - 1 : Math.min(requestedEnd, size - 1);
   return start <= end && start < size ? { start, end } : null;
 }
 

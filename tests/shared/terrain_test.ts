@@ -173,27 +173,25 @@ Deno.test("movement crosses chunk borders in both directions and onto negative c
   const world = openField();
   const player = addPlayer(world, "self", { x: 14, y: 14, z: 1 });
   let sequence = 0;
-  for (
-    const [dx, dy, x, y] of [[1, 0, 15, 14], [1, 0, 16, 14], [0, 1, 16, 15], [
-      0,
-      1,
-      16,
-      16,
-    ]]
-  ) {
-    assertEquals(startMove(world, "self", dx, dy, ++sequence).ok, true);
-    advanceTicks(world, 20);
-    assertEquals([player.x, player.y], [x, y]);
-  }
+  sequence = assertWalkRoute(world, [[1, 0, 15, 14], [1, 0, 16, 14], [
+    0,
+    1,
+    16,
+    15,
+  ], [
+    0,
+    1,
+    16,
+    16,
+  ]], sequence);
   player.x = 0;
   player.y = 0;
-  for (
-    const [dx, dy, x, y] of [[-1, 0, -1, 0], [0, -1, -1, -1], [-1, -1, -2, -2]]
-  ) {
-    assertEquals(startMove(world, "self", dx, dy, ++sequence).ok, true);
-    advanceTicks(world, 20);
-    assertEquals([player.x, player.y], [x, y]);
-  }
+  sequence = assertWalkRoute(world, [[-1, 0, -1, 0], [0, -1, -1, -1], [
+    -1,
+    -1,
+    -2,
+    -2,
+  ]], sequence);
 });
 
 Deno.test("support and stairs work across a chunk border", () => {
@@ -377,3 +375,17 @@ Deno.test("terrain extent is cached until a chunk is added or unloaded", () => {
   unloadChunk(world, -1, 0);
   assertEquals(terrainExtent(world).minX, 0);
 });
+
+function assertWalkRoute(
+  world: World,
+  steps: [number, number, number, number][],
+  sequence: number,
+): number {
+  for (const [dx, dy, x, y] of steps) {
+    assertEquals(startMove(world, "self", dx, dy, ++sequence).ok, true);
+    advanceTicks(world, 20);
+    const player = world.players.self;
+    assertEquals([player.x, player.y], [x, y]);
+  }
+  return sequence;
+}

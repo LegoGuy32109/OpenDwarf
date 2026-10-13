@@ -1,20 +1,18 @@
 // @ts-check
 // Test automation binds here. __od remains an independent manual inspection tool.
-import { createHarnessApi } from "./harness.js";
 import { addStack, dropItem, inventoryOf } from "../shared/items.js";
 import { setHeldItem } from "../shared/held-item.js";
 import * as materials from "../shared/terrain.js";
 import * as items from "../shared/items.js";
 import { writeTile } from "../shared/terrain.js";
 
-/** @typedef {import('./context.js').Context} Context */
 /** @typedef {import('../shared/world.js').Tile} Tile */
+/** @typedef {{world:()=>import('../shared/world.js').World,isGuest:boolean,invalidate:()=>void,publish:()=>void}} FixtureServices */
 /** @typedef {{players?:{id:string,at?:Tile,inventory?:import('../shared/items.js').Stack[],held?:string}[],tiles?:import('../shared/world-builder.js').Paint[],drops?:{at:Tile,kind:string,count:number}[]}} WorldPatch */
 /** @type {ReturnType<typeof createTestDriver>|undefined} */
 let driver;
-/** @param {Context} ctx @param {Parameters<typeof createHarnessApi>[1]} renderer */
-function createTestDriver(ctx, renderer) {
-  const api = createHarnessApi(ctx, renderer);
+/** @template {object} Api @param {Api} api @param {FixtureServices} services */
+function createTestDriver(api, services) {
   // Dynamic test fixtures use the same tile API and shared inventory rules.
   return {
     ...api,
@@ -22,18 +20,19 @@ function createTestDriver(ctx, renderer) {
     items,
     /** @param {WorldPatch} patch */
     edit(patch) {
-      if (ctx.isAdmin) throw new Error("World setup belongs to the host");
+      if (services.isGuest) throw new Error("World setup belongs to the host");
+      const world = services.world();
       for (const { bounds: b, material } of patch.tiles ?? []) {
         for (let z = b.minZ; z <= b.maxZ; z++) {
           for (let y = b.minY; y <= b.maxY; y++) {
             for (let x = b.minX; x <= b.maxX; x++) {
-              writeTile(ctx.scene.world, x, y, z, material);
+              writeTile(world, x, y, z, material);
             }
           }
         }
       }
       for (const entry of patch.players ?? []) {
-        const player = ctx.scene.world.players[entry.id];
+        const player = world.players[entry.id];
         if (!player) throw new Error(`Unknown fixture entity: ${entry.id}`);
         if (entry.at) {
           Object.assign(player, entry.at, {
@@ -50,23 +49,25 @@ function createTestDriver(ctx, renderer) {
           }
         }
         if (
-          entry.held && !setHeldItem(ctx.scene.world, entry.id, entry.held).ok
+          entry.held && !setHeldItem(world, entry.id, entry.held).ok
         ) throw new Error("Invalid fixture held item");
       }
       for (const drop of patch.drops ?? []) {
-        if (!dropItem(ctx.scene.world, drop.at, drop.kind, drop.count)) {
+        if (!dropItem(world, drop.at, drop.kind, drop.count)) {
           throw new Error("Invalid fixture drop");
         }
       }
-      ctx.scene.visibility.sample = "";
-      ctx.host?.publish();
+      services.invalidate();
+      services.publish();
     },
   };
 }
-/** Bind only for harness pages. @param {Context} ctx @param {Parameters<typeof createHarnessApi>[1]} renderer */
-export function bindTestDriver(ctx, renderer) {
+/** Bind only for harness pages. @template {object} Api @param {Api} api @param {FixtureServices} services */
+export function bindTestDriver(api, services) {
   if (new URL(location.href).searchParams.has("harness")) {
-    driver = createTestDriver(ctx, renderer);
+    const bound = createTestDriver(api, services);
+    driver = bound;
+    return bound;
   }
 }
 /** Read by the shared Playwright driver, never through globalThis.__od. */

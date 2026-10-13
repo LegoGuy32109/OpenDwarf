@@ -46,13 +46,13 @@ import {
   panelLookInput,
   shopDirection,
   stickDirection,
-} from "./input-read.js";
+} from "./input-values.js";
 import { updatePickupGrid } from "./panels.js";
 import { playPanelSounds } from "./ui-sounds.js";
 import { currentLayout } from "./ui-view.js";
 import { catchUpMs, createTickClock } from "./tick-clock.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** @param {Context} ctx @param {string} id */
 function speakerName(ctx, id) {

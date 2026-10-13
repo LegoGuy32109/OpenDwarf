@@ -73,6 +73,7 @@ its feature there:
 - [Frame stats and lag-spike logging](docs/features/frame-stats.md)
 
 - [Architecture rules](docs/features/architecture-rules.md)
+- [Code quality](docs/features/code-quality.md)
 
 <!-- Add a line here for each new docs/features/*.md file. -->
 

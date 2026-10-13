@@ -17,7 +17,10 @@ import {
 } from "../../src/shared/mining.js";
 import { setHeldItem } from "../../src/shared/held-item.js";
 import { decodeControl, decodeHeld } from "../../src/shared/wire.js";
-import { COLUMNS, stepSelection } from "../../src/client/inventory-panel.js";
+import {
+  COLUMNS,
+  stepInventorySelection,
+} from "../../src/client/inventory-panel.js";
 
 function miner(): World {
   const world = createWorld();
@@ -89,24 +92,24 @@ Deno.test("hold messages and the held message are validated", () => {
 Deno.test("the panel selection steps on a grid and stops at the edges", () => {
   assertEquals(COLUMNS, 4);
   // Ten stacks: rows of 4, 4, and 2.
-  assertEquals(stepSelection(0, 10, 1, 0), 1);
-  assertEquals(stepSelection(3, 10, 1, 0), 3, "right edge");
-  assertEquals(stepSelection(0, 10, -1, 0), 0, "left edge");
-  assertEquals(stepSelection(1, 10, 0, 1), 5);
-  assertEquals(stepSelection(1, 10, 0, -1), 1, "top edge");
-  assertEquals(stepSelection(9, 10, 0, 1), 9, "bottom edge");
-  assertEquals(stepSelection(7, 10, 0, 1), 7, "no slot below");
-  assertEquals(stepSelection(0, 10, 1, 1), 5, "diagonal");
-  assertEquals(stepSelection(0, 0, 1, 0), 0, "no stacks");
+  assertEquals(stepInventorySelection(0, 10, 1, 0), 1);
+  assertEquals(stepInventorySelection(3, 10, 1, 0), 3, "right edge");
+  assertEquals(stepInventorySelection(0, 10, -1, 0), 0, "left edge");
+  assertEquals(stepInventorySelection(1, 10, 0, 1), 5);
+  assertEquals(stepInventorySelection(1, 10, 0, -1), 1, "top edge");
+  assertEquals(stepInventorySelection(9, 10, 0, 1), 9, "bottom edge");
+  assertEquals(stepInventorySelection(7, 10, 0, 1), 7, "no slot below");
+  assertEquals(stepInventorySelection(0, 10, 1, 1), 5, "diagonal");
+  assertEquals(stepInventorySelection(0, 0, 1, 0), 0, "no stacks");
   assertEquals(
-    stepSelection(0, 10, 1, -1),
+    stepInventorySelection(0, 10, 1, -1),
     1,
     "diagonal off the top goes sideways",
   );
   assertEquals(
-    stepSelection(3, 10, 1, 1),
+    stepInventorySelection(3, 10, 1, 1),
     7,
     "diagonal off the right goes down",
   );
-  assertEquals(stepSelection(7, 10, 1, 1), 7, "diagonal into nothing");
+  assertEquals(stepInventorySelection(7, 10, 1, 1), 7, "diagonal into nothing");
 });

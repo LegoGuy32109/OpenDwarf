@@ -170,6 +170,8 @@ async function buildFile(request, commit) {
   };
   if (commit === "local") {
     try {
+      // This browser worker forwards a GET already requested by its client. listen gates cached build/media URLs.
+      // fallow-ignore-next-line security-sink
       return store(await fetch(request));
     } catch (error) {
       const cached = await cache.match(request);
@@ -179,6 +181,8 @@ async function buildFile(request, commit) {
   }
   const cached = await cache.match(request);
   if (cached) return cached;
+  // This browser worker forwards a GET already requested by its client. listen gates cached build/media URLs.
+  // fallow-ignore-next-line security-sink
   const response = store(await fetch(request));
   void prune(commit).catch(() => {});
   return response;
@@ -189,6 +193,8 @@ async function page(request) {
   const cache = await caches.open("od-pages");
   try {
     const response = await Promise.race([
+      // This browser worker forwards a GET already requested by its client. listen gates cached build/media URLs.
+      // fallow-ignore-next-line security-sink
       fetch(request),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("slow")), PAGE_TIMEOUT_MS)
@@ -198,6 +204,8 @@ async function page(request) {
     return response;
   } catch {
     const cached = await cache.match(request.url);
+    // This browser worker forwards a GET already requested by its client. listen gates cached build/media URLs.
+    // fallow-ignore-next-line security-sink
     return cached ?? fetch(request);
   }
 }
@@ -212,6 +220,8 @@ async function media(request) {
   const range = request.headers.get("range");
   if (!new URL(request.url).searchParams.has("v")) {
     try {
+      // This browser worker forwards a GET already requested by its client. listen gates cached build/media URLs.
+      // fallow-ignore-next-line security-sink
       const fresh = await fetch(request);
       if (fresh.ok) void cache.put(request.url, fresh.clone());
       return fresh;
@@ -224,6 +234,8 @@ async function media(request) {
   const cached = await cache.match(request.url);
   if (cached) return rules.answerRange(cached, range);
   // Fetch the whole file once, so later ranges come from the cache.
+  // This browser worker forwards a GET already requested by its client. listen gates cached build/media URLs.
+  // fallow-ignore-next-line security-sink
   const response = await fetch(request.url, { mode: "cors" });
   if (response.status !== 200) return response;
   await cache.put(request.url, response.clone());

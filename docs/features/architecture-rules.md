@@ -9,12 +9,12 @@ graph.
 
 `.fallowrc.json` names four zones under `boundaries`:
 
-| Zone             | Files                                                                                                                                                    | May import              |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `shared`         | `src/shared/`                                                                                                                                            | itself                  |
-| `client-hub`     | `app`, `network`, `render`, `ui`, `ui-draw`, `context`, `session`, `loop`, `harness`, `input`, `input-read`, `panels` in `src/client/`, and `public/js/` | shared, client features |
-| `client-feature` | the rest of `src/client/`                                                                                                                                | shared, other features  |
-| `server`         | `src/server/`, `main.ts`                                                                                                                                 | shared                  |
+| Zone             | Files                                                                                                                                      | May import              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| `shared`         | `src/shared/`                                                                                                                              | itself                  |
+| `client-hub`     | `app`, `network`, `render`, `ui`, `ui-draw`, `context`, `session`, `loop`, `harness`, `input`, `panels` in `src/client/`, and `public/js/` | shared, client features |
+| `client-feature` | the rest of `src/client/`                                                                                                                  | shared, other features  |
+| `server`         | `src/server/`, `main.ts`                                                                                                                   | shared                  |
 
 A feature module never imports a hub. A new feature is a new module plus one
 registration line in a hub, so two features do not edit the same hub file.
@@ -25,11 +25,14 @@ registration line in a hub, so two features do not edit the same hub file.
 deno task arch
 ```
 
-The task runs `fallow architecture` against `fallow-baseline.json`, which lists
-the violations that exist today (a feature reaching into `context.js`, `ui.js`,
-`render.js`, `input-read.js` or `panels.js`). Only a new violation fails, and
-nothing in the merge gate runs it. The `architecture` job in
-`.github/workflows/e2e.yml` runs it nightly and on a PR with the `e2e` label.
+The task runs `fallow architecture` against `fallow-baseline.json`. The baseline
+is empty after the client dependency cleanup. A feature imports client state,
+actions, input values, UI primitives, or scene contracts from their owning
+modules. It does not import a hub for those services.
+
+Nothing in the merge gate runs this task. The `architecture` job in
+`.github/workflows/e2e.yml` runs it nightly and on a PR with the `e2e` label. An
+unbaselined `npx --yes fallow@3.33.1 architecture` also checks all violations.
 
 ## Paying the baseline down
 

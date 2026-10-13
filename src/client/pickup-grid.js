@@ -137,7 +137,7 @@ export function moveSelection(grid, count, dx, dy) {
  * `direction` is the combined IJKL, look stick, or D-pad direction.
  * @param {PickupGrid} grid @param {number} count @param {{x:number,y:number}} direction @param {number} now
  */
-export function stepSelection(grid, count, direction, now) {
+export function stepPickupSelection(grid, count, direction, now) {
   const dx = Math.sign(direction.x);
   const dy = Math.sign(direction.y);
   const held = dx || dy ? `${dx},${dy}` : "";

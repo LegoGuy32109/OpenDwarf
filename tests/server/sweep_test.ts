@@ -1,10 +1,7 @@
+import { createLocalShell } from "./local_shell.ts";
 import { assertEquals } from "@std/assert";
-import { createApp } from "../../src/server/app.ts";
-import { openBuilds } from "../../src/server/builds.ts";
-import { createRelay } from "../../src/server/relay.ts";
 import { hostKeyFor } from "../../src/server/session-routes.ts";
 import {
-  createLocalProvider,
   createXirsysProvider,
   type SignalingProvider,
 } from "../../src/server/signaling.ts";
@@ -199,14 +196,7 @@ Deno.test("telemetry older than 30 days is pruned, and newer is kept", async () 
 
 Deno.test("a session end and later starts and heartbeats sweep the shell's channels", async () => {
   let time = 1_000_000;
-  const store = createMemoryStore({ now: () => time });
-  const relay = createRelay();
-  const app = createApp(openBuilds(store), undefined, {
-    relay,
-    provider: createLocalProvider(relay),
-    secret: "test-secret",
-    now: () => time,
-  });
+  const { relay, app } = createLocalShell(() => time);
   const call = async (path: string, init?: RequestInit) => {
     const response = await app(
       new Request(`http://localhost${path}`, {

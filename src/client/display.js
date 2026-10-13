@@ -12,9 +12,9 @@ import { tileVisibility } from "../shared/visibility.js";
 import { heldItem, miningEntries, PICKAXE } from "../shared/mining.js";
 import { droppedAt, droppedItems, inventoryOf } from "../shared/items.js";
 import { itemSeen } from "../shared/reach.js";
-import { clamp } from "./context.js";
+import { clamp } from "./ui-kit.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** The stacks of dropped items on a tile, as this client knows them. @param {Context} ctx @param {{x:number,y:number,z:number}} tile */
 export function droppedHere(ctx, tile) {

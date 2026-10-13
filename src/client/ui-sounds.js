@@ -5,7 +5,7 @@
 
 import { isPickupGridOpen } from "./pickup-grid.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** @typedef {{open:boolean,at:number|string}} PanelSeen */
 

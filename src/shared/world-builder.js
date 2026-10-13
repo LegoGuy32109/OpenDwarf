@@ -87,7 +87,7 @@ function material(material) {
   }
 }
 /** @param {WorldDefinition} definition */
-export function validateWorldDefinition(definition) {
+function validateWorldDefinition(definition) {
   serializable(definition);
   if (definition.version !== 1) {
     throw new Error("Unsupported world definition version");

@@ -1,3 +1,4 @@
+import { objectBody as bodyOf } from "./http.ts";
 // The shell's owner API under `/api/v1`: label and promotion writes, and public reads (labels, promotions, shell deploys, status, the build index). A write
 // needs the owner token (`OD_OWNER_TOKEN`). The shell keeps only a SHA-256 hash of it, compares
 // hashes in constant time, and never logs or returns it. Without a token set, writes answer 403.
@@ -42,17 +43,6 @@ function sameHash(a: Uint8Array, b: Uint8Array): boolean {
   let difference = a.length ^ b.length;
   for (let i = 0; i < a.length; i++) difference |= a[i] ^ (b[i] ?? 0);
   return difference === 0;
-}
-
-async function bodyOf(request: Request): Promise<Record<string, unknown>> {
-  try {
-    const value: unknown = await request.json();
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? value as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
 }
 
 export function createAdminApi(options: AdminOptions): AdminApi {

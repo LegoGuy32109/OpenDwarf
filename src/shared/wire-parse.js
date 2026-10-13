@@ -38,3 +38,15 @@ export function tile(value) {
     finite(value.y, -MAX_COORD, MAX_COORD) &&
     finite(value.z, -1, WORLD_TOP + 1);
 }
+
+/** @typedef {Record<string,(value:unknown)=>boolean>} FieldRules */
+/** Validate a record's required and optional fields without coercion.
+ * @param {Record<string,unknown>} value @param {FieldRules} required
+ * @param {FieldRules} [optional]
+ */
+export function fields(value, required, optional = {}) {
+  return Object.entries(required).every(([key, check]) => check(value[key])) &&
+    Object.entries(optional).every(([key, check]) =>
+      value[key] === undefined || check(value[key])
+    );
+}

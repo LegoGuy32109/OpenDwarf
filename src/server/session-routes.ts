@@ -1,3 +1,4 @@
+import { objectBody as body } from "./http.ts";
 import { PEER_PATTERN } from "../shared/signal-frame.js";
 import { createRateLimiter, type RateLimiter } from "./rate-limit.ts";
 import { createRelay, type Relay } from "./relay.ts";
@@ -34,7 +35,7 @@ export interface SessionRoutesOptions {
 }
 
 /** What a session's host runs. `path` is the build's base path, where a guest on another build goes. */
-export interface SessionBuild {
+interface SessionBuild {
   commit: string;
   label: string | null;
   path: string;
@@ -44,7 +45,7 @@ export interface SessionBuild {
  * A session as the public sees it. It carries no host key and no peer id, so nobody can speak as
  * the host from it. `ended` is null while the session is live.
  */
-export interface PublicSession {
+interface PublicSession {
   id: string;
   build: SessionBuild;
   started: number;
@@ -102,17 +103,6 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: { "cache-control": "no-store" },
   });
-}
-
-async function body(request: Request): Promise<Record<string, unknown>> {
-  try {
-    const value: unknown = await request.json();
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? value as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
 }
 
 /** The caller's address: the edge's forwarded address, else the socket's. */

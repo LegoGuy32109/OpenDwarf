@@ -1,3 +1,4 @@
+import { captureLogs } from "../support/console.ts";
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import {
   createApp,
@@ -23,10 +24,7 @@ const post = (body: unknown) =>
 
 Deno.test("telemetry logs only approved fields and stores a summary", async () => {
   const { store, app } = shell();
-  const logged: string[] = [];
-  const original = console.log;
-  console.log = (...values: unknown[]) => logged.push(values.join(" "));
-  try {
+  await captureLogs(async (logged) => {
     const response = await app(post({
       kind: "summary",
       session: "test-session",
@@ -45,9 +43,7 @@ Deno.test("telemetry logs only approved fields and stores a summary", async () =
     assertEquals(logged.length, 1);
     assertStringIncludes(logged[0], '"rttMs":103.43');
     assertEquals(logged[0].includes("private"), false);
-  } finally {
-    console.log = original;
-  }
+  });
   const [row] = await store.listTelemetry("test-session");
   assertEquals(row.route, "relay/relay");
   assertEquals(
@@ -103,10 +99,7 @@ Deno.test("only a summary is stored; connection and error events stay in the log
 
 Deno.test("a spike logs its commit, detail and metrics, and is not stored", async () => {
   const { store, app } = shell();
-  const logged: string[] = [];
-  const original = console.log;
-  console.log = (...values: unknown[]) => logged.push(values.join(" "));
-  try {
+  const logged = await captureLogs(async () => {
     const response = await app(post({
       kind: "spike",
       session: "test-session",
@@ -116,9 +109,7 @@ Deno.test("a spike logs its commit, detail and metrics, and is not stored", asyn
       metrics: { frameMs: 180.456, viewMaster: 1, zoom: 0.25 },
     }));
     assertEquals(response.status, 200);
-  } finally {
-    console.log = original;
-  }
+  });
   const line = JSON.parse(logged[0]);
   assertEquals(line.kind, "spike");
   assertEquals(line.commit, "b3882b9");
@@ -129,19 +120,14 @@ Deno.test("a spike logs its commit, detail and metrics, and is not stored", asyn
 
 Deno.test("a bad commit is dropped and a summary still stores", async () => {
   const { store, app } = shell();
-  const logged: string[] = [];
-  const original = console.log;
-  console.log = (...values: unknown[]) => logged.push(values.join(" "));
-  try {
+  const logged = await captureLogs(async () => {
     await app(post({
       kind: "summary",
       session: "test-session",
       commit: "main; drop table",
       metrics: { frameP95Ms: 20 },
     }));
-  } finally {
-    console.log = original;
-  }
+  });
   const line = JSON.parse(logged[0]);
   assertEquals(line.commit, null);
   assertEquals(line.metrics, { frameP95Ms: 20 });

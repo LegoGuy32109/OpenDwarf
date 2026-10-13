@@ -8,10 +8,11 @@
  */
 
 import { setNickname, submitMessage } from "../shared/world.js";
-import { CHAT_LIMIT, typeKey } from "./ui.js";
-import { notify, setViewMode, typing } from "./context.js";
+import { CHAT_LIMIT } from "./ui-kit.js";
+import { typeKey } from "./ui-controls.js";
+import { notify, setViewMode, typing } from "./client-actions.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** @param {Context} ctx @param {string} [prefill] */
 export function openChat(ctx, prefill = "") {
@@ -127,7 +128,7 @@ function typeIntoChat(ctx, key) {
   typing(ctx);
 }
 
-/** A tap on an in-game keyboard key. @param {Context} ctx @param {import('./ui.js').UiElement} element */
+/** A tap on an in-game keyboard key. @param {Context} ctx @param {import('./ui-types.js').UiElement} element */
 export function pressKey(ctx, element) {
   const { ui } = ctx;
   switch (element.key) {

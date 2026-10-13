@@ -1,8 +1,8 @@
 // Chatter audio (ADR 0006): the gain rules, the player, and the synthesizer.
 import { assert, assertAlmostEquals, assertEquals } from "@std/assert";
 import {
+  chatterDistanceGain,
   createChatter,
-  distanceGain,
   MAX_VOICES,
   MURMUR_CUTOFF_HZ,
   murmurText,
@@ -92,10 +92,10 @@ function textRecord(id: string, blocks: number, extra = {}) {
 }
 
 Deno.test("distance gain is full to 2 blocks and falls to 30% at 5", () => {
-  assertEquals(distanceGain(0), 1);
-  assertEquals(distanceGain(2), 1);
-  assertAlmostEquals(distanceGain(5), 0.3);
-  assert(distanceGain(3.5) < 1 && distanceGain(3.5) > 0.3);
+  assertEquals(chatterDistanceGain(0), 1);
+  assertEquals(chatterDistanceGain(2), 1);
+  assertAlmostEquals(chatterDistanceGain(5), 0.3);
+  assert(chatterDistanceGain(3.5) < 1 && chatterDistanceGain(3.5) > 0.3);
 });
 
 Deno.test("gain at 0, 2, and 5 blocks, and for your own messages", () => {
@@ -355,10 +355,7 @@ Deno.test("unlock plays a silent element once when there is no audioSession", ()
     assertEquals(played.length, 1);
     assert(played[0].startsWith("data:audio/wav;base64,"));
   } finally {
-    if (navigator) Object.defineProperty(globalThis, "navigator", navigator);
-    if (audioDescriptor) {
-      Object.defineProperty(globalThis, "Audio", audioDescriptor);
-    } else delete (globalThis as { Audio?: unknown }).Audio;
+    restoreAudioGlobals(navigator, audioDescriptor);
   }
 });
 
@@ -390,17 +387,12 @@ Deno.test("unlock never throws", () => {
     });
     player().chatter.unlock();
   } finally {
-    if (navigator) Object.defineProperty(globalThis, "navigator", navigator);
-    if (audioDescriptor) {
-      Object.defineProperty(globalThis, "Audio", audioDescriptor);
-    } else delete (globalThis as { Audio?: unknown }).Audio;
+    restoreAudioGlobals(navigator, audioDescriptor);
   }
 });
 
 Deno.test("text then murmur of one message plays once", () => {
-  const { chatter } = player();
-  const now = performance.now();
-  chatter.update([startedText("a", 100, now)], "me", listener, now);
+  const { chatter, now } = speakingText();
   chatter.update(
     [murmurRecord("a", 100, { startAt: now + 5 })],
     "me",
@@ -426,9 +418,7 @@ Deno.test("murmur then text of one message plays once", () => {
 });
 
 Deno.test("two different messages each play", () => {
-  const { chatter } = player();
-  const now = performance.now();
-  chatter.update([startedText("a", 100, now)], "me", listener, now);
+  const { chatter, now } = speakingText();
   chatter.update(
     [murmurRecord("a", 140, { startAt: now + 100 })],
     "me",
@@ -459,3 +449,25 @@ Deno.test("a late murmur starts at its offset, and is skipped once the speech is
   );
   assertEquals(chatter.log.length, 1);
 });
+
+/** Restore browser audio globals changed by a test, including absent properties. */
+function restoreAudioGlobals(
+  navigator: PropertyDescriptor | undefined,
+  audio: PropertyDescriptor | undefined,
+) {
+  for (
+    const [key, descriptor] of [["navigator", navigator], [
+      "Audio",
+      audio,
+    ]] as const
+  ) {
+    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+    else Reflect.deleteProperty(globalThis, key);
+  }
+}
+
+function speakingText() {
+  const { chatter } = player(), now = performance.now();
+  chatter.update([startedText("a", 100, now)], "me", listener, now);
+  return { chatter, now };
+}

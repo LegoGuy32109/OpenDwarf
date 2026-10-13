@@ -15,6 +15,7 @@ import {
   parseTileKey,
   recomputeVisibility,
   tileKey,
+  tileSeen,
   visibilityPosition,
 } from "./visibility.js";
 import { packVisibility } from "./visibility-wire.js";
@@ -141,21 +142,9 @@ export function entityPlayers(
       }
       continue;
     }
-    const originSeen = sight.visible.has(tileKey(
-      move.origin.x,
-      move.origin.y,
-      move.origin.z,
-    ));
-    const targetSeen = sight.visible.has(tileKey(
-      move.target.x,
-      move.target.y,
-      move.target.z,
-    ));
-    const startSeen = sight.visible.has(tileKey(
-      move.startPosition.x,
-      move.startPosition.y,
-      move.startPosition.z,
-    ));
+    const originSeen = tileSeen(sight.visible, move.origin);
+    const targetSeen = tileSeen(sight.visible, move.target);
+    const startSeen = tileSeen(sight.visible, move.startPosition);
     if (originSeen && targetSeen && startSeen) {
       players[id] = player;
       continue;

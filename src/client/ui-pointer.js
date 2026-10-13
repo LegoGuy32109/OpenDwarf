@@ -1,6 +1,6 @@
 // @ts-check
 
-import { hitTest, stickVector } from "./ui.js";
+import { hitTest, stickVector } from "./ui-controls.js";
 
 /**
  * Routes pointer events over the UI layout. It keeps today's input rules:
@@ -16,8 +16,8 @@ import { hitTest, stickVector } from "./ui.js";
 /** A drag longer than this many CSS pixels scrolls a list instead of tapping. */
 const DRAG_SLOP = 8;
 
-/** @typedef {import('./ui.js').UiElement} UiElement */
-/** @typedef {import('./ui.js').UiLayout} UiLayout */
+/** @typedef {import('./ui-types.js').UiElement} UiElement */
+/** @typedef {import('./ui-types.js').UiLayout} UiLayout */
 /** @typedef {{id:number,x:number,y:number}} PointerPoint */
 
 /**

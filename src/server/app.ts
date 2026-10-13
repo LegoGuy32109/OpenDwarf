@@ -1,3 +1,4 @@
+import { objectBody as body } from "./http.ts";
 import QRCode from "qrcode-svg";
 import { type AdminApi, createAdminApi } from "./admin-api.ts";
 import { serveAdminPage } from "./admin-page.ts";
@@ -72,17 +73,6 @@ export function telemetryDetail(value: unknown): string | null {
   return text || null;
 }
 
-async function body(request: Request): Promise<Record<string, unknown>> {
-  try {
-    const value: unknown = await request.json();
-    return value && typeof value === "object" && !Array.isArray(value)
-      ? value as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
-}
-
 async function file(path: string): Promise<Response> {
   const extension = path.slice(path.lastIndexOf("."));
   const mime = CONTENT_TYPES[extension];
@@ -120,7 +110,9 @@ export function joinLink(
       const link = new URL(requested);
       if (
         link.origin === new URL(request.url).origin &&
-        new RegExp(`^(/[a-zA-Z0-9._~-]+)*/join/${session}$`).test(link.pathname)
+        /^\/(?:[a-zA-Z0-9._~-]+\/)*join\/[a-zA-Z0-9_-]{8,80}$/
+          .test(link.pathname) &&
+        link.pathname.endsWith(`/join/${session}`)
       ) {
         return `${link.origin}${link.pathname}`;
       }

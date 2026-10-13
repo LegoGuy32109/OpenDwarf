@@ -2,14 +2,13 @@
 
 import {
   counter,
+  fields,
   finite,
   identifier,
-  MAX_COORD,
   record,
   tile,
 } from "./wire-parse.js";
 import { WORLD_TOP } from "./terrain.js";
-import { isItemKind, MAX_STACK_COUNT } from "./items.js";
 import { decodeChunks, MAX_REVEAL_CHUNKS } from "./chunk-wire.js";
 import { unpackVisibility } from "./visibility-wire.js";
 
@@ -57,30 +56,32 @@ function movement(value, boundary = false) {
         tile(value.startPosition));
 }
 
+/** @param {unknown} value */
+const boolean = (value) => typeof value === "boolean";
+/** @param {unknown} value @param {number} limit @param {boolean} [nonempty] */
+const shortText = (value, limit, nonempty = false) =>
+  typeof value === "string" && value.length <= limit &&
+  (!nonempty || value.length > 0);
+/** @type {import('./wire-parse.js').FieldRules} */
+const PLAYER_REQUIRED = {
+  id: identifier,
+  name: (value) => shortText(value, 24),
+  facingLeft: boolean,
+  move: (value) => value === null || movement(value),
+};
+/** @type {import('./wire-parse.js').FieldRules} */
+const PLAYER_OPTIONAL = {
+  viewMotion: (value) => movement(value, true),
+  npc: boolean,
+  free: boolean,
+  size: (value) => finite(value, 0.01, 4),
+  vx: (value) => finite(value, -10, 10),
+  vy: (value) => finite(value, -10, 10),
+};
 /** @param {unknown} value @returns {value is Player} */
 function player(value) {
-  if (
-    !record(value) || !identifier(value.id) || !tile(value) ||
-    !Number.isInteger(value.z)
-  ) {
-    return false;
-  }
-  if (
-    typeof value.name !== "string" || value.name.length > 24 ||
-    typeof value.facingLeft !== "boolean" ||
-    (value.move !== null && !movement(value.move))
-  ) return false;
-  if (
-    value.viewMotion !== undefined && !movement(value.viewMotion, true)
-  ) {
-    return false;
-  }
-  if (value.npc !== undefined && typeof value.npc !== "boolean") return false;
-  if (value.free !== undefined && typeof value.free !== "boolean") return false;
-  if (value.size !== undefined && !finite(value.size, 0.01, 4)) return false;
-  if (value.vx !== undefined && !finite(value.vx, -10, 10)) return false;
-  if (value.vy !== undefined && !finite(value.vy, -10, 10)) return false;
-  return true;
+  return record(value) && tile(value) && Number.isInteger(value.z) &&
+    fields(value, PLAYER_REQUIRED, PLAYER_OPTIONAL);
 }
 
 /** Explicit wire fields prevent simulation and chat state escaping on motion. */
@@ -128,6 +129,31 @@ function players(value) {
 /** A message holds at most 120 characters, so no more syllables than that. */
 const MAX_SYLLABLES = 120;
 
+/** @type {import('./wire-parse.js').FieldRules} */
+const CHAT_OPTIONAL = {
+  text: (value) => shortText(value, 120, true),
+  talking: boolean,
+  typing: boolean,
+  queued: boolean,
+  syllables: (value) => counter(value, MAX_SYLLABLES),
+  startTick: counter,
+  expiresTick: counter,
+};
+/** @param {Record<string,unknown>} item */
+function bubbles(item) {
+  if (
+    item.text === undefined || !Array.isArray(item.bubbles) ||
+    item.bubbles.length > 3
+  ) return false;
+  return item.bubbles.every((bubble) =>
+    record(bubble) &&
+    fields(bubble, {
+      text: (value) => shortText(value, 120, true),
+      expiresTick: counter,
+    }, { startTick: counter })
+  );
+}
+
 /** @param {unknown} value @returns {ChatRecord[]|null} */
 function chatRecords(value) {
   if (!Array.isArray(value) || value.length > MAX_ENTITIES) return null;
@@ -136,41 +162,8 @@ function chatRecords(value) {
     if (!record(item) || !identifier(item.id) || !tile(item)) return null;
     if (ids.has(item.id)) return null;
     ids.add(item.id);
-    if (
-      item.text !== undefined &&
-      (typeof item.text !== "string" || !item.text.length ||
-        item.text.length > 120)
-    ) return null;
-    if (item.talking !== undefined && typeof item.talking !== "boolean") {
-      return null;
-    }
-    if (item.typing !== undefined && typeof item.typing !== "boolean") {
-      return null;
-    }
-    if (item.queued !== undefined && typeof item.queued !== "boolean") {
-      return null;
-    }
-    if (
-      item.syllables !== undefined && !counter(item.syllables, MAX_SYLLABLES)
-    ) return null;
-    if (item.startTick !== undefined && !counter(item.startTick)) return null;
-    if (item.expiresTick !== undefined && !counter(item.expiresTick)) {
-      return null;
-    }
-    if (item.bubbles !== undefined) {
-      if (
-        item.text === undefined || !Array.isArray(item.bubbles) ||
-        item.bubbles.length > 3
-      ) return null;
-      for (const bubble of item.bubbles) {
-        if (
-          !record(bubble) || typeof bubble.text !== "string" ||
-          !bubble.text.length || bubble.text.length > 120 ||
-          !counter(bubble.expiresTick) ||
-          (bubble.startTick !== undefined && !counter(bubble.startTick))
-        ) return null;
-      }
-    }
+    if (!fields(item, {}, CHAT_OPTIONAL)) return null;
+    if (item.bubbles !== undefined && !bubbles(item)) return null;
     if (
       item.text === undefined && item.talking !== true &&
       item.typing !== true && item.queued !== true
@@ -223,24 +216,15 @@ export function encodeWorld(world) {
   };
 }
 
-/** Returns null without exposing partially validated snapshot state. */
-/** @param {unknown} value @returns {StatePacket|null} */
-export function decodeState(value) {
-  if (!record(value) || value.type !== "state" || !envelope(value)) return null;
-  if (
-    (value.mode !== "entity" && value.mode !== "master") ||
-    !identifier(value.playerId) || !counter(value.acknowledgedSequence) ||
-    !record(value.world)
-  ) return null;
-  const world = value.world;
-  if (!counter(world.tick)) return null;
+/** @param {Record<string,unknown>} world */
+function worldMetadata(world) {
   if (
     world.shops !== undefined &&
     (!Array.isArray(world.shops) || world.shops.length > 1024 ||
       !world.shops.every((at) =>
         record(at) && tile(at) && [at.x, at.y, at.z].every(Number.isInteger)
       ))
-  ) return null;
+  ) return false;
   if (world.limits !== undefined) {
     const b = world.limits;
     if (
@@ -252,8 +236,46 @@ export function decodeState(value) {
       Number(b.minX) > Number(b.maxX) || Number(b.minY) > Number(b.maxY) ||
       Number(b.minZ) > Number(b.maxZ) || Number(b.minZ) < 0 ||
       Number(b.maxZ) > WORLD_TOP
-    ) return null;
+    ) return false;
   }
+  return true;
+}
+
+/** @param {Record<string,unknown>} value */
+function stateVisibility(value) {
+  if (value.mode === "master") {
+    if (value.visibility !== null) return false;
+  } else {
+    if (
+      !record(value.visibility) ||
+      typeof value.visibility.sample !== "string" ||
+      value.visibility.sample.length > 128 ||
+      !record(value.visibility.visible)
+    ) return false;
+    try {
+      unpackVisibility(
+        /** @type {import('./visibility-wire.js').WireVisibility} */ (value
+          .visibility),
+      );
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Returns null without exposing partially validated snapshot state. */
+/** @param {unknown} value @returns {StatePacket|null} */
+export function decodeState(value) {
+  if (!record(value) || value.type !== "state" || !envelope(value)) return null;
+  if (
+    (value.mode !== "entity" && value.mode !== "master") ||
+    !identifier(value.playerId) || !counter(value.acknowledgedSequence) ||
+    !record(value.world)
+  ) return null;
+  const world = value.world;
+  if (!counter(world.tick)) return null;
+  if (!worldMetadata(world)) return null;
   const reveal = decodeChunks(value.reveal);
   if (!reveal || reveal.size > MAX_REVEAL_CHUNKS) return null;
   const parsedPlayers = players(world.players);
@@ -261,24 +283,7 @@ export function decodeState(value) {
   if (
     !parsedPlayers || !Object.hasOwn(parsedPlayers, value.playerId) || !chat
   ) return null;
-  if (value.mode === "master") {
-    if (value.visibility !== null) return null;
-  } else {
-    if (
-      !record(value.visibility) ||
-      typeof value.visibility.sample !== "string" ||
-      value.visibility.sample.length > 128 ||
-      !record(value.visibility.visible)
-    ) return null;
-    try {
-      unpackVisibility(
-        /** @type {import('./visibility-wire.js').WireVisibility} */ (value
-          .visibility),
-      );
-    } catch {
-      return null;
-    }
-  }
+  if (!stateVisibility(value)) return null;
   const parsed = /** @type {StatePacket} */ (value);
   return {
     type: "state",
@@ -345,74 +350,7 @@ export function decodeChat(value) {
   };
 }
 
-/** Control commands have small, independent schemas. No number coercion. */
-/** @param {unknown} value @returns {Record<string,unknown>|null} */
-export function decodeControl(value) {
-  if (!record(value)) return null;
-  switch (value.type) {
-    case "input":
-      return counter(value.sequence) && finite(value.dx, -1, 1) &&
-          Number.isInteger(value.dx) &&
-          finite(value.dy, -1, 1) && Number.isInteger(value.dy) &&
-          (value.sprint === undefined || typeof value.sprint === "boolean")
-        ? value
-        : null;
-    case "move":
-      return counter(value.sequence) && finite(value.dx, -1, 1) &&
-          Number.isInteger(value.dx) &&
-          finite(value.dy, -1, 1) && Number.isInteger(value.dy)
-        ? value
-        : null;
-    case "cancel":
-      return counter(value.sequence) ? value : null;
-    case "mine":
-    case "place":
-      return Number.isInteger(value.x) &&
-          finite(value.x, -MAX_COORD, MAX_COORD) &&
-          Number.isInteger(value.y) && finite(value.y, -MAX_COORD, MAX_COORD) &&
-          Number.isInteger(value.z) && finite(value.z, 0, WORLD_TOP)
-        ? value
-        : null;
-    case "mine-cancel":
-      return value;
-    case "pickup":
-      return typeof value.kind === "string" && value.kind.length <= 24 &&
-          Number.isInteger(value.x) &&
-          finite(value.x, -MAX_COORD, MAX_COORD) &&
-          Number.isInteger(value.y) && finite(value.y, -MAX_COORD, MAX_COORD) &&
-          Number.isInteger(value.z) && finite(value.z, 0, WORLD_TOP)
-        ? value
-        : null;
-    case "hold":
-      return isItemKind(value.kind) ? value : null;
-    case "sell":
-      return value.all === true ||
-          (identifier(value.kind, 24) &&
-            counter(value.count, MAX_STACK_COUNT) &&
-            value.count >= 1)
-        ? value
-        : null;
-    case "mode":
-      return value.mode === "entity" || value.mode === "master" ? value : null;
-    case "typing":
-      return typeof value.typing === "boolean" ? value : null;
-    case "message":
-      return typeof value.text === "string" && value.text.length <= 120
-        ? value
-        : null;
-    case "nick":
-      return typeof value.name === "string" && value.name.length <= 24
-        ? value
-        : null;
-    case "ping":
-    case "pong":
-      return identifier(value.id) ? value : null;
-    case "resync":
-      return value;
-    default:
-      return null;
-  }
-}
+export { decodeControl } from "./control-wire.js";
 
 // Host-to-guest feeds live in their own files; this module stays the one place
 // the rest of the code imports a codec from.

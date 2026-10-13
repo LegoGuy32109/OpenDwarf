@@ -77,7 +77,7 @@ export function parseVoicesLevel(value) {
 }
 
 /** Distance gain of another speaker's text bubble. @param {number} blocks */
-export function distanceGain(blocks) {
+export function chatterDistanceGain(blocks) {
   if (blocks <= NEAR_BLOCKS) return 1;
   const share = Math.min(
     1,
@@ -266,7 +266,7 @@ export function createChatter(options = {}) {
             length: bubble.text.length,
             syllables: 0,
             distance,
-            gain: record.id === localId ? 1 : distanceGain(distance),
+            gain: record.id === localId ? 1 : chatterDistanceGain(distance),
             murmur: false,
             offset,
           });

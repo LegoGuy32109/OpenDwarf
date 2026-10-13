@@ -17,13 +17,12 @@ import {
   moveSelection,
   pickupGridCells,
   selectStack,
-  shownStacks,
-  stepSelection,
+  stepPickupSelection,
 } from "./pickup-grid.js";
-import { droppedHere } from "./display.js";
-import { stickDirection } from "./input-read.js";
+import { pickupGridStacks } from "./pickup-grid-view.js";
+import { stickDirection } from "./input-values.js";
 
-/** @typedef {import('./context.js').Context} Context */
+/** @typedef {import('./client-context.js').Context} Context */
 
 /** Open or close the inventory panel. Menu, chat, and master view keep it shut. @param {Context} ctx @param {boolean} [open] */
 export function toggleBag(ctx, open = !ctx.bag.isOpen) {
@@ -50,14 +49,6 @@ export function toggleLog(ctx, open = !ctx.ui.logOpen) {
 /** Shows or hides the small join QR below the host tools. @param {Context} ctx */
 export function toggleJoinPanel(ctx) {
   ctx.ui.joinOpen = !ctx.ui.joinOpen;
-}
-
-/** The stacks the open pickup grid shows. @param {Context} ctx */
-export function pickupGridStacks(ctx) {
-  const tile = ctx.pickupGrid.tile;
-  return tile
-    ? shownStacks(ctx.pickupGrid, droppedHere(ctx, tile), performance.now())
-    : [];
 }
 
 /**
@@ -88,7 +79,9 @@ export function updatePickupGrid(ctx) {
   const direction = ctx.gamepadDpad.x || ctx.gamepadDpad.y
     ? ctx.gamepadDpad
     : stickDirection(ctx.cameraStick.x, ctx.cameraStick.y, 0.5);
-  if (!scene.menu) stepSelection(pickupGrid, stacks.length, direction, now);
+  if (!scene.menu) {
+    stepPickupSelection(pickupGrid, stacks.length, direction, now);
+  }
   // The gamepad look stick follows the shared stick step rule.
   const step = pickupGrid.stick.update(
     stickDirection(ctx.gamepadCamera.x, ctx.gamepadCamera.y, 0.5),

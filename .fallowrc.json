@@ -6,7 +6,8 @@
     "playwright.config.ts",
     "public/js/*.js",
     "main.ts",
-    "src/server/admin/admin.{js,css}"
+    "src/server/admin/admin.{js,css}",
+    "prototype/index.html"
   ],
   "boundaries": {
     "zones": [
@@ -29,7 +30,6 @@
           "src/client/loop.js",
           "src/client/harness.js",
           "src/client/input.js",
-          "src/client/input-read.js",
           "src/client/panels.js",
           "public/js/**"
         ]
@@ -74,5 +74,14 @@
         ]
       }
     ]
-  }
+  },
+  "ignoreDependencies": [
+    "@playwright/test",
+    "@tursodatabase/serverless",
+    "qrcode-svg"
+  ],
+  "ignoreUnresolvedImports": [
+    "/admin/admin.css",
+    "/admin/admin.js"
+  ]
 }

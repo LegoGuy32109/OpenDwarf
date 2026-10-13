@@ -1,15 +1,8 @@
+import { createLocalShell } from "./local_shell.ts";
 import { assert, assertEquals } from "@std/assert";
 import { createRateLimiter } from "../../src/server/rate-limit.ts";
-import { createApp } from "../../src/server/app.ts";
 import { hostKeyFor } from "../../src/server/session-routes.ts";
-import { createRelay } from "../../src/server/relay.ts";
-import { createMemoryStore } from "../../src/server/store.ts";
-import { openBuilds } from "../../src/server/builds.ts";
-import {
-  createLocalProvider,
-  createXirsysProvider,
-  iceList,
-} from "../../src/server/signaling.ts";
+import { createXirsysProvider, iceList } from "../../src/server/signaling.ts";
 
 Deno.test("the rate limiter allows a limit per key in each window", () => {
   let time = 0;
@@ -34,15 +27,7 @@ const OTHER = "b".repeat(40);
 /** A shell with the in-memory store, the local relay, and a clock the test moves. */
 function shell(options = {}) {
   let time = 1_000_000;
-  const store = createMemoryStore({ now: () => time });
-  const relay = createRelay();
-  const app = createApp(openBuilds(store), undefined, {
-    relay,
-    provider: createLocalProvider(relay),
-    secret: "test-secret",
-    now: () => time,
-    ...options,
-  });
+  const { store, relay, app } = createLocalShell(() => time, options);
   const call = (path: string, init?: RequestInit, ip = "1.1.1.1") =>
     app(
       new Request(`http://localhost${path}`, {

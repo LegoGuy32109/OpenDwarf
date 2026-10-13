@@ -75,6 +75,8 @@ export function isExcluded(path: string, excludes: string[]): boolean {
       const pattern = bare.split("*").map((part) =>
         part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
       ).join("[^/]*");
+      // The operator-owned deploy glob is escaped before stars expand to bounded path segments.
+      // fallow-ignore-next-line security-sink
       return new RegExp(`^${pattern}$`).test(path);
     }
     return path === bare || path.startsWith(`${bare}/`);

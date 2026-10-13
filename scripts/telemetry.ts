@@ -1,3 +1,4 @@
+import { restoreConfig } from "./config-restore.ts";
 // Reads client telemetry from the shell's Deno Deploy log and summarizes it per session.
 //
 //   deno task telemetry [--start <ISO|-2h>] [--end <ISO>] [--session <id prefix>] [--all]
@@ -213,12 +214,7 @@ async function deployCli(args: string[], stdout: "piped" | "inherit") {
     }).spawn();
     return await child.output();
   } finally {
-    const after = await Deno.readFile(CONFIG);
-    if (
-      before.length !== after.length || before.some((b, i) => b !== after[i])
-    ) {
-      await Deno.writeFile(CONFIG, before);
-    }
+    await restoreConfig(CONFIG, before);
   }
 }
 
