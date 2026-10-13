@@ -7,7 +7,7 @@
 // a clean tree.
 //
 // Usage: deno task deploy [--dry-run] [--note "why"]
-// Requires DENO_DEPLOY_TOKEN in the environment, and TURSO_DB_URL and TURSO_DB_TOKEN in
+// Requires DENO_DEPLOY_TOKEN in `.env` (the task loads it), and TURSO_DB_URL and TURSO_DB_TOKEN in
 // `.env.prod`. Never print them.
 import { createClient } from "@tursodatabase/serverless/compat";
 import {

@@ -100,9 +100,9 @@ the `deno.json` bytes the CLI rewrites. It refuses when the working tree is
 dirty, or when `od-prod` has a pending migration (run
 `deno task db:migrate:prod` first). After the CLI succeeds it records a Shell
 deploy (commit, Deno revision from the CLI's `--json` output, time, note) in
-`od-prod`. A failed deploy records nothing. It needs `DENO_DEPLOY_TOKEN` in the
-environment and `TURSO_DB_URL` and `TURSO_DB_TOKEN` in `.env.prod`. Do not print
-them.
+`od-prod`. A failed deploy records nothing. It needs `DENO_DEPLOY_TOKEN` in
+`.env` (the task loads it) and `TURSO_DB_URL` and `TURSO_DB_TOKEN` in
+`.env.prod`. Do not print them.
 
 The upload still includes `public/`, `src/client/`, and `src/shared/`, but
 production serves builds from jsDelivr; those files are served from disk only
