@@ -17,24 +17,21 @@ schedule. A system Chromium installation is used locally when present.
 ## Tests for a diff
 
 ```sh
-deno task test:changed [--base main] [--e2e] [--list]
+deno task test:changed [--base main] [--e2e]
 ```
 
-The task takes the files changed from the merge base with `--base` (default
-`main`) to the working tree, including untracked files. For each one,
-`fallow inspect --file` lists every file that imports it, directly or not. The
-task runs the unit tests in that set and any changed test. A doc change runs
-nothing, and a change to `deno.json`, `deno.lock` or `playwright.config.ts` runs
-everything.
+The task runs `deno test --changed=<base>` (default `main`) over the unit test
+folders. Deno follows each test's module graph and runs only the tests that
+reach a file changed in git. A doc-only change runs nothing.
 
-A browser spec imports almost nothing from `src/`, so the import graph cannot
-choose specs for client and shared code. `tests/e2e/impact.json` maps source
-prefixes to specs. A changed file under `src/client/`, `src/shared/` or
-`public/` with no matching rule runs every spec, so add a rule when a feature
-gains its own spec. Server changes reach specs through `seed-shell.ts`, which
-the graph follows. `--e2e` runs the chosen specs, and `--list` prints the choice
-without running anything. `deno task verify` and the pre-push hook still run
-every unit test.
+A browser spec imports almost nothing from `src/`, and Playwright does not run
+through `deno test`, so `--changed` cannot choose specs. With `--e2e`, the task
+chooses them from `tests/e2e/impact.json`, which maps source prefixes to specs,
+and from any changed spec. A changed `.js`, `.ts`, `.html` or `.css` file under
+`src/`, `public/`, `tests/e2e/` or `main.ts` with no rule runs every spec, and
+so does a change to `deno.json`, `deno.lock` or `playwright.config.ts`. Add a
+rule when a feature gains its own spec. `deno task verify` and the pre-push hook
+still run every unit test.
 
 ## Group stress run
 
