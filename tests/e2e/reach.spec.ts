@@ -1,6 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { waitTicks } from "./time.ts";
 import { ready } from "./ui.ts";
 
 type Entry = { id: string; x: number; y: number; z: number; progress: number };
@@ -19,90 +18,6 @@ type Harness = {
     };
   };
 };
-
-const DIAMOND = 8; // 90 ticks: long enough to move the cursor while it runs
-
-const mining = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Harness).__od.scene.mining);
-
-const viewZ = (page: Page) =>
-  page.evaluate(() => (globalThis as unknown as Harness).__od.scene.viewZ);
-
-/**
- * Carve a room on level 1 (x and y 3..9) over a stone floor on level 0, with a
- * stone ceiling on level 2, and stand an entity at (6, 6, 1).
- */
-const carve = (page: Page, id?: string) =>
-  page.evaluate(async (who) => {
-    const terrain = await import("/src/shared/terrain.js");
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    for (let y = 3; y <= 9; y++) {
-      for (let x = 3; x <= 9; x++) {
-        terrain.writeTile(scene.world, x, y, 0, terrain.STONE);
-        terrain.writeTile(scene.world, x, y, 1, terrain.OPEN);
-        terrain.writeTile(scene.world, x, y, 2, terrain.STONE);
-      }
-    }
-    const player = scene.world.players[who ?? scene.localId];
-    Object.assign(player, {
-      x: 6,
-      y: 6,
-      z: 1,
-      previousX: 6,
-      previousY: 6,
-    });
-  }, id);
-
-const setTile = (page: Page, x: number, y: number, z: number, m: number) =>
-  page.evaluate(async ([px, py, pz, pm]) => {
-    const terrain = await import("/src/shared/terrain.js");
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    terrain.writeTile(scene.world, px, py, pz, pm);
-  }, [x, y, z, m]);
-
-test("the free cursor keeps mining a tile one level down and one level up", async ({ page }) => {
-  await page.goto("/?harness=1");
-  await ready(page);
-  await carve(page);
-  await expect.poll(() => viewZ(page)).toBe(1);
-  // One level down: the floor tile east of the dwarf, under an open tile.
-  await setTile(page, 7, 6, 0, DIAMOND);
-  await page.keyboard.press("KeyV");
-  await expect.poll(() => viewZ(page)).toBe(0);
-  await page.keyboard.down("l");
-  await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(1);
-  expect((await mining(page))[0]).toMatchObject({ x: 7, y: 6, z: 0 });
-  await page.keyboard.up("l");
-  // Moving the cursor away does not cancel mining.
-  await page.keyboard.down("i");
-  await waitTicks(page, 14);
-  await evidenceShot(page, "reach-mining-below-cursor-away");
-  expect((await mining(page)).length).toBe(1);
-  await page.keyboard.up("i");
-  // Interact on the mined tile cancels it.
-  await page.keyboard.down("l");
-  await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(0);
-  await page.keyboard.up("l");
-  expect(await mining(page)).toEqual([]);
-  // One level up: the tile above the dwarf's east neighbor, with headroom.
-  await setTile(page, 7, 6, 2, DIAMOND);
-  await setTile(page, 6, 6, 2, 1);
-  await page.keyboard.press("KeyR");
-  await page.keyboard.press("KeyR");
-  await expect.poll(() => viewZ(page)).toBe(2);
-  await page.keyboard.down("l");
-  await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(1);
-  expect((await mining(page))[0]).toMatchObject({ x: 7, y: 6, z: 2 });
-  await page.keyboard.up("l");
-  await page.keyboard.down("k");
-  await waitTicks(page, 10);
-  expect((await mining(page)).length).toBe(1);
-  await evidenceShot(page, "reach-mining-above");
-  await page.keyboard.up("k");
-});
 
 test("a guest sees an item dropped around a corner once its floor is visible", async ({ browser }) => {
   const host = await browser.newPage();

@@ -1,7 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
-import { evidenceShot } from "./evidence.ts";
 import { holdUntil } from "./time.ts";
-import { hasUi, ready } from "./ui.ts";
+import { ready } from "./ui.ts";
 
 type Stack = { kind: string; count: number };
 type Entry = { x: number; y: number; z: number; stacks: Stack[] };
@@ -26,7 +25,6 @@ type Harness = {
   };
 };
 
-const OPEN = 1;
 const STONE = 2;
 // The authored ore row at level 0 sits at y 1: stone x 2, coal 3, iron 4 ... emerald 9.
 const ROW_Y = 1;
@@ -63,14 +61,6 @@ const position = (page: Page) =>
     return scene.world.players[scene.localId];
   });
 
-/** Stand the host's player still at a position. */
-const placeAt = (page: Page, x: number, y: number) =>
-  page.evaluate(([px, py]) => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    const player = scene.world.players[scene.localId] as Record<string, number>;
-    Object.assign(player, { x: px, y: py, previousX: px, previousY: py });
-  }, [x, y]);
-
 /** Drop items on the host's world, as a finished mining action does. */
 const drop = (page: Page, x: number, y: number, kind: string, count = 1) =>
   page.evaluate(async ([px, py, k, n]) => {
@@ -87,6 +77,9 @@ const drop = (page: Page, x: number, y: number, kind: string, count = 1) =>
 async function startHost(page: Page) {
   await page.goto("/?harness=1");
   await ready(page);
+  await page.evaluate(() =>
+    (globalThis as unknown as { __od: { removeNpc(): void } }).__od.removeNpc()
+  );
 }
 
 async function walkToRow(page: Page) {
@@ -99,41 +92,6 @@ async function walkToRow(page: Page) {
   await expect.poll(async () => (await position(page))?.move ?? null)
     .toBeNull();
 }
-
-test("mining drops the item, and interact picks it up", async ({ page }) => {
-  await startHost(page);
-  await page.keyboard.press("Backquote"); // open the hearing log for the video
-  await expect.poll(() => hasUi(page, "panel:log")).toBe(true);
-  expect(await inventory(page)).toEqual([{ kind: "pickaxe", count: 1 }]);
-  await placeAt(page, 2, 2);
-  await page.keyboard.down("i"); // aim north at the stone
-  await page.keyboard.press("Space");
-  await expect.poll(() => tile(page, 2)).toBe(OPEN);
-  await expect.poll(() => items(page)).toEqual([
-    { x: 2, y: 1, z: 0, stacks: [{ kind: "stone", count: 1 }] },
-  ]);
-  await evidenceShot(page, "dropped-stone");
-  // Interact on the tile that holds the stone picks it up instead of mining.
-  await page.keyboard.press("Space");
-  await expect.poll(() => items(page)).toEqual([]);
-  expect(await inventory(page)).toEqual([
-    { kind: "pickaxe", count: 1 },
-    { kind: "stone", count: 1 },
-  ]);
-  expect(await systemLines(page)).toContain("Picked up stone ×1");
-  await evidenceShot(page, "picked-up-stone");
-  // Coal is next: its item is coal, and a second stone merges into the stack.
-  await page.keyboard.up("i");
-  await placeAt(page, 3, 2);
-  await page.keyboard.down("i");
-  await page.keyboard.press("Space");
-  await expect.poll(() => items(page)).toEqual([
-    { x: 3, y: 1, z: 0, stacks: [{ kind: "coal", count: 1 }] },
-  ]);
-  await page.keyboard.up("i");
-  await page.keyboard.press("Space"); // no aim: the entity's own tile holds nothing
-  await expect.poll(() => notice(page)).toContain("aim at a neighboring tile");
-});
 
 test("a joining player sees drops, and two pickups give the stack to one player", async ({ browser }) => {
   const host = await browser.newPage();

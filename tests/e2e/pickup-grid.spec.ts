@@ -150,19 +150,6 @@ test("keyboard: interact opens the grid, IJKL selects, interact picks up, Escape
   await expect.poll(async () => (await cells(page)).length).toBe(0);
 });
 
-test("a single stack is picked up at once, with no grid", async ({ page }) => {
-  await startHost(page);
-  await setUp(page, ["diamond"]);
-  await page.keyboard.down("k");
-  await page.keyboard.press("Space");
-  await page.keyboard.up("k");
-  await expect.poll(() => inventory(page)).toEqual([
-    { kind: "pickaxe", count: 1 },
-    { kind: "diamond", count: 1 },
-  ]);
-  expect(await cells(page)).toEqual([]);
-});
-
 test("gamepad: the D-pad moves the selector, ZR picks up", async ({ page }) => {
   await page.addInitScript(() => {
     const pad = {

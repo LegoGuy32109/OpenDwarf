@@ -51,6 +51,26 @@ smoke test must stay fast; one that grows past a few seconds moves to the full
 tier. A new or changed spec passes `--repeat-each=5` before it merges. A flaky
 spec gets `test.fixme` and an issue, never retries.
 
+## Interact logic coverage
+
+`tests/client/interact_test.ts` calls `interact()` with a fake context and real
+world rules. It covers mining and cancellation, view levels, sight refusals,
+pickup priority, grid confirmation, placing, panel priority, and guest intents.
+It needs no browser, DOM, or connected peer. World progress uses explicit ticks.
+
+These e2e checks moved to unit tests:
+
+| Removed e2e check                                                                                       | Unit coverage                                                                                             |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Host mines, holds stone, places a wall, refuses its own tile and solid terrain, then mines placed stone | `interact_test` wall cycle and solid refusal, plus `placing_test` terrain and inventory rules             |
+| Aim moves freely, interact cancels mining, and no aim refuses mining                                    | `interact_test` current aim and cancellation                                                              |
+| Mining targets one level below or above while the cursor moves                                          | `interact_test` view levels and free cursor                                                               |
+| Mining drops stone and coal, pickup adds inventory and a system line, and no aim refuses mining         | `interact_test` wall cycle, target replacement, pickup and cancellation, plus `items_test` material drops |
+| A single stack is picked up without opening the grid                                                    | `interact_test` single stack priority                                                                     |
+
+Peer delivery, touch input, and phone icon evidence remain in e2e. Guest intent
+unit tests check messages sent by the client, not their delivery to the host.
+
 ## Browser specs wait on game time
 
 World time follows the wall clock and drops whatever a slow frame cannot catch

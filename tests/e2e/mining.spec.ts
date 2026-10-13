@@ -73,9 +73,12 @@ const placeAt = (page: Page, x: number, y: number) =>
 async function startHost(page: Page) {
   await page.goto("/?harness=1");
   await ready(page);
+  await page.evaluate(() =>
+    (globalThis as unknown as { __od: { removeNpc(): void } }).__od.removeNpc()
+  );
 }
 
-test("the host mines stone, then coal, with the progress square", {
+test("the host mines stone, then coal, with the breaking decal", {
   tag: "@smoke",
 }, async ({ page }) => {
   await startHost(page);
@@ -105,32 +108,6 @@ test("the host mines stone, then coal, with the progress square", {
   await expect.poll(() => tile(page, 3)).toBe(OPEN);
   await evidenceShot(page, "mining-coal-done");
   await page.keyboard.up("i");
-});
-
-test("moving the aim keeps mining; interact on the mined tile cancels it", async ({ page }) => {
-  await startHost(page);
-  await placeAt(page, 5, 2);
-  await page.keyboard.down("i");
-  await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(1);
-  await page.keyboard.down("j"); // the aim moves to the north-west tile
-  await waitTicks(page, 10);
-  expect((await mining(page)).length).toBe(1);
-  await page.keyboard.up("j");
-  // Interact on the tile being mined cancels it.
-  await page.keyboard.press("Space");
-  await expect.poll(async () => (await mining(page)).length).toBe(0);
-  await page.keyboard.up("i");
-  await waitTicks(page, 10);
-  expect(await tile(page, 5)).not.toBe(OPEN);
-  // With no aim the highlight is the entity's own tile, which is not minable.
-  await page.keyboard.press("Space");
-  await expect.poll(() =>
-    page.evaluate(() =>
-      (globalThis as unknown as Harness).__od.scene.notice?.text ?? ""
-    )
-  ).toContain("aim at a neighboring tile");
-  expect(await mining(page)).toEqual([]);
 });
 
 test("a joining player sees the breaking decal and the tile change, and can mine", async ({ browser }) => {

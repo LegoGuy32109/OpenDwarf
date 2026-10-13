@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { clickUi, ready, tapUi, uiRect } from "./ui.ts";
+import { ready, tapUi, uiRect } from "./ui.ts";
 
 type Stack = { kind: string; count: number };
 type Harness = {
@@ -50,16 +50,6 @@ const stones = (page: Page) =>
     return inventory.find((stack) => stack.kind === "stone")?.count ?? 0;
   });
 
-const placeAt = (page: Page, x: number, y: number) =>
-  page.evaluate(([px, py]) => {
-    const scene = (globalThis as unknown as Harness).__od.scene;
-    const player = scene.world.players[scene.localId] as unknown as Record<
-      string,
-      number
-    >;
-    Object.assign(player, { x: px, y: py, previousX: px, previousY: py });
-  }, [x, y]);
-
 /** Give the world host's own player items, as a pickup would. */
 const give = (host: Page, kind: string, count: number) =>
   host.evaluate(async ([k, n]) => {
@@ -71,21 +61,6 @@ const give = (host: Page, kind: string, count: number) =>
       n as number,
     );
   }, [kind, count]);
-
-/** Hold `kind` from the bag, and wait until the player holds it. */
-async function holdItem(page: Page, kind: string) {
-  await page.keyboard.press("b");
-  await clickUi(page, `slot:${kind}`);
-  await page.keyboard.press("b");
-  await expect.poll(() =>
-    page.evaluate(() => {
-      const scene = (globalThis as unknown as Harness).__od.scene;
-      return (scene.world.players[scene.localId] as unknown as {
-        held?: string;
-      }).held;
-    })
-  ).toBe(kind);
-}
 
 /** Host without the corner NPC: it walks the 2x2 square at (2, 2) these specs build on. */
 async function startHost(page: Page) {
@@ -102,49 +77,6 @@ async function interactAim(page: Page, key: string) {
   await page.keyboard.press("Space");
   await page.keyboard.up(key);
 }
-
-test("the host mines stone, holds it, and places a short wall", async ({ page }) => {
-  await startHost(page);
-  await placeAt(page, 2, 2);
-  expect(await tile(page, 2)).toBe(STONE);
-  // Mine the stone to the north, then pick it up from the open tile.
-  await page.keyboard.down("i");
-  await page.keyboard.press("Space");
-  await expect.poll(() => tile(page, 2)).toBe(OPEN);
-  await page.keyboard.press("Space");
-  await expect.poll(() => stones(page)).toBe(1);
-  await page.keyboard.up("i");
-  // Hold it from the bag.
-  await holdItem(page, "stone");
-  // Place east of the player.
-  await interactAim(page, "l");
-  await expect.poll(() => tile(page, 3, 2)).toBe(STONE);
-  expect(await stones(page)).toBe(0);
-  await evidenceShot(page, "placing-first-stone");
-  // More stone for the rest of the wall: west, then south, then back north.
-  await give(page, "stone", 3);
-  await holdItem(page, "stone");
-  await interactAim(page, "j");
-  await expect.poll(() => tile(page, 1, 2)).toBe(STONE);
-  await interactAim(page, "i");
-  await expect.poll(() => tile(page, 2)).toBe(STONE);
-  expect(await stones(page)).toBe(1);
-  await evidenceShot(page, "placing-wall");
-  // The player's own tile is refused, and so is a placed stone.
-  await page.keyboard.press("Space");
-  await expect.poll(() => notice(page)).toBe("Something is in the way");
-  await interactAim(page, "l");
-  await expect.poll(() => notice(page)).toBe("Hold the pickaxe to mine");
-  expect(await stones(page)).toBe(1);
-  // With the pickaxe held, a placed stone mines like any other.
-  await holdItem(page, "pickaxe");
-  await page.keyboard.down("l");
-  await page.keyboard.press("Space");
-  await expect.poll(() => tile(page, 3, 2)).toBe(OPEN);
-  await page.keyboard.press("Space");
-  await page.keyboard.up("l");
-  await expect.poll(() => stones(page)).toBe(2);
-});
 
 test(
   "a guest places stone and the host sees it",
