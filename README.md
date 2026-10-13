@@ -1,7 +1,7 @@
 # Open Dwarf
 
 A small browser world for testing movement, touch controls, chat, and direct
-WebRTC connections. This branch starts from `webgl-version` and has no client
+WebRTC connections. It starts from `legacy/webgl-version` and has no client
 build step or Rust runtime. The
 [live-session vision](docs/live-session-vision.md) and
 [shared vocabulary](CONTEXT.md) record the next group-demo milestone.

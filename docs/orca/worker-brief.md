@@ -48,11 +48,11 @@ PUSH AND PR (Josh authorized this; it overrides any preamble rule against
 pushing or posting to GitHub):
 
 - Push only your own branch: `git push -u origin {branch}`. The evidence script
-  pushes to `evidence`; that is allowed. Never push to `client-first-deno`,
-  `main`, or another branch. Force-push only your own branch after a rebase.
-  Never merge or close PRs or issues, and never comment on other issues or PRs.
+  pushes to `evidence`; that is allowed. Never push to `main` or another branch.
+  Force-push only your own branch after a rebase. Never merge or close PRs or
+  issues, and never comment on other issues or PRs.
 - Open a ready PR:
-  `gh pr create -R LegoGuy32109/OpenDwarf --base client-first-deno --head {branch} --title "<issue title>" --body-file <file>`.
+  `gh pr create -R LegoGuy32109/OpenDwarf --base main --head {branch} --title "<issue title>" --body-file <file>`.
   The body has `Closes #{issue}`, a short summary, a Test Procedure with the
   exact commands and results, the evidence Markdown, the preview link
   `https://od.joshhale.me/b/{branch}`, and anything left undone. End it with:

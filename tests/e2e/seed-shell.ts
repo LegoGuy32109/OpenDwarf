@@ -20,7 +20,8 @@ const LONG_BRANCH =
 
 /** The stubbed branches of GitHub, with their heads, for the build index. */
 const BRANCHES: Record<string, string> = {
-  "client-first-deno": BRAVO,
+  "main": BRAVO,
+  "legacy/webgl-version": sha("5"),
   "t62-build-index": sha("1"),
   [LONG_BRANCH]: sha("2"),
   "mining-feel": sha("3"),

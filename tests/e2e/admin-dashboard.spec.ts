@@ -112,15 +112,16 @@ for (
       await expect(page.locator("#labels")).toContainText("a1b2c3d");
       await expect(page.locator('#labels a[href="/b/seeded-chunk-gen/"]'))
         .toHaveCount(1);
-      // Every stubbed branch but `evidence` is listed, with its build link, pull request, and labels.
+      // Every stubbed branch but `evidence` and the legacy one is listed, with its build link, pull request, and labels.
       const builds = page.locator("#builds");
       await expect(builds.locator('a[href="/b/t62-build-index/"]')).toHaveCount(
         1,
       );
-      await expect(builds.locator('a[href="/b/client-first-deno/"]'))
+      await expect(builds.locator('a[href="/b/main/"]'))
         .toHaveCount(1);
       await expect(builds.locator('a[href="/b/mining-feel/"]')).toHaveCount(1);
       await expect(builds.locator('a[href="/b/evidence/"]')).toHaveCount(0);
+      await expect(builds).not.toContainText("legacy/");
       await expect(builds.locator('a[href="/b/1111111/"]')).toHaveCount(1);
       await expect(builds).toContainText("#71 Admin dashboard indexes");
       await expect(builds).not.toContainText("fork is not listed");

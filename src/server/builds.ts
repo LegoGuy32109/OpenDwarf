@@ -22,6 +22,8 @@ const PULLS_URL =
 const PULLS_TTL_MS = 5 * 60_000;
 /** Branches that are listed nowhere: `evidence` holds only screenshots. */
 const HIDDEN_BRANCHES = new Set(["evidence"]);
+/** Branches under this prefix are kept for history and are not built. */
+const LEGACY_PREFIX = "legacy/";
 
 /** A branch and the commit at its head. */
 export interface BranchHead {
@@ -40,7 +42,7 @@ export interface PullRequest {
 /**
  * Reads the branches from a git smart-HTTP ref advertisement (`info/refs?service=git-upload-pack`):
  * pkt-lines of a 4-digit hex length and a payload. Only `refs/heads/*` lines are kept; the service
- * line, HEAD, tags, and a line that does not parse are skipped. Hidden branches are left out.
+ * line, HEAD, tags, and a line that does not parse are skipped. Hidden and legacy branches are left out.
  */
 export function parseBranches(advertisement: Uint8Array): BranchHead[] {
   const decoder = new TextDecoder();
@@ -62,7 +64,10 @@ export function parseBranches(advertisement: Uint8Array): BranchHead[] {
     // The first ref line carries capabilities after a NUL.
     const [ref] = line.split("\0");
     const match = /^([0-9a-f]{40}) refs\/heads\/(.+?)\n?$/.exec(ref);
-    if (match && !HIDDEN_BRANCHES.has(match[2])) {
+    if (
+      match && !HIDDEN_BRANCHES.has(match[2]) &&
+      !match[2].startsWith(LEGACY_PREFIX)
+    ) {
       branches.push({ name: match[2], commit: match[1] });
     }
   }

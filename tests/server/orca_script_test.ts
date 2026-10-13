@@ -17,12 +17,12 @@ Deno.test("the worker brief names the branch, base, port, and notes", async () =
   const brief = fillBrief(template, {
     issue: 61,
     slug: "place-stone",
-    base: "client-first-deno",
+    base: "main",
     port: 8161,
     notes: "Read mining.js first.",
   });
   assertStringIncludes(brief, "`t61-place-stone`");
-  assertStringIncludes(brief, "origin/client-first-deno");
+  assertStringIncludes(brief, "origin/main");
   assertStringIncludes(brief, "PORT=8161");
   assertStringIncludes(brief, "NOTES:\nRead mining.js first.");
   assertEquals(/\{(issue|slug|branch|base|port|notes)\}/.test(brief), false);

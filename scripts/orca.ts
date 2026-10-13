@@ -139,7 +139,7 @@ async function start(flags: Record<string, string | undefined>) {
     );
   }
   console.log(`Issue #${issue}: ${target.title}`);
-  const base = flags.base ?? "client-first-deno";
+  const base = flags.base ?? "main";
   const port = Number(flags.port ?? 8100 + (issue % 100));
   const notes = flags.notes ? await Deno.readTextFile(flags.notes) : "";
   const spec = fillBrief(await Deno.readTextFile(BRIEF), {

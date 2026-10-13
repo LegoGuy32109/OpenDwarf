@@ -8,7 +8,8 @@ import { createAdminApi } from "../../src/server/admin-api.ts";
 import { createMemoryStore } from "../../src/server/store.ts";
 
 // A response recorded from the repository's refs endpoint: the service line, HEAD with its
-// capabilities, and the branches of that day plus `evidence`.
+// capabilities, and the branches of that day plus `evidence`, renamed to today's `main` and
+// `legacy/*` layout.
 const RECORDED = await Deno.readFile(
   new URL("./fixtures/info-refs.bin", import.meta.url),
 );
@@ -61,18 +62,14 @@ function setup(
   return { ...net, store, builds, advance: (ms: number) => time += ms };
 }
 
-Deno.test("parseBranches reads the heads from a recorded refs response and skips evidence", () => {
+Deno.test("parseBranches reads the heads from a recorded refs response and skips evidence and legacy/*", () => {
   const branches = parseBranches(RECORDED);
   assertEquals(branches.map((branch) => branch.name), [
-    "bevy-version",
-    "client-first-deno",
     "main",
     "t22-ios-chat-bar",
     "t60-webgl-ui",
-    "webgl-version",
-    "worker-thread-split",
   ]);
-  assertEquals(branches[1].commit, MAIN);
+  assertEquals(branches[0].commit, MAIN);
 });
 
 Deno.test("parseBranches keeps only branches and survives odd input", () => {
@@ -125,7 +122,7 @@ Deno.test("a refs failure throws and is not cached", async () => {
   });
   await assertRejects(() => builds.branches(), Error, "503");
   fail = false;
-  assertEquals((await builds.branches()).length, 7);
+  assertEquals((await builds.branches()).length, 3);
   assertEquals(calls, 2);
 });
 
@@ -133,7 +130,7 @@ Deno.test("pull requests keep this repository's branches, are cached for 5 minut
   const { builds, calls, headers, advance } = setup(
     () =>
       Response.json([
-        pull(7, "client-first-deno"),
+        pull(7, "main"),
         pull(8, "from-a-fork", "someone/OpenDwarf"),
       ]),
     { githubToken: "secret-token" },
@@ -162,15 +159,15 @@ Deno.test("a pull request failure is cached briefly and throws each time", async
 
 Deno.test("GET /api/v1/builds lists every branch with its pull request, labels, and main marker", async () => {
   const { builds, store } = setup(() =>
-    Response.json([pull(9, "bevy-version")])
+    Response.json([pull(9, "t60-webgl-ui")])
   );
   await store.setLabel({
-    name: "old-bevy",
+    name: "webgl-ui",
     kind: "branch",
-    target: "bevy-version",
+    target: "t60-webgl-ui",
   });
   await store.setLabel({ name: "pinned", kind: "commit", target: MAIN });
-  await store.promote({ commit: MAIN, label: "client-first-deno", note: "" });
+  await store.promote({ commit: MAIN, label: "main", note: "" });
   const api = createAdminApi({ store, builds });
   const response = await api.handle(
     new Request("http://shell/api/v1/builds"),
@@ -178,26 +175,26 @@ Deno.test("GET /api/v1/builds lists every branch with its pull request, labels, 
   assertEquals(response?.status, 200);
   const body = await response?.json();
   assertEquals(body.pullsAvailable, true);
-  assertEquals(body.branches.length, 7);
+  assertEquals(body.branches.length, 3);
   // The integration branch is first, and main is at its head.
   assertEquals(body.branches[0], {
-    name: "client-first-deno",
+    name: "main",
     commit: MAIN,
     pull: null,
     labels: [],
     main: true,
   });
   assertEquals(
-    body.branches.find((row: { name: string }) => row.name === "bevy-version"),
+    body.branches.find((row: { name: string }) => row.name === "t60-webgl-ui"),
     {
-      name: "bevy-version",
-      commit: "9c10b8d6a9a35d606770ba12f85f6aa7671355df",
+      name: "t60-webgl-ui",
+      commit: "5affbf606e3dcda3ca0bba6f4782829beb8ccdf6",
       pull: {
         number: 9,
         title: "Pull 9",
         url: "https://github.com/LegoGuy32109/OpenDwarf/pull/9",
       },
-      labels: ["old-bevy"],
+      labels: ["webgl-ui"],
       main: false,
     },
   );
@@ -217,7 +214,7 @@ Deno.test("a pull request failure does not hide the branch list", async () => {
   const body = await response?.json();
   assertEquals(response?.status, 200);
   assertEquals(body.pullsAvailable, false);
-  assertEquals(body.branches.length, 7);
+  assertEquals(body.branches.length, 3);
 });
 
 Deno.test("a refs failure answers 502 and leaks nothing", async () => {
