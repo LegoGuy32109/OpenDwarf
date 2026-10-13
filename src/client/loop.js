@@ -141,7 +141,7 @@ function stepStateOf(ctx) {
  * @param {Context} ctx
  * @param {number} now
  */
-export function stepWorld(ctx, now) {
+function stepWorld(ctx, now) {
   const { scene, canvas } = ctx;
   const state = stepStateOf(ctx);
   ctx.accumulator += catchUpMs(now - state.last, document.hidden);

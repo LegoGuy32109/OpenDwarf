@@ -414,7 +414,7 @@ export function decodeControl(value) {
 }
 
 /** Most mining entries one message may carry. */
-export const MAX_MINING_ENTRIES = 256;
+const MAX_MINING_ENTRIES = 256;
 
 /**
  * Host to guest: the mining actions the guest can see, replacing the earlier
@@ -534,7 +534,7 @@ export function decodeMusicCue(value) {
 /** Most stacks one tile or one inventory may carry in a message: one per item kind. */
 const MAX_STACKS = 16;
 /** Most tiles one dropped item message may carry. */
-export const MAX_ITEM_ENTRIES = 1024;
+const MAX_ITEM_ENTRIES = 1024;
 
 /** @param {unknown} value @returns {import('./items.js').Stack[]|null} */
 function decodeStacks(value) {

@@ -25,9 +25,9 @@ export const VOICES_VOLUME = { off: 0, low: 0.35, medium: 0.7, high: 1 };
 export const VOICES_KEY = "open-dwarf-voices";
 
 /** Full volume to this many blocks, then a fall to `FAR_GAIN` at the text radius. */
-export const NEAR_BLOCKS = 2;
-export const FAR_GAIN = 0.3;
-export const MURMUR_GAIN = 0.1;
+const NEAR_BLOCKS = 2;
+const FAR_GAIN = 0.3;
+const MURMUR_GAIN = 0.1;
 export const MURMUR_CUTOFF_HZ = 600;
 export const MAX_VOICES = 6;
 const HEARD_LIMIT = 400;

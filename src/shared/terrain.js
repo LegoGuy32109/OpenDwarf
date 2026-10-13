@@ -11,10 +11,10 @@
 
 export const CHUNK_EDGE = 16;
 export const WORLD_TOP = 7;
-export const LEVELS = WORLD_TOP + 1;
+const LEVELS = WORLD_TOP + 1;
 export const CHUNK_CELLS = CHUNK_EDGE * CHUNK_EDGE * LEVELS;
 /** Largest chunk coordinate the wire accepts, so keys stay short and finite. */
-export const MAX_CHUNK_COORD = 1 << 20;
+const MAX_CHUNK_COORD = 1 << 20;
 
 /** Tile materials. `UNKNOWN` fills a remembered chunk where nothing was seen. */
 export const UNKNOWN = 0;

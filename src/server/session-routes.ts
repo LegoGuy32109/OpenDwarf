@@ -54,11 +54,11 @@ export interface PublicSession {
 }
 
 /** The path of a build by its commit, so a guest runs the same code even after a label moves. */
-export function buildPath(commit: string): string {
+function buildPath(commit: string): string {
   return `/b/${commit}/`;
 }
 
-export function publicBuild(session: Session): SessionBuild {
+function publicBuild(session: Session): SessionBuild {
   return {
     commit: session.buildCommit,
     label: session.label,
@@ -66,7 +66,7 @@ export function publicBuild(session: Session): SessionBuild {
   };
 }
 
-export function publicSession(session: Session): PublicSession {
+function publicSession(session: Session): PublicSession {
   return {
     id: session.id,
     build: publicBuild(session),
@@ -78,7 +78,7 @@ export function publicSession(session: Session): PublicSession {
 }
 
 /** A telemetry row as the public sees it: numbers a dashboard charts, and no peer id. */
-export function publicTelemetry(row: RecordedTelemetry) {
+function publicTelemetry(row: RecordedTelemetry) {
   const { session: _session, ...rest } = row;
   return rest;
 }
@@ -116,7 +116,7 @@ async function body(request: Request): Promise<Record<string, unknown>> {
 }
 
 /** The caller's address: the edge's forwarded address, else the socket's. */
-export function clientIp(
+function clientIp(
   request: Request,
   info?: { remoteAddr?: { hostname?: string } },
 ): string {

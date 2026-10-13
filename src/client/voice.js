@@ -86,7 +86,7 @@ function lookup(table, phase) {
  * Render a schedule as mono samples, one audio phrase per spoken syllable.
  * @param {SpeechSchedule} schedule @param {Voice} voice @param {number} rate
  */
-export function renderSamples(schedule, voice, rate) {
+function renderSamples(schedule, voice, rate) {
   const tables = vowelTables(voice, rate);
   const samples = new Float32Array(Math.ceil(schedule.duration * rate));
   let phase = 0;

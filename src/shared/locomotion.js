@@ -7,10 +7,10 @@ import { isSolid, TICK_MS, WORLD_TOP } from "./world.js";
 
 export const PLAYER_SIZE = 0.5;
 /** One tile is a 5 ft square and a D&D round is 6 seconds. */
-export const FEET_PER_TILE = 5;
-export const ROUND_SECONDS = 6;
+const FEET_PER_TILE = 5;
+const ROUND_SECONDS = 6;
 /** Walk speed in feet per round. */
-export const WALK_SPEED_FT = 30;
+const WALK_SPEED_FT = 30;
 
 /** Convert the walk speed to tiles per second. Sprint doubles it. */
 /** @param {boolean} [sprint] */
@@ -18,8 +18,8 @@ export function speedTilesPerSecond(sprint = false) {
   return WALK_SPEED_FT / FEET_PER_TILE / ROUND_SECONDS * (sprint ? 2 : 1);
 }
 
-export const WALK_SPEED = speedTilesPerSecond();
-export const STEP_TICKS = 6;
+const WALK_SPEED = speedTilesPerSecond();
+const STEP_TICKS = 6;
 const EPS = 0.001;
 
 /** @param {number} coordinate */

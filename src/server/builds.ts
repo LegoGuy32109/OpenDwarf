@@ -13,7 +13,7 @@ const SHORT_SHA = /^[0-9a-f]{7,40}$/;
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const PAGE_PATH = /^(|host|join\/[a-zA-Z0-9_-]{8,80})$/;
 
-export const LOCAL_BUILD = "local";
+const LOCAL_BUILD = "local";
 
 const REFS_URL =
   `https://github.com/${REPO}.git/info/refs?service=git-upload-pack`;
@@ -136,7 +136,7 @@ function notice(title: string, message: string, status: number): Response {
   });
 }
 
-export const notFoundPage = (name: string) =>
+const notFoundPage = (name: string) =>
   notice(
     "Build not found",
     `No label, branch, or commit is named <code>${
@@ -145,7 +145,7 @@ export const notFoundPage = (name: string) =>
     404,
   );
 
-export const noMainPage = () =>
+const noMainPage = () =>
   notice(
     "No main build yet",
     "Nothing has been promoted to main. Open a build at <code>/b/&lt;name&gt;</code>, or promote one from the CLI.",

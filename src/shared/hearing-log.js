@@ -4,7 +4,7 @@
 /** @typedef {{lines:HearingLine[],heard:Set<string>,version:number}} HearingLog */
 
 export const HEARING_LOG_LIMIT = 200;
-export const SYSTEM_LINE_LIMIT = 120;
+const SYSTEM_LINE_LIMIT = 120;
 const HEARD_KEYS_LIMIT = 400;
 
 export function createHearingLog() {

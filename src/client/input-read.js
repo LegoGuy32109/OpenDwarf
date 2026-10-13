@@ -43,7 +43,7 @@ export function inputDirection(ctx) {
 }
 
 /** The look stick, IJKL, and controller camera input combined. @param {Context} ctx */
-export function lookInput(ctx) {
+function lookInput(ctx) {
   const controllerCamera = ctx.scene.chatOpen || ctx.scene.menu
     ? { x: 0, y: 0 }
     : ctx.gamepadCamera;

@@ -153,7 +153,7 @@ export interface StoreOptions {
   heartbeatTimeoutMs?: number;
 }
 
-export const DEFAULT_HEARTBEAT_TIMEOUT_MS = 45_000;
+const DEFAULT_HEARTBEAT_TIMEOUT_MS = 45_000;
 /** Telemetry summaries are kept this long. */
 export const TELEMETRY_RETENTION_MS = 30 * 24 * 60 * 60_000;
 /** The build commit of a session whose host runs the working tree. */

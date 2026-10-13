@@ -24,7 +24,7 @@ export const EFFECTS_LEVELS = /** @type {EffectsLevel[]} */ ([
   "100",
 ]);
 /** The master gain of each Effects setting. */
-export const EFFECTS_VOLUME = {
+const EFFECTS_VOLUME = {
   off: 0,
   "25": 0.25,
   "50": 0.5,
@@ -32,7 +32,7 @@ export const EFFECTS_VOLUME = {
   "100": 1,
 };
 export const EFFECTS_KEY = "open-dwarf-effects";
-export const SFX_INDEX_KEY = "index/sfx.v1.json";
+const SFX_INDEX_KEY = "index/sfx.v1.json";
 /** Random playbackRate range for steps, and for every other sound. */
 export const STEP_RATE = /** @type {[number,number]} */ ([0.85, 1.15]);
 export const SOUND_RATE = /** @type {[number,number]} */ ([0.9, 1.1]);
@@ -46,7 +46,7 @@ export const MAX_SOUNDS = 16;
 /** An event later than this after its presentation time is dropped. */
 export const LATE_MS = 500;
 /** Samples downloaded at once. */
-export const DOWNLOADS = 4;
+const DOWNLOADS = 4;
 /** Plays kept in the harness log. */
 const LOG_LIMIT = 200;
 

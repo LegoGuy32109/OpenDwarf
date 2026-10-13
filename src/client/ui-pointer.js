@@ -14,7 +14,7 @@ import { hitTest, stickVector } from "./ui.js";
  */
 
 /** A drag longer than this many CSS pixels scrolls a list instead of tapping. */
-export const DRAG_SLOP = 8;
+const DRAG_SLOP = 8;
 
 /** @typedef {import('./ui.js').UiElement} UiElement */
 /** @typedef {import('./ui.js').UiLayout} UiLayout */

@@ -297,7 +297,7 @@ export function startTelemetry(ctx) {
  * also reduces a URL to file:line and cuts the text to 160 characters.
  * @param {unknown} error @param {string} [message] @param {string} [file] @param {number} [line]
  */
-export function errorDetail(error, message, file, line) {
+function errorDetail(error, message, file, line) {
   const known = error && typeof error === "object"
     ? /** @type {{name?:unknown,message?:unknown,stack?:unknown}} */ (error)
     : null;

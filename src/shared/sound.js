@@ -150,7 +150,7 @@ export function recordSteps(world, isRunning) {
 }
 
 /** Whether an event comes from a tile, a break or a place, rather than from an entity. @param {{tags:string[]}} event */
-export function isTileSound(event) {
+function isTileSound(event) {
   return event.tags[0] === "place" ||
     (event.tags[0] === "mine" && event.tags[1] === "break");
 }

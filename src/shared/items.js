@@ -104,7 +104,7 @@ export function takeStack(stacks, index) {
 }
 
 /** @param {Stack[]} stacks @returns {Stack[]} */
-export function copyStacks(stacks) {
+function copyStacks(stacks) {
   return stacks.map(({ kind, count }) => ({ kind, count }));
 }
 
@@ -114,7 +114,7 @@ export function copyStacks(stacks) {
  * between the pickup grid's choice and the world host's check.
  * @param {Stack[]} stacks @param {unknown} kind
  */
-export function stackIndexOfKind(stacks, kind) {
+function stackIndexOfKind(stacks, kind) {
   return stacks.findIndex((stack) => stack.kind === kind);
 }
 

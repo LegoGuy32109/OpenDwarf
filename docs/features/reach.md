@@ -26,10 +26,12 @@ and `placeStone` use it; the existing refusal reasons stay, and `out of reach`
 covers both path and sight. A call without `sees` checks the path alone; only
 unit tests do that.
 
-`interactPreview` names the action interact would take on a tile: `pickup`,
-`shop`, `place`, `mine`, or null. It runs the checks the host runs
-(`miningRefusal`, `placeRefusal`, the pickup reach), so a null answer means the
-host would refuse. The shopkeeper stands in every layout but `"test"`.
+`interactPreview` (`src/shared/interact-preview.js`, apart from `reach.js` so
+the mining and placing checks it calls can import `inReach`) names the action
+interact would take on a tile: `pickup`, `shop`, `place`, `mine`, or null. It
+runs the checks the host runs (`miningRefusal`, `placeRefusal`, the pickup
+reach), so a null answer means the host would refuse. The shopkeeper stands in
+every layout but `"test"`.
 
 ## Free cursor
 

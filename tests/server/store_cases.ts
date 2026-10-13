@@ -15,7 +15,7 @@ export interface Harness {
 export type Case = (h: Harness, tag: string) => Promise<void>;
 
 /** A lowercase hex string of `length` digits, unique per call. */
-export function hex(length = 40): string {
+function hex(length = 40): string {
   const bytes = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(bytes, (b) => (b % 16).toString(16)).join("");
 }

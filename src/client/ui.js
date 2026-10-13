@@ -114,7 +114,7 @@ const NO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /** @param {Rect} rect @param {number} x @param {number} y */
-export function rectContains(rect, x, y) {
+function rectContains(rect, x, y) {
   return x >= rect.x && x < rect.x + rect.w && y >= rect.y &&
     y < rect.y + rect.h;
 }
@@ -171,7 +171,7 @@ export function wrapText(text, columns) {
  * font pixel, shown in CSS pixels.
  * @param {number} scale the UI scale setting @param {number} dpr
  */
-export function textScale(scale, dpr) {
+function textScale(scale, dpr) {
   const k = Math.max(1, Math.round(scale * dpr));
   return { k, ts: k / dpr };
 }
