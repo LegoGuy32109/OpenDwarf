@@ -6,8 +6,8 @@ import {
   CURSOR_COLOR,
   CURSOR_ICON_DIM,
   CURSOR_OPACITY,
-  interactPreview,
 } from "../shared/reach.js";
+import { interactPreview } from "../shared/interact-preview.js";
 import { itemInfo } from "../shared/items.js";
 import { heldItem } from "../shared/mining.js";
 import { highlightedTile } from "../shared/target.js";
@@ -24,7 +24,7 @@ export const CURSOR_ICON_SIZE = 0.5;
  * sheet frame, and the icon's opacity (full when interact would act on the
  * tile, `CURSOR_ICON_DIM` when `preview` is null).
  * @param {string} held the held item kind
- * @param {import('../shared/reach.js').InteractAction} preview
+ * @param {import('../shared/interact-preview.js').InteractAction} preview
  */
 export function cursorParams(held, preview) {
   return {

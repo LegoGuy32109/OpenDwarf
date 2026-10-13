@@ -14,9 +14,9 @@ import {
   STONE_ITEM,
 } from "../../src/shared/items.js";
 import { setHeldItem } from "../../src/shared/held-item.js";
+import { interactPreview } from "../../src/shared/interact-preview.js";
 import {
   inReach,
-  interactPreview,
   itemSeen,
   pathReach,
   seesFrom,

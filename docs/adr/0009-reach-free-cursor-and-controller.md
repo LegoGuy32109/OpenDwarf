@@ -40,11 +40,11 @@ new action there; interact on the tile being mined cancels it.
 
 **Cursor.** A 2 px outline in `#ffb833` at 60% opacity, with no fill. The held
 item's icon sits in its center at half a tile: full opacity when interact would
-act on that tile, 35% when it would not. `interactPreview` in `reach.js` names
-the action interact would take (`mine`, `place`, `pickup`, `shop`, or null), so
-the cursor and the host agree. The growing progress square is gone: mining
-progress shows only as cracks on the mined tile, which a later change redraws in
-a Dwarf Fortress style.
+act on that tile, 35% when it would not. `interactPreview` in
+`interact-preview.js` names the action interact would take (`mine`, `place`,
+`pickup`, `shop`, or null), so the cursor and the host agree. The growing
+progress square is gone: mining progress shows only as cracks on the mined tile,
+which a later change redraws in a Dwarf Fortress style.
 
 **Dropped items.** A peer sees a dropped item when the item's tile or the floor
 under it (one level down) is in its visible set. Mining around a corner shows
