@@ -1,0 +1,9 @@
+{
+  "entry": [
+    "scripts/*.ts",
+    "prototype/*.{js,ts}",
+    "tests/e2e/**/*.ts",
+    "playwright.config.ts",
+    "public/js/*.js"
+  ]
+}
