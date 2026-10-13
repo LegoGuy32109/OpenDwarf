@@ -71,6 +71,8 @@ its feature there:
 - [Render performance](docs/features/render-performance.md)
 - [Frame stats and lag-spike logging](docs/features/frame-stats.md)
 
+- [Architecture rules](docs/features/architecture-rules.md)
+
 <!-- Add a line here for each new docs/features/*.md file. -->
 
 Decisions:

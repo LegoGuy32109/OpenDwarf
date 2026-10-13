@@ -1,7 +1,7 @@
 name: E2E
 # Nothing here blocks a merge. It runs every night on main, by hand, and on a
 # pull request that carries the `e2e` label. A failed nightly run opens or
-# updates an issue.
+# updates an issue. The `architecture` job checks the import rules the same way.
 on:
   schedule:
     - cron: "0 6 * * *"
@@ -42,8 +42,19 @@ jobs:
           name: playwright-results-${{ matrix.shard }}
           path: exports/playwright-results
           retention-days: 7
+  architecture:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno task arch
   report:
-    needs: browser-shard
+    needs: [browser-shard, architecture]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     permissions:
@@ -53,10 +64,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title="Nightly e2e failed"
+          title="Nightly checks failed"
           number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --search "\"$title\" in:title" --json number --jq '.[0].number')
-          body="The nightly browser run failed: $RUN"
+          body="A nightly check failed: $RUN"
           if [ -n "$number" ]; then
             gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
           else

@@ -7,5 +7,72 @@
     "public/js/*.js",
     "main.ts",
     "src/server/admin/admin.{js,css}"
-  ]
+  ],
+  "boundaries": {
+    "zones": [
+      {
+        "name": "shared",
+        "patterns": [
+          "src/shared/**"
+        ]
+      },
+      {
+        "name": "client-hub",
+        "patterns": [
+          "src/client/app.js",
+          "src/client/network.js",
+          "src/client/render.js",
+          "src/client/ui.js",
+          "src/client/ui-draw.js",
+          "src/client/context.js",
+          "src/client/session.js",
+          "src/client/loop.js",
+          "src/client/harness.js",
+          "src/client/input.js",
+          "src/client/input-read.js",
+          "src/client/panels.js",
+          "public/js/**"
+        ]
+      },
+      {
+        "name": "client-feature",
+        "patterns": [
+          "src/client/**"
+        ]
+      },
+      {
+        "name": "server",
+        "patterns": [
+          "src/server/**",
+          "main.ts"
+        ]
+      }
+    ],
+    "rules": [
+      {
+        "from": "shared",
+        "allow": []
+      },
+      {
+        "from": "client-hub",
+        "allow": [
+          "shared",
+          "client-feature"
+        ]
+      },
+      {
+        "from": "client-feature",
+        "allow": [
+          "shared",
+          "client-feature"
+        ]
+      },
+      {
+        "from": "server",
+        "allow": [
+          "shared"
+        ]
+      }
+    ]
+  }
 }
