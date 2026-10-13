@@ -10,7 +10,7 @@ camera motion, movement rules, line of sight, edge and ceiling atlases, and
 depth tint. The engine page gives it the VGA bitmap font and the Escape menu
 structure (see [controls and UI](features/controls-and-ui.md)). The current demo
 draws these with one small WebGL2 renderer. The older Rust engine and world
-generation code stay on `webgl-version` for reference.
+generation code stay on `legacy/webgl-version` for reference.
 
 ## The pieces
 

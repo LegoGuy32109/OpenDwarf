@@ -4,7 +4,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [client-first-deno]
+    branches: [main]
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true

@@ -6,7 +6,7 @@ import type { Builds } from "./builds.ts";
 import type { Label, Store } from "./store.ts";
 
 const LABEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const INTEGRATION_BRANCH = "client-first-deno";
+const INTEGRATION_BRANCH = "main";
 const SHA = /^[0-9a-f]{7,40}$/;
 const encoder = new TextEncoder();
 
