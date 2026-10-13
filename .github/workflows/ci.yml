@@ -1,6 +1,7 @@
 name: CI
-# Pull requests and the integration branch only: ticket pushes are checked by
-# their PR, and the `evidence` branch holds only screenshots and videos.
+# The merge gate: format, lint, types and unit tests, about a minute. Browser
+# specs run in e2e.yml. Ticket pushes are checked by their PR, and the
+# `evidence` branch holds only screenshots and videos.
 on:
   pull_request:
   push:
@@ -22,24 +23,3 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno task verify
-  browser:
-    runs-on: ubuntu-latest
-    env:
-      # With these set, the e2e config starts a second shell for the real
-      # Xirsys spec.
-      XIRSYS_IDENT: ${{ secrets.XIRSYS_IDENT }}
-      XIRSYS_SECRET: ${{ secrets.XIRSYS_SECRET }}
-      XIRSYS_CHANNEL: ${{ secrets.XIRSYS_CHANNEL }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - run: deno run -A npm:playwright@1.63.0 install --with-deps chromium
-      - run: deno task e2e
-      - if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-results
-          path: exports/playwright-results
-          retention-days: 7

@@ -7,34 +7,35 @@ deno task hooks
 ```
 
 `verify` checks formatting, lint, types, and deterministic world tests. The Git
-pre-push hook runs the same task. CI also runs Playwright in Chromium. The
-Playwright tests compare desktop and phone screenshots and exercise the WebRTC
-connection. Run `deno task e2e --grep 'host and two joining tabs'` to check one
-host, two joining tabs, and each tab's view of remote movement on this machine.
-The shared tests also replay delayed and reordered snapshots with a fixed
-schedule. A system Chromium installation is used locally when present.
+pre-push hook and the merge gate run the same task. A nightly CI run also runs
+Playwright in Chromium. The Playwright tests compare desktop and phone
+screenshots and exercise the WebRTC connection. Run
+`deno task e2e --grep 'host and two joining tabs'` to check one host, two
+joining tabs, and each tab's view of remote movement on this machine. The shared
+tests also replay delayed and reordered snapshots with a fixed schedule. A
+system Chromium installation is used locally when present.
 
-## Tests for a diff
+## Unit tests for a diff
 
 ```sh
-deno task test:changed [--base main] [--e2e] [--list]
+deno task test:changed [--base main]
 ```
 
-The task takes the files changed from the merge base with `--base` (default
-`main`) to the working tree, including untracked files. For each one,
-`fallow inspect --file` lists every file that imports it, directly or not. The
-task runs the unit tests in that set and any changed test. A doc change runs
-nothing, and a change to `deno.json`, `deno.lock` or `playwright.config.ts` runs
-everything.
+The task runs `deno test --changed=<base>` (default `main`) over the unit test
+folders. Deno follows each test's module graph and runs only the tests that
+reach a file changed in git. It cannot see a file a test reads at run time, such
+as the Markdown the link check scans or the SQL the migration tests load, so
+`tests/lint` and the tests that read files always run too. A doc-only change
+runs only that set. `deno task verify` and the pre-push hook still run every
+unit test.
 
-A browser spec imports almost nothing from `src/`, so the import graph cannot
-choose specs for client and shared code. `tests/e2e/impact.json` maps source
-prefixes to specs. A changed file under `src/client/`, `src/shared/` or
-`public/` with no matching rule runs every spec, so add a rule when a feature
-gains its own spec. Server changes reach specs through `seed-shell.ts`, which
-the graph follows. `--e2e` runs the chosen specs, and `--list` prints the choice
-without running anything. `deno task verify` and the pre-push hook still run
-every unit test.
+Browser specs are not chosen by diff. They import almost nothing from `src/`, so
+no import graph links client code to a spec, and Playwright's `--only-changed`
+has the same limit. `.github/workflows/e2e.yml` splits them across four runners
+with `--shard=i/4`, one worker each. It runs nightly on main, by hand, and on a
+pull request with the `e2e` label, and it blocks no merge: the merge gate in
+`ci.yml` is `deno task verify`. A failed nightly run opens or updates an issue.
+`deno task e2e --shard=1/4` runs one quarter locally.
 
 ## Group stress run
 
