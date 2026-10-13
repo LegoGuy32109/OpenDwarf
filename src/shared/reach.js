@@ -22,6 +22,12 @@ export const CURSOR_ICON_DIM = 0.35;
  * @returns {boolean}
  */
 export function pathReach(world, player, tile) {
+  const bounds = world.limits;
+  if (
+    bounds && !world.generateChunk &&
+    (tile.x < bounds.minX || tile.x > bounds.maxX || tile.y < bounds.minY ||
+      tile.y > bounds.maxY || tile.z < bounds.minZ || tile.z > bounds.maxZ)
+  ) return false;
   const cx = centerTile(player.x);
   const cy = centerTile(player.y);
   const dx = tile.x - cx;

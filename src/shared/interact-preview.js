@@ -26,11 +26,22 @@ export function interactPreview(world, player, tile, sees, layout) {
   if (droppedAt(world, tile).length && inPickupReach(player, tile)) {
     return "pickup";
   }
+  const shops = world.shops ?? (layout !== "test" ? [SHOP_TILE] : []);
   if (
-    layout !== "test" && tile.x === SHOP_TILE.x && tile.y === SHOP_TILE.y &&
-    tile.z === SHOP_TILE.z && inPickupReach(player, SHOP_TILE)
+    shops.some((at) =>
+      tile.x === at.x && tile.y === at.y && tile.z === at.z &&
+      inPickupReach(player, at)
+    )
   ) return "shop";
-  if (!placeRefusal(world, player, tile, sees, reservedTiles(layout))) {
+  if (
+    !placeRefusal(
+      world,
+      player,
+      tile,
+      sees,
+      world.shops ? reservedTiles(world) : reservedTiles(layout),
+    )
+  ) {
     return "place";
   }
   if (!miningRefusal(world, player, tile, sees)) return "mine";

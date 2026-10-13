@@ -1,9 +1,9 @@
 // @ts-check
 
-import { createWorld, EXPANDED_WORLD_EDGE } from "./world.js";
+import { buildWorld } from "./world-builder.js";
+import { roomRecipe } from "./world-recipes.js";
 import { COAL, GOLD_ORE, IRON_ORE } from "./materials.js";
-import { generateChunkData, isCaveTile, WORLD_SEED } from "./generation.js";
-import { CHUNK_EDGE, OPEN, setChunk, STONE, writeTile } from "./terrain.js";
+import { WORLD_SEED } from "./generation.js";
 
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./world.js').Tile} Tile */
@@ -74,63 +74,7 @@ export const SHELL = {
   maxZ: ROOM_Z + 1,
 };
 
-/**
- * The tunnel goes on east past the shell until it opens into a generated cave,
- * so the cave network under spawn is a walk from the room. It stays inside the
- * spawn chunks; `WORLD_SEED` puts a cave within reach.
- * @param {World} world @param {number} seed @returns {number} the last tile dug, or `TUNNEL.maxX`
- */
-function carveConnector(world, seed) {
-  const { y, z } = TUNNEL;
-  for (let x = SHELL.maxX; x < EXPANDED_WORLD_EDGE; x++) {
-    if (isCaveTile(seed, x, y, z)) return x - 1;
-    writeTile(world, x, y, z, OPEN);
-  }
-  return EXPANDED_WORLD_EDGE - 1;
-}
-
-/** Dig the room, its doorway, the stairs and the tunnel out of the shell. @param {World} world */
-function carveSpawnRoom(world) {
-  for (let z = SHELL.minZ; z <= SHELL.maxZ; z++) {
-    for (let y = SHELL.minY; y <= SHELL.maxY; y++) {
-      for (let x = SHELL.minX; x <= SHELL.maxX; x++) {
-        writeTile(world, x, y, z, STONE);
-      }
-    }
-  }
-  for (let y = ROOM.minY; y <= ROOM.maxY; y++) {
-    for (let x = ROOM.minX; x <= ROOM.maxX; x++) {
-      writeTile(world, x, y, ROOM_Z, OPEN);
-    }
-  }
-  writeTile(world, DOORWAY.x, DOORWAY.y, DOORWAY.z, OPEN);
-  const [top, bottom] = STAIRS;
-  writeTile(world, top.x, top.y, top.z, OPEN);
-  writeTile(world, bottom.x, bottom.y, bottom.z, OPEN);
-  writeTile(world, bottom.x, bottom.y, bottom.z + 1, OPEN);
-  for (let x = TUNNEL.minX; x <= TUNNEL.maxX; x++) {
-    writeTile(world, x, TUNNEL.y, TUNNEL.z, OPEN);
-  }
-  for (const { x, y, z, material } of TUNNEL_ORES) {
-    writeTile(world, x, y, z, material);
-  }
-}
-
-/**
- * A host creates this world. The spawn chunks are generated from the seed like
- * any other, then the room is dug into a stone shell and its tunnel joined to
- * the caves.
- * @param {number} [seed]
- */
+/** Construct the standard room through the shared builder. @param {number} [seed] */
 export function createSpawnRoomWorld(seed = WORLD_SEED) {
-  const world = createWorld(EXPANDED_WORLD_EDGE);
-  for (let cy = 0; cy < EXPANDED_WORLD_EDGE / CHUNK_EDGE; cy++) {
-    for (let cx = 0; cx < EXPANDED_WORLD_EDGE / CHUNK_EDGE; cx++) {
-      setChunk(world, cx, cy, generateChunkData(seed, cx, cy));
-    }
-  }
-  carveSpawnRoom(world);
-  carveConnector(world, seed);
-  world.changes?.clear();
-  return world;
+  return buildWorld(roomRecipe(seed, { npc: false })).world;
 }

@@ -93,7 +93,9 @@ export function saleLine(sold, coins) {
 export function sellItems(world, playerId, request) {
   const player = world.players[playerId];
   if (!player) return { ok: false, reason: "unknown player" };
-  if (!inPickupReach(player, SHOP_TILE)) {
+  const shops = world.shops ?? [SHOP_TILE];
+  if (!shops.length) return { ok: false, reason: "no shop here" };
+  if (!shops.some((at) => inPickupReach(player, at))) {
     return { ok: false, reason: "too far from the shopkeeper" };
   }
   const inventory = inventoryOf(player);

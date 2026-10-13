@@ -1,5 +1,6 @@
 // @ts-check
 
+import { identifier } from "./wire-parse.js";
 import { speechDurationMs, voiceFromId } from "./speech.js";
 import {
   CHUNK_EDGE,
@@ -34,13 +35,14 @@ export function bubbleTicks(text) {
 const MOVE_TICKS = 10;
 
 /** @typedef {{x:number,y:number,z:number}} Tile */
+/** @typedef {{minX:number,minY:number,minZ:number,maxX:number,maxY:number,maxZ:number}} WorldBounds */
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
 /** `start` is the tick its speech begins; a later start means it waits in the queue (ADR 0006). A bubble without one has started. */
 /** @typedef {{text:string,until:number,start?:number}} Bubble */
-/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number}} Player */
+/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number,npc?:boolean,held?:string}} Player */
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
-/** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>}} World */
+/** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>,shops?:Tile[],limits?:WorldBounds}} World */
 
 /**
  * A tile blocks movement and sight unless its material is open. Unknown
@@ -77,9 +79,10 @@ export function createWorld(edge = WORLD_EDGE) {
   return world;
 }
 
-/** @param {World} world @param {string} id @param {Tile} [spawn] */
+/** @param {World} world @param {string} id @param {Tile} [spawn] @returns {Player} */
 export function addPlayer(world, id, spawn = { x: 7, y: 7, z: 0 }) {
-  if (world.players[id]) return world.players[id];
+  if (!identifier(id)) throw new Error("Invalid player ID");
+  if (Object.hasOwn(world.players, id)) return world.players[id];
   const player = {
     id,
     name: "",

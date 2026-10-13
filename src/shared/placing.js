@@ -31,9 +31,13 @@ function entityOverlaps(entity, tile) {
   );
 }
 
-/** Tiles that hold an entity outside `world.players`: the shopkeeper, in the room layout. @param {string|undefined} layout @returns {readonly Tile[]} */
+/** Tiles that hold an entity outside `world.players`: the shopkeeper, in the room layout. @param {string|World|undefined} layout @returns {readonly Tile[]} */
 export function reservedTiles(layout) {
-  return layout === "room" ? [SHOP_TILE] : [];
+  return typeof layout === "object"
+    ? layout.shops ?? []
+    : layout === "room"
+    ? [SHOP_TILE]
+    : [];
 }
 
 /**

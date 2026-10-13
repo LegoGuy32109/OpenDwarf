@@ -18,11 +18,11 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {Omit<Player,'typing'|'message'|'messageUntil'>} MotionPlayer */
 /** @typedef {import('./chat.js').ChatRecord} ChatRecord */
 /** @typedef {{attempt:string,viewRevision:number,sightRevision:number}} Envelope */
-/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
+/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'shops'|'limits'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
 /** @typedef {Envelope & {type:"motion",tick:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const MAX_PACKET_BYTES = 256 * 1024;
 const MAX_ENTITIES = 1024;
 
@@ -75,6 +75,7 @@ function player(value) {
   ) {
     return false;
   }
+  if (value.npc !== undefined && typeof value.npc !== "boolean") return false;
   if (value.free !== undefined && typeof value.free !== "boolean") return false;
   if (value.size !== undefined && !finite(value.size, 0.01, 4)) return false;
   if (value.vx !== undefined && !finite(value.vx, -10, 10)) return false;
@@ -95,6 +96,7 @@ export function encodeMotionPlayers(players) {
       facingLeft: value.facingLeft,
       move: value.move,
       ...(value.viewMotion ? { viewMotion: value.viewMotion } : {}),
+      ...(value.npc !== undefined ? { npc: value.npc } : {}),
       ...(value.free !== undefined ? { free: value.free } : {}),
       ...(value.size !== undefined ? { size: value.size } : {}),
       ...(value.vx !== undefined ? { vx: value.vx } : {}),
@@ -211,11 +213,13 @@ function chatRecords(value) {
 }
 
 /** Wire form of a world snapshot: players keep only wire fields. Terrain travels as `reveal`. */
-/** @param {Pick<World,'tick'|'players'>} world */
+/** @param {Pick<World,'tick'|'players'|'shops'|'limits'>} world */
 export function encodeWorld(world) {
   return {
     tick: world.tick,
     players: encodeMotionPlayers(world.players),
+    ...(world.shops ? { shops: world.shops.map((at) => ({ ...at })) } : {}),
+    ...(world.limits ? { limits: { ...world.limits } } : {}),
   };
 }
 
@@ -230,6 +234,26 @@ export function decodeState(value) {
   ) return null;
   const world = value.world;
   if (!counter(world.tick)) return null;
+  if (
+    world.shops !== undefined &&
+    (!Array.isArray(world.shops) || world.shops.length > 1024 ||
+      !world.shops.every((at) =>
+        record(at) && tile(at) && [at.x, at.y, at.z].every(Number.isInteger)
+      ))
+  ) return null;
+  if (world.limits !== undefined) {
+    const b = world.limits;
+    if (
+      !record(b) ||
+      ![b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ].every(
+        Number.isInteger,
+      ) || !tile({ x: b.minX, y: b.minY, z: b.minZ }) ||
+      !tile({ x: b.maxX, y: b.maxY, z: b.maxZ }) ||
+      Number(b.minX) > Number(b.maxX) || Number(b.minY) > Number(b.maxY) ||
+      Number(b.minZ) > Number(b.maxZ) || Number(b.minZ) < 0 ||
+      Number(b.maxZ) > WORLD_TOP
+    ) return null;
+  }
   const reveal = decodeChunks(value.reveal);
   if (!reveal || reveal.size > MAX_REVEAL_CHUNKS) return null;
   const parsedPlayers = players(world.players);
@@ -272,6 +296,10 @@ export function decodeState(value) {
     world: {
       tick: parsed.world.tick,
       players: parsedPlayers,
+      ...(parsed.world.limits ? { limits: { ...parsed.world.limits } } : {}),
+      ...(parsed.world.shops
+        ? { shops: parsed.world.shops.map((at) => ({ ...at })) }
+        : {}),
     },
     reveal,
     chat,
