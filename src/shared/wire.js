@@ -1,9 +1,16 @@
 // @ts-check
 
+import {
+  counter,
+  finite,
+  identifier,
+  MAX_COORD,
+  record,
+  tile,
+} from "./wire-parse.js";
 import { WORLD_TOP } from "./terrain.js";
-import { decodeChunks, MAX_REVEAL_CHUNKS } from "./chunk-wire.js";
 import { isItemKind, MAX_STACK_COUNT } from "./items.js";
-import { MAX_SOUND_ENTRIES, MAX_SOUND_TAGS } from "./sound.js";
+import { decodeChunks, MAX_REVEAL_CHUNKS } from "./chunk-wire.js";
 import { unpackVisibility } from "./visibility-wire.js";
 
 /** @typedef {import('./world.js').Player} Player */
@@ -18,9 +25,6 @@ import { unpackVisibility } from "./visibility-wire.js";
 export const PROTOCOL_VERSION = 4;
 export const MAX_PACKET_BYTES = 256 * 1024;
 const MAX_ENTITIES = 1024;
-const MAX_TICK = Number.MAX_SAFE_INTEGER;
-/** Tile coordinates are bounded, not tied to a world size; terrain is chunked. */
-const MAX_COORD = 1 << 24;
 
 /** Reject oversized transport payloads before JSON parsing or scene decoding. */
 /** @param {unknown} raw @returns {Record<string,unknown>|null} */
@@ -35,41 +39,10 @@ export function parsePacket(raw) {
   }
 }
 
-/** @param {unknown} value @returns {value is Record<string,unknown>} */
-function record(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-/** @param {unknown} value @param {number} min @param {number} max @returns {value is number} */
-function finite(value, min, max) {
-  return typeof value === "number" && Number.isFinite(value) && value >= min &&
-    value <= max;
-}
-
-/** @param {unknown} value @param {number} [max] @returns {value is number} */
-function counter(value, max = MAX_TICK) {
-  return finite(value, 0, max) && Number.isSafeInteger(value);
-}
-
-/** @param {unknown} value @param {number} [limit] @returns {value is string} */
-function identifier(value, limit = 128) {
-  return typeof value === "string" && value.length > 0 &&
-    value.length <= limit &&
-    ![...value].some((char) => char.charCodeAt(0) < 32) &&
-    value !== "__proto__" && value !== "constructor" && value !== "prototype";
-}
-
 /** @param {Record<string,unknown>} value */
 function envelope(value) {
   return identifier(value.attempt) && counter(value.viewRevision) &&
     counter(value.sightRevision);
-}
-
-/** @param {unknown} value */
-function tile(value) {
-  return record(value) && finite(value.x, -MAX_COORD, MAX_COORD) &&
-    finite(value.y, -MAX_COORD, MAX_COORD) &&
-    finite(value.z, -1, WORLD_TOP + 1);
 }
 
 /** @param {unknown} value @param {boolean} [boundary] */
@@ -413,190 +386,11 @@ export function decodeControl(value) {
   }
 }
 
-/** Most mining entries one message may carry. */
-const MAX_MINING_ENTRIES = 256;
+// Host-to-guest feeds live in their own files; this module stays the one place
+// the rest of the code imports a codec from.
+export { decodeMining } from "./mining-wire.js";
+export { decodeSounds } from "./sound-wire.js";
+export { decodeMusicCue } from "./music-wire.js";
+export { decodeHeld, decodeInventory, decodeItems } from "./items-wire.js";
 
-/**
- * Host to guest: the mining actions the guest can see, replacing the earlier
- * list. Returns null for anything malformed.
- * @param {unknown} value @returns {import('./mining.js').MiningEntry[]|null}
- */
-export function decodeMining(value) {
-  if (
-    !record(value) || value.type !== "mining" ||
-    !Array.isArray(value.entries) ||
-    value.entries.length > MAX_MINING_ENTRIES
-  ) return null;
-  /** @type {import('./mining.js').MiningEntry[]} */
-  const entries = [];
-  for (const entry of value.entries) {
-    if (
-      !record(entry) || !identifier(entry.id) ||
-      !finite(entry.x, -MAX_COORD, MAX_COORD) || !Number.isInteger(entry.x) ||
-      !finite(entry.y, -MAX_COORD, MAX_COORD) || !Number.isInteger(entry.y) ||
-      !finite(entry.z, 0, WORLD_TOP) || !Number.isInteger(entry.z) ||
-      !finite(entry.elapsedMs, 0, 60_000) ||
-      !finite(entry.totalMs, 1, 60_000)
-    ) return null;
-    entries.push({
-      id: entry.id,
-      x: entry.x,
-      y: entry.y,
-      z: entry.z,
-      elapsedMs: entry.elapsedMs,
-      totalMs: entry.totalMs,
-    });
-  }
-  return entries;
-}
-
-/**
- * Host to guest: the sound events the guest hears this tick (ADR 0008).
- * Returns null for anything malformed.
- * @param {unknown} value @returns {import('./sound.js').HeardSound[]|null}
- */
-export function decodeSounds(value) {
-  if (
-    !record(value) || value.type !== "sounds" || !Array.isArray(value.list) ||
-    value.list.length > MAX_SOUND_ENTRIES
-  ) return null;
-  /** @type {import('./sound.js').HeardSound[]} */
-  const list = [];
-  for (const entry of value.list) {
-    if (
-      !record(entry) || !Array.isArray(entry.tags) || !entry.tags.length ||
-      entry.tags.length > MAX_SOUND_TAGS ||
-      !entry.tags.every((tag) => identifier(tag, 32)) ||
-      !finite(entry.x, -MAX_COORD, MAX_COORD) ||
-      !finite(entry.y, -MAX_COORD, MAX_COORD) ||
-      !finite(entry.z, 0, WORLD_TOP) || !counter(entry.tick) ||
-      typeof entry.seen !== "boolean"
-    ) return null;
-    list.push({
-      tags: /** @type {string[]} */ (entry.tags),
-      x: entry.x,
-      y: entry.y,
-      z: entry.z,
-      tick: entry.tick,
-      seen: entry.seen,
-    });
-  }
-  return list;
-}
-
-/**
- * A music cue: the track the world host started and the tick it started on
- * (ADR 0009).
- * @typedef {{key:string,hash:string,startTick:number,atTick?:number,position?:number}} MusicCue
- */
-
-/** One segment of a media key, as the shell's `/media/` route accepts it. */
-const MEDIA_SEGMENT = /^[A-Za-z0-9 ._()~-]+$/;
-
-/** @param {unknown} value @returns {value is string} */
-function mediaKey(value) {
-  return typeof value === "string" && value.length >= 1 &&
-    value.length <= 512 &&
-    value.split("/").every((part) =>
-      MEDIA_SEGMENT.test(part) && !part.startsWith(".")
-    );
-}
-
-/** The longest track position a cue may carry, in seconds. */
-const MAX_MUSIC_POSITION = 24 * 60 * 60;
-
-/**
- * Host to guest: the current music cue. Returns null for anything malformed:
- * a key that is not a media key, a hash that is not 12 hex digits, or a start
- * tick that is not a bounded whole number. A heartbeat adds `atTick` and
- * `position`, the seconds the host's track was at on that tick; both or
- * neither, or the cue is malformed.
- * @param {unknown} value @returns {MusicCue|null}
- */
-export function decodeMusicCue(value) {
-  if (
-    !record(value) || value.type !== "music" || !mediaKey(value.key) ||
-    typeof value.hash !== "string" || !/^[0-9a-f]{12}$/.test(value.hash) ||
-    !counter(value.startTick)
-  ) return null;
-  /** @type {MusicCue} */
-  const cue = { key: value.key, hash: value.hash, startTick: value.startTick };
-  if (value.atTick === undefined && value.position === undefined) return cue;
-  const position = value.position;
-  if (
-    !counter(value.atTick) || typeof position !== "number" ||
-    !Number.isFinite(position) || position < 0 ||
-    position > MAX_MUSIC_POSITION
-  ) return null;
-  return { ...cue, atTick: value.atTick, position };
-}
-
-/** Most stacks one tile or one inventory may carry in a message: one per item kind. */
-const MAX_STACKS = 16;
-/** Most tiles one dropped item message may carry. */
-const MAX_ITEM_ENTRIES = 1024;
-
-/** @param {unknown} value @returns {import('./items.js').Stack[]|null} */
-function decodeStacks(value) {
-  if (!Array.isArray(value) || value.length > MAX_STACKS) return null;
-  /** @type {import('./items.js').Stack[]} */
-  const stacks = [];
-  for (const stack of value) {
-    if (
-      !record(stack) || !isItemKind(stack.kind) ||
-      !counter(stack.count, MAX_STACK_COUNT) || stack.count < 1 ||
-      stacks.some((other) => other.kind === stack.kind)
-    ) return null;
-    stacks.push({
-      kind: /** @type {string} */ (stack.kind),
-      count: stack.count,
-    });
-  }
-  return stacks;
-}
-
-/**
- * Host to guest: the dropped items on the tiles the guest can see, replacing
- * the earlier list. Returns null for anything malformed.
- * @param {unknown} value @returns {import('./items.js').DroppedEntry[]|null}
- */
-export function decodeItems(value) {
-  if (
-    !record(value) || value.type !== "items" || !Array.isArray(value.entries) ||
-    value.entries.length > MAX_ITEM_ENTRIES
-  ) return null;
-  /** @type {import('./items.js').DroppedEntry[]} */
-  const entries = [];
-  for (const entry of value.entries) {
-    if (
-      !record(entry) || !Number.isInteger(entry.x) ||
-      !finite(entry.x, -MAX_COORD, MAX_COORD) || !Number.isInteger(entry.y) ||
-      !finite(entry.y, -MAX_COORD, MAX_COORD) || !Number.isInteger(entry.z) ||
-      !finite(entry.z, 0, WORLD_TOP)
-    ) return null;
-    const stacks = decodeStacks(entry.stacks);
-    if (!stacks || !stacks.length) return null;
-    entries.push({ x: entry.x, y: entry.y, z: entry.z, stacks });
-  }
-  return entries;
-}
-
-/**
- * Host to its owner only: an entity's inventory. Returns null for anything
- * malformed.
- * @param {unknown} value @returns {import('./items.js').Stack[]|null}
- */
-export function decodeInventory(value) {
-  if (!record(value) || value.type !== "inventory") return null;
-  return decodeStacks(value.stacks);
-}
-
-/**
- * Host to its owner only: the item kind the entity holds. Returns null for
- * anything malformed.
- * @param {unknown} value @returns {string|null}
- */
-export function decodeHeld(value) {
-  if (!record(value) || value.type !== "held") return null;
-  return isItemKind(value.kind) ? /** @type {string} */ (value.kind) : null;
-}
+/** @typedef {import('./music-wire.js').MusicCue} MusicCue */
