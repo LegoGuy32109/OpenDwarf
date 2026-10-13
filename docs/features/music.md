@@ -69,9 +69,9 @@ player is the **conductor** and every guest plays what it plays.
   track that was playing. With no `duration`, a track counts as 180 s. A player
   that is `enabled: false` (`?music=0`, or a test page without `music=1`) does
   not conduct.
-- **Cue.** Each start calls `host.cue(track)` in `network.js`, which sends every
-  guest `{type:"music", key, hash, startTick}` on the reliable `world` channel,
-  and sends the current cue to a guest when it joins or rejoins.
+- **Cue.** Each start calls `host.cue(track)` in `network-host.js`, which sends
+  every guest `{type:"music", key, hash, startTick}` on the reliable `world`
+  channel, and sends the current cue to a guest when it joins or rejoins.
   `decodeMusicCue` (`src/shared/wire.js`) accepts a media key (the shell's
   `/media/` rules), a 12 digit lowercase hex hash, and a whole `startTick`.
 - **Heartbeat.** Every `MUSIC_BEAT_TICKS` (80 ticks, 4 s) the host also sends

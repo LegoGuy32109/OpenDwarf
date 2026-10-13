@@ -73,11 +73,11 @@ up". The host sends each peer an `items` message with only the dropped items on
 tiles that peer sees, or whose floor one level down it sees (all of them in
 master view) whenever that list changes, and an `inventory` message with only
 that peer's own inventory. A pickup system line goes to the player who picked up
-and nobody else, through `tell` next to `announce` in `network.js`. A client
-draws one icon per tile, cycling the kinds every `ICON_CYCLE_MS`. The pickup
-grid's state and geometry live in `src/client/pickup-grid.js`. `loop.js` calls
-`updatePickupGrid` (`panels.js`) each frame to close the grid when the entity
-leaves reach or the tile empties, to move the selector, and to hand
+and nobody else, through `tell` next to `announce` in `network-host.js`. A
+client draws one icon per tile, cycling the kinds every `ICON_CYCLE_MS`. The
+pickup grid's state and geometry live in `src/client/pickup-grid.js`. `loop.js`
+calls `updatePickupGrid` (`panels.js`) each frame to close the grid when the
+entity leaves reach or the tile empties, to move the selector, and to hand
 `scene.pickupCells` to the renderer. While the grid is open, the look control
 and D-pad drive it, not the aim or movement.
 
