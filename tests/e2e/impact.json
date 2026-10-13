@@ -1,0 +1,80 @@
+[
+  {
+    "when": ["src/client/music", "src/shared/protocol.js"],
+    "specs": ["music.spec.ts", "music-shared.spec.ts"]
+  },
+  {
+    "when": [
+      "src/client/sfx",
+      "src/client/sound-events",
+      "src/client/ui-sounds",
+      "src/shared/sound.js"
+    ],
+    "specs": ["sfx.spec.ts", "sound-events.spec.ts"]
+  },
+  { "when": ["src/client/chatter"], "specs": ["chatter.spec.ts"] },
+  {
+    "when": [
+      "src/client/cursor",
+      "src/shared/reach.js",
+      "src/shared/interact-preview.js",
+      "src/shared/target.js"
+    ],
+    "specs": ["cursor.spec.ts", "reach.spec.ts"]
+  },
+  { "when": ["src/shared/placing.js"], "specs": ["placing.spec.ts"] },
+  {
+    "when": ["src/shared/mining.js"],
+    "specs": ["mining.spec.ts", "dropped-items.spec.ts"]
+  },
+  {
+    "when": [
+      "src/client/inventory-panel",
+      "src/shared/items.js",
+      "src/shared/held-item.js"
+    ],
+    "specs": [
+      "inventory-panel.spec.ts",
+      "pickup-grid.spec.ts",
+      "dropped-items.spec.ts"
+    ]
+  },
+  { "when": ["src/client/pickup-grid"], "specs": ["pickup-grid.spec.ts"] },
+  {
+    "when": [
+      "src/client/shop-panel",
+      "src/shared/shop.js",
+      "src/shared/npc.js"
+    ],
+    "specs": ["shopkeeper.spec.ts"]
+  },
+  {
+    "when": ["src/client/frame-stats", "src/client/terrain-diagnostics"],
+    "specs": ["frame-stats.spec.ts", "render-stats.spec.ts"]
+  },
+  {
+    "when": [
+      "src/client/chat-input",
+      "src/shared/chat.js",
+      "src/shared/speech.js"
+    ],
+    "specs": [
+      "speech-reveal.spec.ts",
+      "bubbles.spec.ts",
+      "typing-bubble.spec.ts"
+    ]
+  },
+  {
+    "when": ["src/client/offline", "public/js/sw-main.js"],
+    "specs": ["offline.spec.ts"]
+  },
+  { "when": ["src/shared/hearing-log.js"], "specs": ["hearing-log.spec.ts"] },
+  {
+    "when": ["src/client/stick-step"],
+    "specs": ["gamepad-layout.spec.ts", "sprint.spec.ts"]
+  },
+  {
+    "when": ["src/client/update-check", "src/client/build.js"],
+    "specs": ["build-notice.spec.ts"]
+  }
+]
