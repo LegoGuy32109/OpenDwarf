@@ -3,12 +3,10 @@
 // The host side of a session: it owns the world, validates every guest action,
 // and sends each guest its view.
 
-import { addPlayer, isSolid, removePlayer } from "../shared/world.js";
 import { build } from "./build.js";
-import { acceptMoveIntent } from "../shared/protocol.js";
 import { droppedEntries, droppedItems, inventoryOf } from "../shared/items.js";
 import { sellItems } from "../shared/shop.js";
-import { heldItem, miningEntries, stepMining } from "../shared/mining.js";
+import { heldItem, miningEntries } from "../shared/mining.js";
 import { chunkCoord, drainTileChanges } from "../shared/terrain.js";
 import {
   createPendingReveal,
@@ -26,18 +24,8 @@ import {
 import { entityPlayers, entityView } from "../shared/view.js";
 import { createSignaling } from "./signaling.js";
 import { createSnapshotSender } from "./snapshot-sender.js";
-import {
-  enableLocomotion,
-  moveEntity,
-  speedTilesPerSecond,
-} from "../shared/locomotion.js";
-import {
-  drainSounds,
-  recordSteps,
-  soundsFor,
-  sourceTile,
-} from "../shared/sound.js";
-import { createStamina, setSprint, stepStamina } from "../shared/stamina.js";
+import { drainSounds, soundsFor, sourceTile } from "../shared/sound.js";
+import { createStamina, setSprint } from "../shared/stamina.js";
 import { chatView } from "../shared/chat.js";
 import { createAttemptDeadline } from "./attempt-deadline.js";
 import {
@@ -48,7 +36,6 @@ import {
   PROTOCOL_VERSION,
 } from "../shared/wire.js";
 import { centerTile } from "../shared/locomotion.js";
-import { roomSpawnTile } from "../shared/spawn-room.js";
 import {
   deliver,
   gathered,
@@ -70,15 +57,14 @@ const MUSIC_BEAT_TICKS = 80;
 
 /**
  * @param {Scene} scene @param {string} session
- * @param {{running?:(id:string)=>boolean,musicPosition?:()=>{key:string,seconds:number}|null}} [sounds] `running` says whether the host's own entity is sprinting; `musicPosition` is where the host's music is in its track
+ * @param {{running?:(id:string)=>boolean,musicPosition?:()=>{key:string,seconds:number}|null,simulation?:ReturnType<typeof import("../shared/simulation.js").createSimulation>}} [sounds] `running` says whether the host's own entity is sprinting; `musicPosition` is where the host's music is in its track
  */
 export function startHost(scene, session, sounds = {}) {
   /** @type {Map<string,ReturnType<typeof createPeer>>} */
   const peers = new Map();
   let joinFailures = 0;
-  let spawnOrdinal = 0;
-  // Generated chunks appear later, so count the authored area before any exist.
-  const authoredChunks = scene.world.chunks.size;
+  const simulation = sounds.simulation;
+  if (!simulation) throw new Error("Hosting requires a simulation runner");
   /** The music cue of the track playing now, sent to each guest that joins (ADR 0009). @type {import('../shared/wire.js').MusicCue|null} */
   let musicCue = null;
   /** @type {ReturnType<typeof setTimeout>|null} */
@@ -113,14 +99,10 @@ export function startHost(scene, session, sounds = {}) {
   }
 
   /**
-   * The host's check of a sale: only in the room layout, where the shopkeeper
-   * stands. A guest names an item kind and a count, or all.
+   * The host's check of a sale to a shop placed by the world recipe. A guest names an item kind and a count, or all.
    * @param {string} id @param {unknown} request
    */
   function sellAt(id, request) {
-    if (scene.layout !== "room") {
-      return /** @type {const} */ ({ ok: false, reason: "no shop here" });
-    }
     return sellItems(scene.world, id, request);
   }
 
@@ -133,15 +115,6 @@ export function startHost(scene, session, sounds = {}) {
   }
 
   function tick() {
-    // Finished mining is handled in `completeMining`; the tile it wrote reaches
-    // each peer that can see it through its pending reveal.
-    stepMining(
-      scene.world,
-      (id) =>
-        id === scene.localId
-          ? seesFrom(scene.visibility.visible, scene.viewMode === "master")
-          : peers.get(id)?.sees(),
-    );
     const changes = drainTileChanges(scene.world);
     if (changes.length) {
       // Force the host's own sight to see through a mined tile.
@@ -160,10 +133,6 @@ export function startHost(scene, session, sounds = {}) {
         for (const connection of peers.values()) connection.music(beat);
       }
     }
-    recordSteps(
-      scene.world,
-      (id) => peers.get(id)?.sprinting() ?? sounds.running?.(id) ?? false,
-    );
     const events = drainSounds(scene.world);
     if (!events.length) return;
     for (const connection of peers.values()) connection.hear(events);
@@ -176,24 +145,6 @@ export function startHost(scene, session, sounds = {}) {
       });
       if (heard.length) scene.hearSounds(heard);
     }
-  }
-
-  function spawn() {
-    if (scene.layout === "room") return roomSpawnTile(++spawnOrdinal);
-    if (authoredChunks === 1 && spawnOrdinal < 8) {
-      const position = { x: 8 + spawnOrdinal, y: 7, z: 0 };
-      spawnOrdinal++;
-      return position;
-    }
-    const positions = [];
-    for (let y = 3; y <= 11; y++) {
-      for (let x = 3; x <= 12; x++) {
-        if (!isSolid(scene.world, x, y, 0)) positions.push({ x, y, z: 0 });
-      }
-    }
-    const position = positions[spawnOrdinal % positions.length];
-    spawnOrdinal++;
-    return position ?? { x: 7, y: 6, z: 0 };
   }
 
   /** @param {string} playerId */
@@ -226,15 +177,12 @@ export function startHost(scene, session, sounds = {}) {
     let lastInventory = "";
     /** The held item this peer was last told about. */
     let lastHeld = "";
-    let direction = { x: 0, y: 0 };
     /** The host tracks stamina, so a guest cannot sprint without it. */
     let stamina = createStamina();
     /** @type {ReturnType<typeof setTimeout>|null} */
     let departureTimer = null;
     /** @type {import('../shared/world.js').Player|null} */
     let rememberedPlayer = null;
-    /** @type {{dx:number,dy:number,sequence:number}[]} */
-    const pendingMoves = [];
     const timing = {
       filterMs: 0,
       encodeMs: 0,
@@ -308,29 +256,12 @@ export function startHost(scene, session, sounds = {}) {
       departureTimer = null;
       const established = scene.world.players[playerId];
       rememberedPlayer = established ?? rememberedPlayer;
-      removePlayer(scene.world, playerId);
-      direction = { x: 0, y: 0 };
+      simulation.leave(playerId);
       joined = false;
       if (established || !departedAt) departedAt = performance.now();
       scene.status = "A visitor left your world";
       if (established) announce(`${established.name || "A visitor"} left`);
       publish();
-    }
-
-    function drainMoves() {
-      while (pendingMoves.length) {
-        const intent = pendingMoves[0];
-        const result = acceptMoveIntent(
-          scene.world,
-          playerId,
-          intent,
-          lastSequence,
-        );
-        if (result.reason === "already moving") return;
-        pendingMoves.shift();
-        lastSequence = result.sequence;
-        publish();
-      }
     }
 
     /** @type {import('./host-messages.js').HostPeer} */
@@ -359,20 +290,37 @@ export function startHost(scene, session, sounds = {}) {
       },
       setInput(dx, dy, sequence, sprint) {
         lastSequence = sequence;
-        direction = { x: dx, y: dy };
         setSprint(stamina, sprint);
+        sounds.simulation?.enqueue(playerId, {
+          type: "input",
+          dx,
+          dy,
+          sequence,
+          sprint,
+        });
       },
       queueMove(move) {
-        pendingMoves.splice(0, pendingMoves.length, move);
-        drainMoves();
+        simulation.enqueue(
+          playerId,
+          { type: "move", ...move },
+          (/** @type {Record<string,unknown>} */ result) => {
+            if (typeof result.sequence === "number") {
+              lastSequence = result.sequence;
+            }
+            publish();
+          },
+        );
       },
       cancelMoves(sequence) {
-        pendingMoves.length = 0;
         lastSequence = sequence;
+        simulation.enqueue(playerId, { type: "cancel", sequence });
         publish();
       },
       setMode(next) {
         mode = next;
+        if (sounds.simulation) {
+          sounds.simulation.state(playerId).master = next === "master";
+        }
         resendTerrain();
         viewRevision++;
         sightRevision = 0;
@@ -385,6 +333,47 @@ export function startHost(scene, session, sounds = {}) {
     function handleMessage(message) {
       lastSeen = performance.now();
       if (!scene.world.players[playerId]) return;
+      if (
+        sounds.simulation &&
+        [
+          "mine",
+          "mine-cancel",
+          "place",
+          "hold",
+          "pickup",
+          "sell",
+          "message",
+          "typing",
+          "nick",
+        ].includes(String(message.type))
+      ) {
+        const before = scene.world.players[playerId]?.name ?? "";
+        sounds.simulation.enqueue(
+          playerId,
+          message,
+          (/** @type {Record<string,unknown>} */ result) => {
+            if (!scene.world.players[playerId]) return;
+            if (message.type === "nick") {
+              if (result.ok && result.name !== before) {
+                announce(`${before || "A visitor"} is now ${result.name}`);
+              }
+              hostPeer.reply({ type: "nick-result", result });
+            } else if (result.ok && typeof result.line === "string") {
+              tell(playerId, result.line);
+            } else if (
+              !result.ok &&
+              ["mine", "place", "pickup", "sell"].includes(String(message.type))
+            ) {
+              hostPeer.reply({
+                type: `${message.type}-result`,
+                reason: result.reason,
+              });
+            }
+            publish();
+          },
+        );
+        return;
+      }
       const handler = typeof message.type === "string"
         ? hostMessages.get(message.type)
         : undefined;
@@ -428,9 +417,7 @@ export function startHost(scene, session, sounds = {}) {
         lastInventory =
         lastHeld =
           "";
-      direction = { x: 0, y: 0 };
       stamina = createStamina();
-      pendingMoves.length = 0;
       viewRevision = sightRevision = 0;
       lastSight = "";
       resendTerrain();
@@ -481,7 +468,11 @@ export function startHost(scene, session, sounds = {}) {
             ...stamp(),
             ...view,
             reveal,
-            world: encodeWorld(view.world),
+            world: encodeWorld({
+              ...view.world,
+              shops: scene.world.shops,
+              limits: scene.world.limits,
+            }),
             chat: chatView(scene.world, playerId, chatBands),
             mode,
             playerId,
@@ -531,7 +522,7 @@ export function startHost(scene, session, sounds = {}) {
           const rejoined = Boolean(rememberedPlayer);
           if (rememberedPlayer && !scene.world.players[playerId]) {
             scene.world.players[playerId] = rememberedPlayer;
-          } else enableLocomotion(addPlayer(scene.world, playerId, spawn()));
+          } else simulation.join(playerId);
           announce(
             `${scene.world.players[playerId]?.name || "A visitor"} ${
               rejoined ? "rejoined" : "joined"
@@ -730,15 +721,7 @@ export function startHost(scene, session, sounds = {}) {
     function tickPeer() {
       sendMining();
       sendItems();
-      drainMoves();
-      moveEntity(
-        scene.world,
-        playerId,
-        direction.x,
-        direction.y,
-        speedTilesPerSecond(stamina.sprint),
-      );
-      stepStamina(stamina);
+      stamina = simulation.state(playerId).stamina;
       const player = scene.world.players[playerId];
       const position = player
         ? visibilityPosition(player, scene.world.tick)

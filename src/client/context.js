@@ -275,7 +275,8 @@ export function createContext() {
     lastInputSent: -100,
     lastTyping: false,
     lastPlayerZ: 0,
-    tickNpc: /** @type {(() => void)|null} */ (null),
+    simulation:
+      /** @type {ReturnType<typeof import("../shared/simulation.js").createSimulation>|null} */ (null),
 
     /** Fixed-step time not yet spent on world ticks, in milliseconds. */
     accumulator: 0,
@@ -316,7 +317,9 @@ export function typing(ctx) {
     scene.chatOpen && value.length > 0 && !value.startsWith("/");
   if (next === ctx.lastTyping) return;
   ctx.lastTyping = next;
-  setTyping(scene.world, scene.localId, next);
+  if (ctx.simulation) {
+    ctx.simulation.enqueue(scene.localId, { type: "typing", typing: next });
+  } else setTyping(scene.world, scene.localId, next);
   if (ctx.isAdmin) ctx.guest?.send({ type: "typing", typing: next });
   else ctx.host?.publish();
 }
@@ -338,6 +341,13 @@ function holdItem(ctx, kind) {
     ctx.guest?.send({ type: "hold", kind });
     return;
   }
+  if (ctx.simulation) {
+    ctx.simulation.enqueue(scene.localId, { type: "hold", kind }, (result) => {
+      if (!result.ok) flash(ctx, `Cannot hold: ${result.reason}`);
+      else ctx.host?.publish();
+    });
+    return;
+  }
   const result = setHeldItem(scene.world, scene.localId, kind);
   if (!result.ok) flash(ctx, `Cannot hold: ${result.reason}`);
   else ctx.host?.publish();
@@ -357,9 +367,20 @@ function sellRequest(ctx, request) {
     ctx.sfx.play(["sell"]);
     return;
   }
-  const result = scene.layout === "room"
-    ? sellItems(scene.world, scene.localId, request)
-    : { ok: /** @type {const} */ (false), reason: "no shop here" };
+  if (ctx.simulation) {
+    ctx.simulation.enqueue(
+      scene.localId,
+      { type: "sell", ...request },
+      (result) => {
+        if (result.ok) {
+          scene.systemLine(String(result.line));
+          ctx.sfx.play(["sell"]);
+        } else flash(ctx, `Cannot sell: ${result.reason}`);
+      },
+    );
+    return;
+  }
+  const result = sellItems(scene.world, scene.localId, request);
   if (result.ok) {
     scene.systemLine(result.line);
     ctx.sfx.play(["sell"]);

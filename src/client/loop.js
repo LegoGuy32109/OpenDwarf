@@ -24,8 +24,6 @@ import {
   masterViewTiles,
 } from "../shared/surface.js";
 import { terrainExtent } from "../shared/terrain.js";
-import { generateAround, generateInView } from "../shared/generation.js";
-import { createChunkUnloader } from "../shared/chunk-unload.js";
 import { chatView, receiveChat } from "../shared/chat.js";
 import { hearChat } from "../shared/hearing-log.js";
 import {
@@ -107,27 +105,14 @@ function move(ctx) {
   }
 }
 
-/** Per-context step state: the time of the last step and the chunk unloader. */
+/** Per-context pacing state: the time of the last step. */
 const stepState = new WeakMap();
 
 /** @param {Context} ctx */
 function stepStateOf(ctx) {
   let state = stepState.get(ctx);
   if (!state) {
-    // `?harness=1&unloadGraceMs=<n>` shortens the grace period for specs.
-    const params = new URL(location.href).searchParams;
-    const graceOverride = params.has("harness") && params.has("unloadGraceMs")
-      ? Number(params.get("unloadGraceMs"))
-      : NaN;
-    state = {
-      last: performance.now(),
-      lastUnload: 0,
-      unloader: createChunkUnloader(
-        Number.isFinite(graceOverride) && graceOverride >= 0
-          ? { graceMs: graceOverride }
-          : {},
-      ),
-    };
+    state = { last: performance.now() };
     stepState.set(ctx, state);
   }
   return state;
@@ -147,34 +132,38 @@ function stepWorld(ctx, now) {
   ctx.accumulator += catchUpMs(now - state.last, document.hidden);
   state.last = now;
   while (ctx.accumulator >= TICK_MS) {
-    advanceTicks(scene.world);
-    ctx.tickNpc?.();
-    ctx.host?.tick();
-    const made = generateAround(
-      scene.world,
-      Object.values(scene.world.players),
-    );
-    // The host's master view also needs the terrain its camera looks at.
-    const view = scene.viewMode === "master" && canvas.clientWidth > 0
-      ? masterViewTiles(
-        scene.camera,
-        canvas.clientWidth,
-        canvas.clientHeight,
-        scene.zoom,
-      )
-      : null;
-    if (view) generateInView(scene.world, view, 2 - made);
-    if (now - state.lastUnload >= 1000) {
-      state.lastUnload = now;
-      /** @type {{x:number,y:number}[]} */
-      const near = Object.values(scene.world.players);
-      // The host's own master view looks from its camera, not its player.
-      if (scene.viewMode === "master") {
-        near.push({ x: scene.camera.x / 64, y: scene.camera.y / 64 });
-      }
-      state.unloader.update(scene.world, near, now, view ? [view] : []);
+    if (ctx.simulation) {
+      const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
+        ? { x: 0, y: 0 }
+        : inputDirection(ctx);
+      ctx.pressed.clear();
+      ctx.simulation.input(scene.localId, direction, ctx.stamina.sprint);
+      const view = scene.viewMode === "master" && canvas.clientWidth > 0
+        ? masterViewTiles(
+          scene.camera,
+          canvas.clientWidth,
+          canvas.clientHeight,
+          scene.zoom,
+        )
+        : null;
+      ctx.simulation.interest(view ? [view] : []);
+      ctx.simulation.state(scene.localId).master = scene.viewMode === "master";
+      const local = scene.world.players[scene.localId];
+      const before = local
+        ? { x: centerTile(local.x), y: centerTile(local.y), z: local.z }
+        : null;
+      ctx.simulation.advanceTicks();
+      ctx.sounds.ownSteps(ctx.stamina.sprint);
+      ctx.host?.tick();
+      if (
+        local && before &&
+        (local.move || before.x !== centerTile(local.x) ||
+          before.y !== centerTile(local.y) || before.z !== local.z)
+      ) ctx.host?.publish();
+    } else {
+      advanceTicks(scene.world);
+      move(ctx);
     }
-    move(ctx);
     if (!ctx.isAdmin) {
       for (const player of Object.values(scene.world.players)) {
         scene.presentation.observe(player, scene.world.tick);

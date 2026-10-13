@@ -51,6 +51,28 @@ function submitChat(ctx) {
     if (ctx.isAdmin) ctx.guest?.send({ type: "nick", name });
     else {
       const before = scene.world.players[scene.localId]?.name ?? "";
+      if (ctx.simulation) {
+        ctx.simulation.enqueue(
+          scene.localId,
+          { type: "nick", name },
+          (result) => {
+            if (result.ok && result.name !== before) {
+              ctx.host?.announce(
+                nameChangeLine(before, String(result.name)),
+                scene.localId,
+              );
+            }
+            notify(
+              ctx,
+              result.ok
+                ? `Name set to ${result.name}`
+                : String(result.reason ?? "Name rejected"),
+            );
+            ctx.host?.publish();
+          },
+        );
+        return;
+      }
       const result = setNickname(scene.world, scene.localId, name);
       if (result.ok && result.name && result.name !== before) {
         ctx.host?.announce(
@@ -79,7 +101,13 @@ function submitChat(ctx) {
     notify(ctx, "Unknown command");
     return;
   }
-  submitMessage(scene.world, scene.localId, text);
+  if (ctx.simulation) {
+    ctx.simulation.enqueue(
+      scene.localId,
+      { type: "message", text },
+      () => ctx.host?.publish(),
+    );
+  } else submitMessage(scene.world, scene.localId, text);
   if (ctx.isAdmin) ctx.guest?.send({ type: "message", text });
   else ctx.host?.publish();
 }

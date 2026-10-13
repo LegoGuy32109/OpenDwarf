@@ -84,7 +84,7 @@ export const hostMessages = new Map([
       peer.scene.world,
       peer.playerId,
       tileOf(message),
-      reservedTiles(peer.scene.layout),
+      reservedTiles(peer.scene.world),
       peer.sees(),
     );
     if (!result.ok) {

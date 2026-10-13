@@ -350,6 +350,8 @@ export function joinWorld(scene, session) {
         scene.presentation.observe(player, snapshot.tick);
       }
     }
+    scene.world.shops = snapshot.shops ?? [];
+    scene.world.limits = snapshot.limits;
     scene.viewMode = incomingMode;
     scene.visibility = visibility;
     scene.localId = playerId;

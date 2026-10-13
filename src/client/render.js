@@ -17,7 +17,6 @@ import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
 import { CURSOR_ICON_SIZE, CURSOR_OUTLINE, localCursor } from "./cursor.js";
 import { DECAL_FRAMES, decalFrame } from "../shared/mining.js";
 import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
-import { SHOP_TILE } from "../shared/shop.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
 import { drawUi } from "./ui-draw.js";
 import { viewMotionOpacity } from "../shared/view.js";
@@ -841,19 +840,12 @@ export async function createRenderer(canvas) {
         /** @type {[number,number,number,number]} */ ([...tint, visible]),
       );
     }
-    // The shopkeeper: a gold-tinted dwarf on the reserved tile, in the room layout.
-    const shopkeeper = scene.layout === "room" &&
-        scene.viewZ === SHOP_TILE.z &&
-        (scene.viewMode === "master" ||
-          tileVisibility(
-              scene.visibility,
-              SHOP_TILE.x,
-              SHOP_TILE.y,
-              SHOP_TILE.z,
-            ) === "visible")
-      ? SHOP_TILE
-      : null;
-    if (shopkeeper) {
+    const shopkeepers = (scene.world.shops ?? []).filter((at) =>
+      scene.viewZ === at.z &&
+      (scene.viewMode === "master" ||
+        tileVisibility(scene.visibility, at.x, at.y, at.z) === "visible")
+    );
+    for (const shopkeeper of shopkeepers) {
       quad(
         textures.sprite,
         false,
@@ -987,7 +979,7 @@ export async function createRenderer(canvas) {
         scale,
       );
     }
-    if (shopkeeper) {
+    for (const shopkeeper of shopkeepers) {
       text(
         "Shopkeeper",
         Math.round(((shopkeeper.x + 0.5) * TILE - cameraX) * zoom + width / 2) -

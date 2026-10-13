@@ -24,10 +24,9 @@ import { localCursor } from "./cursor.js";
 /** @typedef {import('./context.js').Context} Context */
 
 /** Expose `globalThis.__od` when the page loads with `?harness`. @param {Context} ctx @param {Awaited<ReturnType<typeof import('./render.js').createRenderer>>|null} [renderer] */
-export function exposeHarness(ctx, renderer = null) {
-  if (!new URL(location.href).searchParams.has("harness")) return;
+export function createHarnessApi(ctx, renderer = null) {
   const { scene, ui } = ctx;
-  /** @type {{__od?:unknown}} */ (globalThis).__od = {
+  return {
     scene,
     /** What the renderer drew in the last frame (`renderer.stats`), or null without a renderer. */
     renderStats: () => renderer ? { ...renderer.stats } : null,
@@ -85,12 +84,18 @@ export function exposeHarness(ctx, renderer = null) {
     }),
     /** Stop and remove the corner NPC, for specs that work on the tiles it walks. */
     removeNpc: () => {
-      ctx.tickNpc = null;
       removePlayer(scene.world, "npc-corner");
     },
     /** @param {number} dx @param {number} dy */
     startMove: (dx, dy) =>
-      startMove(scene.world, scene.localId, dx, dy, ++ctx.sequence),
+      ctx.simulation
+        ? ctx.simulation.enqueue(scene.localId, {
+          type: "move",
+          dx,
+          dy,
+          sequence: ++ctx.sequence,
+        })
+        : startMove(scene.world, scene.localId, dx, dy, ++ctx.sequence),
     /** @param {string} id */
     visualPosition: (id) => {
       const player = scene.world.players[id];
@@ -163,4 +168,13 @@ export function exposeHarness(ctx, renderer = null) {
         : null;
     },
   };
+}
+
+/** @param {Context} ctx @param {Awaited<ReturnType<typeof import('./render.js').createRenderer>>|null} [renderer] */
+export function exposeHarness(ctx, renderer = null) {
+  if (!new URL(location.href).searchParams.has("harness")) return;
+  /** @type {{__od?:unknown}} */ (globalThis).__od = createHarnessApi(
+    ctx,
+    renderer,
+  );
 }

@@ -7,18 +7,10 @@
  * WebRTC and the world sync; this file wires them to the shared `ctx`.
  */
 
-import {
-  createChunkGenerator,
-  generateAround,
-  worldSeedFromParams,
-} from "../shared/generation.js";
-import { createCornerNpc } from "../shared/npc.js";
-import { NPC_ORIGIN } from "../shared/spawn-room.js";
 import { build } from "./build.js";
 import { startUpdateCheck } from "./update-check.js";
 import { isOffline } from "./offline.js";
 import { joinWorld, startHost } from "./network.js";
-import { pinLoadedChunks } from "../shared/terrain.js";
 import { frameLine, spikeMetrics, summaryMetrics } from "./frame-stats.js";
 import { rememberedLine, worldTerrainLine } from "./terrain-diagnostics.js";
 
@@ -105,24 +97,14 @@ async function loadQr(ctx, url, renderer) {
 export function startHosting(ctx, renderer) {
   const { scene, ui } = ctx;
   scene.sessionId = crypto.randomUUID();
-  ctx.tickNpc = scene.layout === "room"
-    ? createCornerNpc(scene.world, NPC_ORIGIN)
-    : createCornerNpc(scene.world);
   ctx.host = startHost(scene, scene.sessionId, {
+    simulation: ctx.simulation ?? undefined,
     running: (id) => id === scene.localId && ctx.stamina.sprint,
     musicPosition: () => ctx.music.position(),
   });
   // The host's player is the conductor; every guest hears the track it starts.
   // A tab that joins another world follows that world's cue instead.
   if (!ctx.joinRoute) ctx.music.onTrackStart((track) => ctx.host?.cue(track));
-  // Only the host generates terrain. Every world shares one seed for now;
-  // `?seed=` replays another world for tests.
-  scene.world.generateChunk = createChunkGenerator(
-    worldSeedFromParams(new URL(location.href).searchParams),
-  );
-  // Everything built so far, the authored chunks, never unloads.
-  pinLoadedChunks(scene.world);
-  generateAround(scene.world, Object.values(scene.world.players), 9);
   // With no network the world is single player: no join link, QR code, or update check. A reload
   // with the network back starts them (docs/features/offline.md).
   ui.offline = isOffline();

@@ -10,12 +10,14 @@
 
 import { addPlayer } from "../shared/world.js";
 import { enableLocomotion } from "../shared/locomotion.js";
-import { createSpawnRoomWorld, roomSpawnTile } from "../shared/spawn-room.js";
+import { authoredRecipe, roomRecipe } from "../shared/world-recipes.js";
+import { createSimulation } from "../shared/simulation.js";
 import { worldSeedFromParams } from "../shared/generation.js";
 import { createRenderer } from "./render.js";
 import { createContext } from "./context.js";
 import { createInput } from "./input.js";
 import { startLoop } from "./loop.js";
+import { bindTestDriver } from "./test-driver.js";
 import { exposeHarness } from "./harness.js";
 import { registerWorker } from "./offline.js";
 import { build } from "./build.js";
@@ -28,26 +30,39 @@ import {
   startTelemetry,
 } from "./session.js";
 
-export async function startApp() {
+/** @param {{worldDefinition?:import("../shared/world-builder.js").WorldDefinition}} [startup] */
+export async function startApp(startup = {}) {
   const ctx = createContext();
   const { scene, canvas } = ctx;
+  const mediaRandom =
+    /** @type {{__musicRandom?:number}} */ (globalThis).__musicRandom;
+  if (
+    new URL(location.href).searchParams.has("harness") &&
+    typeof mediaRandom === "number"
+  ) ctx.music.setRandom(() => mediaRandom);
   bindSafeArea(ctx);
   if (!ctx.isAdmin) {
-    scene.world = scene.layout === "room"
-      ? createSpawnRoomWorld(
-        worldSeedFromParams(new URL(location.href).searchParams),
-      )
-      : (await import("../shared/authored-terrain.js")).createAuthoredWorld(
-        new URL(location.href).searchParams.get("world") === "32" ? 32 : 16,
-      );
-  }
-  enableLocomotion(
-    addPlayer(
-      scene.world,
-      "self",
-      scene.layout === "room" && !ctx.isAdmin ? roomSpawnTile(0) : undefined,
-    ),
-  );
+    const params = new URL(location.href).searchParams;
+    const setup = startup.worldDefinition ??
+      (params.has("harness")
+        ? /** @type {{__worldDefinition?:import('../shared/world-builder.js').WorldDefinition}} */ (globalThis)
+          .__worldDefinition
+        : undefined);
+    const seed = worldSeedFromParams(params);
+    ctx.simulation = createSimulation(
+      setup ??
+        (scene.layout === "room"
+          ? roomRecipe(seed, { npc: !params.has("harness") })
+          : authoredRecipe(params.get("world") === "32" ? 32 : 16, {
+            npc: false,
+            generator: true,
+            seed,
+          })),
+    );
+    scene.world = ctx.simulation.world;
+    ctx.stamina = ctx.simulation.state("self").stamina;
+    ctx.simulation.join("self");
+  } else enableLocomotion(addPlayer(scene.world, "self"));
   const input = createInput(ctx);
   input.bind();
   const renderer = ctx.isSynthetic ? null : await createRenderer(canvas);
@@ -71,6 +86,7 @@ export async function startApp() {
   ctx.sfx.start();
   startLoop(ctx, renderer, input);
   exposeHarness(ctx, renderer);
+  bindTestDriver(ctx, renderer);
   // After the first frame is on its way: the worker never delays the game.
   void registerWorker(build);
 }

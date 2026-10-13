@@ -30,7 +30,9 @@ function uiView(ctx) {
     ? scene.notice.text
     : scene.status;
   const players =
-    Object.keys(scene.world.players).filter((id) => id !== "npc-corner").length;
+    Object.values(scene.world.players).filter((player) =>
+      !player.npc && player.id !== "npc-corner"
+    ).length;
   const touch = Boolean(ctx.touchQuery?.matches);
   return {
     width: ctx.canvas.clientWidth,

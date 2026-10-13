@@ -30,8 +30,11 @@ import { pickupGridStacks } from "./panels.js";
 
 /** Whether the highlighted tile holds the shopkeeper. @param {Context} ctx @param {{x:number,y:number,z:number}} target */
 function isShopkeeper(ctx, target) {
-  return ctx.scene.layout === "room" && target.x === SHOP_TILE.x &&
-    target.y === SHOP_TILE.y && target.z === SHOP_TILE.z;
+  const shops = ctx.scene.world.shops ??
+    (ctx.scene.layout === "room" ? [SHOP_TILE] : []);
+  return shops.some((at) =>
+    target.x === at.x && target.y === at.y && target.z === at.z
+  );
 }
 
 /** Pick up the stack of one kind from a tile. The host checks reach and who asked first. @param {Context} ctx @param {{x:number,y:number,z:number}} target @param {string} kind */
@@ -40,6 +43,19 @@ function pickUpAt(ctx, target, kind) {
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "pickup", ...target, kind });
     ctx.sounds.own(["pickup"], target);
+    return;
+  }
+  if (ctx.simulation) {
+    ctx.simulation.enqueue(
+      scene.localId,
+      { type: "pickup", ...target, kind },
+      (result) => {
+        if (result.ok) {
+          scene.systemLine(String(result.line));
+          ctx.sounds.own(["pickup"], target);
+        } else flash(ctx, `Cannot pick up: ${result.reason}`);
+      },
+    );
     return;
   }
   const result = pickUp(scene.world, scene.localId, target, kind);
@@ -126,11 +142,22 @@ export function interact(ctx) {
       ctx.guest?.send({ type: "place", ...target });
       ctx.sounds.own(["place", "stone"], target);
     } else {
+      if (ctx.simulation) {
+        ctx.simulation.enqueue(
+          scene.localId,
+          { type: "place", ...target },
+          (result) => {
+            if (result.ok) ctx.sounds.own(["place", "stone"], target);
+            else flash(ctx, String(result.reason));
+          },
+        );
+        return;
+      }
       const result = placeStone(
         scene.world,
         scene.localId,
         target,
-        reservedTiles(scene.layout),
+        reservedTiles(scene.world),
         ownSees(ctx),
       );
       if (result.ok) ctx.sounds.own(["place", "stone"], target);
@@ -140,6 +167,16 @@ export function interact(ctx) {
   }
   if (ctx.isAdmin) ctx.guest?.send({ type: "mine", ...target });
   else {
+    if (ctx.simulation) {
+      ctx.simulation.enqueue(
+        scene.localId,
+        { type: "mine", ...target },
+        (result) => {
+          if (!result.ok) flash(ctx, `Cannot mine: ${result.reason}`);
+        },
+      );
+      return;
+    }
     const result = startMining(
       scene.world,
       scene.localId,
@@ -170,5 +207,7 @@ function isMining(ctx, tile) {
 /** Stop the local player's mining. The host also cancels it on its own checks. @param {Context} ctx */
 function stopMining(ctx) {
   if (ctx.isAdmin) ctx.guest?.send({ type: "mine-cancel" });
-  else cancelMining(ctx.scene.world, ctx.scene.localId);
+  else if (ctx.simulation) {
+    ctx.simulation.enqueue(ctx.scene.localId, { type: "mine-cancel" });
+  } else cancelMining(ctx.scene.world, ctx.scene.localId);
 }
