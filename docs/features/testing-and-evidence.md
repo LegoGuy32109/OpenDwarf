@@ -14,10 +14,10 @@ host, two joining tabs, and each tab's view of remote movement on this machine.
 The shared tests also replay delayed and reordered snapshots with a fixed
 schedule. A system Chromium installation is used locally when present.
 
-## Tests for a diff
+## Unit tests for a diff
 
 ```sh
-deno task test:changed [--base main] [--e2e]
+deno task test:changed [--base main]
 ```
 
 The task runs `deno test --changed=<base>` (default `main`) over the unit test
@@ -25,16 +25,14 @@ folders. Deno follows each test's module graph and runs only the tests that
 reach a file changed in git. It cannot see a file a test reads at run time, such
 as the Markdown the link check scans or the SQL the migration tests load, so
 `tests/lint` and the tests that read files always run too. A doc-only change
-runs only that set.
+runs only that set. `deno task verify` and the pre-push hook still run every
+unit test.
 
-A browser spec imports almost nothing from `src/`, and Playwright does not run
-through `deno test`, so `--changed` cannot choose specs. With `--e2e`, the task
-chooses them from `tests/e2e/impact.json`, which maps source prefixes to specs,
-and from any changed spec. A changed `.js`, `.ts`, `.html` or `.css` file under
-`src/`, `public/`, `tests/e2e/` or `main.ts` with no rule runs every spec, and
-so does a change to `deno.json`, `deno.lock` or `playwright.config.ts`. Add a
-rule when a feature gains its own spec. `deno task verify` and the pre-push hook
-still run every unit test.
+Browser specs are not chosen by diff. They import almost nothing from `src/`, so
+no import graph links client code to a spec, and Playwright's `--only-changed`
+has the same limit. CI splits them across four runners with `--shard=i/4`, one
+worker each, and a `browser` job passes only when all four do.
+`deno task e2e --shard=1/4` runs one quarter locally.
 
 ## Group stress run
 

@@ -22,8 +22,14 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno task verify
-  browser:
+  # Four runners split the specs. Each keeps one worker, since the specs that
+  # count frames or time a walk fail under load.
+  browser-shard:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
       # With these set, the e2e config starts a second shell for the real
       # Xirsys spec.
@@ -36,10 +42,17 @@ jobs:
         with:
           deno-version: v2.x
       - run: deno run -A npm:playwright@1.63.0 install --with-deps chromium
-      - run: deno task e2e
+      - run: deno task e2e --shard=${{ matrix.shard }}/4
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.shard }}
           path: exports/playwright-results
           retention-days: 7
+  # One check under the old name, so a required `browser` check still resolves.
+  browser:
+    needs: browser-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.browser-shard.result }}" = success
