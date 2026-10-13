@@ -7,12 +7,13 @@ deno task hooks
 ```
 
 `verify` checks formatting, lint, types, and deterministic world tests. The Git
-pre-push hook runs the same task. CI also runs Playwright in Chromium. The
-Playwright tests compare desktop and phone screenshots and exercise the WebRTC
-connection. Run `deno task e2e --grep 'host and two joining tabs'` to check one
-host, two joining tabs, and each tab's view of remote movement on this machine.
-The shared tests also replay delayed and reordered snapshots with a fixed
-schedule. A system Chromium installation is used locally when present.
+pre-push hook and the merge gate run the same task. A nightly CI run also runs
+Playwright in Chromium. The Playwright tests compare desktop and phone
+screenshots and exercise the WebRTC connection. Run
+`deno task e2e --grep 'host and two joining tabs'` to check one host, two
+joining tabs, and each tab's view of remote movement on this machine. The shared
+tests also replay delayed and reordered snapshots with a fixed schedule. A
+system Chromium installation is used locally when present.
 
 ## Unit tests for a diff
 
@@ -30,8 +31,10 @@ unit test.
 
 Browser specs are not chosen by diff. They import almost nothing from `src/`, so
 no import graph links client code to a spec, and Playwright's `--only-changed`
-has the same limit. CI splits them across four runners with `--shard=i/4`, one
-worker each, and a `browser` job passes only when all four do.
+has the same limit. `.github/workflows/e2e.yml` splits them across four runners
+with `--shard=i/4`, one worker each. It runs nightly on main, by hand, and on a
+pull request with the `e2e` label, and it blocks no merge: the merge gate in
+`ci.yml` is `deno task verify`. A failed nightly run opens or updates an issue.
 `deno task e2e --shard=1/4` runs one quarter locally.
 
 ## Group stress run
