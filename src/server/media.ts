@@ -64,6 +64,12 @@ export function byteRange(
   return start <= end && start < size ? { start, end } : null;
 }
 
+function rangeBounds(range: ReturnType<typeof byteRange>, size: number) {
+  const start = range?.start ?? 0;
+  const end = range?.end ?? size - 1;
+  return { start, end };
+}
+
 async function serveFile(
   dir: URL,
   key: string,
@@ -91,8 +97,7 @@ async function serveFile(
     headers.set("content-range", `bytes */${size}`);
     return new Response(null, { status: 416, headers });
   }
-  const start = range?.start ?? 0;
-  const end = range?.end ?? size - 1;
+  const { start, end } = rangeBounds(range, size);
   headers.set("content-length", String(end - start + 1));
   if (range) headers.set("content-range", `bytes ${start}-${end}/${size}`);
   const status = range ? 206 : 200;

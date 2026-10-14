@@ -22,6 +22,29 @@ function isStandalone(/** @type {Context} */ ctx) {
     Boolean(ctx.standaloneQuery?.matches);
 }
 
+/** @param {Context} ctx */
+function menuView(ctx) {
+  const { scene, ui } = ctx;
+  return scene.menu
+    ? {
+      open: true,
+      page: scene.menuPage,
+      scale: scene.uiScale,
+      textSize: scene.textSize,
+      sizes: TEXT_SIZES,
+      voices: ctx.chatter.level,
+      voiceLevels: VOICES_LEVELS,
+      music: ctx.music.level,
+      musicLevels: MUSIC_LEVELS,
+      effects: ctx.sfx.level,
+      effectsLevels: EFFECTS_LEVELS,
+      mode: scene.inputMode,
+      build: ui.offline ? `${build.line}  OFFLINE` : build.line,
+      audio: audioLine(ctx),
+    }
+    : undefined;
+}
+
 /** What the layout needs to know about the game right now. @param {Context} ctx @returns {import('./ui-types.js').UiView} */
 function uiView(ctx) {
   const { scene, ui, bag, shop, stamina } = ctx;
@@ -79,24 +102,7 @@ function uiView(ctx) {
         shift: ui.chatShift,
       }
       : undefined,
-    menu: scene.menu
-      ? {
-        open: true,
-        page: scene.menuPage,
-        scale: scene.uiScale,
-        textSize: scene.textSize,
-        sizes: TEXT_SIZES,
-        voices: ctx.chatter.level,
-        voiceLevels: VOICES_LEVELS,
-        music: ctx.music.level,
-        musicLevels: MUSIC_LEVELS,
-        effects: ctx.sfx.level,
-        effectsLevels: EFFECTS_LEVELS,
-        mode: scene.inputMode,
-        build: ui.offline ? `${build.line}  OFFLINE` : build.line,
-        audio: audioLine(ctx),
-      }
-      : undefined,
+    menu: menuView(ctx),
     log: {
       open: ui.logOpen,
       lines: scene.hearingLog.lines,

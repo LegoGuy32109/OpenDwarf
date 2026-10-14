@@ -225,14 +225,69 @@ export function createChatter(options = {}) {
     });
   }
 
-  /**
-   * Play what is due. Call it every frame with the feed, the listener's id and
-   * position, and `performance.now()`.
-   * @param {DisplayChatRecord[]} feed
-   * @param {string} localId
-   * @param {{x:number,y:number}|undefined} listener
-   * @param {number} now
-   */
+  /** @param {DisplayChatRecord} record @param {number} distance @param {string} localId @param {number} now @param {boolean} mute */
+  function playText(record, distance, localId, now, mute) {
+    if (record.text === undefined) return;
+    const bubbles = record.bubbles?.length ? record.bubbles : [{
+      text: record.text,
+      expiresTick: record.expiresTick,
+      startAt: /** @type {number|undefined} */ (undefined),
+    }];
+    for (const bubble of bubbles) {
+      const key = messageKey(
+        record.id,
+        /** @type {{startTick?:number}} */ (bubble).startTick ??
+          bubble.startAt,
+      ) ?? `${record.id}:${bubble.expiresTick}:${bubble.text}`;
+      if (heard.has(key)) continue;
+      const startAt = bubble.startAt ?? now;
+      if (startAt > now) continue;
+      markHeard(key);
+      if (mute) continue;
+      const voice = voiceFromId(record.id);
+      const offset = (now - startAt) / 1000;
+      if (offset > speechSchedule(bubble.text, voice).duration) continue;
+      play({
+        speaker: record.id,
+        text: bubble.text,
+        length: bubble.text.length,
+        syllables: 0,
+        distance,
+        gain: record.id === localId ? 1 : chatterDistanceGain(distance),
+        murmur: false,
+        offset,
+      });
+    }
+  }
+
+  /** @param {DisplayChatRecord} record @param {number} distance @param {number} now @param {boolean} mute */
+  function playMurmur(record, distance, now, mute) {
+    if (!record.syllables) return;
+    const key = messageKey(record.id, record.startTick ?? record.startAt) ??
+      `${record.id}:${record.expiresTick}:murmur:${record.syllables}`;
+    if (heard.has(key)) return;
+    const startAt = record.startAt ?? now;
+    if (startAt > now) return;
+    markHeard(key);
+    if (mute) return;
+    const text = murmurText(record.syllables);
+    const offset = (now - startAt) / 1000;
+    if (offset > speechSchedule(text, voiceFromId(record.id)).duration) {
+      return;
+    }
+    play({
+      speaker: record.id,
+      text,
+      length: 0,
+      syllables: record.syllables,
+      distance,
+      gain: MURMUR_GAIN,
+      murmur: true,
+      offset,
+    });
+  }
+
+  /** Play due speech and mark muted records as heard. @param {DisplayChatRecord[]} feed @param {string} localId @param {{x:number,y:number}|undefined} listener @param {number} now */
   function update(feed, localId, listener, now) {
     const mute = level === "off" || hidden() || !audio;
     if (hidden()) stopAll();
@@ -241,59 +296,9 @@ export function createChatter(options = {}) {
         ? 0
         : Math.hypot(listener.x - record.x, listener.y - record.y);
       if (record.text !== undefined) {
-        const bubbles = record.bubbles?.length ? record.bubbles : [{
-          text: record.text,
-          expiresTick: record.expiresTick,
-          startAt: /** @type {number|undefined} */ (undefined),
-        }];
-        for (const bubble of bubbles) {
-          const key = messageKey(
-            record.id,
-            /** @type {{startTick?:number}} */ (bubble).startTick ??
-              bubble.startAt,
-          ) ?? `${record.id}:${bubble.expiresTick}:${bubble.text}`;
-          if (heard.has(key)) continue;
-          const startAt = bubble.startAt ?? now;
-          if (startAt > now) continue;
-          markHeard(key);
-          if (mute) continue;
-          const voice = voiceFromId(record.id);
-          const offset = (now - startAt) / 1000;
-          if (offset > speechSchedule(bubble.text, voice).duration) continue;
-          play({
-            speaker: record.id,
-            text: bubble.text,
-            length: bubble.text.length,
-            syllables: 0,
-            distance,
-            gain: record.id === localId ? 1 : chatterDistanceGain(distance),
-            murmur: false,
-            offset,
-          });
-        }
+        playText(record, distance, localId, now, mute);
       } else if (record.talking && record.syllables) {
-        const key = messageKey(record.id, record.startTick ?? record.startAt) ??
-          `${record.id}:${record.expiresTick}:murmur:${record.syllables}`;
-        if (heard.has(key)) continue;
-        const startAt = record.startAt ?? now;
-        if (startAt > now) continue;
-        markHeard(key);
-        if (mute) continue;
-        const text = murmurText(record.syllables);
-        const offset = (now - startAt) / 1000;
-        if (offset > speechSchedule(text, voiceFromId(record.id)).duration) {
-          continue;
-        }
-        play({
-          speaker: record.id,
-          text,
-          length: 0,
-          syllables: record.syllables,
-          distance,
-          gain: MURMUR_GAIN,
-          murmur: true,
-          offset,
-        });
+        playMurmur(record, distance, now, mute);
       }
     }
   }

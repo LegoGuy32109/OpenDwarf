@@ -597,6 +597,16 @@ function drawRound(paint, element, ts, down) {
   const on = Boolean(element.on);
   // A see-through face (white at 10%) inside a solid border ring; the icon
   // draws at full opacity on top.
+  const { face, edge, ink } = roundColors(locked, on, down);
+  const y = cy + (down ? 2 * ts : 0);
+  const border = 2 * cell;
+  disc(paint, cx, y, r - border, face, cell);
+  ring(paint, cx, y, r, border, edge, cell);
+  roundIcon(paint, element, ts, down, ink);
+}
+
+/** @param {boolean} locked @param {boolean} on @param {boolean} down */
+function roundColors(locked, on, down) {
   const face = locked
     ? rgb(0x6b7076, 0.3)
     : on
@@ -606,10 +616,13 @@ function drawRound(paint, element, ts, down) {
     : rgb(0xffffff, 0.1);
   const edge = locked ? rgb(0x5a5f65) : on ? rgb(0xe4a34a) : rgb(0xd8dbde);
   const ink = locked ? rgb(0x8d9195) : on ? PALETTE.white : PALETTE.cream;
-  const y = cy + (down ? 2 * ts : 0);
-  const border = 2 * cell;
-  disc(paint, cx, y, r - border, face, cell);
-  ring(paint, cx, y, r, border, edge, cell);
+  return { face, edge, ink };
+}
+
+/** @param {Painter} paint @param {UiElement} element @param {number} ts @param {boolean} down @param {Color} ink */
+function roundIcon(paint, element, ts, down, ink) {
+  const cx = element.cx ?? 0, cy = element.cy ?? 0, r = element.r ?? 0;
+  const locked = Boolean(element.locked);
   const oy = down ? 2 * ts : 0;
   if (element.glyph === "item" && element.item) {
     const size = 16 * Math.max(1, Math.round(r * 1.1 / (16 * ts))) * ts;
@@ -621,18 +634,7 @@ function drawRound(paint, element, ts, down) {
       locked ? 0.6 : 1,
     );
   } else if (element.glyph === "sprint") {
-    bitmap(paint, "sprint", cx, cy - 4 * ts + oy, r * 0.9, ink);
-    const w = r * 1.2;
-    const y = cy + r * 0.45 + oy;
-    paint.rect(cx - w / 2, y, w, 4 * ts, rgb(0x282b2f, 0.2));
-    const fill = Math.max(0, Math.min(1, element.fill ?? 0));
-    paint.rect(
-      cx - w / 2,
-      y,
-      w * fill,
-      4 * ts,
-      on ? PALETTE.white : locked ? rgb(0xe4a34a) : rgb(0x2f8f4e),
-    );
+    sprintGlyph(paint, element, ts, oy, ink);
   } else if (element.glyph) {
     bitmap(paint, element.glyph, cx, cy + oy, r * 0.9, ink);
   } else if (element.text) {
@@ -645,6 +647,24 @@ function drawRound(paint, element, ts, down) {
       ink,
     );
   }
+}
+
+/** @param {Painter} paint @param {UiElement} element @param {number} ts @param {number} oy @param {Color} ink */
+function sprintGlyph(paint, element, ts, oy, ink) {
+  const cx = element.cx ?? 0, cy = element.cy ?? 0, r = element.r ?? 0;
+  const on = Boolean(element.on), locked = Boolean(element.locked);
+  bitmap(paint, "sprint", cx, cy - 4 * ts + oy, r * 0.9, ink);
+  const w = r * 1.2;
+  const y = cy + r * 0.45 + oy;
+  paint.rect(cx - w / 2, y, w, 4 * ts, rgb(0x282b2f, 0.2));
+  const fill = Math.max(0, Math.min(1, element.fill ?? 0));
+  paint.rect(
+    cx - w / 2,
+    y,
+    w * fill,
+    4 * ts,
+    on ? PALETTE.white : locked ? rgb(0xe4a34a) : rgb(0x2f8f4e),
+  );
 }
 
 /**

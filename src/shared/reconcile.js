@@ -41,6 +41,122 @@ function atLocalTick(player, hostTick, localTick) {
   return { ...player, move, viewMotion };
 }
 
+/** @param {Player} existing @param {Player} incoming */
+function keepPosition(existing, incoming) {
+  return {
+    ...incoming,
+    x: existing.x,
+    y: existing.y,
+    z: existing.z,
+    move: existing.move,
+  };
+}
+
+/** @param {Player} existing @param {Player} incoming */
+function matchingStep(existing, incoming) {
+  if (sameMove(existing.move, incoming.move)) return true;
+  if (!existing.move && !incoming.move) return sameTile(existing, incoming);
+  if (existing.move && !incoming.move) {
+    return sameTile(existing.move.target, incoming);
+  }
+  return !existing.move && !!incoming.move &&
+    sameTile(existing, incoming.move.target);
+}
+
+/** @param {Player} player */
+function idle(player) {
+  return !player.move && Math.hypot(player.vx ?? 0, player.vy ?? 0) < 0.015;
+}
+
+/** @param {Player} existing @param {Player} incoming */
+function keepFreePrediction(existing, incoming) {
+  const gap = Math.hypot(existing.x - incoming.x, existing.y - incoming.y);
+  if (
+    idle(existing) && idle(incoming) &&
+    (gap > 0.000001 || existing.z !== incoming.z)
+  ) return false;
+  const sameElevation = existing.z === incoming.z ||
+    (existing.move && incoming.move &&
+      existing.move.target.z === incoming.move.target.z);
+  return gap < 0.4 && sameElevation;
+}
+
+/** @param {Player} existing @param {Player} incoming @param {number} latest */
+function pendingFollowsHost(existing, incoming, latest) {
+  const hostTarget = incoming.move?.target ?? incoming;
+  const predictedOrigin = existing.move?.origin ?? existing;
+  return (
+    existing.move?.sequence === latest && sameTile(predictedOrigin, hostTarget)
+  );
+}
+
+/** @param {Player} existing @param {Player} incoming @param {number} acknowledged @param {number} latest */
+function keepLocalStep(existing, incoming, acknowledged, latest) {
+  if (matchingStep(existing, incoming)) return true;
+  if (latest !== acknowledged + 1) return false;
+  if (pendingFollowsHost(existing, incoming, latest)) return true;
+  return !existing.move && !incoming.move && existing.z === incoming.z &&
+    Math.abs(existing.x - incoming.x) <= 1 &&
+    Math.abs(existing.y - incoming.y) <= 1;
+}
+
+/** @param {Player} existing @param {Player} incoming @param {number} tick */
+function keepRemoteStep(existing, incoming, tick) {
+  if (sameMove(existing.move, incoming.move)) return true;
+  return !!existing.move && !incoming.move &&
+    sameTile(existing.move.target, incoming) &&
+    tick < existing.move.startTick + existing.move.durationTicks;
+}
+
+/** @typedef {{localTick:number,hostTick:number,acknowledged:number,latest:number,localId:string}} MergeClock */
+/** @param {Player|undefined} existing @param {Player} incoming @param {MergeClock} clock @param {boolean} local */
+function mergePlayer(existing, incoming, clock, local) {
+  if (incoming.free) return mergeFreePlayer(existing, incoming, local);
+  if (!existing) {
+    return {
+      player: atLocalTick(incoming, clock.hostTick, clock.localTick),
+      corrected: false,
+    };
+  }
+  if (local) {
+    if (keepLocalStep(existing, incoming, clock.acknowledged, clock.latest)) {
+      return { player: keepPosition(existing, incoming), corrected: false };
+    }
+    return {
+      player: atLocalTick(incoming, clock.hostTick, clock.localTick),
+      corrected: true,
+    };
+  }
+  if (sameViewMotion(existing.viewMotion, incoming.viewMotion)) {
+    return {
+      player: { ...incoming, viewMotion: existing.viewMotion },
+      corrected: false,
+    };
+  }
+  const player = keepRemoteStep(existing, incoming, clock.localTick)
+    ? keepPosition(existing, incoming)
+    : atLocalTick(incoming, clock.hostTick, clock.localTick);
+  return { player, corrected: false };
+}
+
+/** @param {Player|undefined} existing @param {Player} incoming @param {boolean} local */
+function mergeFreePlayer(existing, incoming, local) {
+  if (!local || !existing?.free) return { player: incoming, corrected: false };
+  if (!keepFreePrediction(existing, incoming)) {
+    return { player: incoming, corrected: true };
+  }
+  return {
+    player: {
+      ...keepPosition(existing, incoming),
+      vx: existing.vx,
+      vy: existing.vy,
+      previousX: existing.previousX,
+      previousY: existing.previousY,
+    },
+    corrected: false,
+  };
+}
+
 /** Keep matching local animation, but accept the host's position when prediction diverges. */
 /** @param {World} local @param {World} snapshot @param {number} acknowledgedSequence @param {number} latestLocalSequence @param {string} localId */
 export function mergeSnapshot(
@@ -52,96 +168,23 @@ export function mergeSnapshot(
 ) {
   /** @type {Record<string,Player>} */
   const players = {};
+  const clock = {
+    localTick: local.tick,
+    hostTick: snapshot.tick,
+    acknowledged: acknowledgedSequence,
+    latest: latestLocalSequence,
+    localId,
+  };
   let corrected = false;
   for (const [id, incoming] of Object.entries(snapshot.players)) {
-    const existing = local.players[id];
-    if (incoming.free) {
-      if (id === localId && existing?.free) {
-        const gap = Math.hypot(
-          existing.x - incoming.x,
-          existing.y - incoming.y,
-        );
-        const sameElevation = existing.z === incoming.z ||
-          (existing.move && incoming.move &&
-            existing.move.target.z === incoming.move.target.z);
-        const bothIdle = !existing.move && !incoming.move &&
-          Math.hypot(existing.vx ?? 0, existing.vy ?? 0) < 0.015 &&
-          Math.hypot(incoming.vx ?? 0, incoming.vy ?? 0) < 0.015;
-        if (bothIdle && (gap > 0.000001 || existing.z !== incoming.z)) {
-          corrected = true;
-          players[id] = incoming;
-        } else if (gap < 0.4 && sameElevation) {
-          players[id] = {
-            ...incoming,
-            x: existing.x,
-            y: existing.y,
-            z: existing.z,
-            move: existing.move,
-            vx: existing.vx,
-            vy: existing.vy,
-            previousX: existing.previousX,
-            previousY: existing.previousY,
-          };
-        } else {
-          corrected = true;
-          players[id] = incoming;
-        }
-      } else players[id] = incoming;
-      continue;
-    }
-    if (!existing) {
-      players[id] = atLocalTick(incoming, snapshot.tick, local.tick);
-      continue;
-    }
-    if (id === localId) {
-      const matching = sameMove(existing.move, incoming.move) ||
-        (!existing.move && !incoming.move && sameTile(existing, incoming)) ||
-        (existing.move && !incoming.move &&
-          sameTile(existing.move.target, incoming)) ||
-        (!existing.move && incoming.move &&
-          sameTile(existing, incoming.move.target));
-      const onePending = latestLocalSequence === acknowledgedSequence + 1;
-      const hostTarget = incoming.move?.target ?? incoming;
-      const predictedOrigin = existing.move?.origin ?? existing;
-      const pendingFollowsHost = onePending &&
-        existing.move?.sequence === latestLocalSequence &&
-        sameTile(predictedOrigin, hostTarget);
-      const completedPendingStep = onePending && !existing.move &&
-        !incoming.move && existing.z === incoming.z &&
-        Math.abs(existing.x - incoming.x) <= 1 &&
-        Math.abs(existing.y - incoming.y) <= 1;
-      if (matching || pendingFollowsHost || completedPendingStep) {
-        players[id] = {
-          ...incoming,
-          x: existing.x,
-          y: existing.y,
-          z: existing.z,
-          move: existing.move,
-        };
-        continue;
-      }
-      corrected = true;
-    } else if (
-      sameViewMotion(existing.viewMotion, incoming.viewMotion)
-    ) {
-      players[id] = { ...incoming, viewMotion: existing.viewMotion };
-      continue;
-    } else if (
-      sameMove(existing.move, incoming.move) ||
-      (existing.move && !incoming.move &&
-        sameTile(existing.move.target, incoming) &&
-        local.tick < existing.move.startTick + existing.move.durationTicks)
-    ) {
-      players[id] = {
-        ...incoming,
-        x: existing.x,
-        y: existing.y,
-        z: existing.z,
-        move: existing.move,
-      };
-      continue;
-    }
-    players[id] = atLocalTick(incoming, snapshot.tick, local.tick);
+    const merged = mergePlayer(
+      local.players[id],
+      incoming,
+      clock,
+      id === localId,
+    );
+    players[id] = merged.player;
+    corrected ||= merged.corrected;
   }
   local.players = players;
   return { corrected };

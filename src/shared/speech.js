@@ -78,6 +78,17 @@ const wordBreaks = {
   fine: ["fine"],
 };
 
+/** @param {string} lower @param {RegExpExecArray} previous @param {RegExpExecArray} next */
+function syllableBoundary(lower, previous, next) {
+  const gapStart = (previous.index ?? 0) + previous[0].length;
+  const consonants = lower.slice(gapStart, next.index);
+  const onset = consonants.match(
+    /(?:ch|sh|th|ph|wh|[bcfgp]r|[bcfgp]l|st|tr|dr)$/,
+  )?.[0];
+  return (next.index ?? 0) -
+    (onset?.length ?? Math.min(1, consonants.length));
+}
+
 /** Approximate English syllables, keeping the exact original spelling. @param {string} word @returns {string[]} */
 function splitWord(word) {
   const lower = word.toLowerCase();
@@ -101,13 +112,7 @@ function splitWord(word) {
   for (let index = 1; index < nuclei.length; index++) {
     const previous = nuclei[index - 1];
     const next = nuclei[index];
-    const gapStart = (previous.index ?? 0) + previous[0].length;
-    const consonants = lower.slice(gapStart, next.index);
-    const onset = consonants.match(
-      /(?:ch|sh|th|ph|wh|[bcfgp]r|[bcfgp]l|st|tr|dr)$/,
-    )?.[0];
-    const boundary = (next.index ?? 0) -
-      (onset?.length ?? Math.min(1, consonants.length));
+    const boundary = syllableBoundary(lower, previous, next);
     if (boundary > start) {
       parts.push(word.slice(start, boundary));
       start = boundary;

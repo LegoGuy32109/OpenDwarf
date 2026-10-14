@@ -8,6 +8,24 @@ import { itemInfo } from "../shared/items.js";
 /** @typedef {import('./ui-types.js').UiLayout} UiLayout */
 /** @typedef {import('./ui-layout-context.js').LayoutContext} LayoutContext */
 
+/** @param {NonNullable<LayoutContext['view']['log']>['lines']} feed @param {number} columns */
+function logRows(feed, columns) {
+  /** @type {{text:string,kind:string,speaker:number}[]} */
+  const wrapped = [];
+  for (const line of feed) {
+    const prefix = line.kind === "chat" ? `${ascii(line.speaker ?? "")}: ` : "";
+    const lines = wrapText(`${prefix}${ascii(line.text ?? "")}`, columns);
+    for (const [index, text] of lines.entries()) {
+      wrapped.push({
+        text,
+        kind: line.kind,
+        speaker: index === 0 ? prefix.length : 0,
+      });
+    }
+  }
+  return wrapped;
+}
+
 /**
  * The area panels may use: the middle of the screen, above the controls.
  * @param {LayoutContext} ctx
@@ -104,20 +122,7 @@ export function layoutArea(ctx, input) {
     const y = Math.max(top + 62 * s, leftY);
     const columns = Math.max(4, Math.floor((w - 20 * s) / cw));
     /** @type {{text:string,kind:string,speaker:number}[]} */
-    const wrapped = [];
-    for (const line of log.lines) {
-      const prefix = line.kind === "chat"
-        ? `${ascii(line.speaker ?? "")}: `
-        : "";
-      const lines = wrapText(`${prefix}${ascii(line.text ?? "")}`, columns);
-      for (const [index, text] of lines.entries()) {
-        wrapped.push({
-          text,
-          kind: line.kind,
-          speaker: index === 0 ? prefix.length : 0,
-        });
-      }
-    }
+    const wrapped = logRows(log.lines, columns);
     const capacity = Math.max(1, Math.floor((maxH - headerH - 8 * s) / pitch));
     if (!wrapped.length) {
       wrapped.push({ text: "Nothing heard yet.", kind: "empty", speaker: 0 });
@@ -325,6 +330,30 @@ export function layoutInventory(ctx, input) {
   }
 }
 
+/** @param {NonNullable<LayoutContext['view']['shop']>['rows'][number]} row @param {string} selected */
+function shopRow(row, selected) {
+  const name = row.type === "all" ? "all" : row.kind;
+  return {
+    name,
+    item: row.type === "all" ? undefined : row.kind,
+    text: row.type === "all"
+      ? "Sell all ore"
+      : ascii(itemInfo(row.kind)?.name ?? row.kind),
+    sub2: row.type === "all"
+      ? row.enabled ? `x${row.count}` : ""
+      : `x${row.count}`,
+    sub: row.type === "all"
+      ? row.enabled
+        ? `${row.coins} coin${row.coins === 1 ? "" : "s"}`
+        : "no ore"
+      : row.enabled
+      ? `${row.price} each`
+      : "not bought",
+    on: row.enabled && name === selected,
+    dim: !row.enabled,
+  };
+}
+
 /**
  * The shop panel.
  * @param {LayoutContext} ctx
@@ -379,23 +408,7 @@ export function layoutShop(ctx, input) {
         hit: true,
         act: "tap",
         scroll: "shop",
-        name,
-        item: row.type === "all" ? undefined : row.kind,
-        text: row.type === "all"
-          ? "Sell all ore"
-          : ascii(itemInfo(row.kind)?.name ?? row.kind),
-        sub2: row.type === "all"
-          ? row.enabled ? `x${row.count}` : ""
-          : `x${row.count}`,
-        sub: row.type === "all"
-          ? row.enabled
-            ? `${row.coins} coin${row.coins === 1 ? "" : "s"}`
-            : "no ore"
-          : row.enabled
-          ? `${row.price} each`
-          : "not bought",
-        on: row.enabled && name === shop.selected,
-        dim: !row.enabled,
+        ...shopRow(row, shop.selected),
       });
     }
     add({

@@ -104,7 +104,7 @@ export async function runOd(
   }
 }
 
-async function run(argv: string[], env: OdEnvironment): Promise<number> {
+function commandArgs(argv: string[]) {
   let parsed;
   try {
     parsed = parseArgs({
@@ -124,6 +124,11 @@ async function run(argv: string[], env: OdEnvironment): Promise<number> {
   const [first, second, ...rest] = positionals;
   const command = first === "label" ? `label ${second ?? ""}`.trim() : first;
   const args = first === "label" ? rest : [second, ...rest].filter(Boolean);
+  return { values, command, args };
+}
+
+async function run(argv: string[], env: OdEnvironment): Promise<number> {
+  const { values, command, args } = commandArgs(argv);
   if (!command || (values.help && !(command in HELP))) {
     env.out(USAGE);
     return command || values.help ? 0 : 2;
@@ -177,54 +182,49 @@ async function run(argv: string[], env: OdEnvironment): Promise<number> {
   };
   const name = (index: number) => encodeURIComponent(args[index]);
 
-  switch (command) {
-    case "label set": {
+  const commands: Record<string, () => Promise<void>> = {
+    "label set": async () => {
       need(2, "label set <name> <branch|sha>");
       const label = await call("PUT", `/labels/${name(0)}`, {
         target: args[1],
       }, true) as unknown as Label;
       env.out(labelLine(label));
-      break;
-    }
-    case "label rename": {
+    },
+    "label rename": async () => {
       need(2, "label rename <old> <new>");
       const label = await call("POST", `/labels/${name(0)}/rename`, {
         to: args[1],
       }, true) as unknown as Label;
       env.out(`Renamed ${args[0]} to ${label.name}`);
-      break;
-    }
-    case "label rm":
+    },
+    "label rm": async () => {
       need(1, "label rm <name>");
       await call("DELETE", `/labels/${name(0)}`, undefined, true);
       env.out(`Deleted ${args[0]}`);
-      break;
-    case "labels": {
+    },
+    "labels": async () => {
       need(0, "labels");
       const { labels } = await call("GET", "/labels") as { labels: Label[] };
       if (!labels.length) env.out("No labels.");
       for (const label of labels) env.out(labelLine(label));
-      break;
-    }
-    case "promote": {
+    },
+    "promote": async () => {
       need(1, "promote <label|branch|sha> [--note <text>]");
       const promotion = await call("POST", "/promotions", {
         target: args[0],
         note: values.note,
       }, true) as unknown as Promotion;
       env.out(`Main is now ${promotion.commit} (from ${promotion.label})`);
-      break;
-    }
-    case "promotions": {
+    },
+    "promotions": async () => {
       need(0, "promotions");
       const { promotions } = await call("GET", "/promotions") as {
         promotions: Promotion[];
       };
       if (!promotions.length) env.out("No promotions.");
       for (const promotion of promotions) env.out(promotionLine(promotion));
-      break;
-    }
-    case "status": {
+    },
+    "status": async () => {
       need(0, "status");
       const status = await call("GET", "/status") as {
         main: Promotion | null;
@@ -248,9 +248,9 @@ async function run(argv: string[], env: OdEnvironment): Promise<number> {
           }  ${session.playerCount} players`,
         );
       }
-      break;
-    }
-  }
+    },
+  };
+  await commands[command]();
   return 0;
 }
 

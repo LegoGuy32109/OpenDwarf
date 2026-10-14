@@ -593,6 +593,67 @@ export function createMusic(options = {}) {
     current = null;
   }
 
+  /** @param {Track|undefined} resumed @param {number} resumeOffset */
+  function virtualResume(resumed, resumeOffset) {
+    return resumed && !failed.has(resumed.key) && matches(resumed) &&
+        resumeOffset < (resumed.duration ?? DEFAULT_DURATION) - crossfade
+      ? resumed
+      : null;
+  }
+
+  function nextSelection() {
+    // A host that had no audio resumes the track its conductor was counting.
+    const resumed = virtual?.track;
+    const startedAt = virtual?.startedAt ?? 0;
+    const resumeOffset = (now() - startedAt) / 1000;
+    const resume = virtualResume(resumed, resumeOffset);
+    clearVirtual();
+    const wanted = !resume && upcoming && !failed.has(upcoming.track.key) &&
+        matches(upcoming.track)
+      ? upcoming
+      : null;
+    upcoming = null;
+    const track = resume ?? wanted?.track ??
+      pickTrack(tracks, mood, { recent, exclude: failed, random });
+    return { track, wanted, resume, resumeOffset };
+  }
+
+  /** @param {Track} track @param {unknown} error */
+  function trackFailed(track, error) {
+    failed.add(track.key);
+    failures++;
+    firstError ||= error instanceof Error
+      ? `${error.name} ${error.message}`
+      : String(error);
+    if (failures >= MAX_FAILURES) {
+      stopped = true;
+      status = current ? "playing" : "stopped";
+      return true;
+    }
+    return false;
+  }
+
+  /** @param {ReturnType<typeof nextSelection>} selection @param {number} turn */
+  async function trySelection({ track, wanted, resume, resumeOffset }, turn) {
+    if (!track) {
+      status = "idle";
+      return true;
+    }
+    status = current ? "playing" : "loading";
+    try {
+      const loadedTrack = await (wanted?.load ?? loadTrack(track));
+      if (turn !== generation || following) return true;
+      await startTrack(
+        track,
+        loadedTrack,
+        resume ? { offset: Math.max(0, resumeOffset), notify: false } : {},
+      );
+      return true;
+    } catch (error) {
+      return trackFailed(track, error);
+    }
+  }
+
   /** Start the next track: the prefetched one when it still fits the mood. */
   async function advance() {
     if (advancing || following || !enabled) return;
@@ -604,49 +665,7 @@ export function createMusic(options = {}) {
     const turn = generation;
     try {
       while (canPlay() && turn === generation) {
-        // A host that had no audio resumes the track its conductor was counting.
-        const resumed = virtual?.track;
-        const startedAt = virtual?.startedAt ?? 0;
-        const resumeOffset = (now() - startedAt) / 1000;
-        const resume =
-          resumed && !failed.has(resumed.key) && matches(resumed) &&
-            resumeOffset < (resumed.duration ?? DEFAULT_DURATION) - crossfade
-            ? resumed
-            : null;
-        clearVirtual();
-        const wanted = !resume && upcoming && !failed.has(upcoming.track.key) &&
-            matches(upcoming.track)
-          ? upcoming
-          : null;
-        upcoming = null;
-        const track = resume ?? wanted?.track ??
-          pickTrack(tracks, mood, { recent, exclude: failed, random });
-        if (!track) {
-          status = "idle";
-          return;
-        }
-        status = current ? "playing" : "loading";
-        try {
-          const loadedTrack = await (wanted?.load ?? loadTrack(track));
-          if (turn !== generation || following) return;
-          await startTrack(
-            track,
-            loadedTrack,
-            resume ? { offset: Math.max(0, resumeOffset), notify: false } : {},
-          );
-          return;
-        } catch (error) {
-          failed.add(track.key);
-          failures++;
-          firstError ||= error instanceof Error
-            ? `${error.name} ${error.message}`
-            : String(error);
-          if (failures >= MAX_FAILURES) {
-            stopped = true;
-            status = current ? "playing" : "stopped";
-            return;
-          }
-        }
+        if (await trySelection(nextSelection(), turn)) return;
       }
     } finally {
       advancing = false;

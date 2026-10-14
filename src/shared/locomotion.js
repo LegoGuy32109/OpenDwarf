@@ -63,31 +63,23 @@ function separating(other, mover, x, y) {
       Math.hypot(mover.x - other.x, mover.y - other.y);
 }
 
+/** @param {Player} other @param {Player} mover @param {import('./world.js').Tile|undefined} at @param {number} x @param {number} y @param {number} z */
+function reservedAt(other, mover, at, x, y, z) {
+  if (!at || z !== at.z) return false;
+  const reach =
+    ((mover.size ?? PLAYER_SIZE) + (other.size ?? PLAYER_SIZE)) / 2 - EPS;
+  return Math.abs(x - at.x) < reach && Math.abs(y - at.y) < reach;
+}
+
 /** @param {World} world @param {Player} player @param {number} x @param {number} y @param {number} z */
 function entityBlocked(world, player, x, y, z) {
   return Object.values(world.players).some((other) => {
     if (other.id === player.id) return false;
-    if (
-      overlaps(other, player, x, y, z) && !separating(other, player, x, y)
-    ) return true;
-    const origin = other.move?.origin;
-    if (
-      origin && z === origin.z &&
-      Math.abs(x - origin.x) <
-        ((player.size ?? PLAYER_SIZE) + (other.size ?? PLAYER_SIZE)) / 2 -
-          EPS &&
-      Math.abs(y - origin.y) <
-        ((player.size ?? PLAYER_SIZE) + (other.size ?? PLAYER_SIZE)) / 2 - EPS
-    ) {
+    if (overlaps(other, player, x, y, z) && !separating(other, player, x, y)) {
       return true;
     }
-    const target = other.move?.target;
-    return !!target && z === target.z &&
-      Math.abs(x - target.x) <
-        ((player.size ?? PLAYER_SIZE) + (other.size ?? PLAYER_SIZE)) / 2 -
-          EPS &&
-      Math.abs(y - target.y) <
-        ((player.size ?? PLAYER_SIZE) + (other.size ?? PLAYER_SIZE)) / 2 - EPS;
+    return reservedAt(other, player, other.move?.origin, x, y, z) ||
+      reservedAt(other, player, other.move?.target, x, y, z);
   });
 }
 

@@ -56,9 +56,16 @@ FALLOW_BROWSER_COVERAGE=exports/coverage/browser PORT=8126 deno task e2e
 
 `test:coverage` runs the unit tests and wraps Deno's per-script V8 profiles in
 Fallow's input format. JavaScript offsets refer to the original source.
-TypeScript uses emitted offsets, so the adapter excludes those profiles until
-source maps are available. It fails if a JavaScript profile no longer matches
-the source length.
+TypeScript profiles use Deno's cached emitted JavaScript and embedded source
+maps. The adapter checks emitted lengths and original source contents before
+mapping them. It decodes Unicode source maps as UTF-8.
+
+Deno produces separate profiles for test isolates. `scripts/fallow-v8.ts` merges
+those profiles by source and function range. It sums the most specific count at
+each segment, including a parent's count when another isolate has no child range
+there. Passing separate profiles directly to Fallow can change coverage results.
+Unit tests cover nested ranges, isolate counts, Unicode maps, and stale source
+rejection.
 
 The optional browser fixture captures JavaScript coverage before pages close,
 including pages created directly by a test. It records local application modules
@@ -104,3 +111,30 @@ setup.
 
 See [testing and evidence](testing-and-evidence.md) for tick waits and browser
 repetitions.
+
+## Health comparison
+
+Commit `9cc6b14` records the cleanup before the critical and high Health pass.
+The later diff keeps route handlers, packet dispatch, prediction policies,
+render passes, and test scenarios in named functions. It also exposes pure
+motion evidence calculations to unit tests.
+
+Use the same Fallow version and thresholds for comparison:
+
+```sh
+npx --yes fallow@3.33.1 --score --format json
+npx --yes fallow@3.33.1 health --min-severity high
+```
+
+The priority gate checks critical and high functions. Moderate findings remain
+advisory. It does not suppress them, change complexity thresholds, or add a
+Health baseline. A passing gate does not mean Health has no findings.
+
+Compare function severity, maximum complexity, long functions, and score
+components. Extraction can increase the function count and total cyclomatic
+complexity because each helper starts at one. Git hotspot scores can also move
+while the commit history stays the same. The visualization omits that signal.
+
+Runtime coverage is a separate view. Its measured coverage can expose code that
+the static test graph estimates too generously, as well as tested code the graph
+misses. Keep the static and measured reports distinct.

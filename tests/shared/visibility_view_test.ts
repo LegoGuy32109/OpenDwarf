@@ -48,8 +48,9 @@ function snapshotChunks(chunks: Map<string, Uint8Array>) {
   return [...chunks].map(([key, data]) => [key, [...data]]);
 }
 
-Deno.test("same-level sight is reciprocal and every legal next tile is visible", () => {
-  const world = createAuthoredWorld();
+type SightWorld = ReturnType<typeof createAuthoredWorld>;
+type SightTile = { x: number; y: number; z: number };
+function walkableFloors(world: SightWorld): SightTile[] {
   const walkable = [];
   for (let z = 0; z <= 7; z++) {
     for (let y = 0; y < 16; y++) {
@@ -60,6 +61,10 @@ Deno.test("same-level sight is reciprocal and every legal next tile is visible",
       }
     }
   }
+  return walkable;
+}
+
+function assertReciprocalSight(world: SightWorld, walkable: SightTile[]) {
   for (let i = 0; i < walkable.length; i++) {
     for (let j = i + 1; j < walkable.length; j++) {
       const from = walkable[i];
@@ -74,6 +79,9 @@ Deno.test("same-level sight is reciprocal and every legal next tile is visible",
       );
     }
   }
+}
+
+function assertLegalNextTilesVisible(world: SightWorld, walkable: SightTile[]) {
   for (const from of walkable) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -92,6 +100,13 @@ Deno.test("same-level sight is reciprocal and every legal next tile is visible",
       }
     }
   }
+}
+
+Deno.test("same-level sight is reciprocal and every legal next tile is visible", () => {
+  const world = createAuthoredWorld();
+  const walkable = walkableFloors(world);
+  assertReciprocalSight(world, walkable);
+  assertLegalNextTilesVisible(world, walkable);
 });
 
 Deno.test("guest snapshot excludes hidden entities and undiscovered terrain", () => {

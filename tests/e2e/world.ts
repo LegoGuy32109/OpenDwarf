@@ -53,6 +53,29 @@ export async function startWorld(
   await page.goto(url);
 }
 
+async function worldRecipe(params: URLSearchParams, npc: boolean) {
+  const { authoredRecipe, roomRecipe } = await import(
+    "../../src/shared/world-recipes.js"
+  );
+  const { worldSeedFromParams } = await import(
+    "../../src/shared/generation.js"
+  );
+  const seed = worldSeedFromParams(params);
+  const definition = params.get("layout") === "room"
+    ? roomRecipe(seed, { npc: npc })
+    : authoredRecipe(params.get("world") === "32" ? 32 : 16, {
+      npc: npc,
+      generator: true,
+      seed,
+    });
+  if (params.has("unloadGraceMs")) {
+    definition.unloadGraceTicks = Math.ceil(
+      Number(params.get("unloadGraceMs")) / 50,
+    );
+  }
+  return definition;
+}
+
 /** Every navigation constructs its explicit world before boot. */
 export async function openWorld(
   page: Page,
@@ -61,25 +84,7 @@ export async function openWorld(
 ) {
   const params = new URL(url, "http://127.0.0.1").searchParams;
   if (params.has("harness")) {
-    const { authoredRecipe, roomRecipe } = await import(
-      "../../src/shared/world-recipes.js"
-    );
-    const { worldSeedFromParams } = await import(
-      "../../src/shared/generation.js"
-    );
-    const seed = worldSeedFromParams(params);
-    const definition = params.get("layout") === "room"
-      ? roomRecipe(seed, { npc: options.npc ?? false })
-      : authoredRecipe(params.get("world") === "32" ? 32 : 16, {
-        npc: options.npc ?? false,
-        generator: true,
-        seed,
-      });
-    if (params.has("unloadGraceMs")) {
-      definition.unloadGraceTicks = Math.ceil(
-        Number(params.get("unloadGraceMs")) / 50,
-      );
-    }
+    const definition = await worldRecipe(params, options.npc ?? false);
     await configureWorld(page, definition);
   }
   const { npc: _npc, ...navigation } = options;

@@ -1,3 +1,8 @@
+import {
+  hostVisualDeltas,
+  observerDeltas,
+  type Position,
+} from "./motion-evidence.ts";
 import { joinedParticipant } from "./browser-harness.ts";
 import { cliArgs } from "./cli-args.ts";
 import { type Browser, chromium, type Page } from "@playwright/test";
@@ -36,42 +41,6 @@ type HostStats = {
     bufferedAmount: number;
   }[];
 };
-type Position = {
-  x: number;
-  y: number;
-  z: number;
-  moveSequence: number | null;
-  opacity?: number;
-  tick?: number;
-  motion?: {
-    startPosition: { x: number; y: number; z: number };
-    target: { x: number; y: number; z: number };
-    startTick: number;
-    durationTicks: number;
-  } | null;
-};
-
-function alignedPosition(position: Position, skewMs: number): Position {
-  const motion = position.motion;
-  if (!motion || position.tick === undefined) return position;
-  const alpha = Math.max(
-    0,
-    Math.min(
-      1,
-      (position.tick + skewMs / 50 - motion.startTick) / motion.durationTicks,
-    ),
-  );
-  return {
-    ...position,
-    x: motion.startPosition.x +
-      (motion.target.x - motion.startPosition.x) * alpha,
-    y: motion.startPosition.y +
-      (motion.target.y - motion.startPosition.y) * alpha,
-    z: motion.startPosition.z +
-      (motion.target.z - motion.startPosition.z) * alpha,
-  };
-}
-
 const argumentsMap = cliArgs(Deno.args);
 const smoke = argumentsMap.has("smoke");
 const durationSeconds = Number(
@@ -140,6 +109,26 @@ async function startTrace(page: Page) {
       string,
       { at: number; opacity: number; sight: string }
     >();
+    const recordOpacity = (
+      id: string,
+      value: { opacity: number; sight: string },
+      at: number,
+    ) => {
+      const prior = previous.get(id);
+      if (
+        prior && prior.sight === value.sight && at - prior.at < 250 &&
+        Math.abs(value.opacity - prior.opacity) > 0.5 &&
+        opacityAnomalies.length < 100
+      ) {
+        opacityAnomalies.push({
+          at,
+          id,
+          from: prior.opacity,
+          to: value.opacity,
+        });
+      }
+      previous.set(id, { at, opacity: value.opacity, sight: value.sight });
+    };
     const frame = () => {
       const game = (globalThis as unknown as {
         __od: {
@@ -157,20 +146,7 @@ async function startTrace(page: Page) {
       };
       for (const [id, value] of Object.entries(current)) {
         if (!value) continue;
-        const prior = previous.get(id);
-        if (
-          prior && prior.sight === value.sight && at - prior.at < 250 &&
-          Math.abs(value.opacity - prior.opacity) > 0.5 &&
-          opacityAnomalies.length < 100
-        ) {
-          opacityAnomalies.push({
-            at,
-            id,
-            from: prior.opacity,
-            to: value.opacity,
-          });
-        }
-        previous.set(id, { at, opacity: value.opacity, sight: value.sight });
+        recordOpacity(id, value, at);
       }
       trace.push({ at, ...current });
       if (trace.length > 300) trace.shift();
@@ -244,39 +220,89 @@ async function waitForHarness(page: Page) {
     ), { timeout: 30_000 });
 }
 
-async function collectSample(host: Page, began: number) {
-  const hostRead = host.evaluate(async () => {
-    const game = (globalThis as unknown as {
-      __od: {
-        hostStats: () => Promise<HostStats>;
-        frameStats: () => { meanMs: number; maxMs: number };
-        authoritativeSample: (id: string) => Position | null;
-        visualSample: (id: string) => Position | null;
-      };
-    }).__od;
-    const positions = Object.fromEntries(
-      Object.keys(
-        (globalThis as unknown as {
-          __od: { scene: { world: { players: Record<string, unknown> } } };
-        }).__od.scene.world.players,
-      ).map((id) => [
-        id,
-        game.authoritativeSample(id),
-      ]),
-    ) as Record<string, Position | null>;
-    const visuals = Object.fromEntries(
-      Object.keys(positions).map((id) => [id, game.visualSample(id)]),
-    ) as Record<string, Position | null>;
-    const at = Date.now();
-    const stats = await game.hostStats();
-    return {
-      stats,
-      frame: game.frameStats(),
-      positions,
-      visuals,
-      at,
+async function readHostSample() {
+  const game = (globalThis as unknown as {
+    __od: {
+      hostStats: () => Promise<HostStats>;
+      frameStats: () => { meanMs: number; maxMs: number };
+      authoritativeSample: (id: string) => Position | null;
+      visualSample: (id: string) => Position | null;
     };
-  });
+  }).__od;
+  const positions = Object.fromEntries(
+    Object.keys(
+      (globalThis as unknown as {
+        __od: { scene: { world: { players: Record<string, unknown> } } };
+      }).__od.scene.world.players,
+    ).map((id) => [
+      id,
+      game.authoritativeSample(id),
+    ]),
+  ) as Record<string, Position | null>;
+  const visuals = Object.fromEntries(
+    Object.keys(positions).map((id) => [id, game.visualSample(id)]),
+  ) as Record<string, Position | null>;
+  const at = Date.now();
+  const stats = await game.hostStats();
+  return {
+    stats,
+    frame: game.frameStats(),
+    positions,
+    visuals,
+    at,
+  };
+}
+
+type HostSample = Awaited<ReturnType<typeof readHostSample>>;
+
+function routeCounts(hostData: HostSample) {
+  const routes: Record<string, number> = {};
+  for (const connection of hostData.stats.connections) {
+    if (!connection.connected) continue;
+    routes[connection.route] = (routes[connection.route] ?? 0) + 1;
+  }
+  return routes;
+}
+
+function captureVisualOutlier(
+  host: Page,
+  delta: Sample["visualDeltas"][number],
+  nowMs: number,
+) {
+  if (captureTasks.length < 2) {
+    const observer = delta.observer === "host"
+      ? host
+      : pages.find((entry) => entry.id === delta.observer)?.page;
+    if (observer) {
+      captureTasks.push(captureOutlier(observer, delta.id, nowMs));
+    }
+  }
+}
+
+function trackVisualOutliers(
+  host: Page,
+  visualDeltas: Sample["visualDeltas"],
+  nowMs: number,
+) {
+  for (const delta of visualDeltas) {
+    if (delta.tiles <= 0.25) {
+      highSamples.delete(delta.id);
+      continue;
+    }
+    const previous = highSamples.get(delta.id);
+    if (
+      previous !== undefined && nowMs - previous >= 100 &&
+      nowMs - previous <= 1500
+    ) {
+      sustainedVisualOutliers.push({ atMs: nowMs, ...delta });
+      captureVisualOutlier(host, delta, nowMs);
+    }
+    highSamples.set(delta.id, nowMs);
+  }
+}
+
+async function collectSample(host: Page, began: number) {
+  const hostRead = host.evaluate(readHostSample);
   const observerReads = pages.filter((entry) => entry.rendered).map(async (
     visitor,
   ) => ({
@@ -299,104 +325,14 @@ async function collectSample(host: Page, began: number) {
     hostRead,
     Promise.all(observerReads),
   ]);
-  const routes: Record<string, number> = {};
-  for (const connection of hostData.stats.connections) {
-    if (!connection.connected) continue;
-    routes[connection.route] = (routes[connection.route] ?? 0) + 1;
-  }
-  const visualDeltas: Sample["visualDeltas"] = [];
-  const localPredictionDeltas: Sample["localPredictionDeltas"] = [];
-  let skippedSkew = 0;
-  for (const connection of hostData.stats.connections) {
-    const target = connection.playerId;
-    const expected = hostData.positions[target];
-    const observed = hostData.visuals[target];
-    if (
-      !expected || !observed || observed.opacity === 0 ||
-      expected.moveSequence === null ||
-      observed.moveSequence !== expected.moveSequence
-    ) continue;
-    visualDeltas.push({
-      id: `host:${target}`,
-      observer: "host",
-      target,
-      skewMs: 0,
-      expected,
-      observed,
-      tiles: Math.hypot(
-        expected.x - observed.x,
-        expected.y - observed.y,
-        expected.z - observed.z,
-      ),
-    });
-  }
-  for (const { id, observed } of observers) {
-    const skewMs = observed.at - hostData.at;
-    if (Math.abs(skewMs) > 200) {
-      skippedSkew++;
-      continue;
-    }
-    const hostExpected = hostData.positions.self;
-    if (
-      hostExpected && hostExpected.moveSequence !== null && observed.host &&
-      observed.host.opacity !== 0 &&
-      observed.host.moveSequence === hostExpected.moveSequence
-    ) {
-      const aligned = alignedPosition(hostExpected, skewMs);
-      visualDeltas.push({
-        id: `${id}:self`,
-        observer: id,
-        target: "self",
-        skewMs,
-        expected: aligned,
-        observed: observed.host,
-        tiles: Math.hypot(
-          aligned.x - observed.host.x,
-          aligned.y - observed.host.y,
-          aligned.z - observed.host.z,
-        ),
-      });
-    }
-    const localExpected = hostData.positions[id];
-    if (
-      localExpected && localExpected.moveSequence !== null && observed.local &&
-      observed.local.moveSequence === localExpected.moveSequence
-    ) {
-      const aligned = alignedPosition(localExpected, skewMs);
-      localPredictionDeltas.push({
-        id,
-        skewMs,
-        tiles: Math.hypot(
-          aligned.x - observed.local.x,
-          aligned.y - observed.local.y,
-          aligned.z - observed.local.z,
-        ),
-      });
-    }
-  }
+  const routes = routeCounts(hostData);
+  const { visualDeltas, localPredictionDeltas, skippedSkew } = observerDeltas(
+    hostData,
+    observers,
+  );
+  visualDeltas.unshift(...hostVisualDeltas(hostData));
   const nowMs = Math.round(performance.now() - began);
-  for (const delta of visualDeltas) {
-    if (delta.tiles <= 0.25) {
-      highSamples.delete(delta.id);
-      continue;
-    }
-    const previous = highSamples.get(delta.id);
-    if (
-      previous !== undefined && nowMs - previous >= 100 &&
-      nowMs - previous <= 1500
-    ) {
-      sustainedVisualOutliers.push({ atMs: nowMs, ...delta });
-      if (captureTasks.length < 2) {
-        const observer = delta.observer === "host"
-          ? host
-          : pages.find((entry) => entry.id === delta.observer)?.page;
-        if (observer) {
-          captureTasks.push(captureOutlier(observer, delta.id, nowMs));
-        }
-      }
-    }
-    highSamples.set(delta.id, nowMs);
-  }
+  trackVisualOutliers(host, visualDeltas, nowMs);
   samples.push({
     atMs: nowMs,
     wallAtMs: Date.now(),
@@ -476,6 +412,50 @@ async function waitForBubble(
   }
 }
 
+async function exerciseChat(
+  host: Page,
+  visitor: typeof pages[number],
+  turn: number,
+) {
+  const chatter = visitor.page;
+  await chatter.evaluate(() => {
+    (globalThis as unknown as { __od: { openChat: () => void } }).__od
+      .openChat();
+  });
+  await chatter.keyboard.type("h", { delay: 90 });
+  await waitForBubble(host, visitor.id, "typing", true);
+  await chatter.keyboard.type("ello", { delay: 90 });
+  if (turn % 16 === 0) {
+    for (let i = 0; i < 5; i++) await chatter.keyboard.press("Backspace");
+    await waitForBubble(host, visitor.id, "typing", false);
+    await chatter.keyboard.press("Escape");
+  } else {
+    await chatter.keyboard.press("Enter");
+    await waitForBubble(host, visitor.id, "hasMessage", true);
+  }
+  const ui = await chatter.evaluate(() => {
+    const scene = (globalThis as unknown as {
+      __od: { scene: { menu: boolean; chatOpen: boolean } };
+    }).__od.scene;
+    return { menu: scene.menu, chatOpen: scene.chatOpen };
+  });
+  if (ui.menu || ui.chatOpen) {
+    failures.push(`guest UI remained open after chat at turn ${turn}`);
+    await chatter.keyboard.press("Escape");
+  }
+}
+
+function logProgress(began: number) {
+  const latest = samples.at(-1);
+  console.log(
+    `Minute ${
+      Math.floor((performance.now() - began) / 60_000)
+    }: ${pages.length} guests, ${latest?.movingGuests ?? 0} moving, ${
+      latest?.queuedBytes ?? 0
+    } bytes queued`,
+  );
+}
+
 async function play(host: Page, until: number, began: number) {
   const directions = ["f", "d", "s", "e"];
   let turn = 0;
@@ -498,44 +478,11 @@ async function play(host: Page, until: number, began: number) {
       ),
     );
     if (turn % 8 === 0 && pages.length) {
-      const visitor = pages[turn / 8 % pages.length];
-      const chatter = visitor.page;
-      await chatter.evaluate(() => {
-        (globalThis as unknown as { __od: { openChat: () => void } }).__od
-          .openChat();
-      });
-      await chatter.keyboard.type("h", { delay: 90 });
-      await waitForBubble(host, visitor.id, "typing", true);
-      await chatter.keyboard.type("ello", { delay: 90 });
-      if (turn % 16 === 0) {
-        for (let i = 0; i < 5; i++) await chatter.keyboard.press("Backspace");
-        await waitForBubble(host, visitor.id, "typing", false);
-        await chatter.keyboard.press("Escape");
-      } else {
-        await chatter.keyboard.press("Enter");
-        await waitForBubble(host, visitor.id, "hasMessage", true);
-      }
-      const ui = await chatter.evaluate(() => {
-        const scene = (globalThis as unknown as {
-          __od: { scene: { menu: boolean; chatOpen: boolean } };
-        }).__od.scene;
-        return { menu: scene.menu, chatOpen: scene.chatOpen };
-      });
-      if (ui.menu || ui.chatOpen) {
-        failures.push(`guest UI remained open after chat at turn ${turn}`);
-        if (ui.chatOpen || ui.menu) await chatter.keyboard.press("Escape");
-      }
+      await exerciseChat(host, pages[turn / 8 % pages.length], turn);
     }
     await sample(host, began);
     if (performance.now() >= nextProgress) {
-      const latest = samples.at(-1);
-      console.log(
-        `Minute ${
-          Math.floor((performance.now() - began) / 60_000)
-        }: ${pages.length} guests, ${latest?.movingGuests ?? 0} moving, ${
-          latest?.queuedBytes ?? 0
-        } bytes queued`,
-      );
+      logProgress(began);
       nextProgress += 60_000;
     }
     turn++;

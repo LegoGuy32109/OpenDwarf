@@ -154,6 +154,25 @@ function bubbles(item) {
   );
 }
 
+/** @param {Record<string,unknown>} item */
+function validChatContent(item) {
+  if (!fields(item, {}, CHAT_OPTIONAL)) return false;
+  if (item.bubbles !== undefined && !bubbles(item)) return false;
+  if (
+    item.text === undefined && item.talking !== true &&
+    item.typing !== true && item.queued !== true
+  ) {
+    return false;
+  }
+  if (
+    (item.text !== undefined || item.talking === true) &&
+    item.expiresTick === undefined
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** @param {unknown} value @returns {ChatRecord[]|null} */
 function chatRecords(value) {
   if (!Array.isArray(value) || value.length > MAX_ENTITIES) return null;
@@ -162,20 +181,7 @@ function chatRecords(value) {
     if (!record(item) || !identifier(item.id) || !tile(item)) return null;
     if (ids.has(item.id)) return null;
     ids.add(item.id);
-    if (!fields(item, {}, CHAT_OPTIONAL)) return null;
-    if (item.bubbles !== undefined && !bubbles(item)) return null;
-    if (
-      item.text === undefined && item.talking !== true &&
-      item.typing !== true && item.queued !== true
-    ) {
-      return null;
-    }
-    if (
-      (item.text !== undefined || item.talking === true) &&
-      item.expiresTick === undefined
-    ) {
-      return null;
-    }
+    if (!validChatContent(item)) return null;
   }
   return (/** @type {ChatRecord[]} */ (value)).map((item) => ({
     id: item.id,
@@ -216,6 +222,21 @@ export function encodeWorld(world) {
   };
 }
 
+/** @param {unknown} b */
+function validWorldLimits(b) {
+  if (
+    !record(b) ||
+    ![b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ].every(
+      Number.isInteger,
+    ) || !tile({ x: b.minX, y: b.minY, z: b.minZ }) ||
+    !tile({ x: b.maxX, y: b.maxY, z: b.maxZ }) ||
+    Number(b.minX) > Number(b.maxX) || Number(b.minY) > Number(b.maxY) ||
+    Number(b.minZ) > Number(b.maxZ) || Number(b.minZ) < 0 ||
+    Number(b.maxZ) > WORLD_TOP
+  ) return false;
+  return true;
+}
+
 /** @param {Record<string,unknown>} world */
 function worldMetadata(world) {
   if (
@@ -226,17 +247,7 @@ function worldMetadata(world) {
       ))
   ) return false;
   if (world.limits !== undefined) {
-    const b = world.limits;
-    if (
-      !record(b) ||
-      ![b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ].every(
-        Number.isInteger,
-      ) || !tile({ x: b.minX, y: b.minY, z: b.minZ }) ||
-      !tile({ x: b.maxX, y: b.maxY, z: b.maxZ }) ||
-      Number(b.minX) > Number(b.maxX) || Number(b.minY) > Number(b.maxY) ||
-      Number(b.minZ) > Number(b.maxZ) || Number(b.minZ) < 0 ||
-      Number(b.maxZ) > WORLD_TOP
-    ) return false;
+    if (!validWorldLimits(world.limits)) return false;
   }
   return true;
 }

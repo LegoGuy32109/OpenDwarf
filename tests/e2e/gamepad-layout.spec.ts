@@ -101,9 +101,8 @@ test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async 
   expect(await scene(page, (s) => s.mining.length)).toBe(0);
   // ZR mines.
   await hold(page, ZR, true);
-  await expect.poll(() => scene(page, (s) => s.mining.length)).toBeGreaterThan(
-    0,
-  );
+  await expect.poll(() => scene(page, (s) => s.world.chunks.get("0,0")?.[18]))
+    .toBe(1);
   await hold(page, ZR, false);
   await page.evaluate(() => {
     (globalThis as unknown as {

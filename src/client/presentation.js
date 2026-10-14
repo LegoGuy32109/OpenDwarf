@@ -88,34 +88,37 @@ export function createPresentation() {
     return list[list.length - 1].position;
   }
 
+  /** @param {Player} player @param {number} tick */
+  function freePositionAt(player, tick) {
+    const target = delayedPosition(player.id) ?? renderPosition(player, tick);
+    const now = performance.now();
+    const entry = entries.get(player.id);
+    if (!entry || tick < entry.tick) {
+      entries.set(player.id, { position: target, tick, time: now });
+      return target;
+    }
+    const distance = Math.hypot(
+      target.x - entry.position.x,
+      target.y - entry.position.y,
+      target.z - entry.position.z,
+    );
+    const elapsed = Math.max(0, now - (entry.time ?? now));
+    const step = Math.min(distance, elapsed * 4 / 1000);
+    if (distance > 0 && step > 0) {
+      entry.position = {
+        x: entry.position.x + (target.x - entry.position.x) * step / distance,
+        y: entry.position.y + (target.y - entry.position.y) * step / distance,
+        z: entry.position.z + (target.z - entry.position.z) * step / distance,
+      };
+    }
+    entry.tick = tick;
+    entry.time = now;
+    return entry.position;
+  }
+
   /** @param {Player} player @param {number} tick @param {boolean} local */
   function positionAt(player, tick, local) {
-    if (player.free && !local) {
-      const target = delayedPosition(player.id) ?? renderPosition(player, tick);
-      const now = performance.now();
-      const entry = entries.get(player.id);
-      if (!entry || tick < entry.tick) {
-        entries.set(player.id, { position: target, tick, time: now });
-        return target;
-      }
-      const distance = Math.hypot(
-        target.x - entry.position.x,
-        target.y - entry.position.y,
-        target.z - entry.position.z,
-      );
-      const elapsed = Math.max(0, now - (entry.time ?? now));
-      const step = Math.min(distance, elapsed * 4 / 1000);
-      if (distance > 0 && step > 0) {
-        entry.position = {
-          x: entry.position.x + (target.x - entry.position.x) * step / distance,
-          y: entry.position.y + (target.y - entry.position.y) * step / distance,
-          z: entry.position.z + (target.z - entry.position.z) * step / distance,
-        };
-      }
-      entry.tick = tick;
-      entry.time = now;
-      return entry.position;
-    }
+    if (player.free && !local) return freePositionAt(player, tick);
     const target = player.viewMotion
       ? viewMotionPosition(player.viewMotion, tick)
       : renderPosition(player, tick);
@@ -161,6 +164,68 @@ export function createPresentation() {
     return entry.position;
   }
 
+  /** @param {typeof sight extends Map<string,infer Entry> ? Entry|undefined : never} old @param {boolean} changed @param {number} now */
+  function sightStart(old, changed, now) {
+    return changed ? now : old?.started ?? now;
+  }
+
+  /** @param {Player} player @param {Tile} pos @param {import('../shared/visibility.js').Visibility} visibility @param {number} tick @param {number} now */
+  function visibleEntry(player, pos, visibility, tick, now) {
+    const target = entityOpacity(
+      player,
+      tick,
+      (x, y, z) => tileVisibility(visibility, x, y, z) === "visible",
+      pos,
+    );
+    const old = sight.get(player.id);
+    const current = old
+      ? old.from +
+        (old.to - old.from) * Math.min(1, (now - old.started) / 150)
+      : 0;
+    const changed = !old || old.sample !== visibility.sample ||
+      old.to === 0 && target > 0;
+    const opacity = changed ? current : target;
+    const entry = {
+      player,
+      position: target > 0 ? pos : old?.position ?? pos,
+      opacity,
+      from: opacity,
+      to: target,
+      started: sightStart(old, changed, now),
+      sample: visibility.sample,
+      lastSeen: now,
+    };
+    if (old && !changed && old.from !== old.to) {
+      entry.opacity = current;
+      entry.from = old.from;
+      entry.started = old.started;
+    }
+    sight.set(player.id, entry);
+    return { player, pos: entry.position, opacity: entry.opacity };
+  }
+
+  /** @param {Set<string>} present @param {{player:Player,pos:Tile,opacity:number}[]} result @param {number} now */
+  function departingEntries(present, result, now) {
+    for (const [id, entry] of sight) {
+      if (present.has(id)) continue;
+      if (entry.to !== 0) {
+        entry.from = entry.opacity;
+        entry.to = 0;
+        entry.started = now;
+      }
+      entry.opacity = entry.from *
+        Math.max(0, 1 - (now - entry.started) / 150);
+      if (entry.opacity <= 0 || now - entry.lastSeen > 150) sight.delete(id);
+      else {
+        result.push({
+          player: entry.player,
+          pos: entry.position,
+          opacity: entry.opacity,
+        });
+      }
+    }
+  }
+
   /** @param {Player[]} players @param {string} localId @param {"entity"|"master"} mode @param {import('../shared/visibility.js').Visibility} visibility @param {number} tick @param {number} [now] */
   function sightEntries(
     players,
@@ -181,57 +246,9 @@ export function createPresentation() {
         result.push({ player, pos, opacity: 1 });
         continue;
       }
-      const target = entityOpacity(
-        player,
-        tick,
-        (x, y, z) => tileVisibility(visibility, x, y, z) === "visible",
-        pos,
-      );
-      const old = sight.get(player.id);
-      const current = old
-        ? old.from +
-          (old.to - old.from) * Math.min(1, (now - old.started) / 150)
-        : 0;
-      const changed = !old || old.sample !== visibility.sample ||
-        old.to === 0 && target > 0;
-      const entry = {
-        player,
-        position: target > 0 ? pos : old?.position ?? pos,
-        opacity: changed ? current : target,
-        from: changed ? current : target,
-        to: target,
-        started: changed ? now : old?.started ?? now,
-        sample: visibility.sample,
-        lastSeen: now,
-      };
-      if (old && !changed && old.from !== old.to) {
-        entry.opacity = current;
-        entry.from = old.from;
-        entry.started = old.started;
-      }
-      sight.set(player.id, entry);
-      result.push({ player, pos: entry.position, opacity: entry.opacity });
+      result.push(visibleEntry(player, pos, visibility, tick, now));
     }
-    if (mode === "entity") {
-      for (const [id, entry] of sight) {
-        if (present.has(id)) continue;
-        if (entry.to !== 0) {
-          entry.from = entry.opacity;
-          entry.to = 0;
-          entry.started = now;
-        }
-        entry.opacity = entry.from *
-          Math.max(0, 1 - (now - entry.started) / 150);
-        if (entry.opacity <= 0 || now - entry.lastSeen > 150) sight.delete(id);
-        else {
-          result.push({
-            player: entry.player,
-            pos: entry.position,
-            opacity: entry.opacity,
-          });
-        }
-      }
-    }
+    if (mode === "entity") departingEntries(present, result, now);
     return result;
   }
 

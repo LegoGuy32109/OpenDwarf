@@ -119,27 +119,48 @@ async function convert(source: string | undefined, to = "music") {
   );
 }
 
-/** Fills `hash` (12 hex digits of the MD5) for every entry with a `key`, in every index file. */
+/** Update one index without uploading media. */
+async function hashIndex(key: string) {
+  const url = new URL(key, MEDIA);
+  const index = JSON.parse(await Deno.readTextFile(url));
+  let changed = 0;
+  for (const list of Object.values(index)) {
+    if (Array.isArray(list)) changed += await hashEntries(list, key);
+  }
+  await Deno.writeTextFile(url, JSON.stringify(index, null, 2) + "\n");
+  console.log(`${key}: ${changed} hashes changed`);
+}
+
+function mediaEntry(
+  value: unknown,
+): (Record<string, unknown> & { key: string }) | null {
+  if (!value || typeof value !== "object") return null;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.key === "string"
+    ? entry as Record<string, unknown> & { key: string }
+    : null;
+}
+
+async function hashEntries(list: unknown[], key: string): Promise<number> {
+  let changed = 0;
+  for (const value of list) {
+    const entry = mediaEntry(value);
+    if (!entry) continue;
+    const file = new URL(entry.key, MEDIA);
+    if (!(await exists(file))) throw new Error(`${key}: no ${entry.key}`);
+    const next = (await md5(file)).slice(0, 12);
+    if (entry.hash !== next) changed++;
+    entry.hash = next;
+  }
+  return changed;
+}
+
+/** Fills the first 12 hex digits of MD5 for every keyed index entry. */
 async function hash(only?: string) {
   for (const key of await keys()) {
     if (!key.startsWith("index/") || !key.endsWith(".json")) continue;
     if (only && key !== `index/${only}`) continue;
-    const url = new URL(key, MEDIA);
-    const index = JSON.parse(await Deno.readTextFile(url));
-    let changed = 0;
-    for (const list of Object.values(index)) {
-      if (!Array.isArray(list)) continue;
-      for (const entry of list) {
-        if (typeof entry?.key !== "string") continue;
-        const file = new URL(entry.key, MEDIA);
-        if (!(await exists(file))) throw new Error(`${key}: no ${entry.key}`);
-        const next = (await md5(file)).slice(0, 12);
-        if (entry.hash !== next) changed++;
-        entry.hash = next;
-      }
-    }
-    await Deno.writeTextFile(url, JSON.stringify(index, null, 2) + "\n");
-    console.log(`${key}: ${changed} hashes changed`);
+    await hashIndex(key);
   }
 }
 
@@ -162,6 +183,24 @@ function r2(args: string[]) {
   ], `user = "${user}"\n`);
 }
 
+function uploadOptions(key: string, local: URL, target: string) {
+  const extension = key.slice(key.lastIndexOf("."));
+  // An index is read fresh; any other file is addressed by its hash.
+  const cache = key.startsWith("index/")
+    ? "no-cache"
+    : "public, max-age=31536000";
+  return [
+    "-f",
+    "-T",
+    local.pathname,
+    "-H",
+    `Content-Type: ${TYPES[extension] ?? "application/octet-stream"}`,
+    "-H",
+    `Cache-Control: ${cache}`,
+    target,
+  ];
+}
+
 async function upload(prefixes: string[], dryRun: boolean) {
   const bucket = `${env("R2_ENDPOINT")}/${env("R2_BUCKET")}`;
   const list = (await keys()).filter((key) =>
@@ -181,21 +220,7 @@ async function upload(prefixes: string[], dryRun: boolean) {
       console.log(`Would upload ${key}${etag ? " (changed)" : " (new)"}`);
       return;
     }
-    const extension = key.slice(key.lastIndexOf("."));
-    // An index is read fresh; any other file is addressed by its hash.
-    const cache = key.startsWith("index/")
-      ? "no-cache"
-      : "public, max-age=31536000";
-    const put = await r2([
-      "-f",
-      "-T",
-      local.pathname,
-      "-H",
-      `Content-Type: ${TYPES[extension] ?? "application/octet-stream"}`,
-      "-H",
-      `Cache-Control: ${cache}`,
-      target,
-    ]);
+    const put = await r2(uploadOptions(key, local, target));
     if (!put.ok) throw new Error(`Upload failed for ${key}:\n${put.out}`);
     sent++;
     console.log(`Uploaded ${key}`);

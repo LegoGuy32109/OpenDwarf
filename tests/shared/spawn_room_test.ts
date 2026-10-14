@@ -86,8 +86,10 @@ Deno.test("another seed changes the caves but keeps the room whole", () => {
   assertEquals(isSolid(world, DOORWAY.x, DOORWAY.y + 1, ROOM_Z), true);
 });
 
-/** Count the tiles a player can walk to from the spawn tile with the move rules, in a square of chunks. */
-function walkable(world: ReturnType<typeof createSpawnRoomWorld>, r: number) {
+function loadWalkArea(
+  world: ReturnType<typeof createSpawnRoomWorld>,
+  r: number,
+) {
   for (let cy = -r; cy <= r + 1; cy++) {
     for (let cx = -r; cx <= r + 1; cx++) {
       if (!hasChunk(world, cx, cy)) {
@@ -95,6 +97,31 @@ function walkable(world: ReturnType<typeof createSpawnRoomWorld>, r: number) {
       }
     }
   }
+}
+
+function walkLevel(
+  world: ReturnType<typeof createSpawnRoomWorld>,
+  x: number,
+  y: number,
+  z: number,
+  nx: number,
+  ny: number,
+) {
+  if (!isSolid(world, nx, ny, z) && isSolid(world, nx, ny, z - 1)) return z;
+  else if (
+    z < 7 && isSolid(world, nx, ny, z) && !isSolid(world, nx, ny, z + 1) &&
+    !isSolid(world, x, y, z + 1)
+  ) return z + 1;
+  else if (
+    !isSolid(world, nx, ny, z) && !isSolid(world, nx, ny, z - 1) &&
+    isSolid(world, nx, ny, z - 2)
+  ) return z - 1;
+  return -1;
+}
+
+/** Count the tiles a player can walk to from the spawn tile with the move rules, in a square of chunks. */
+function walkable(world: ReturnType<typeof createSpawnRoomWorld>, r: number) {
+  loadWalkArea(world, r);
   const min = -r * 16;
   const max = (r + 2) * 16 - 1;
   const start = roomSpawnTile(0);
@@ -108,16 +135,7 @@ function walkable(world: ReturnType<typeof createSpawnRoomWorld>, r: number) {
       const nx = x + dx;
       const ny = y + dy;
       if (nx < min || ny < min || nx > max || ny > max) continue;
-      let nz = -1;
-      if (!isSolid(world, nx, ny, z) && isSolid(world, nx, ny, z - 1)) nz = z;
-      else if (
-        z < 7 && isSolid(world, nx, ny, z) && !isSolid(world, nx, ny, z + 1) &&
-        !isSolid(world, x, y, z + 1)
-      ) nz = z + 1;
-      else if (
-        !isSolid(world, nx, ny, z) && !isSolid(world, nx, ny, z - 1) &&
-        isSolid(world, nx, ny, z - 2)
-      ) nz = z - 1;
+      const nz = walkLevel(world, x, y, z, nx, ny);
       const key = `${nx},${ny},${nz}`;
       if (nz < 0 || seen.has(key)) continue;
       seen.add(key);

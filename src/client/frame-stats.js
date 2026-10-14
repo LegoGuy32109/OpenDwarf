@@ -80,6 +80,16 @@ export function createFrameStats(options = {}) {
     phase = null;
   };
 
+  function averagePhases() {
+    for (const name of PHASES) {
+      if (name in previous) {
+        average[name] = name in average
+          ? average[name] + (previous[name] - average[name]) * 0.1
+          : previous[name];
+      }
+    }
+  }
+
   const stats = {
     /** Called with each spike report that the rate limit lets through. */
     /** @type {((report:SpikeReport)=>void)|null} */
@@ -100,13 +110,7 @@ export function createFrameStats(options = {}) {
       end();
       previous = current;
       current = {};
-      for (const name of PHASES) {
-        if (name in previous) {
-          average[name] = name in average
-            ? average[name] + (previous[name] - average[name]) * 0.1
-            : previous[name];
-        }
-      }
+      averagePhases();
       const elapsed = lastFrameAt < 0 ? 0 : now - lastFrameAt;
       lastFrameAt = now;
       if (elapsed <= 0) return;

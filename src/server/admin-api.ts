@@ -180,42 +180,57 @@ export function createAdminApi(options: AdminOptions): AdminApi {
     return { branches: rows, pullsAvailable: pulls !== null };
   }
 
-  async function route(request: Request, path: string): Promise<Response> {
-    const method = request.method;
-    const read = method === "GET";
-    if (path === "/labels" && read) {
+  const reads: Record<string, () => Promise<Response>> = {
+    "/labels": async () => {
       const labels = await store.listLabels();
       return json({ labels: await Promise.all(labels.map(describe)) });
+    },
+    "/promotions": async () =>
+      json({ promotions: await store.listPromotions(50) }),
+    "/shell-deploys": async () =>
+      json({ deploys: await store.listShellDeploys(50) }),
+    "/status": status,
+    "/builds": async () => json(await buildIndex()),
+  };
+
+  async function renameLabel(
+    name: string,
+    request: Request,
+  ): Promise<Response> {
+    const to = (await bodyOf(request)).to;
+    if (typeof to !== "string") return fail("to is required", 400);
+    if (!LABEL_NAME.test(to)) return fail("invalid label name", 400);
+    if (!await store.getLabel(name)) return fail("no such label", 404);
+    if (await store.getLabel(to) || to === name) {
+      return fail("label name is taken", 409);
     }
-    if (path === "/promotions" && read) {
-      return json({ promotions: await store.listPromotions(50) });
-    }
-    if (path === "/shell-deploys" && read) {
-      return json({ deploys: await store.listShellDeploys(50) });
-    }
-    if (path === "/status" && read) return status();
-    if (path === "/builds" && read) return json(await buildIndex());
-    const named = /^\/labels\/([^/]+)(\/rename)?$/.exec(path);
-    const writes = (path === "/promotions" && method === "POST") ||
+    return json(await describe(await store.renameLabel(name, to)));
+  }
+
+  function isWriteRoute(
+    path: string,
+    method: string,
+    named: RegExpExecArray | null,
+  ) {
+    return (path === "/promotions" && method === "POST") ||
       (named &&
         (named[2]
           ? method === "POST"
           : method === "PUT" || method === "DELETE"));
+  }
+
+  async function route(request: Request, path: string): Promise<Response> {
+    const method = request.method;
+    const read = method === "GET";
+    if (read && Object.hasOwn(reads, path)) return reads[path]();
+    const named = /^\/labels\/([^/]+)(\/rename)?$/.exec(path);
+    const writes = isWriteRoute(path, method, named);
     if (!writes) return fail("not found", 404);
     const refused = await authorize(request);
     if (refused) return refused;
     if (path === "/promotions") return promote(request);
     const name = decodeURIComponent(named![1]);
-    if (named![2]) {
-      const to = (await bodyOf(request)).to;
-      if (typeof to !== "string") return fail("to is required", 400);
-      if (!LABEL_NAME.test(to)) return fail("invalid label name", 400);
-      if (!await store.getLabel(name)) return fail("no such label", 404);
-      if (await store.getLabel(to) || to === name) {
-        return fail("label name is taken", 409);
-      }
-      return json(await describe(await store.renameLabel(name, to)));
-    }
+    if (named![2]) return renameLabel(name, request);
     if (method === "PUT") return setLabel(name, request);
     return await store.deleteLabel(name)
       ? json({ ok: true })

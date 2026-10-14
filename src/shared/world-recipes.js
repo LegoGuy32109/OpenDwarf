@@ -24,6 +24,17 @@ const bounds = (edge) => ({
   maxY: edge - 1,
   maxZ: WORLD_TOP,
 });
+/** @param {{spawn:(at:import('./world.js').Tile)=>unknown}} b @param {number} edge */
+function authoredSpawns(b, edge) {
+  b.spawn({ x: 7, y: 7, z: 0 });
+  if (edge === 16) { for (let x = 8; x < 16; x++) b.spawn({ x, y: 7, z: 0 }); }
+  else {for (let y = 3; y <= 11; y++) {
+      for (let x = 3; x <= 12; x++) {
+        if (x !== 8 || y !== 8) b.spawn({ x, y, z: 0 });
+      }
+    }}
+}
+
 /** @param {number} [edge] @param {{npc?:boolean,generator?:boolean,seed?:number}} [options] */
 export function authoredRecipe(edge = 16, options = {}) {
   if (edge !== 16 && edge !== 32) {
@@ -45,13 +56,7 @@ export function authoredRecipe(edge = 16, options = {}) {
     m,
     i,
   ) => b.tile({ x: i + 2, y: 1, z: 0 }, m));
-  b.spawn({ x: 7, y: 7, z: 0 });
-  if (edge === 16) { for (let x = 8; x < 16; x++) b.spawn({ x, y: 7, z: 0 }); }
-  else {for (let y = 3; y <= 11; y++) {
-      for (let x = 3; x <= 12; x++) {
-        if (x !== 8 || y !== 8) b.spawn({ x, y, z: 0 });
-      }
-    }}
+  authoredSpawns(b, edge);
   if (options.npc) {
     b.entity({
       id: "npc-corner",

@@ -239,6 +239,122 @@ export function joinWorld(scene, session) {
     receiveGame(value);
   }
 
+  /** @param {World} snapshot @param {import('../shared/wire.js').StatePacket} decoded @param {import('../shared/visibility.js').Visibility} visibility @param {boolean} sightChanged */
+  function preserveSnapshotMotion(snapshot, decoded, visibility, sightChanged) {
+    const incomingLocal = snapshot.players[playerId];
+    const current = scene.world.players;
+    const remote = sightChanged ? snapshot.players : current;
+    snapshot.players = Object.fromEntries(
+      Object.entries(remote).filter(([id, player]) =>
+        id === playerId || decoded.mode === "master" ||
+        visibility.visible.has(
+          tileKey(
+            centerTile((current[id] ?? player).x),
+            centerTile((current[id] ?? player).y),
+            (current[id] ?? player).z,
+          ),
+        )
+      ).map(([id, player]) => [
+        id,
+        id === playerId ? incomingLocal : current[id] ?? player,
+      ]),
+    );
+    snapshot.players[playerId] = incomingLocal;
+  }
+
+  /** @param {World} snapshot @param {import('../shared/wire.js').StatePacket} decoded @param {boolean} modeChanged */
+  function mergeState(snapshot, decoded, modeChanged) {
+    if (connected && !modeChanged) {
+      const before = scene.world.players[playerId]
+        ? renderPosition(scene.world.players[playerId], scene.world.tick)
+        : null;
+      const { corrected } = mergeSnapshot(
+        scene.world,
+        snapshot,
+        decoded.acknowledgedSequence,
+        latestLocalSequence,
+        playerId,
+      );
+      const after = scene.world.players[playerId]
+        ? renderPosition(scene.world.players[playerId], scene.world.tick)
+        : null;
+      if (corrected && before && after) recordCorrection(before, after);
+    } else {
+      scene.world = snapshot;
+      scene.presentation.reset();
+      scene.renderOffset = { x: 0, y: 0, z: 0 };
+    }
+  }
+
+  /** @param {World} snapshot @param {'master'|'entity'} incomingMode @param {import('../shared/visibility.js').Visibility} visibility */
+  function finishState(snapshot, incomingMode, visibility) {
+    scene.world.shops = snapshot.shops ?? [];
+    scene.world.limits = snapshot.limits;
+    scene.viewMode = incomingMode;
+    scene.visibility = visibility;
+    scene.localId = playerId;
+    scene.status = connected ? "Visitor world" : "Connected to visitor";
+    if (!connected && scene.metrics) {
+      scene.metrics.joinMs = Math.round(performance.now() - attemptStarted);
+    }
+    if (!connected) scene.telemetry?.("connection", { status: "connected" });
+    connected = true;
+    if (pendingCue) followCue();
+    if (pendingMotion) {
+      const waiting = pendingMotion;
+      pendingMotion = null;
+      pendingSince = 0;
+      receiveMotion(waiting);
+    }
+  }
+
+  /** @param {import('../shared/world.js').Tile} before @param {import('../shared/world.js').Tile} after */
+  function recordCorrection(before, after) {
+    const gap = Math.hypot(
+      before.x - after.x,
+      before.y - after.y,
+      before.z - after.z,
+    );
+    corrections.count++;
+    corrections.totalGap += gap;
+    corrections.maxGap = Math.max(corrections.maxGap, gap);
+    scene.renderOffset = gap < 0.5
+      ? {
+        x: scene.renderOffset.x + before.x - after.x,
+        y: scene.renderOffset.y + before.y - after.y,
+        z: scene.renderOffset.z + before.z - after.z,
+      }
+      : { x: 0, y: 0, z: 0 };
+  }
+
+  /** @param {World} snapshot @param {boolean} preserveMotion */
+  function observeState(snapshot, preserveMotion) {
+    for (
+      const player of preserveMotion ? [] : Object.values(snapshot.players)
+    ) {
+      if (player.id !== playerId) {
+        scene.presentation.observe(player, snapshot.tick);
+      }
+    }
+  }
+
+  /** @param {import('../shared/wire.js').StatePacket} decoded */
+  function stateVisibility(decoded) {
+    if (harnessParams.has("harness")) {
+      debugState = {
+        ...decoded,
+        world: encodeWorld(decoded.world),
+        reveal: encodeChunks(decoded.reveal),
+      };
+    }
+    return decoded.mode === "entity"
+      ? unpackVisibility(
+        /** @type {import('../shared/visibility-wire.js').WireVisibility} */ (decoded
+          .visibility),
+      )
+      : createVisibility();
+  }
+
   /** A full-state packet: reveal, ordering, merge and the first-join steps. @param {Record<string,unknown>} value */
   function receiveState(value) {
     const decoded = decodeState(value);
@@ -261,39 +377,14 @@ export function joinWorld(scene, session) {
     const ordering = revisions.reliable({ ...decoded, tick: snapshot.tick });
     if (!ordering) return;
     resyncFailures = 0;
-    if (harnessParams.has("harness")) {
-      debugState = {
-        ...decoded,
-        world: encodeWorld(decoded.world),
-        reveal: encodeChunks(decoded.reveal),
-      };
-    }
-    const visibility = decoded.mode === "entity"
-      ? unpackVisibility(
-        /** @type {import('../shared/visibility-wire.js').WireVisibility} */ (decoded
-          .visibility),
-      )
-      : createVisibility();
+    const visibility = stateVisibility(decoded);
     if (ordering.preserveMotion) {
-      const incomingLocal = snapshot.players[playerId];
-      const current = scene.world.players;
-      const remote = ordering.sightChanged ? snapshot.players : current;
-      snapshot.players = Object.fromEntries(
-        Object.entries(remote).filter(([id, player]) =>
-          id === playerId || decoded.mode === "master" ||
-          visibility.visible.has(
-            tileKey(
-              centerTile((current[id] ?? player).x),
-              centerTile((current[id] ?? player).y),
-              (current[id] ?? player).z,
-            ),
-          )
-        ).map(([id, player]) => [
-          id,
-          id === playerId ? incomingLocal : current[id] ?? player,
-        ]),
+      preserveSnapshotMotion(
+        snapshot,
+        decoded,
+        visibility,
+        ordering.sightChanged,
       );
-      snapshot.players[playerId] = incomingLocal;
     }
     if (snapshot.tick > lastChatTick) {
       scene.chatFeed = receiveChat(
@@ -305,112 +396,69 @@ export function joinWorld(scene, session) {
     }
     const incomingMode = decoded.mode === "master" ? "master" : "entity";
     const modeChanged = scene.viewMode !== incomingMode;
-    if (connected && !modeChanged) {
-      const before = scene.world.players[playerId]
-        ? renderPosition(scene.world.players[playerId], scene.world.tick)
-        : null;
-      const { corrected } = mergeSnapshot(
-        scene.world,
-        snapshot,
-        decoded.acknowledgedSequence,
-        latestLocalSequence,
-        playerId,
-      );
-      const after = scene.world.players[playerId]
-        ? renderPosition(scene.world.players[playerId], scene.world.tick)
-        : null;
-      if (corrected && before && after) {
-        const gap = Math.hypot(
-          before.x - after.x,
-          before.y - after.y,
-          before.z - after.z,
-        );
-        corrections.count++;
-        corrections.totalGap += gap;
-        corrections.maxGap = Math.max(corrections.maxGap, gap);
-        scene.renderOffset = gap < 0.5
-          ? {
-            x: scene.renderOffset.x + before.x - after.x,
-            y: scene.renderOffset.y + before.y - after.y,
-            z: scene.renderOffset.z + before.z - after.z,
-          }
-          : { x: 0, y: 0, z: 0 };
-      }
-    } else {
-      scene.world = snapshot;
-      scene.presentation.reset();
-      scene.renderOffset = { x: 0, y: 0, z: 0 };
-    }
-    for (
-      const player of ordering.preserveMotion
-        ? []
-        : Object.values(snapshot.players)
-    ) {
-      if (player.id !== playerId) {
-        scene.presentation.observe(player, snapshot.tick);
-      }
-    }
-    scene.world.shops = snapshot.shops ?? [];
-    scene.world.limits = snapshot.limits;
-    scene.viewMode = incomingMode;
-    scene.visibility = visibility;
-    scene.localId = playerId;
-    scene.status = connected ? "Visitor world" : "Connected to visitor";
-    if (!connected && scene.metrics) {
-      scene.metrics.joinMs = Math.round(performance.now() - attemptStarted);
-    }
-    if (!connected) scene.telemetry?.("connection", { status: "connected" });
-    connected = true;
-    if (pendingCue) followCue();
-    if (pendingMotion) {
-      const waiting = pendingMotion;
-      pendingMotion = null;
-      pendingSince = 0;
-      receiveMotion(waiting);
-    }
+    mergeState(snapshot, decoded, modeChanged);
+    observeState(snapshot, ordering.preserveMotion);
+    finishState(snapshot, incomingMode, visibility);
   }
 
-  /** @param {Record<string,unknown>} value */
-  function receiveGame(value) {
-    if (value.type === "system") {
+  /** @type {Record<string,(value:Record<string,unknown>)=>void>} */
+  const packetHandlers = {
+    system(value) {
       if (typeof value.text === "string" && value.text.length <= 120) {
         scene.systemLine?.(value.text);
       }
-      return;
-    }
-    if (value.type === "mining") {
+    },
+    mining(value) {
       const entries = decodeMining(value);
       if (entries) scene.mineFeed = { at: performance.now(), entries };
-      return;
-    }
-    if (value.type === "sounds") {
+    },
+    sounds(value) {
       const list = decodeSounds(value);
       if (list) scene.hearSounds?.(list);
-      return;
-    }
-    if (value.type === "music") {
+    },
+    music(value) {
       const cue = decodeMusicCue(value);
-      if (cue) {
-        pendingCue = cue;
-        if (connected) followCue();
-      }
-      return;
-    }
-    if (value.type === "items") {
+      if (!cue) return;
+      pendingCue = cue;
+      if (connected) followCue();
+    },
+    items(value) {
       const entries = decodeItems(value);
       if (entries) scene.itemFeed = entries;
-      return;
-    }
-    if (value.type === "inventory") {
+    },
+    inventory(value) {
       const stacks = decodeInventory(value);
       if (stacks) scene.inventoryFeed = stacks;
-      return;
-    }
-    if (value.type === "held") {
+    },
+    held(value) {
       const kind = decodeHeld(value);
       if (kind) scene.heldFeed = kind;
-      return;
-    }
+    },
+    chat(value) {
+      const chat = decodeChat(value);
+      if (chat?.attempt !== attempt || chat.tick <= lastChatTick) return;
+      scene.chatFeed = receiveChat(scene.chatFeed, chat.chat, chat.tick);
+      lastChatTick = chat.tick;
+    },
+    state: receiveState,
+    pong(value) {
+      if (!decodeControl(value) || typeof value.id !== "string") return;
+      const sent = pings.get(value.id);
+      if (sent === undefined || !scene.metrics) return;
+      lastPong = performance.now();
+      scene.metrics.rttMs.push(Math.round(performance.now() - sent));
+      scene.metrics.rttMs = scene.metrics.rttMs.slice(-32);
+      pings.delete(value.id);
+    },
+    "nick-result"(value) {
+      if (!value.result || typeof value.result !== "object") return;
+      const result = /** @type {{ok:boolean,reason?:string}} */ (value.result);
+      if (!result.ok) scene.status = result.reason ?? "Name rejected";
+    },
+  };
+
+  /** @param {Record<string,unknown>} value */
+  function receiveGame(value) {
     const notice = RESULT_NOTICES.get(String(value.type));
     if (notice) {
       if (
@@ -423,36 +471,11 @@ export function joinWorld(scene, session) {
       }
       return;
     }
-    if (value.type === "chat") {
-      const chat = decodeChat(value);
-      if (chat?.attempt === attempt && chat.tick > lastChatTick) {
-        scene.chatFeed = receiveChat(scene.chatFeed, chat.chat, chat.tick);
-        lastChatTick = chat.tick;
-      }
-      return;
-    }
-    if (value.type === "state") {
-      receiveState(value);
-      return;
-    }
     if (
-      value.type === "pong" && decodeControl(value) &&
-      typeof value.id === "string"
+      typeof value.type === "string" &&
+      Object.hasOwn(packetHandlers, value.type)
     ) {
-      const sent = pings.get(value.id);
-      if (sent !== undefined && scene.metrics) {
-        lastPong = performance.now();
-        scene.metrics.rttMs.push(Math.round(performance.now() - sent));
-        scene.metrics.rttMs = scene.metrics.rttMs.slice(-32);
-        pings.delete(value.id);
-      }
-    }
-    if (
-      value.type === "nick-result" && value.result &&
-      typeof value.result === "object"
-    ) {
-      const result = /** @type {{ok:boolean,reason?:string}} */ (value.result);
-      if (!result.ok) scene.status = result.reason ?? "Name rejected";
+      packetHandlers[value.type](value);
     }
   }
 

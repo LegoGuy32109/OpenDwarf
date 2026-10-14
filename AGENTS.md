@@ -13,6 +13,32 @@ Keep browser code in plain JavaScript with JSDoc types. Keep server code in Deno
 TypeScript. Serve browser files without a build step. Use custom CSS and keep
 runtime dependencies small.
 
+## Code quality
+
+Apply these principles when changing code. Fallow checks are optional. See
+`docs/features/code-quality.md` for analysis methods and limitations.
+
+- Give each function a clear operation or policy. Extract helpers at meaningful
+  boundaries, with names that explain their purpose. Keep coordinating code
+  readable and execution order explicit.
+- Share repeated behavior, test setup, and assertions when they express the same
+  rules. Keep each test's scenario and expected result visible.
+- Keep shared simulation code independent of browser and server modules. Compose
+  client features in the client hubs. Keep dependencies directional and public
+  interfaces small.
+- Remove obsolete code, exports, and dependencies in the area being changed.
+  Check dynamic imports and runtime entrypoints before declaring code unused.
+- Keep logic directly testable with explicit inputs and controlled services. Use
+  unit tests for rules and browser tests for interaction and delivery.
+- Keep input validation, authorization, and failure handling explicit at system
+  boundaries.
+- Consider allocation, traversal, and call overhead in frame loops, simulation
+  ticks, and mesh generation. Evaluate refactors for readability, behavior, and
+  runtime cost.
+
+Use findings and scores to identify questions worth investigating. Choose
+changes based on the code's purpose and supporting evidence.
+
 Run `deno task verify` before pushing. The local pre-push hook can be installed
 with `deno task hooks`. Browser specs are optional: `deno task e2e:smoke` runs
 the smoke tier in about a minute, and `deno task e2e <spec>` runs one spec. Run

@@ -210,13 +210,43 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) stop();
 });
 const waveform = new Uint8Array(1024);
-function draw() {
-  const width = Math.round(canvas.clientWidth * devicePixelRatio);
-  const height = Math.round(canvas.clientHeight * devicePixelRatio);
+/** @param {number} width @param {number} height */
+function resizeWaveform(width, height) {
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
+}
+
+/** @param {number} width @param {number} height @param {AudioContext} audio @param {AnalyserNode} analyzer @param {NonNullable<typeof utterance>} speech */
+function drawSpeech(width, height, audio, analyzer, speech) {
+  analyzer.getByteTimeDomainData(waveform);
+  drawing.strokeStyle = "#e0a866";
+  drawing.lineWidth = devicePixelRatio;
+  drawing.beginPath();
+  let energy = 0;
+  for (let i = 0; i < waveform.length; i++) {
+    const sample = (waveform[i] - 128) / 128;
+    energy += sample * sample;
+    const x = i / (waveform.length - 1) * width;
+    const y = height / 2 + sample * height * 0.7;
+    if (i === 0) drawing.moveTo(x, y);
+    else drawing.lineTo(x, y);
+  }
+  drawing.stroke();
+  const elapsed = audio.currentTime - started;
+  const event = speech.events.findLast((event) => event.start <= elapsed);
+  dialogue.textContent = playingText.slice(0, event?.index ?? 0);
+  dwarf.style.transform = `translateY(${-Math.min(
+    5,
+    Math.sqrt(energy / waveform.length) * 25,
+  )}px)`;
+}
+
+function draw() {
+  const width = Math.round(canvas.clientWidth * devicePixelRatio);
+  const height = Math.round(canvas.clientHeight * devicePixelRatio);
+  resizeWaveform(width, height);
   drawing.clearRect(0, 0, width, height);
   drawing.strokeStyle = "#3c5141";
   drawing.lineWidth = 1;
@@ -225,27 +255,7 @@ function draw() {
   drawing.lineTo(width, height / 2);
   drawing.stroke();
   if (source && analyser && utterance && context) {
-    analyser.getByteTimeDomainData(waveform);
-    drawing.strokeStyle = "#e0a866";
-    drawing.lineWidth = devicePixelRatio;
-    drawing.beginPath();
-    let energy = 0;
-    for (let i = 0; i < waveform.length; i++) {
-      const sample = (waveform[i] - 128) / 128;
-      energy += sample * sample;
-      const x = i / (waveform.length - 1) * width;
-      const y = height / 2 + sample * height * 0.7;
-      if (i === 0) drawing.moveTo(x, y);
-      else drawing.lineTo(x, y);
-    }
-    drawing.stroke();
-    const elapsed = context.currentTime - started;
-    const event = utterance.events.findLast((event) => event.start <= elapsed);
-    dialogue.textContent = playingText.slice(0, event?.index ?? 0);
-    dwarf.style.transform = `translateY(${-Math.min(
-      5,
-      Math.sqrt(energy / waveform.length) * 25,
-    )}px)`;
+    drawSpeech(width, height, context, analyser, utterance);
   }
   requestAnimationFrame(draw);
 }

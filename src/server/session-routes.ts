@@ -12,7 +12,6 @@ import {
 } from "./store.ts";
 import { createSweeper } from "./sweep.ts";
 
-const SESSION = "[a-zA-Z0-9_-]{8,80}";
 const COMMIT = /^[0-9a-f]{7,40}$/;
 const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MAX_PLAYERS = 10_000;
@@ -197,6 +196,223 @@ export function createSessionRoutes(options: SessionRoutesOptions = {}) {
     }
   }
 
+  type RouteRequest = { request: Request; url: URL; ip: string; id: string };
+
+  async function startSession(
+    { request, url, ip }: RouteRequest,
+  ): Promise<Response> {
+    if (!startLimiter.allow(ip)) return json({ error: "slow down" }, 429);
+    const data = await body(request);
+    const id = data.id;
+    if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{8,80}$/.test(id)) {
+      return json({ error: "invalid session" }, 400);
+    }
+    const hostKey = await hostKeyFor(secret, id);
+    // A host that already has a key asks for a fresh token, not a new channel.
+    const renew = typeof data.hostKey === "string" &&
+      sameText(data.hostKey, hostKey);
+    const host = buildOf(data);
+    if (!host) return json({ error: "invalid build" }, 400);
+    if (!renew) {
+      try {
+        // Only the host that made the session may open its channel again.
+        if (await store.getSession(id)) {
+          return json({ error: "session id is taken" }, 409);
+        }
+        await store.startSession({
+          id,
+          buildCommit: host.commit,
+          label: host.label,
+          hostPeer: "host",
+        });
+      } catch (error) {
+        // Signaling works without the database; the session is then missing from the lists.
+        console.error("Could not record the session", error);
+      }
+    }
+    const response = await credentials(id, "host", !renew, url.origin, {
+      hostKey,
+    });
+    await sweeper.maybeRun();
+    return response;
+  }
+
+  async function joinSession(
+    { request, url, ip, id }: RouteRequest,
+  ): Promise<Response> {
+    if (!startLimiter.allow(ip)) return json({ error: "slow down" }, 429);
+    const data = await body(request);
+    if (typeof data.peer !== "string" || !PEER_PATTERN.test(data.peer)) {
+      return json({ error: "invalid peer" }, 400);
+    }
+    if (data.peer === "host") return json({ error: "invalid peer" }, 400);
+    let session: Session | null = null;
+    try {
+      session = await store.getSession(id);
+    } catch (error) {
+      console.error("Could not read the session", error);
+    }
+    if (session && session.ended !== null) {
+      return json({ error: "session ended" }, 410);
+    }
+    // The guest compares this build with its own and goes to the host's build when they differ.
+    return credentials(
+      id,
+      data.peer,
+      false,
+      url.origin,
+      session ? { build: publicBuild(session) } : {},
+    );
+  }
+
+  async function heartbeatSession(
+    { request, id }: RouteRequest,
+  ): Promise<Response> {
+    if (!await isHost(request, id)) {
+      return json({ error: "not the host" }, 403);
+    }
+    const data = await body(request);
+    const players = data.players;
+    const host = buildOf(data);
+    if (
+      typeof players !== "number" || !Number.isSafeInteger(players) ||
+      players < 0 || players > MAX_PLAYERS
+    ) return json({ error: "invalid player count" }, 400);
+    if (!host) return json({ error: "invalid build" }, 400);
+    try {
+      if (!await store.heartbeatSession(id, players)) {
+        if (await store.getSession(id)) {
+          return json({ error: "session ended" }, 410);
+        }
+        // The host holds a valid key for a session the store never recorded.
+        await store.startSession({
+          id,
+          buildCommit: host.commit,
+          label: host.label,
+          hostPeer: "host",
+          playerCount: players,
+        });
+      }
+    } catch (error) {
+      console.error("Could not record the heartbeat", error);
+      return json({ error: "the shell could not record it" }, 502);
+    }
+    await sweeper.maybeRun();
+    return json({ ok: true });
+  }
+
+  async function liveSessions(_route: RouteRequest): Promise<Response> {
+    try {
+      const live = await store.listLiveSessions();
+      return json({ sessions: live.map(publicSession) });
+    } catch (error) {
+      console.error("Could not list sessions", error);
+      return json({ error: "the shell could not list sessions" }, 502);
+    }
+  }
+
+  async function recentSessions({ url }: RouteRequest): Promise<Response> {
+    const asked = Number(url.searchParams.get("limit") ?? 50);
+    const limit = Number.isSafeInteger(asked) && asked > 0
+      ? Math.min(asked, 200)
+      : 50;
+    try {
+      const ended = await store.listEndedSessions(limit);
+      return json({ sessions: ended.map(publicSession) });
+    } catch (error) {
+      console.error("Could not list sessions", error);
+      return json({ error: "the shell could not list sessions" }, 502);
+    }
+  }
+
+  async function sessionTelemetry({ id }: RouteRequest): Promise<Response> {
+    try {
+      if (!await store.getSession(id)) {
+        return json({ error: "no such session" }, 404);
+      }
+      const rows = await store.listTelemetry(id);
+      return json({ telemetry: rows.map(publicTelemetry) });
+    } catch (error) {
+      console.error("Could not read telemetry", error);
+      return json({ error: "the shell could not read telemetry" }, 502);
+    }
+  }
+
+  async function sessionIce({ ip, id }: RouteRequest): Promise<Response> {
+    if (!iceLimiter.allow(ip)) return json({ error: "slow down" }, 429);
+    try {
+      return json({ iceServers: await provider.iceServers(id) });
+    } catch (error) {
+      console.error("ICE credentials unavailable", error);
+      return json({ error: "ICE credentials unavailable" }, 502);
+    }
+  }
+
+  async function endSession({ request, id }: RouteRequest): Promise<Response> {
+    if (!await isHost(request, id)) {
+      return json({ error: "not the host" }, 403);
+    }
+    try {
+      await store.endSession(id);
+      // A session the store never recorded has no lease to take, so delete its channel here.
+      if (!await store.getSession(id)) await provider.close(id);
+      else await sweeper.closeSession(id);
+    } catch (error) {
+      // The session stays ended, so a later sweep deletes the channel.
+      console.error("Could not end the session", error);
+      return json({ error: "signaling unavailable" }, 502);
+    }
+    return json({ ok: true });
+  }
+
+  function socketResponse(request: Request, token: string): Response {
+    const { socket, response } = Deno.upgradeWebSocket(request);
+    let connection: ReturnType<Relay["connect"]> = null;
+    socket.onopen = () => {
+      connection = relay.connect(token, socket);
+      // A stale or unknown token cannot connect.
+      if (!connection) socket.close(4401, "invalid token");
+    };
+    socket.onmessage = (event) => connection?.receive(event.data);
+    socket.onclose = () => connection?.disconnect();
+    return response;
+  }
+
+  const routes = [
+    { method: "POST", pattern: /^\/api\/sessions$/, handle: startSession },
+    {
+      method: "POST",
+      pattern: /^\/api\/sessions\/([a-zA-Z0-9_-]{8,80})\/join$/,
+      handle: joinSession,
+    },
+    {
+      method: "POST",
+      pattern: /^\/api\/sessions\/([a-zA-Z0-9_-]{8,80})\/heartbeat$/,
+      handle: heartbeatSession,
+    },
+    { method: "GET", pattern: /^\/api\/sessions$/, handle: liveSessions },
+    {
+      method: "GET",
+      pattern: /^\/api\/sessions\/recent$/,
+      handle: recentSessions,
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/sessions\/([a-zA-Z0-9_-]{8,80})\/telemetry$/,
+      handle: sessionTelemetry,
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/sessions\/([a-zA-Z0-9_-]{8,80})\/ice$/,
+      handle: sessionIce,
+    },
+    {
+      method: "DELETE",
+      pattern: /^\/api\/sessions\/([a-zA-Z0-9_-]{8,80})$/,
+      handle: endSession,
+    },
+  ];
+
   return {
     relay,
     sweeper,
@@ -211,178 +427,15 @@ export function createSessionRoutes(options: SessionRoutesOptions = {}) {
         socketPath && request.method === "GET" &&
         request.headers.get("upgrade")?.toLowerCase() === "websocket"
       ) {
-        const { socket, response } = Deno.upgradeWebSocket(request);
-        let connection: ReturnType<Relay["connect"]> = null;
-        socket.onopen = () => {
-          connection = relay.connect(socketPath[1], socket);
-          // A stale or unknown token cannot connect.
-          if (!connection) socket.close(4401, "invalid token");
-        };
-        socket.onmessage = (event) => connection?.receive(event.data);
-        socket.onclose = () => connection?.disconnect();
-        return response;
+        return socketResponse(request, socketPath[1]);
       }
       const ip = clientIp(request, info);
-      if (path === "/api/sessions" && request.method === "POST") {
-        if (!startLimiter.allow(ip)) return json({ error: "slow down" }, 429);
-        const data = await body(request);
-        const id = data.id;
-        if (typeof id !== "string" || !new RegExp(`^${SESSION}$`).test(id)) {
-          return json({ error: "invalid session" }, 400);
+      for (const route of routes) {
+        if (route.method !== request.method) continue;
+        const match = route.pattern.exec(path);
+        if (match) {
+          return await route.handle({ request, url, ip, id: match[1] });
         }
-        const hostKey = await hostKeyFor(secret, id);
-        // A host that already has a key asks for a fresh token, not a new channel.
-        const renew = typeof data.hostKey === "string" &&
-          sameText(data.hostKey, hostKey);
-        const host = buildOf(data);
-        if (!host) return json({ error: "invalid build" }, 400);
-        if (!renew) {
-          try {
-            // Only the host that made the session may open its channel again.
-            if (await store.getSession(id)) {
-              return json({ error: "session id is taken" }, 409);
-            }
-            await store.startSession({
-              id,
-              buildCommit: host.commit,
-              label: host.label,
-              hostPeer: "host",
-            });
-          } catch (error) {
-            // Signaling works without the database; the session is then missing from the lists.
-            console.error("Could not record the session", error);
-          }
-        }
-        const response = await credentials(id, "host", !renew, url.origin, {
-          hostKey,
-        });
-        await sweeper.maybeRun();
-        return response;
-      }
-      const join = new RegExp(`^/api/sessions/(${SESSION})/join$`).exec(path);
-      if (join && request.method === "POST") {
-        if (!startLimiter.allow(ip)) return json({ error: "slow down" }, 429);
-        const data = await body(request);
-        if (typeof data.peer !== "string" || !PEER_PATTERN.test(data.peer)) {
-          return json({ error: "invalid peer" }, 400);
-        }
-        if (data.peer === "host") return json({ error: "invalid peer" }, 400);
-        let session: Session | null = null;
-        try {
-          session = await store.getSession(join[1]);
-        } catch (error) {
-          console.error("Could not read the session", error);
-        }
-        if (session && session.ended !== null) {
-          return json({ error: "session ended" }, 410);
-        }
-        // The guest compares this build with its own and goes to the host's build when they differ.
-        return credentials(
-          join[1],
-          data.peer,
-          false,
-          url.origin,
-          session ? { build: publicBuild(session) } : {},
-        );
-      }
-      const heartbeat = new RegExp(`^/api/sessions/(${SESSION})/heartbeat$`)
-        .exec(path);
-      if (heartbeat && request.method === "POST") {
-        const id = heartbeat[1];
-        if (!await isHost(request, id)) {
-          return json({ error: "not the host" }, 403);
-        }
-        const data = await body(request);
-        const players = data.players;
-        const host = buildOf(data);
-        if (
-          typeof players !== "number" || !Number.isSafeInteger(players) ||
-          players < 0 || players > MAX_PLAYERS
-        ) return json({ error: "invalid player count" }, 400);
-        if (!host) return json({ error: "invalid build" }, 400);
-        try {
-          if (!await store.heartbeatSession(id, players)) {
-            if (await store.getSession(id)) {
-              return json({ error: "session ended" }, 410);
-            }
-            // The host holds a valid key for a session the store never recorded.
-            await store.startSession({
-              id,
-              buildCommit: host.commit,
-              label: host.label,
-              hostPeer: "host",
-              playerCount: players,
-            });
-          }
-        } catch (error) {
-          console.error("Could not record the heartbeat", error);
-          return json({ error: "the shell could not record it" }, 502);
-        }
-        await sweeper.maybeRun();
-        return json({ ok: true });
-      }
-      if (path === "/api/sessions" && request.method === "GET") {
-        try {
-          const live = await store.listLiveSessions();
-          return json({ sessions: live.map(publicSession) });
-        } catch (error) {
-          console.error("Could not list sessions", error);
-          return json({ error: "the shell could not list sessions" }, 502);
-        }
-      }
-      if (path === "/api/sessions/recent" && request.method === "GET") {
-        const asked = Number(url.searchParams.get("limit") ?? 50);
-        const limit = Number.isSafeInteger(asked) && asked > 0
-          ? Math.min(asked, 200)
-          : 50;
-        try {
-          const ended = await store.listEndedSessions(limit);
-          return json({ sessions: ended.map(publicSession) });
-        } catch (error) {
-          console.error("Could not list sessions", error);
-          return json({ error: "the shell could not list sessions" }, 502);
-        }
-      }
-      const telemetry = new RegExp(`^/api/sessions/(${SESSION})/telemetry$`)
-        .exec(path);
-      if (telemetry && request.method === "GET") {
-        try {
-          if (!await store.getSession(telemetry[1])) {
-            return json({ error: "no such session" }, 404);
-          }
-          const rows = await store.listTelemetry(telemetry[1]);
-          return json({ telemetry: rows.map(publicTelemetry) });
-        } catch (error) {
-          console.error("Could not read telemetry", error);
-          return json({ error: "the shell could not read telemetry" }, 502);
-        }
-      }
-      const ice = new RegExp(`^/api/sessions/(${SESSION})/ice$`).exec(path);
-      if (ice && request.method === "GET") {
-        if (!iceLimiter.allow(ip)) return json({ error: "slow down" }, 429);
-        try {
-          return json({ iceServers: await provider.iceServers(ice[1]) });
-        } catch (error) {
-          console.error("ICE credentials unavailable", error);
-          return json({ error: "ICE credentials unavailable" }, 502);
-        }
-      }
-      const end = new RegExp(`^/api/sessions/(${SESSION})$`).exec(path);
-      if (end && request.method === "DELETE") {
-        if (!await isHost(request, end[1])) {
-          return json({ error: "not the host" }, 403);
-        }
-        try {
-          await store.endSession(end[1]);
-          // A session the store never recorded has no lease to take, so delete its channel here.
-          if (!await store.getSession(end[1])) await provider.close(end[1]);
-          else await sweeper.closeSession(end[1]);
-        } catch (error) {
-          // The session stays ended, so a later sweep deletes the channel.
-          console.error("Could not end the session", error);
-          return json({ error: "signaling unavailable" }, 502);
-        }
-        return json({ ok: true });
       }
       return null;
     },

@@ -110,8 +110,8 @@ function sameLevelSight(world, from, to) {
   }
   return true;
 }
-/** @param {World} world @param {Tile} from @param {Tile} to */
-function differentHeightSight(world, from, to) {
+/** @param {Tile} from @param {Tile} to */
+function rayAxes(from, to) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const dz = to.z - from.z;
@@ -121,13 +121,21 @@ function differentHeightSight(world, from, to) {
   const dtx = dx === 0 ? Infinity : Math.abs(1 / dx);
   const dty = dy === 0 ? Infinity : Math.abs(1 / dy);
   const dtz = dz === 0 ? Infinity : Math.abs(1 / dz);
-  let tx = dx === 0 ? Infinity : 0.5 / Math.abs(dx);
-  let ty = dy === 0 ? Infinity : 0.5 / Math.abs(dy);
-  let tz = dz === 0 ? Infinity : 0.5 / Math.abs(dz);
-  let x = from.x;
-  let y = from.y;
-  let z = from.z;
+  const tx = dx === 0 ? Infinity : 0.5 / Math.abs(dx);
+  const ty = dy === 0 ? Infinity : 0.5 / Math.abs(dy);
+  const tz = dz === 0 ? Infinity : 0.5 / Math.abs(dz);
+  const x = from.x;
+  const y = from.y;
+  const z = from.z;
   const max = Math.abs(dx) + Math.abs(dy) + Math.abs(dz) + 1;
+  return { sx, sy, sz, dtx, dty, dtz, tx, ty, tz, x, y, z, max };
+}
+
+/** @param {World} world @param {Tile} from @param {Tile} to */
+function differentHeightSight(world, from, to) {
+  const axes = rayAxes(from, to);
+  const { sx, sy, sz, dtx, dty, dtz, max } = axes;
+  let { tx, ty, tz, x, y, z } = axes;
   for (let step = 0; step < max; step++) {
     if (tx <= ty && tx <= tz) {
       x += sx;

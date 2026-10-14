@@ -137,12 +137,97 @@ export function createApp(
   info?: { remoteAddr?: { hostname?: string } },
 ) => Promise<Response> {
   const sessions = createSessionRoutes({ store: builds.store, ...options });
-  return async (request, info) => {
-    const url = new URL(request.url);
-    // `/api/v1/*` is the client's API; the unversioned paths stay as aliases.
-    const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
-    const mediaResponse = await media.handle(request, url.pathname);
-    if (mediaResponse) return mediaResponse;
+  const number = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.round(value * 100) / 100
+      : null;
+  const nonNegative = (value: unknown) => {
+    const rounded = number(value);
+    return rounded !== null && rounded >= 0 ? rounded : null;
+  };
+  const count = (value: unknown) => {
+    const rounded = nonNegative(value);
+    return rounded === null ? null : Math.round(rounded);
+  };
+
+  function safeTelemetry(
+    data: Record<string, unknown>,
+    kind: string,
+    session: string,
+  ) {
+    return {
+      event: "open-dwarf-client",
+      at: new Date().toISOString(),
+      kind,
+      session,
+      participant: typeof data.participant === "string" &&
+          /^(self|peer-[a-f0-9-]{36})$/.test(data.participant)
+        ? data.participant
+        : "unknown",
+      role: data.role === "host" ? "host" as const : "guest" as const,
+      test: data.test === true,
+      route: typeof data.route === "string" &&
+          /^(host|srflx|relay|prflx|\?|none|connecting)(\/(host|srflx|relay|prflx|\?))?$/
+            .test(data.route)
+        ? data.route
+        : "unknown",
+      status: typeof data.status === "string" &&
+          /^[a-z-]{1,32}$/.test(data.status)
+        ? data.status
+        : "unknown",
+      players: number(data.players),
+      frameMeanMs: number(data.frameMeanMs),
+      frameMaxMs: number(data.frameMaxMs),
+      rttMs: number(data.rttMs),
+      bytesSent: number(data.bytesSent),
+      queuedBytes: number(data.queuedBytes),
+      commit: typeof data.commit === "string" &&
+          /^[a-f0-9]{7,40}$/.test(data.commit)
+        ? data.commit
+        : null,
+      detail: telemetryDetail(data.detail),
+      metrics: telemetryMetrics(data.metrics),
+    };
+  }
+
+  async function receiveTelemetry(request: Request): Promise<Response> {
+    if (Number(request.headers.get("content-length") ?? 0) > 4096) {
+      return json({ error: "telemetry too large" }, 413);
+    }
+    const data = await body(request);
+    const kind = data.kind;
+    if (
+      typeof kind !== "string" ||
+      !["summary", "connection", "error", "spike"].includes(kind) ||
+      typeof data.session !== "string" ||
+      !/^[a-zA-Z0-9_-]{8,80}$/.test(data.session)
+    ) return json({ error: "invalid telemetry" }, 400);
+    const safe = safeTelemetry(data, kind, data.session);
+    console.log(JSON.stringify(safe));
+    // Only a summary is kept, and for 30 days; connection, error and spike events, and every
+    // commit, detail and metric, stay in the log.
+    if (kind === "summary") {
+      try {
+        await builds.store.recordTelemetry({
+          session: safe.session,
+          route: safe.route,
+          role: safe.role,
+          players: count(data.players),
+          frameMeanMs: nonNegative(data.frameMeanMs),
+          frameMaxMs: nonNegative(data.frameMaxMs),
+          rttMs: nonNegative(data.rttMs),
+          bytes: count(data.bytesSent),
+          test: safe.test,
+        });
+      } catch (error) {
+        console.error("Could not store telemetry", error);
+        return json({ error: "the shell could not store telemetry" }, 502);
+      }
+    }
+    return json({ ok: true });
+  }
+
+  async function getPage(request: Request, url: URL): Promise<Response | null> {
     // Service worker loaders (ADR 0007): the local build's, then every remote build's.
     if (
       builds.local && request.method === "GET" &&
@@ -167,6 +252,33 @@ export function createApp(
       const page = await serveAdminPage(url.pathname);
       if (page) return page;
     }
+    return null;
+  }
+
+  function localAsset(path: string): Promise<Response> | null {
+    // Only the local build's files come from disk; other builds load from jsDelivr.
+    if (builds.local) {
+      if (
+        path.startsWith("/assets/") || path.startsWith("/css/") ||
+        path.startsWith("/js/")
+      ) {
+        return file(`public${path}`);
+      }
+      if (path.startsWith("/src/client/") || path.startsWith("/src/shared/")) {
+        return file(path.slice(1));
+      }
+    }
+    return null;
+  }
+
+  return async (request, info) => {
+    const url = new URL(request.url);
+    // `/api/v1/*` is the client's API; the unversioned paths stay as aliases.
+    const path = url.pathname.replace(/^\/api\/v1\//, "/api/");
+    const mediaResponse = await media.handle(request, url.pathname);
+    if (mediaResponse) return mediaResponse;
+    const page = await getPage(request, url);
+    if (page) return page;
     const owner = await admin.handle(request);
     if (owner) return owner;
     const qrPath = /^\/api\/qr\/([a-zA-Z0-9_-]{8,80})$/.exec(path);
@@ -188,102 +300,15 @@ export function createApp(
       });
     }
     if (path === "/api/telemetry" && request.method === "POST") {
-      if (Number(request.headers.get("content-length") ?? 0) > 4096) {
-        return json({ error: "telemetry too large" }, 413);
-      }
-      const data = await body(request);
-      const kind = data.kind;
-      if (
-        typeof kind !== "string" ||
-        !["summary", "connection", "error", "spike"].includes(kind) ||
-        typeof data.session !== "string" ||
-        !/^[a-zA-Z0-9_-]{8,80}$/.test(data.session)
-      ) return json({ error: "invalid telemetry" }, 400);
-      const number = (value: unknown) =>
-        typeof value === "number" && Number.isFinite(value)
-          ? Math.round(value * 100) / 100
-          : null;
-      const nonNegative = (value: unknown) => {
-        const rounded = number(value);
-        return rounded !== null && rounded >= 0 ? rounded : null;
-      };
-      const count = (value: unknown) => {
-        const rounded = nonNegative(value);
-        return rounded === null ? null : Math.round(rounded);
-      };
-      const safe = {
-        event: "open-dwarf-client",
-        at: new Date().toISOString(),
-        kind,
-        session: data.session,
-        participant: typeof data.participant === "string" &&
-            /^(self|peer-[a-f0-9-]{36})$/.test(data.participant)
-          ? data.participant
-          : "unknown",
-        role: data.role === "host" ? "host" as const : "guest" as const,
-        test: data.test === true,
-        route: typeof data.route === "string" &&
-            /^(host|srflx|relay|prflx|\?|none|connecting)(\/(host|srflx|relay|prflx|\?))?$/
-              .test(data.route)
-          ? data.route
-          : "unknown",
-        status: typeof data.status === "string" &&
-            /^[a-z-]{1,32}$/.test(data.status)
-          ? data.status
-          : "unknown",
-        players: number(data.players),
-        frameMeanMs: number(data.frameMeanMs),
-        frameMaxMs: number(data.frameMaxMs),
-        rttMs: number(data.rttMs),
-        bytesSent: number(data.bytesSent),
-        queuedBytes: number(data.queuedBytes),
-        commit: typeof data.commit === "string" &&
-            /^[a-f0-9]{7,40}$/.test(data.commit)
-          ? data.commit
-          : null,
-        detail: telemetryDetail(data.detail),
-        metrics: telemetryMetrics(data.metrics),
-      };
-      console.log(JSON.stringify(safe));
-      // Only a summary is kept, and for 30 days; connection, error and spike events, and every
-      // commit, detail and metric, stay in the log.
-      if (kind === "summary") {
-        try {
-          await builds.store.recordTelemetry({
-            session: safe.session,
-            route: safe.route,
-            role: safe.role,
-            players: count(data.players),
-            frameMeanMs: nonNegative(data.frameMeanMs),
-            frameMaxMs: nonNegative(data.frameMaxMs),
-            rttMs: nonNegative(data.rttMs),
-            bytes: count(data.bytesSent),
-            test: safe.test,
-          });
-        } catch (error) {
-          console.error("Could not store telemetry", error);
-          return json({ error: "the shell could not store telemetry" }, 502);
-        }
-      }
-      return json({ ok: true });
+      return receiveTelemetry(request);
     }
     const sessionResponse = await sessions.handle(request, path, info);
     if (sessionResponse) return sessionResponse;
     if (request.method !== "GET") {
       return new Response("Method not allowed", { status: 405 });
     }
-    // Only the local build's files come from disk; other builds load from jsDelivr.
-    if (builds.local) {
-      if (
-        path.startsWith("/assets/") || path.startsWith("/css/") ||
-        path.startsWith("/js/")
-      ) {
-        return file(`public${path}`);
-      }
-      if (path.startsWith("/src/client/") || path.startsWith("/src/shared/")) {
-        return file(path.slice(1));
-      }
-    }
+    const asset = localAsset(path);
+    if (asset) return asset;
     return new Response("Not found", { status: 404 });
   };
 }

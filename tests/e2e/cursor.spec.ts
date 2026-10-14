@@ -30,11 +30,13 @@ test("the cursor draws the held item's icon and follows a change of held item", 
     z: 0,
   });
   const pickaxe = await cursor(page);
-  expect(pickaxe?.held).toBe("pickaxe");
-  expect(pickaxe?.tile).toEqual({ x: 2, y: 1, z: 0 });
-  expect(pickaxe?.color).toBe("#ffb833");
-  expect(pickaxe?.opacity).toBe(0.6);
-  expect(pickaxe?.iconFrame).not.toBeNull();
+  expectCursor(pickaxe, {
+    held: "pickaxe",
+    tile: { x: 2, y: 1, z: 0 },
+    color: "#ffb833",
+    opacity: 0.6,
+  });
+  expect(pickaxe.iconFrame).not.toBeNull();
   await evidenceShot(page, "cursor-rock-pickaxe");
   await page.keyboard.up("i");
   await hold(page, "stone");
@@ -44,12 +46,14 @@ test("the cursor draws the held item's icon and follows a change of held item", 
     return c && { held: c.held, tile: c.tile };
   }).toEqual({ held: "stone", tile: { x: 2, y: 3, z: 0 } });
   const stone = await cursor(page);
-  expect(stone?.held).toBe("stone");
-  expect(stone?.tile).toEqual({ x: 2, y: 3, z: 0 });
-  expect(stone?.iconFrame).toBe(0); // the stone frame
-  expect(stone?.iconFrame).not.toBe(pickaxe?.iconFrame);
+  expectCursor(stone, {
+    held: "stone",
+    tile: { x: 2, y: 3, z: 0 },
+    iconFrame: 0,
+  });
+  expect(stone.iconFrame).not.toBe(pickaxe.iconFrame);
   // Until the reach rules fill `interactPreview`, the icon is dimmed.
-  expect(stone?.iconOpacity).toBe(stone?.preview === null ? 0.35 : 1);
+  expect(stone.iconOpacity).toBe(stone.preview === null ? 0.35 : 1);
   await evidenceShot(page, "cursor-open-stone");
   await page.keyboard.up("k");
 });
@@ -62,3 +66,11 @@ const hold = (page: Page, kind: string) =>
         held: kind,
       }],
     }), kind);
+
+type Cursor = NonNullable<Awaited<ReturnType<typeof cursor>>>;
+function expectCursor(
+  value: Awaited<ReturnType<typeof cursor>>,
+  expected: Partial<Cursor>,
+): asserts value is Cursor {
+  expect(value).toMatchObject(expected);
+}

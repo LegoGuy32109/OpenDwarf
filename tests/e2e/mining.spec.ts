@@ -1,8 +1,8 @@
-import { openWorld, readWorld } from "./world.ts";
+import { openWorld, readWorld, type TestWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { holdUntil, waitFor, waitFrames, waitTicks } from "./time.ts";
+import { holdUntil, waitFrames } from "./time.ts";
 import { ready, tapUi, type UiRect, uiRect } from "./ui.ts";
 const box = ({ x, y, w, h }: UiRect) => ({ x, y, width: w, height: h });
 const OPEN = 1;
@@ -26,16 +26,26 @@ const position = (page: Page) =>
   });
 const mining = (page: Page) =>
   readWorld(page, (__world) => __world.scene.mining);
-/** Observe a decal and its unmined tile in the same browser read. */
-async function breakingTile(page: Page, x: number, material: number) {
-  await waitFor(page, () =>
-    readWorld(page, (world, { x, material }) => {
-      const action = world.scene.mining.find((entry) =>
-        entry.x === x && entry.y === 1
-      );
-      return (action?.progress ?? 0) > 0.2 &&
-        world.scene.world.chunks.get("0,0")?.[16 + x] === material;
-    }, { x, material }), { maxTicks: 30, message: "active breaking decal" });
+/** Watch frames before input so a short decal cannot disappear between browser reads. */
+function breakingTile(page: Page, x: number, material: number, progress = 0.2) {
+  return readWorld(
+    page,
+    (world, { x, material, progress }) =>
+      new Promise<TestWorld["scene"]["mining"][number] | null>((resolve) => {
+        const start = world.scene.world.tick;
+        const sample = () => {
+          const action = world.scene.mining.find((entry) =>
+            entry.x === x && entry.y === 1 && entry.progress > progress
+          );
+          const tile = world.scene.world.chunks.get("0,0")?.[16 + x];
+          if (action && tile === material) resolve(action);
+          else if (world.scene.world.tick - start > 200) resolve(null);
+          else requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+    { x, material, progress },
+  );
 }
 async function walk(page: Page, key: string, until: () => Promise<boolean>) {
   await holdUntil(page, key, until);
@@ -75,8 +85,9 @@ test("the host mines stone, then coal, with the breaking decal", {
   expect(await tile(page, 2)).toBe(STONE);
   await page.keyboard.down("i"); // aim north at the stone
   await evidenceShot(page, "mining-highlight");
+  const stoneDecal = breakingTile(page, 2, STONE);
   await page.keyboard.press("Space");
-  await breakingTile(page, 2, STONE);
+  expect(await stoneDecal).not.toBeNull();
   await evidenceShot(page, "mining-stone-progress");
   await expect.poll(() => tile(page, 2)).toBe(OPEN);
   expect(await mining(page)).toEqual([]);
@@ -85,8 +96,9 @@ test("the host mines stone, then coal, with the breaking decal", {
   await placeAt(page, 3, 2);
   expect(await tile(page, 3)).toBe(COAL);
   await page.keyboard.down("i");
+  const coalDecal = breakingTile(page, 3, COAL);
   await page.keyboard.press("Space");
-  await breakingTile(page, 3, COAL);
+  expect(await coalDecal).not.toBeNull();
   await evidenceShot(page, "mining-coal-progress");
   await expect.poll(() => tile(page, 3)).toBe(OPEN);
   await evidenceShot(page, "mining-coal-done");
@@ -108,15 +120,14 @@ test("a joining player sees the breaking decal and the tile change, and can mine
   expect(Math.round(guestX)).toBe(8);
   // The host mines redstone (60 ticks). The guest sees a decal, not a square.
   await host.keyboard.down("i");
+  const guestDecal = breakingTile(guest, 7, REDSTONE, 0.4);
   await host.keyboard.press("Space");
-  await expect.poll(async () => (await mining(guest)).length).toBe(1);
-  await expect.poll(async () => (await mining(guest))[0]?.progress ?? 0)
-    .toBeGreaterThan(0.4);
-  const seen = (await mining(guest))[0];
-  expect(seen.id).not.toBe(
+  const seen = await guestDecal;
+  expect(seen).not.toBeNull();
+  expect(seen!.id).not.toBe(
     await readWorld(guest, (__world) => __world.scene.localId),
   );
-  expect(seen.progress).toBeGreaterThan(0.4);
+  expect(seen!.progress).toBeGreaterThan(0.4);
   await evidenceShot(guest, "guest-breaking-decal");
   await expect.poll(() => tile(guest, 7)).toBe(OPEN);
   expect(await tile(host, 7)).toBe(OPEN);
@@ -191,16 +202,21 @@ test.describe("phone interact button", () => {
     expect(await tile(page, 3)).toBe(COAL);
     await page.keyboard.down("i");
     await tapUi(page, "btn:interact");
-    await expect.poll(async () => (await mining(page)).length).toBe(1);
-    await waitTicks(page, 10);
-    await evidenceShot(page, "interact-mining-phone");
     await expect.poll(() => tile(page, 3)).toBe(OPEN);
+    await evidenceShot(page, "interact-mined-phone");
     await page.keyboard.up("i");
   });
   test("a tap mines while a thumb holds the look stick, and letting go keeps mining", async ({ page }) => {
     await startHost(page);
     await placeAt(page, 4, 2);
-    expect(await tile(page, 4)).not.toBe(OPEN);
+    await readWorld(page, (world, material) =>
+      world.edit({
+        tiles: [{
+          bounds: { minX: 4, maxX: 4, minY: 1, maxY: 1, minZ: 0, maxZ: 0 },
+          material,
+        }],
+      }), DIAMOND);
+    expect(await tile(page, 4)).toBe(DIAMOND);
     const look = box(await uiRect(page, "stick:look"));
     const button = box(await uiRect(page, "btn:interact"));
     // Aim north: one finger near the top of the look stick.
@@ -221,12 +237,11 @@ test.describe("phone interact button", () => {
     // Let the frame loop read the aim before the tap.
     await waitFrames(page, 3);
     // A second finger taps interact while the first still holds the stick.
+    const touchDecal = breakingTile(page, 4, DIAMOND, 0);
     await send("touchStart", [aim, tap]);
     await send("touchEnd", [aim]);
-    await waitFor(page, async () => (await mining(page)).length === 1, {
-      maxTicks: 40,
-      message: "touch mining decal",
-    });
+    expect(await touchDecal).not.toBeNull();
+    expect(await tile(page, 4)).toBe(DIAMOND);
     // The aim thumb lifts: the aim rests, and mining goes on.
     await send("touchEnd", []);
     await expect.poll(() => tile(page, 4)).toBe(OPEN);

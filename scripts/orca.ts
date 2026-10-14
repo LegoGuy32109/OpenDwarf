@@ -19,6 +19,18 @@ const ACTIONABLE = ["worker_done", "escalation", "question"];
 
 type Json = Record<string, unknown>;
 
+function commandFailure(
+  command: string,
+  args: string[],
+  result: Deno.CommandOutput,
+  out: string,
+) {
+  const err = new TextDecoder().decode(result.stderr);
+  return new Error(
+    `${command} ${args[0]} ${args[1] ?? ""} failed:\n${err || out}`,
+  );
+}
+
 async function run(
   command: string,
   args: string[],
@@ -38,12 +50,19 @@ async function run(
   const result = await child.output();
   const out = new TextDecoder().decode(result.stdout);
   if (!result.success && !options.allowFailure) {
-    const err = new TextDecoder().decode(result.stderr);
-    throw new Error(
-      `${command} ${args[0]} ${args[1] ?? ""} failed:\n${err || out}`,
-    );
+    throw commandFailure(command, args, result, out);
   }
   return out;
+}
+
+function orcaError(data: Json): Error {
+  const error = data.error as { code?: string; message?: string } | undefined;
+  if (error?.code === "waiter_exists") {
+    return new Error(
+      "Another wait is already running for this run; stop it first.",
+    );
+  }
+  return new Error(error?.message ?? JSON.stringify(data.error));
 }
 
 /** Runs an Orca command with --json and returns its `result`, ignoring keepalive lines. */
@@ -57,13 +76,7 @@ async function orca(args: string[]): Promise<Json> {
     throw new Error(`orca ${args.slice(0, 2).join(" ")} gave no JSON:\n${out}`);
   }
   if (data.ok === false) {
-    const error = data.error as { code?: string; message?: string } | undefined;
-    if (error?.code === "waiter_exists") {
-      throw new Error(
-        "Another wait is already running for this run; stop it first.",
-      );
-    }
-    throw new Error(error?.message ?? JSON.stringify(data.error));
+    throw orcaError(data);
   }
   return (data.result ?? {}) as Json;
 }
@@ -112,7 +125,7 @@ export function fillBrief(
   );
 }
 
-async function start(flags: Record<string, string | undefined>) {
+function startFlags(flags: Record<string, string | undefined>) {
   const issue = Number(flags.issue);
   const { slug, title } = flags;
   if (!Number.isInteger(issue) || !slug || !title) {
@@ -121,7 +134,10 @@ async function start(flags: Record<string, string | undefined>) {
   if (!/^[a-z0-9-]+$/.test(slug)) {
     throw new Error("--slug must be lowercase words and dashes");
   }
-  // A pull request shares the issue numbering, so check the number names an open issue.
+  return { issue, slug, title };
+}
+
+async function checkOpenIssue(issue: number) {
   const target = JSON.parse(
     await run("gh", [
       "issue",
@@ -139,6 +155,12 @@ async function start(flags: Record<string, string | undefined>) {
     );
   }
   console.log(`Issue #${issue}: ${target.title}`);
+}
+
+async function start(flags: Record<string, string | undefined>) {
+  const { issue, slug, title } = startFlags(flags);
+  // A pull request shares the issue numbering, so check the number names an open issue.
+  await checkOpenIssue(issue);
   const base = flags.base ?? "main";
   const port = Number(flags.port ?? 8100 + (issue % 100));
   const notes = flags.notes ? await Deno.readTextFile(flags.notes) : "";
@@ -188,33 +210,59 @@ async function start(flags: Record<string, string | undefined>) {
   );
 }
 
+function displayReports(actionable: Json[]) {
+  for (const m of actionable) {
+    console.log(
+      `[${m.type}] from ${m.from_handle}: ${m.subject}\n${m.body ?? ""}`
+        .trim(),
+    );
+  }
+}
+
+/** The next check acknowledges the prior delivery before waiting again. */
+export function workerCheckArguments(
+  id: string,
+  ack: string | undefined,
+  remainingMs: number,
+) {
+  return [
+    "orchestration",
+    "check",
+    "--run",
+    id,
+    ...(ack ? ["--ack", ack] : []),
+    "--wait",
+    "--timeout-ms",
+    String(Math.max(1000, remainingMs)),
+  ];
+}
+
+/** An absent worktree cannot match a branch selected for release. */
+export function workerWorktreeId(worker: Json) {
+  const resource = worker.resource as Json | undefined;
+  return String(resource?.worktreeId ?? "");
+}
+
+/** Coordinator waits return reports that need a decision, while heartbeats stay silent. */
+export function actionableWorkerReports(result: Json) {
+  const messages = (result.messages ?? []) as Json[];
+  return messages.filter((message) =>
+    ACTIONABLE.includes(String(message.type))
+  );
+}
+
 async function wait(flags: Record<string, string | undefined>) {
   const id = runId(flags);
   const deadline = Date.now() + Number(flags["timeout-ms"] ?? 3_600_000);
   let ack: string | undefined;
   while (Date.now() < deadline) {
-    const result = await orca([
-      "orchestration",
-      "check",
-      "--run",
-      id,
-      ...(ack ? ["--ack", ack] : []),
-      "--wait",
-      "--timeout-ms",
-      String(Math.max(1000, deadline - Date.now())),
-    ]);
-    ack = result.deliveryId as string | undefined;
-    const messages = (result.messages ?? []) as Json[];
-    const actionable = messages.filter((m) =>
-      ACTIONABLE.includes(String(m.type))
+    const result = await orca(
+      workerCheckArguments(id, ack, deadline - Date.now()),
     );
+    ack = result.deliveryId as string | undefined;
+    const actionable = actionableWorkerReports(result);
     if (actionable.length) {
-      for (const m of actionable) {
-        console.log(
-          `[${m.type}] from ${m.from_handle}: ${m.subject}\n${m.body ?? ""}`
-            .trim(),
-        );
-      }
+      displayReports(actionable);
       // Acknowledge now: an unacknowledged batch comes back on the next wait.
       await orca([
         "orchestration",
@@ -233,6 +281,59 @@ async function wait(flags: Record<string, string | undefined>) {
     await orca(["orchestration", "check", "--run", id, "--ack", ack, "--peek"]);
   }
   console.log("No worker reports before the timeout.");
+}
+
+async function releaseBranchWorkers(branch: string) {
+  const workers =
+    ((await orca(["orchestration", "worker-list"])).workers ?? []) as Json[];
+  for (const worker of workers) {
+    if (!workerWorktreeId(worker).endsWith(`/${branch}`)) continue;
+    if (worker.terminalState !== "released") {
+      await orca([
+        "orchestration",
+        "worker-release",
+        "--dispatch",
+        String(worker.dispatchId),
+      ])
+        .catch((error) => console.log(`Release skipped: ${error.message}`));
+    }
+  }
+}
+
+async function recordMapDecision(map: string, decision: string) {
+  const body = (JSON.parse(
+    await run("gh", [
+      "issue",
+      "view",
+      map,
+      "-R",
+      REPO,
+      "--json",
+      "body",
+    ]),
+  ) as { body: string }).body;
+  const heading = "## Decisions so far";
+  const at = body.indexOf(heading);
+  if (at < 0) {
+    throw new Error(`Map #${map} has no "${heading}" section`);
+  }
+  const next = body.indexOf("\n## ", at + heading.length);
+  const end = next < 0 ? body.length : next;
+  const updated = `${body.slice(0, end).trimEnd()}\n${decision}\n${
+    body.slice(end)
+  }`;
+  await run("gh", [
+    "issue",
+    "edit",
+    map,
+    "-R",
+    REPO,
+    "--body-file",
+    "-",
+  ], {
+    input: updated,
+  });
+  console.log(`Recorded the decision on map #${map}`);
 }
 
 async function merge(flags: Record<string, string | undefined>) {
@@ -267,21 +368,7 @@ async function merge(flags: Record<string, string | undefined>) {
   }
   console.log(`Merged #${pr} ${info.title}`);
   const branch = info.headRefName;
-  const workers =
-    ((await orca(["orchestration", "worker-list"])).workers ?? []) as Json[];
-  for (const worker of workers) {
-    const resource = worker.resource as Json | undefined;
-    if (!String(resource?.worktreeId ?? "").endsWith(`/${branch}`)) continue;
-    if (worker.terminalState !== "released") {
-      await orca([
-        "orchestration",
-        "worker-release",
-        "--dispatch",
-        String(worker.dispatchId),
-      ])
-        .catch((error) => console.log(`Release skipped: ${error.message}`));
-    }
-  }
+  await releaseBranchWorkers(branch);
   await orca(["worktree", "rm", "--worktree", `branch:${branch}`, "--force"])
     .then(() => console.log(`Removed worktree ${branch}`))
     .catch((error) => console.log(`Worktree not removed: ${error.message}`));
@@ -289,39 +376,7 @@ async function merge(flags: Record<string, string | undefined>) {
     console.log(`Pull skipped: ${error.message}`)
   );
   if (flags.map && flags.decision) {
-    const body = (JSON.parse(
-      await run("gh", [
-        "issue",
-        "view",
-        flags.map,
-        "-R",
-        REPO,
-        "--json",
-        "body",
-      ]),
-    ) as { body: string }).body;
-    const heading = "## Decisions so far";
-    const at = body.indexOf(heading);
-    if (at < 0) {
-      throw new Error(`Map #${flags.map} has no "${heading}" section`);
-    }
-    const next = body.indexOf("\n## ", at + heading.length);
-    const end = next < 0 ? body.length : next;
-    const updated = `${body.slice(0, end).trimEnd()}\n${flags.decision}\n${
-      body.slice(end)
-    }`;
-    await run("gh", [
-      "issue",
-      "edit",
-      flags.map,
-      "-R",
-      REPO,
-      "--body-file",
-      "-",
-    ], {
-      input: updated,
-    });
-    console.log(`Recorded the decision on map #${flags.map}`);
+    await recordMapDecision(flags.map, flags.decision);
   }
 }
 

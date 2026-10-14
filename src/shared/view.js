@@ -73,19 +73,8 @@ export function viewMotionPosition(motion, tick) {
   };
 }
 
-/** Sight copies each newly seen or changed tile into `rememberedTerrain` and marks it in `pending`. */
-/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain @param {import('./reveal.js').PendingReveal} [pending] */
-export function entityPlayers(
-  world,
-  viewerId,
-  sight,
-  rememberedTerrain,
-  pending,
-) {
-  const viewer = world.players[viewerId];
-  if (viewer) {
-    recomputeVisibility(world, sight, visibilityPosition(viewer, world.tick));
-  }
+/** @param {World} world @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain @param {import('./reveal.js').PendingReveal} [pending] */
+function rememberVisibleTiles(world, sight, rememberedTerrain, pending) {
   // Visible tiles arrive in runs inside one chunk, so remember the last pair.
   let lastCx = NaN;
   let lastCy = NaN;
@@ -118,53 +107,76 @@ export function entityPlayers(
     remembered[index] = source[index];
     if (pending) markPending(pending, chunkKey(cx, cy), index);
   }
+}
+
+/** @param {import('./world.js').Move} move @param {boolean} originSeen @param {boolean} targetSeen @param {number} progress @returns {boolean|null} */
+function boundaryDirection(move, originSeen, targetSeen, progress) {
+  if (
+    move.origin.z === move.target.z && originSeen && !targetSeen &&
+    progress < 0.75
+  ) {
+    return false;
+  } else if (
+    move.origin.z === move.target.z && targetSeen && !originSeen &&
+    progress >= 0.25
+  ) {
+    return true;
+  }
+  return null;
+}
+
+/** @param {import('./world.js').Player} player @param {import('./world.js').Move} move @param {Visibility} sight @param {number} tick */
+function visibleMove(player, move, sight, tick) {
+  const originSeen = tileSeen(sight.visible, move.origin);
+  const targetSeen = tileSeen(sight.visible, move.target);
+  const startSeen = tileSeen(sight.visible, move.startPosition);
+  if (originSeen && targetSeen && startSeen) {
+    return player;
+  }
+  const progress = (tick - move.startTick) / move.durationTicks;
+  const entering = boundaryDirection(move, originSeen, targetSeen, progress);
+  if (entering !== null) return boundaryPlayer(player, entering);
+  if (originSeen && progress < 0.5) {
+    return { ...player, ...move.origin, move: null };
+  } else if (targetSeen && progress >= 0.5) {
+    return { ...player, ...move.target, move: null };
+  }
+  return null;
+}
+
+/** @param {import('./world.js').Player} player @param {boolean} viewer @param {Visibility} sight @param {number} tick */
+function visiblePlayer(player, viewer, sight, tick) {
+  if (viewer) return player;
+  if (player.free) {
+    return sight.visible.has(
+        tileKey(centerTile(player.x), centerTile(player.y), player.z),
+      )
+      ? player
+      : null;
+  }
+  if (!player.move) return tileSeen(sight.visible, player) ? player : null;
+  return visibleMove(player, player.move, sight, tick);
+}
+
+/** Sight copies each newly seen or changed tile into `rememberedTerrain` and marks it in `pending`. */
+/** @param {World} world @param {string} viewerId @param {Visibility} sight @param {RememberedTerrain} rememberedTerrain @param {import('./reveal.js').PendingReveal} [pending] */
+export function entityPlayers(
+  world,
+  viewerId,
+  sight,
+  rememberedTerrain,
+  pending,
+) {
+  const viewer = world.players[viewerId];
+  if (viewer) {
+    recomputeVisibility(world, sight, visibilityPosition(viewer, world.tick));
+  }
+  rememberVisibleTiles(world, sight, rememberedTerrain, pending);
   /** @type {World['players']} */
   const players = {};
   for (const [id, player] of Object.entries(world.players)) {
-    if (id === viewerId) {
-      players[id] = player;
-      continue;
-    }
-    if (player.free) {
-      if (
-        sight.visible.has(tileKey(
-          centerTile(player.x),
-          centerTile(player.y),
-          player.z,
-        ))
-      ) players[id] = player;
-      continue;
-    }
-    const move = player.move;
-    if (!move) {
-      if (sight.visible.has(tileKey(player.x, player.y, player.z))) {
-        players[id] = player;
-      }
-      continue;
-    }
-    const originSeen = tileSeen(sight.visible, move.origin);
-    const targetSeen = tileSeen(sight.visible, move.target);
-    const startSeen = tileSeen(sight.visible, move.startPosition);
-    if (originSeen && targetSeen && startSeen) {
-      players[id] = player;
-      continue;
-    }
-    const progress = (world.tick - move.startTick) / move.durationTicks;
-    if (
-      move.origin.z === move.target.z && originSeen && !targetSeen &&
-      progress < 0.75
-    ) {
-      players[id] = boundaryPlayer(player, false);
-    } else if (
-      move.origin.z === move.target.z && targetSeen && !originSeen &&
-      progress >= 0.25
-    ) {
-      players[id] = boundaryPlayer(player, true);
-    } else if (originSeen && progress < 0.5) {
-      players[id] = { ...player, ...move.origin, move: null };
-    } else if (targetSeen && progress >= 0.5) {
-      players[id] = { ...player, ...move.target, move: null };
-    }
+    const seen = visiblePlayer(player, id === viewerId, sight, world.tick);
+    if (seen) players[id] = seen;
   }
   return players;
 }

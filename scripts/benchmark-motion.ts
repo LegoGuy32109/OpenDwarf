@@ -1,3 +1,4 @@
+import { analyzeObserverTrace } from "./motion-evidence.ts";
 import { cliArgs } from "./cli-args.ts";
 import { chromium, type Page } from "@playwright/test";
 import { existsSync } from "node:fs";
@@ -142,20 +143,24 @@ async function trace(page: Page, authoritative: boolean) {
     root.__motionBenchmarkTrace = [];
     root.__motionBenchmarkStop = false;
     let previous = 0;
+    const observedPositions = () => {
+      const positions: Record<string, Position> = {};
+      for (const id of Object.keys(root.__od.scene.world.players)) {
+        const sample = authoritative
+          ? root.__od.authoritativeSample(id)
+          : root.__od.visualSample(id);
+        if (sample && (sample.opacity === undefined || sample.opacity > 0)) {
+          positions[id] = { x: sample.x, y: sample.y, z: sample.z };
+        }
+      }
+      return positions;
+    };
     const frame = () => {
       if (root.__motionBenchmarkStop) return;
       const at = Date.now();
       if (at - previous >= 45) {
         previous = at;
-        const positions: Record<string, Position> = {};
-        for (const id of Object.keys(root.__od.scene.world.players)) {
-          const sample = authoritative
-            ? root.__od.authoritativeSample(id)
-            : root.__od.visualSample(id);
-          if (sample && (sample.opacity === undefined || sample.opacity > 0)) {
-            positions[id] = { x: sample.x, y: sample.y, z: sample.z };
-          }
-        }
+        const positions = observedPositions();
         root.__motionBenchmarkTrace.push({ at, positions });
       }
       requestAnimationFrame(frame);
@@ -273,16 +278,25 @@ try {
     const world = (globalThis as PageHarness).__od.scene.world;
     delete world.players["npc-corner"];
     const cells: { id: string; x: number; y: number }[] = [];
+    const safePath = (x: number, y: number) => {
+      let safe = true;
+      for (let cy = Math.floor(y - .25); cy <= Math.ceil(y + 1.4); cy++) {
+        for (let cx = Math.floor(x - .25); cx <= Math.ceil(x + 1.4); cx++) {
+          // The search stays inside chunk 0,0, level 0.
+          if (world.chunks.get("0,0")?.[cy * 16 + cx] !== 1) safe = false;
+        }
+      }
+      return safe;
+    };
+    const complete = () => {
+      if (cells.length !== ids.length) {
+        throw new Error("Not enough separated safe paths");
+      }
+      return cells;
+    };
     for (let y = 1; y < 12 && cells.length < ids.length; y += 2.5) {
       for (let x = 1; x < 14 && cells.length < ids.length; x += 2.5) {
-        let safe = true;
-        for (let cy = Math.floor(y - .25); cy <= Math.ceil(y + 1.4); cy++) {
-          for (let cx = Math.floor(x - .25); cx <= Math.ceil(x + 1.4); cx++) {
-            // The search stays inside chunk 0,0, level 0.
-            if (world.chunks.get("0,0")?.[cy * 16 + cx] !== 1) safe = false;
-          }
-        }
-        if (!safe) continue;
+        if (!safePath(x, y)) continue;
         const id = ids[cells.length];
         Object.assign(world.players[id], {
           x,
@@ -297,10 +311,7 @@ try {
         cells.push({ id, x, y });
       }
     }
-    if (cells.length !== ids.length) {
-      throw new Error("Not enough separated safe paths");
-    }
-    return cells;
+    return complete();
   }, ["self", ...guests.map((guest) => guest.id)]);
   await sleep(1_200);
   if (config.view === "master") {
@@ -390,63 +401,9 @@ try {
   if (movingPeers.size !== config.count) {
     failures.push(`Only ${movingPeers.size}/${config.count} peers moved`);
   }
-  const visual = observerTraces.map((observer) => {
-    let matched = 0, pauses = 0, steps = 0, sampleGaps = 0;
-    const rawLag: number[] = [];
-    const presentationAlignedError: number[] = [];
-    let cursor = 0;
-    for (let i = 1; i < observer.frames.length; i++) {
-      const frame = observer.frames[i];
-      const priorFrame = observer.frames[i - 1];
-      const interval = frame.at - priorFrame.at;
-      if (interval > 200) {
-        sampleGaps++;
-        continue;
-      }
-      while (
-        cursor + 1 < hostTrace.length && hostTrace[cursor + 1].at <= frame.at
-      ) cursor++;
-      const current = hostTrace[cursor];
-      const previous = hostTrace[Math.max(0, cursor - 1)];
-      let delayedIndex = cursor;
-      while (delayedIndex > 0 && hostTrace[delayedIndex].at > frame.at - 150) {
-        delayedIndex--;
-      }
-      const delayed = hostTrace[delayedIndex];
-      for (const [id, position] of Object.entries(frame.positions)) {
-        if (id === observer.id) continue;
-        const last = priorFrame.positions[id];
-        const expected = current?.positions[id];
-        const priorExpected = previous?.positions[id];
-        const delayedExpected = delayed?.positions[id];
-        if (
-          !last || !expected || !priorExpected ||
-          Math.abs(current.at - frame.at) > 150
-        ) continue;
-        matched++;
-        rawLag.push(distance(position, expected));
-        if (delayedExpected) {
-          presentationAlignedError.push(distance(position, delayedExpected));
-        }
-        const delta = distance(position, last);
-        if (distance(expected, priorExpected) > .02 && delta < .002) pauses++;
-        // Continuous walking is 2.8 tiles/s; steps over twice that speed are recorded.
-        if (delta > Math.max(.15, interval / 1_000 * 2.8 * 2)) steps++;
-      }
-    }
-    return {
-      observer: observer.id,
-      matched,
-      pauses,
-      steps,
-      sampleGaps,
-      rawLagTilesP95: percentile(rawLag, .95),
-      presentationAlignedErrorTilesP95: percentile(
-        presentationAlignedError,
-        .95,
-      ),
-    };
-  });
+  const visual = observerTraces.map((observer) =>
+    analyzeObserverTrace(hostTrace, observer, percentile)
+  );
   const first = samples[0];
   const last = samples.at(-1)!;
   const elapsed = (last.at - first.at) / 1_000;

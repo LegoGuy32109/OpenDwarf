@@ -422,6 +422,64 @@ export async function createRenderer(canvas) {
     return parts;
   }
 
+  /** @param {Scene} scene @param {number} cx @param {number} cy @param {number} frame */
+  function meshFor(scene, cx, cy, frame) {
+    const key = chunkKey(cx, cy);
+    let entry = meshes.get(key);
+    if (
+      !entry || !meshIsFresh(entry.stamp, scene.world, cx, cy, scene.viewZ)
+    ) {
+      if (entry) releaseMesh(entry);
+      const mesh = buildTerrainMesh(
+        scene.world,
+        cx,
+        cy,
+        scene.viewZ,
+        scene.visibility,
+      );
+      entry = {
+        stamp: {
+          viewZ: mesh.viewZ,
+          chunks: mesh.chunks,
+          versions: mesh.versions,
+          tiles: mesh.tiles,
+        },
+        tiles: mesh.tiles,
+        seen: frame,
+        parts: uploadMesh(mesh),
+      };
+      meshes.set(key, entry);
+    }
+    return entry;
+  }
+
+  /** @param {import('./terrain-mesh.js').MeshPass} pass @param {MeshEntry[]} visible */
+  function drawMeshPass(pass, visible) {
+    const texture = pass === "bands" ? textures.white : textures[pass];
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    for (const entry of visible) {
+      const part = entry.parts[pass];
+      if (!part) continue;
+      gl.bindVertexArray(part.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, part.vertices);
+      drawnQuads += part.vertices * 8 / MESH_FLOATS_PER_QUAD;
+    }
+  }
+
+  /** @param {number} frame @param {number} visibleCount */
+  function pruneMeshes(frame, visibleCount) {
+    // Keep the chunks near the view for panning back; free the rest.
+    const keep = visibleCount * 4 + 32;
+    if (meshes.size > keep) {
+      for (const [key, entry] of meshes) {
+        if (meshes.size <= keep) break;
+        if (entry.seen === frame) continue;
+        releaseMesh(entry);
+        meshes.delete(key);
+      }
+    }
+  }
+
   /**
    * Draw master view terrain from the per-chunk meshes. A chunk's mesh is rebuilt
    * only when `meshIsFresh` says its tiles, its neighbors' tiles, or the level
@@ -439,69 +497,17 @@ export async function createRenderer(canvas) {
     const visible = [];
     for (let cy = chunkTop; cy <= chunkBottom; cy++) {
       for (let cx = chunkLeft; cx <= chunkRight; cx++) {
-        const key = chunkKey(cx, cy);
-        let entry = meshes.get(key);
-        if (
-          !entry || !meshIsFresh(entry.stamp, scene.world, cx, cy, scene.viewZ)
-        ) {
-          if (entry) releaseMesh(entry);
-          const mesh = buildTerrainMesh(
-            scene.world,
-            cx,
-            cy,
-            scene.viewZ,
-            scene.visibility,
-          );
-          entry = {
-            stamp: {
-              viewZ: mesh.viewZ,
-              chunks: mesh.chunks,
-              versions: mesh.versions,
-              tiles: mesh.tiles,
-            },
-            tiles: mesh.tiles,
-            seen: frame,
-            parts: uploadMesh(mesh),
-          };
-          meshes.set(key, entry);
-        }
+        const entry = meshFor(scene, cx, cy, frame);
         entry.seen = frame;
         visible.push(entry);
         drawnTiles += entry.tiles;
       }
     }
     gl.uniform1i(locationScreen, 0);
-    for (const pass of MESH_PASSES) {
-      const texture = pass === "ores"
-        ? textures.ores
-        : pass === "edge"
-        ? textures.edge
-        : pass === "bands"
-        ? textures.white
-        : pass === "ceiling"
-        ? textures.ceiling
-        : textures.floor;
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      for (const entry of visible) {
-        const part = entry.parts[pass];
-        if (!part) continue;
-        gl.bindVertexArray(part.vao);
-        gl.drawArrays(gl.TRIANGLES, 0, part.vertices);
-        drawnQuads += part.vertices * 8 / MESH_FLOATS_PER_QUAD;
-      }
-    }
+    for (const pass of MESH_PASSES) drawMeshPass(pass, visible);
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    // Keep the chunks near the view for panning back; free the rest.
-    const keep = visible.length * 4 + 32;
-    if (meshes.size > keep) {
-      for (const [key, entry] of meshes) {
-        if (meshes.size <= keep) break;
-        if (entry.seen === frame) continue;
-        releaseMesh(entry);
-        meshes.delete(key);
-      }
-    }
+    pruneMeshes(frame, visible.length);
   }
 
   /**
@@ -1098,8 +1104,9 @@ export async function createRenderer(canvas) {
     return { chat, now, positions, listener };
   }
 
-  /** @param {ChatFrame} frame */
-  function drawBubbles(frame) {
+  /** @typedef {NonNullable<ReturnType<typeof bubbleCandidate>>} BubbleCandidate */
+  /** @param {ChatFrame} frame @param {import('../shared/chat.js').DisplayChatRecord} record */
+  function bubbleCandidate(frame, record) {
     const {
       dpr,
       width,
@@ -1108,81 +1115,81 @@ export async function createRenderer(canvas) {
       cameraX,
       cameraY,
       bubbleScale,
-      chat,
       now,
       positions,
       listener,
     } = frame;
-    const candidates = chat.map((record) => {
-      const pos = positions.get(record.id) ?? record;
-      const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
-      const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
-      const level = record.z - listener.z;
-      const lines = liveBubbleItems(record, now);
-      if (!lines.length && !record.text && !record.talking) return null;
-      const contents = lines.length
-        ? lines.map((line) => line.text)
-        : [record.text ?? ":0"];
-      const shown = lines.length
-        ? lines.map((line) =>
-          line.startAt === undefined ? line.text : line.text.slice(
-            0,
-            revealedLength(
-              scheduleFor(record.id, line.text),
-              line.text,
-              now - line.startAt,
-            ),
-          )
+    const pos = positions.get(record.id) ?? record;
+    const sx = ((pos.x + 0.5) * TILE - cameraX) * zoom + width / 2;
+    const sy = (pos.y * TILE - cameraY) * zoom + height / 2;
+    const level = record.z - listener.z;
+    const lines = liveBubbleItems(record, now);
+    if (!lines.length && !record.text && !record.talking) return null;
+    const contents = lines.length
+      ? lines.map((line) => line.text)
+      : [record.text ?? ":0"];
+    const shown = lines.length
+      ? lines.map((line) =>
+        line.startAt === undefined ? line.text : line.text.slice(
+          0,
+          revealedLength(
+            scheduleFor(record.id, line.text),
+            line.text,
+            now - line.startAt,
+          ),
         )
-        : contents;
-      const direction = sx < 0
-        ? "<"
-        : sx > width
-        ? ">"
-        : sy < 0
-        ? "^"
-        : sy > height
-        ? "v"
-        : "";
-      const maxChars = Math.max(
-        2,
-        Math.floor((width - 32 * dpr) / (8 * bubbleScale)) - 2,
-      );
-      const prefix = `${direction}${direction ? " " : ""}${
-        level ? `  ${Math.abs(level)} ` : ""
-      }`;
-      // The bubble keeps its final size while the text fills it.
-      const fullRows = contents.map((content) =>
-        `${prefix}${content}`.slice(0, maxChars)
-      );
-      const rows = shown.map((content) =>
-        `${prefix}${content}`.slice(0, maxChars)
-      );
-      const w = Math.min(
-        width - 16 * dpr,
-        (Math.max(...fullRows.map((row) => row.length)) * 8 + 16) *
-          bubbleScale,
-      );
-      const h = (rows.length * 22 - 2) * bubbleScale;
-      const rawX = sx - w / 2;
-      const rawY = sy - 28 * bubbleScale - (rows.length - 1) * 22 * bubbleScale;
-      const x = Math.max(8 * dpr, Math.min(width - w - 8 * dpr, rawX));
-      const y = Math.max(8 * dpr, Math.min(height - h - 2 * bubbleScale, rawY));
-      return {
-        record,
-        rows,
-        x,
-        y,
-        w,
-        h,
-        direction,
-        level,
-        distance: Math.hypot(record.x - listener.x, record.y - listener.y),
-      };
-    }).filter((candidate) => candidate !== null).sort((a, b) =>
-      a.distance - b.distance || a.record.id.localeCompare(b.record.id)
+      )
+      : contents;
+    const direction = bubbleDirection(sx, sy, width, height);
+    const maxChars = Math.max(
+      2,
+      Math.floor((width - 32 * dpr) / (8 * bubbleScale)) - 2,
     );
-    /** @type {(typeof candidates)[]} */
+    const prefix = `${direction}${direction ? " " : ""}${
+      level ? `  ${Math.abs(level)} ` : ""
+    }`;
+    // The bubble keeps its final size while the text fills it.
+    const fullRows = contents.map((content) =>
+      `${prefix}${content}`.slice(0, maxChars)
+    );
+    const rows = shown.map((content) =>
+      `${prefix}${content}`.slice(0, maxChars)
+    );
+    const w = Math.min(
+      width - 16 * dpr,
+      (Math.max(...fullRows.map((row) => row.length)) * 8 + 16) *
+        bubbleScale,
+    );
+    const h = (rows.length * 22 - 2) * bubbleScale;
+    const rawX = sx - w / 2;
+    const rawY = sy - 28 * bubbleScale - (rows.length - 1) * 22 * bubbleScale;
+    const x = Math.max(8 * dpr, Math.min(width - w - 8 * dpr, rawX));
+    const y = Math.max(8 * dpr, Math.min(height - h - 2 * bubbleScale, rawY));
+    return {
+      record,
+      rows,
+      x,
+      y,
+      w,
+      h,
+      direction,
+      level,
+      distance: Math.hypot(record.x - listener.x, record.y - listener.y),
+    };
+  }
+
+  /** @param {number} sx @param {number} sy @param {number} width @param {number} height */
+  function bubbleDirection(sx, sy, width, height) {
+    if (sx < 0) return "<";
+    if (sx > width) return ">";
+    if (sy < 0) return "^";
+    if (sy > height) return "v";
+    return "";
+  }
+
+  /** @param {BubbleCandidate[]} candidates */
+  function bubbleGroups(candidates) {
+    /** @type {BubbleCandidate[][]} */
     const groups = [];
     for (const candidate of candidates) {
       const group = groups.find((items) =>
@@ -1198,68 +1205,89 @@ export async function createRenderer(canvas) {
       if (group) group.push(candidate);
       else groups.push([candidate]);
     }
-    for (const group of groups) {
-      let offset = 0;
-      for (const candidate of group.slice(0, 3)) {
-        const top = Math.max(
-          8 * dpr,
-          Math.min(
-            height - candidate.h - 2 * bubbleScale,
-            candidate.y + offset,
-          ),
+    return groups;
+  }
+
+  /** @param {ChatFrame} frame @param {BubbleCandidate[]} group */
+  function drawBubbleGroup(frame, group) {
+    const { dpr, height, bubbleScale } = frame;
+    let offset = 0;
+    for (const candidate of group.slice(0, 3)) {
+      const top = Math.max(
+        8 * dpr,
+        Math.min(
+          height - candidate.h - 2 * bubbleScale,
+          candidate.y + offset,
+        ),
+      );
+      offset += candidate.h + 2 * bubbleScale;
+      drawBubbleRows(candidate, top, bubbleScale);
+    }
+    if (group.length > 3) {
+      const item = group[0];
+      text(
+        `+${group.length - 3}`,
+        item.x,
+        Math.min(height - 18 * bubbleScale, item.y + offset),
+        bubbleScale,
+        [1, 0.58, 0.2, 1],
+      );
+    }
+  }
+
+  /** @param {BubbleCandidate} candidate @param {number} top @param {number} bubbleScale */
+  function drawBubbleRows(candidate, top, bubbleScale) {
+    for (const [index, row] of candidate.rows.entries()) {
+      const y = top + index * 22 * bubbleScale;
+      rect(candidate.x, y, candidate.w, 20 * bubbleScale, [
+        0.06,
+        0.06,
+        0.06,
+        0.85,
+      ]);
+      text(
+        row,
+        candidate.x + 8 * bubbleScale,
+        y + 2 * bubbleScale,
+        bubbleScale,
+      );
+      if (candidate.level) {
+        const arrowX = candidate.x +
+          (candidate.direction ? 24 : 8) * bubbleScale;
+        const arrowY = y + 5 * bubbleScale;
+        const gold =
+          /** @type {[number,number,number,number]} */ ([1, 0.78, 0.37, 1]);
+        rect(
+          arrowX + 2 * bubbleScale,
+          arrowY + 2 * bubbleScale,
+          bubbleScale,
+          8 * bubbleScale,
+          gold,
         );
-        offset += candidate.h + 2 * bubbleScale;
-        for (const [index, row] of candidate.rows.entries()) {
-          const y = top + index * 22 * bubbleScale;
-          rect(candidate.x, y, candidate.w, 20 * bubbleScale, [
-            0.06,
-            0.06,
-            0.06,
-            0.85,
-          ]);
-          text(
-            row,
-            candidate.x + 8 * bubbleScale,
-            y + 2 * bubbleScale,
-            bubbleScale,
+        for (let n = 0; n < 3; n++) {
+          rect(
+            arrowX + n * 2 * bubbleScale,
+            arrowY +
+              (candidate.level > 0 ? n * 2 : 6 - n * 2) * bubbleScale,
+            2 * bubbleScale,
+            2 * bubbleScale,
+            gold,
           );
-          if (candidate.level) {
-            const arrowX = candidate.x +
-              (candidate.direction ? 24 : 8) * bubbleScale;
-            const arrowY = y + 5 * bubbleScale;
-            const gold =
-              /** @type {[number,number,number,number]} */ ([1, 0.78, 0.37, 1]);
-            rect(
-              arrowX + 2 * bubbleScale,
-              arrowY + 2 * bubbleScale,
-              bubbleScale,
-              8 * bubbleScale,
-              gold,
-            );
-            for (let n = 0; n < 3; n++) {
-              rect(
-                arrowX + n * 2 * bubbleScale,
-                arrowY +
-                  (candidate.level > 0 ? n * 2 : 6 - n * 2) * bubbleScale,
-                2 * bubbleScale,
-                2 * bubbleScale,
-                gold,
-              );
-            }
-          }
         }
       }
-      if (group.length > 3) {
-        const item = group[0];
-        text(
-          `+${group.length - 3}`,
-          item.x,
-          Math.min(height - 18 * bubbleScale, item.y + offset),
-          bubbleScale,
-          [1, 0.58, 0.2, 1],
-        );
-      }
     }
+  }
+
+  /** @param {ChatFrame} frame */
+  function drawBubbles(frame) {
+    const candidates = frame.chat.map((record) =>
+      bubbleCandidate(frame, record)
+    )
+      .filter((candidate) => candidate !== null)
+      .sort((a, b) =>
+        a.distance - b.distance || a.record.id.localeCompare(b.record.id)
+      );
+    for (const group of bubbleGroups(candidates)) drawBubbleGroup(frame, group);
   }
 
   /** @param {ChatFrame} frame */

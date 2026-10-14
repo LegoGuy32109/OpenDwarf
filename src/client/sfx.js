@@ -244,6 +244,92 @@ export function createSfx(options = {}) {
     voices = voices.filter((candidate) => candidate !== voice);
   }
 
+  /** @param {string[]} tags */
+  function chooseSample(tags) {
+    const matches = matchSamples(ready, tags);
+    if (!matches.length) return null;
+    const listKey = tags.join("\u0000");
+    const fresh = matches.length > 1
+      ? matches.filter((sample) => sample.key !== lastPlayed.get(listKey))
+      : matches;
+    const sample = fresh[Math.floor(random01() * fresh.length)];
+    const buffer = buffers.get(sample.key);
+    if (!buffer) return null;
+    return { sample, buffer, listKey };
+  }
+
+  /** @param {number} gain */
+  function makeRoom(gain) {
+    if (voices.length >= MAX_SOUNDS) {
+      const quietest = voices.reduce((low, voice) =>
+        voice.gain < low.gain ? voice : low
+      );
+      if (quietest.gain >= gain) return false;
+      quietest.stop();
+      release(quietest);
+    }
+    return true;
+  }
+
+  /** @param {AudioContext} context @param {GainNode} output @param {{buffer:AudioBuffer,rate:number,gain:number,muffled:boolean,wait:number}} request */
+  function startVoice(context, output, { buffer, rate, gain, muffled, wait }) {
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    const node = context.createGain();
+    node.gain.value = gain;
+    /** @type {BiquadFilterNode|null} */
+    let filter = null;
+    source.connect(node);
+    if (muffled) {
+      filter = context.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = MUFFLE_HZ;
+      node.connect(filter);
+      filter.connect(output);
+    } else node.connect(output);
+    /** @type {Voice} */
+    const voice = {
+      gain,
+      stop() {
+        try {
+          source.stop();
+        } catch {
+          // Already ended.
+        }
+      },
+    };
+    voices.push(voice);
+    source.onended = () => {
+      release(voice);
+      try {
+        source.disconnect();
+        node.disconnect();
+        filter?.disconnect();
+      } catch {
+        // Already torn down.
+      }
+    };
+    source.start(context.currentTime + Math.max(0, wait) / 1000);
+  }
+
+  /** @param {AudioContext} context */
+  function contextPaused(context) {
+    return globalThis.document?.hidden || context.state === "suspended";
+  }
+
+  /** @param {PlayOptions} playOptions */
+  function playGain(playOptions) {
+    let gain = between(SOUND_GAIN);
+    const { x, y } = playOptions;
+    if (listener && x !== undefined && y !== undefined) {
+      gain *= effectsDistanceGain(Math.hypot(x - listener.x, y - listener.y));
+    }
+    const muffled = playOptions.muffled === true;
+    if (muffled) gain *= MUFFLE_GAIN;
+    return { gain, muffled };
+  }
+
   return {
     /** Fetches the index and downloads and decodes every sample. */
     start() {
@@ -283,74 +369,18 @@ export function createSfx(options = {}) {
       if (!context || !master || !active()) return;
       // A suspended context (a hidden tab) would queue sounds that all play
       // together when the tab comes back.
-      if (globalThis.document?.hidden || context.state === "suspended") return;
+      if (contextPaused(context)) return;
       const wait = playOptions.at === undefined ? 0 : playOptions.at - now();
       if (wait < -LATE_MS) return;
-      const matches = matchSamples(ready, tags);
-      if (!matches.length) return;
-      const listKey = tags.join("\u0000");
-      const fresh = matches.length > 1
-        ? matches.filter((sample) => sample.key !== lastPlayed.get(listKey))
-        : matches;
-      const sample = fresh[Math.floor(random01() * fresh.length)];
-      const buffer = buffers.get(sample.key);
-      if (!buffer) return;
-      let gain = between(SOUND_GAIN);
-      const { x, y } = playOptions;
-      if (listener && x !== undefined && y !== undefined) {
-        gain *= effectsDistanceGain(Math.hypot(x - listener.x, y - listener.y));
-      }
-      const muffled = playOptions.muffled === true;
-      if (muffled) gain *= MUFFLE_GAIN;
+      const choice = chooseSample(tags);
+      if (!choice) return;
+      const { sample, buffer, listKey } = choice;
+      const { gain, muffled } = playGain(playOptions);
       if (gain <= 0) return;
-      if (voices.length >= MAX_SOUNDS) {
-        const quietest = voices.reduce((low, voice) =>
-          voice.gain < low.gain ? voice : low
-        );
-        if (quietest.gain >= gain) return;
-        quietest.stop();
-        release(quietest);
-      }
+      if (!makeRoom(gain)) return;
       const rate = between(tags[0] === "step" ? STEP_RATE : SOUND_RATE);
       lastPlayed.set(listKey, sample.key);
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      source.playbackRate.value = rate;
-      const node = context.createGain();
-      node.gain.value = gain;
-      /** @type {BiquadFilterNode|null} */
-      let filter = null;
-      source.connect(node);
-      if (muffled) {
-        filter = context.createBiquadFilter();
-        filter.type = "lowpass";
-        filter.frequency.value = MUFFLE_HZ;
-        node.connect(filter);
-        filter.connect(master);
-      } else node.connect(master);
-      /** @type {Voice} */
-      const voice = {
-        gain,
-        stop() {
-          try {
-            source.stop();
-          } catch {
-            // Already ended.
-          }
-        },
-      };
-      voices.push(voice);
-      source.onended = () => {
-        release(voice);
-        try {
-          source.disconnect();
-          node.disconnect();
-          filter?.disconnect();
-        } catch {
-          // Already torn down.
-        }
-      };
-      source.start(context.currentTime + Math.max(0, wait) / 1000);
+      startVoice(context, master, { buffer, rate, gain, muffled, wait });
       log.push({ tags: tags.slice(), key: sample.key, rate, gain, muffled });
       if (log.length > LOG_LIMIT) log.splice(0, log.length - LOG_LIMIT);
     },

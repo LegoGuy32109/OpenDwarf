@@ -61,6 +61,66 @@ export function chatBand(listener, speaker, previous) {
   return distance <= CHAT_TALKING_RADIUS ? "talking" : "none";
 }
 
+/** @param {Player} speaker @param {boolean} queued */
+function chatFlags(speaker, queued) {
+  return {
+    ...(speaker.typing ? { typing: true } : {}),
+    ...(queued ? { queued: true } : {}),
+  };
+}
+
+/** @param {number} tick @param {Player} listener @param {Player} speaker @param {Map<string,ChatBand>} bands @returns {ChatRecord|null} */
+function speakerChat(tick, listener, speaker, bands) {
+  // Only bubbles whose start has come leave the host (ADR 0006); a waiting
+  // bubble's text stays behind and the listener sees only that one waits.
+  const live = (speaker.messages ?? []).filter((bubble) => tick < bubble.until);
+  const started = live.filter((bubble) => bubbleStart(bubble) <= tick);
+  const queued = live.length > started.length;
+  if (!started.length && !queued && !speaker.typing) {
+    bands.delete(speaker.id);
+    return null;
+  }
+  const band = chatBand(listener, speaker, bands.get(speaker.id));
+  bands.set(speaker.id, band);
+  if (band === "none") return null;
+  const base = {
+    id: speaker.id,
+    x: speaker.x,
+    y: speaker.y,
+    z: speaker.z,
+  };
+  const newest = started.at(-1);
+  const expiresTick = Math.max(0, ...started.map((bubble) => bubble.until));
+  if (newest && band === "text") {
+    return {
+      ...base,
+      text: newest.text,
+      expiresTick,
+      bubbles: started.map((bubble) => ({
+        text: bubble.text,
+        expiresTick: bubble.until,
+        startTick: bubbleStart(bubble),
+      })),
+      ...chatFlags(speaker, queued),
+    };
+  } else if (newest && band === "talking") {
+    return {
+      ...base,
+      talking: true,
+      syllables: syllableCount(newest.text),
+      startTick: bubbleStart(newest),
+      expiresTick,
+    };
+  } else if ((speaker.typing || queued) && band === "text") {
+    return {
+      ...base,
+      ...chatFlags(speaker, queued),
+    };
+  }
+
+  return null;
+}
+
 /** @param {World} world @param {string} listenerId @param {Map<string,ChatBand>} bands @returns {ChatRecord[]} */
 export function chatView(world, listenerId, bands) {
   const listener = world.players[listenerId];
@@ -68,56 +128,8 @@ export function chatView(world, listenerId, bands) {
   /** @type {ChatRecord[]} */
   const records = [];
   for (const speaker of Object.values(world.players)) {
-    // Only bubbles whose start has come leave the host (ADR 0006); a waiting
-    // bubble's text stays behind and the listener sees only that one waits.
-    const live = (speaker.messages ?? []).filter((bubble) =>
-      world.tick < bubble.until
-    );
-    const started = live.filter((bubble) => bubbleStart(bubble) <= world.tick);
-    const queued = live.length > started.length;
-    if (!started.length && !queued && !speaker.typing) {
-      bands.delete(speaker.id);
-      continue;
-    }
-    const band = chatBand(listener, speaker, bands.get(speaker.id));
-    bands.set(speaker.id, band);
-    if (band === "none") continue;
-    const base = {
-      id: speaker.id,
-      x: speaker.x,
-      y: speaker.y,
-      z: speaker.z,
-    };
-    const newest = started.at(-1);
-    const expiresTick = Math.max(0, ...started.map((bubble) => bubble.until));
-    if (newest && band === "text") {
-      records.push({
-        ...base,
-        text: newest.text,
-        expiresTick,
-        bubbles: started.map((bubble) => ({
-          text: bubble.text,
-          expiresTick: bubble.until,
-          startTick: bubbleStart(bubble),
-        })),
-        ...(speaker.typing ? { typing: true } : {}),
-        ...(queued ? { queued: true } : {}),
-      });
-    } else if (newest && band === "talking") {
-      records.push({
-        ...base,
-        talking: true,
-        syllables: syllableCount(newest.text),
-        startTick: bubbleStart(newest),
-        expiresTick,
-      });
-    } else if ((speaker.typing || queued) && band === "text") {
-      records.push({
-        ...base,
-        ...(speaker.typing ? { typing: true } : {}),
-        ...(queued ? { queued: true } : {}),
-      });
-    }
+    const record = speakerChat(world.tick, listener, speaker, bands);
+    if (record) records.push(record);
   }
   return records;
 }

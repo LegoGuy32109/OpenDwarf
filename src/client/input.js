@@ -121,6 +121,29 @@ function gamepadDpad(pad, buttons) {
   return { x: dpadX, y: dpadY };
 }
 
+/** @param {Context} ctx @param {Gamepad} pad */
+function readCameraAxes(ctx, pad) {
+  const cameraX = pad.axes[2] ?? 0;
+  const cameraY = pad.axes[3] ?? 0;
+  ctx.gamepadCamera = Math.hypot(cameraX, cameraY) < 0.18
+    ? { x: 0, y: 0 }
+    : { x: cameraX, y: cameraY };
+  const leftStick = stickDirection(pad.axes[0] ?? 0, pad.axes[1] ?? 0, 0.3);
+  ctx.gamepadStick = leftStick.x || leftStick.y
+    ? leftStick
+    : stickDirection(cameraX, cameraY, 0.5);
+}
+
+/** @param {Context} ctx @param {{x:number,y:number}} previousDirection @param {Set<number>} buttons */
+function gamepadActive(ctx, previousDirection, buttons) {
+  return Boolean(
+    ctx.gamepadDirection.x !== previousDirection.x ||
+      ctx.gamepadDirection.y !== previousDirection.y ||
+      ctx.gamepadCamera.x || ctx.gamepadCamera.y ||
+      buttons.size,
+  );
+}
+
 /** @param {Context} ctx @param {Gamepad} pad @param {Set<number>} buttons */
 function readGamepadAxes(ctx, pad, buttons) {
   const { scene } = ctx;
@@ -135,27 +158,16 @@ function readGamepadAxes(ctx, pad, buttons) {
   if ((dpadX || dpadY) && !isPickupGridOpen(ctx.pickupGrid)) {
     ctx.gamepadDirection = { x: dpadX, y: dpadY };
   }
-  const cameraX = pad.axes[2] ?? 0;
-  const cameraY = pad.axes[3] ?? 0;
-  ctx.gamepadCamera = Math.hypot(cameraX, cameraY) < 0.18
-    ? { x: 0, y: 0 }
-    : { x: cameraX, y: cameraY };
-  const leftStick = stickDirection(pad.axes[0] ?? 0, pad.axes[1] ?? 0, 0.3);
-  ctx.gamepadStick = leftStick.x || leftStick.y
-    ? leftStick
-    : stickDirection(cameraX, cameraY, 0.5);
+  readCameraAxes(ctx, pad);
   const panelOpen = ctx.bag.isOpen || isPickupGridOpen(ctx.pickupGrid) ||
     ctx.shop.isOpen();
   // A zooms in and B zooms out while held. Panels turn zoom off.
   ctx.gamepadZoom = panelOpen
     ? 0
     : Number(buttons.has(1)) - Number(buttons.has(0));
-  if (
-    ctx.gamepadDirection.x !== previousDirection.x ||
-    ctx.gamepadDirection.y !== previousDirection.y ||
-    ctx.gamepadCamera.x || ctx.gamepadCamera.y ||
-    buttons.size
-  ) scene.inputMode = "gamepad";
+  if (gamepadActive(ctx, previousDirection, buttons)) {
+    scene.inputMode = "gamepad";
+  }
   if (ctx.bag.isOpen) {
     ctx.bag.steer(ctx.gamepadDpad, performance.now());
     ctx.bag.steerStick(ctx.gamepadStick, performance.now());
@@ -421,26 +433,31 @@ function commandKey(ctx, event) {
 }
 
 /** @param {Context} ctx @param {KeyboardEvent} event */
-function keyDown(ctx, event) {
-  const { scene, ui, bag, shop, held, pressed } = ctx;
-  if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) return;
+function globalKey(ctx, event) {
+  const { scene, ui } = ctx;
+  if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) return true;
   if (scene.chatOpen) {
     chatKey(ctx, event);
-    return;
+    return true;
   }
   if (event.code === "F3" && !ctx.isAdmin && !event.repeat) {
     event.preventDefault();
     ui.diagnosticsOpen = !ui.diagnosticsOpen;
-    return;
+    return true;
   }
   // Q does what Escape does.
   const code = event.code === "KeyQ" ? "Escape" : event.code;
   scene.inputMode = "keyboard";
   if (code === "Escape") {
     escapeKey(ctx, event);
-    return;
+    return true;
   }
-  if (commandKey(ctx, event)) return;
+  return commandKey(ctx, event);
+}
+
+/** @param {Context} ctx @param {KeyboardEvent} event */
+function shopKey(ctx, event) {
+  const { shop } = ctx;
   if (
     shop.isOpen() && ["KeyI", "KeyK", "KeyJ", "KeyL"].includes(event.code)
   ) {
@@ -448,8 +465,14 @@ function keyDown(ctx, event) {
     event.preventDefault();
     if (!event.repeat && event.code === "KeyI") shop.move(-1);
     if (!event.repeat && event.code === "KeyK") shop.move(1);
-    return;
+    return true;
   }
+  return false;
+}
+
+/** @param {Context} ctx @param {KeyboardEvent} event */
+function worldKey(ctx, event) {
+  const { scene, bag, held, pressed } = ctx;
   gridKey(ctx, event.code, event.repeat);
   held.add(event.code);
   if (
@@ -486,6 +509,12 @@ function keyDown(ctx, event) {
   if (event.code === "KeyU" || event.code === "KeyN") {
     scene.hudUntil = performance.now() + 500;
   }
+}
+
+/** @param {Context} ctx @param {KeyboardEvent} event */
+function keyDown(ctx, event) {
+  if (globalKey(ctx, event) || shopKey(ctx, event)) return;
+  worldKey(ctx, event);
 }
 
 /**

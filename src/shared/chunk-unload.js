@@ -14,6 +14,34 @@ export function createChunkUnloader(options = {}) {
   const graceMs = options.graceMs ?? UNLOAD_GRACE_MS;
   /** @type {Map<string,number>} chunk key → time a player was last near */
   const lastNear = new Map();
+  /** @param {import('./terrain.js').TerrainStore} world @param {{x:number,y:number}[]} tiles @param {number} now */
+  function markPlayers(world, tiles, now) {
+    for (const tile of tiles) {
+      const px = chunkCoord(Math.floor(tile.x));
+      const py = chunkCoord(Math.floor(tile.y));
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const key = chunkKey(px + dx, py + dy);
+          if (world.chunks.has(key)) lastNear.set(key, now);
+        }
+      }
+    }
+  }
+
+  /** @param {import('./terrain.js').TerrainStore} world @param {{minX:number,minY:number,maxX:number,maxY:number}[]} views @param {number} now */
+  function markViews(world, views, now) {
+    for (const view of views) {
+      const x1 = chunkCoord(Math.floor(view.maxX)) + 1;
+      const y1 = chunkCoord(Math.floor(view.maxY)) + 1;
+      for (let cy = chunkCoord(Math.floor(view.minY)) - 1; cy <= y1; cy++) {
+        for (let cx = chunkCoord(Math.floor(view.minX)) - 1; cx <= x1; cx++) {
+          const key = chunkKey(cx, cy);
+          if (world.chunks.has(key)) lastNear.set(key, now);
+        }
+      }
+    }
+  }
+
   return {
     /**
      * Count the players as near their chunks, then unload the chunks that have
@@ -26,26 +54,8 @@ export function createChunkUnloader(options = {}) {
      */
     update(world, tiles, now, views = []) {
       if (!world.generateChunk) return 0;
-      for (const tile of tiles) {
-        const px = chunkCoord(Math.floor(tile.x));
-        const py = chunkCoord(Math.floor(tile.y));
-        for (let dy = -radius; dy <= radius; dy++) {
-          for (let dx = -radius; dx <= radius; dx++) {
-            const key = chunkKey(px + dx, py + dy);
-            if (world.chunks.has(key)) lastNear.set(key, now);
-          }
-        }
-      }
-      for (const view of views) {
-        const x1 = chunkCoord(Math.floor(view.maxX)) + 1;
-        const y1 = chunkCoord(Math.floor(view.maxY)) + 1;
-        for (let cy = chunkCoord(Math.floor(view.minY)) - 1; cy <= y1; cy++) {
-          for (let cx = chunkCoord(Math.floor(view.minX)) - 1; cx <= x1; cx++) {
-            const key = chunkKey(cx, cy);
-            if (world.chunks.has(key)) lastNear.set(key, now);
-          }
-        }
-      }
+      markPlayers(world, tiles, now);
+      markViews(world, views, now);
       let unloaded = 0;
       for (const key of [...world.chunks.keys()]) {
         if (world.pinned?.has(key)) continue;

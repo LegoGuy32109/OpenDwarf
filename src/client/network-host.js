@@ -115,14 +115,7 @@ export function startHost(scene, session, sounds = {}) {
     );
   }
 
-  function tick() {
-    const changes = drainTileChanges(scene.world);
-    if (changes.length) {
-      // Force the host's own sight to see through a mined tile.
-      scene.visibility.sample = "";
-      for (const connection of peers.values()) connection.reveal(changes);
-    }
-    for (const connection of peers.values()) connection.tick();
+  function musicHeartbeat() {
     if (musicCue && peers.size && scene.world.tick % MUSIC_BEAT_TICKS === 0) {
       const position = sounds.musicPosition?.();
       if (position && position.key === musicCue.key) {
@@ -134,6 +127,17 @@ export function startHost(scene, session, sounds = {}) {
         for (const connection of peers.values()) connection.music(beat);
       }
     }
+  }
+
+  function tick() {
+    const changes = drainTileChanges(scene.world);
+    if (changes.length) {
+      // Force the host's own sight to see through a mined tile.
+      scene.visibility.sample = "";
+      for (const connection of peers.values()) connection.reveal(changes);
+    }
+    for (const connection of peers.values()) connection.tick();
+    musicHeartbeat();
     const events = drainSounds(scene.world);
     if (!events.length) return;
     for (const connection of peers.values()) connection.hear(events);
@@ -382,24 +386,8 @@ export function startHost(scene, session, sounds = {}) {
       publish();
     }
 
-    /** @param {{relay?:boolean,token?:string,attempt?:string,version?:number}} request */
-    async function acceptJoin(request) {
-      const token = typeof request.token === "string" ? request.token : "";
-      const attempt = typeof request.attempt === "string"
-        ? request.attempt
-        : "";
-      if (request.version !== PROTOCOL_VERSION) {
-        await signaling.send(playerId, "incompatible", {
-          attempt,
-          version: PROTOCOL_VERSION,
-        });
-        scene.status =
-          "Visitor uses a different game version. Refresh both pages.";
-        return;
-      }
-      if (!token || !attempt || (visitorToken && token !== visitorToken)) {
-        return;
-      }
+    /** @param {string} token @param {string} attempt */
+    function resetJoin(token, attempt) {
       if (departureTimer) clearTimeout(departureTimer);
       departureTimer = null;
       snapshotSender?.close();
@@ -422,6 +410,38 @@ export function startHost(scene, session, sounds = {}) {
       viewRevision = sightRevision = 0;
       lastSight = "";
       resendTerrain();
+    }
+
+    function bothChannelsOpen() {
+      return channel?.readyState === "open" &&
+        motionChannel?.readyState === "open";
+    }
+
+    /** @param {{token?:string,attempt?:string}} request */
+    function joinKeys(request) {
+      const token = typeof request.token === "string" ? request.token : "";
+      const attempt = typeof request.attempt === "string"
+        ? request.attempt
+        : "";
+      return { token, attempt };
+    }
+
+    /** @param {{relay?:boolean,token?:string,attempt?:string,version?:number}} request */
+    async function acceptJoin(request) {
+      const { token, attempt } = joinKeys(request);
+      if (request.version !== PROTOCOL_VERSION) {
+        await signaling.send(playerId, "incompatible", {
+          attempt,
+          version: PROTOCOL_VERSION,
+        });
+        scene.status =
+          "Visitor uses a different game version. Refresh both pages.";
+        return;
+      }
+      if (!token || !attempt || (visitorToken && token !== visitorToken)) {
+        return;
+      }
+      resetJoin(token, attempt);
       try {
         const iceServers = await ice(session);
         if (activeAttempt !== attempt) return;
@@ -513,8 +533,7 @@ export function startHost(scene, session, sounds = {}) {
         const ready = () => {
           if (
             peer !== nextPeer || !joined || opened ||
-            channel?.readyState !== "open" ||
-            motionChannel?.readyState !== "open"
+            !bothChannelsOpen()
           ) return;
           opened = true;
           deadline.complete(attempt);
@@ -814,6 +833,15 @@ export function startHost(scene, session, sounds = {}) {
     };
   }
 
+  /** @param {{attempt?:string,token?:string}} request */
+  function validJoinAttempt(request) {
+    return !(
+      typeof request.attempt !== "string" || !request.attempt ||
+      request.attempt.length > 128 || typeof request.token !== "string" ||
+      !request.token || request.token.length > 128
+    );
+  }
+
   /** @param {Signal} message */
   const receiveSignal = (message) => {
     if (message.kind === "join") {
@@ -824,11 +852,7 @@ export function startHost(scene, session, sounds = {}) {
       if (!/^peer-[a-f0-9-]{36}$/.test(playerId) || playerId !== message.from) {
         return;
       }
-      if (
-        typeof request.attempt !== "string" || !request.attempt ||
-        request.attempt.length > 128 || typeof request.token !== "string" ||
-        !request.token || request.token.length > 128
-      ) return;
+      if (!validJoinAttempt(request)) return;
       if (request.version !== PROTOCOL_VERSION) {
         void signaling.send(playerId, "incompatible", {
           attempt: request.attempt,

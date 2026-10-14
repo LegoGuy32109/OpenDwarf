@@ -105,20 +105,10 @@ Deno.test("ore frequencies follow depth bands over many chunks", () => {
   }
   console.log("ore tiles per chunk by band", JSON.stringify(report));
   // Coal and iron live near the surface; gold, lapis, redstone in the middle.
-  for (const z of [0, 1, 2, 3, 4]) assertEquals(counts[z].get(COAL) ?? 0, 0);
-  for (const z of [0, 1]) {
-    for (const m of [GOLD_ORE, LAPIS, REDSTONE, IRON_ORE]) {
-      assertEquals(counts[z].get(m) ?? 0, 0);
-    }
-  }
-  for (const z of [5, 6, 7]) {
-    for (const m of [GOLD_ORE, LAPIS, REDSTONE, DIAMOND, EMERALD]) {
-      assertEquals(counts[z].get(m) ?? 0, 0);
-    }
-  }
-  for (const z of [2, 3, 4]) {
-    for (const m of [DIAMOND, EMERALD]) assertEquals(counts[z].get(m) ?? 0, 0);
-  }
+  assertNoOre(counts, [0, 1, 2, 3, 4], [COAL]);
+  assertNoOre(counts, [0, 1], [GOLD_ORE, LAPIS, REDSTONE, IRON_ORE]);
+  assertNoOre(counts, [5, 6, 7], [GOLD_ORE, LAPIS, REDSTONE, DIAMOND, EMERALD]);
+  assertNoOre(counts, [2, 3, 4], [DIAMOND, EMERALD]);
   // Every band has ore, and the rare ores are rarer than the common ones.
   for (const [name, material, zMin, zMax] of bands) {
     assert(perChunk(material, zMin, zMax) > 0, `${name} appears`);
@@ -245,3 +235,15 @@ Deno.test("generateInView creates nothing without a generator", () => {
   assertEquals(generateInView(world, view), 0);
   assertEquals(world.chunks.size, 1);
 });
+
+function assertNoOre(
+  counts: ReturnType<typeof survey>,
+  levels: number[],
+  materials: number[],
+) {
+  for (const z of levels) {
+    for (const material of materials) {
+      assertEquals(counts[z].get(material) ?? 0, 0);
+    }
+  }
+}

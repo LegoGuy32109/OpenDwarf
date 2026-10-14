@@ -61,17 +61,9 @@ function speakerName(ctx, id) {
   return name || "Visitor";
 }
 
-/** One world tick of the local player's movement: send the input if a guest, then move. @param {Context} ctx */
-function move(ctx) {
+/** @param {Context} ctx @param {{x:number,y:number}} direction @param {boolean} changed */
+function sendDirection(ctx, direction, changed) {
   const { scene, stamina } = ctx;
-  const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
-    ? { x: 0, y: 0 }
-    : inputDirection(ctx);
-  ctx.pressed.clear();
-  const changed = direction.x !== ctx.lastInputDirection.x ||
-    direction.y !== ctx.lastInputDirection.y;
-  ctx.lastInputDirection = direction;
-  const speed = speedTilesPerSecond(stamina.sprint);
   if (ctx.isAdmin && (changed || scene.world.tick - ctx.lastInputSent >= 4)) {
     if (changed) ctx.sequence++;
     ctx.guest?.send({
@@ -83,6 +75,26 @@ function move(ctx) {
     });
     ctx.lastInputSent = scene.world.tick;
   }
+}
+
+/** @param {import('../shared/world.js').Player} player @param {import('../shared/world.js').Tile|null} before */
+function movedTile(player, before) {
+  return !!player.move || before?.x !== centerTile(player.x) ||
+    before.y !== centerTile(player.y) || before.z !== player.z;
+}
+
+/** One world tick of the local player's movement: send the input if a guest, then move. @param {Context} ctx */
+function move(ctx) {
+  const { scene, stamina } = ctx;
+  const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
+    ? { x: 0, y: 0 }
+    : inputDirection(ctx);
+  ctx.pressed.clear();
+  const changed = direction.x !== ctx.lastInputDirection.x ||
+    direction.y !== ctx.lastInputDirection.y;
+  ctx.lastInputDirection = direction;
+  const speed = speedTilesPerSecond(stamina.sprint);
+  sendDirection(ctx, direction, changed);
   const player = scene.world.players[scene.localId];
   const before = player
     ? { x: centerTile(player.x), y: centerTile(player.y), z: player.z }
@@ -98,8 +110,7 @@ function move(ctx) {
   stepStamina(stamina);
   if (
     !ctx.isAdmin && moved && player &&
-    (player.move || before?.x !== centerTile(player.x) ||
-      before.y !== centerTile(player.y) || before.z !== player.z)
+    movedTile(player, before)
   ) {
     ctx.host?.publish();
   }
@@ -118,6 +129,37 @@ function stepStateOf(ctx) {
   return state;
 }
 
+/** @param {Context} ctx @param {NonNullable<Context['simulation']>} simulation */
+function simulationStep(ctx, simulation) {
+  const { scene, canvas } = ctx;
+  const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
+    ? { x: 0, y: 0 }
+    : inputDirection(ctx);
+  ctx.pressed.clear();
+  simulation.input(scene.localId, direction, ctx.stamina.sprint);
+  const view = scene.viewMode === "master" && canvas.clientWidth > 0
+    ? masterViewTiles(
+      scene.camera,
+      canvas.clientWidth,
+      canvas.clientHeight,
+      scene.zoom,
+    )
+    : null;
+  simulation.interest(view ? [view] : []);
+  simulation.state(scene.localId).master = scene.viewMode === "master";
+  const local = scene.world.players[scene.localId];
+  const before = local
+    ? { x: centerTile(local.x), y: centerTile(local.y), z: local.z }
+    : null;
+  simulation.advanceTicks();
+  ctx.sounds.ownSteps(ctx.stamina.sprint);
+  ctx.host?.tick();
+  if (
+    local && before &&
+    movedTile(local, before)
+  ) ctx.host?.publish();
+}
+
 /**
  * Run the fixed world ticks that are due at `now`: the host tick, the local
  * move, the NPC, terrain generation, and the chunk unloader. The frame calls
@@ -127,40 +169,13 @@ function stepStateOf(ctx) {
  * @param {number} now
  */
 function stepWorld(ctx, now) {
-  const { scene, canvas } = ctx;
+  const { scene } = ctx;
   const state = stepStateOf(ctx);
   ctx.accumulator += catchUpMs(now - state.last, document.hidden);
   state.last = now;
   while (ctx.accumulator >= TICK_MS) {
-    if (ctx.simulation) {
-      const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
-        ? { x: 0, y: 0 }
-        : inputDirection(ctx);
-      ctx.pressed.clear();
-      ctx.simulation.input(scene.localId, direction, ctx.stamina.sprint);
-      const view = scene.viewMode === "master" && canvas.clientWidth > 0
-        ? masterViewTiles(
-          scene.camera,
-          canvas.clientWidth,
-          canvas.clientHeight,
-          scene.zoom,
-        )
-        : null;
-      ctx.simulation.interest(view ? [view] : []);
-      ctx.simulation.state(scene.localId).master = scene.viewMode === "master";
-      const local = scene.world.players[scene.localId];
-      const before = local
-        ? { x: centerTile(local.x), y: centerTile(local.y), z: local.z }
-        : null;
-      ctx.simulation.advanceTicks();
-      ctx.sounds.ownSteps(ctx.stamina.sprint);
-      ctx.host?.tick();
-      if (
-        local && before &&
-        (local.move || before.x !== centerTile(local.x) ||
-          before.y !== centerTile(local.y) || before.z !== local.z)
-      ) ctx.host?.publish();
-    } else {
+    if (ctx.simulation) simulationStep(ctx, ctx.simulation);
+    else {
       advanceTicks(scene.world);
       move(ctx);
     }
@@ -173,6 +188,143 @@ function stepWorld(ctx, now) {
   }
 }
 
+/** @param {Context} ctx @param {import('../shared/world.js').Player|undefined} local */
+function localVisibility(ctx, local) {
+  const { scene, frameStats } = ctx;
+  if (local) {
+    if (!ctx.isAdmin && scene.viewMode === "entity") {
+      frameStats.mark("visibility");
+      recomputeVisibility(
+        scene.world,
+        scene.visibility,
+        visibilityPosition(
+          local,
+          scene.world.tick + ctx.accumulator / TICK_MS,
+        ),
+      );
+      frameStats.end();
+    }
+    if (local.z !== ctx.lastPlayerZ) {
+      ctx.lastPlayerZ = local.z;
+      scene.viewZ = clamp(local.z, 0, WORLD_TOP);
+      scene.hudUntil = performance.now() + 500;
+    }
+  }
+}
+
+/** @param {Context} ctx @param {number} dt */
+function steerZoom(ctx, dt) {
+  const { scene } = ctx;
+  if (!scene.chatOpen && !scene.menu) {
+    const zoomDirection = Number(ctx.held.has("KeyN")) -
+      Number(ctx.held.has("KeyU")) + ctx.gamepadZoom;
+    if (zoomDirection) {
+      scene.zoomTarget = clamp(
+        scene.zoomTarget * Math.exp(zoomDirection * dt * 0.001),
+        0.25,
+        2,
+      );
+      scene.hudUntil = performance.now() + 500;
+    }
+  }
+  scene.zoom += (scene.zoomTarget - scene.zoom) * (1 - Math.exp(-dt * 0.012));
+  const correctionDecay = Math.exp(-dt / 140);
+  scene.renderOffset.x *= correctionDecay;
+  scene.renderOffset.y *= correctionDecay;
+  scene.renderOffset.z *= correctionDecay;
+}
+
+/** @param {Context} ctx @param {import('../shared/world.js').Player|undefined} local @param {number} now @param {number} dt */
+function steerCamera(ctx, local, now, dt) {
+  const { scene, bag, canvas } = ctx;
+  const look = cameraInput(ctx);
+  // The look control steers the open inventory panel, not the aim or camera.
+  const panelLook = panelLookInput(ctx);
+  bag.steer(stickDirection(panelLook.x, panelLook.y, 0.18), now);
+  const { x: cameraX, y: cameraY } = bag.isOpen ? { x: 0, y: 0 } : look;
+  if (scene.viewMode === "master") {
+    scene.camera.x += masterPanStep(cameraX, dt, scene.zoom);
+    scene.camera.y += masterPanStep(cameraY, dt, scene.zoom);
+  } else {
+    // While the pickup grid is open the look control moves its selector.
+    scene.aim = isPickupGridOpen(ctx.pickupGrid)
+      ? { x: 0, y: 0 }
+      : stickDirection(cameraX, cameraY, 0.18);
+    const pos = local
+      ? renderPosition(local, scene.world.tick + ctx.accumulator / TICK_MS)
+      : { x: 7, y: 7, z: 0 };
+    const targetX = (pos.x + scene.renderOffset.x + 0.5) * 64;
+    const targetY = (pos.y + scene.renderOffset.y + 0.5) * 64;
+    scene.camera.x = targetX;
+    scene.camera.y = targetY;
+  }
+  if (scene.viewMode === "master") {
+    const zoom = scene.zoom;
+    const extent = terrainExtent(scene.world);
+    scene.camera.x = clampCameraAxis(
+      scene.camera.x,
+      canvas.clientWidth,
+      zoom,
+      extent.maxX,
+      extent.minX,
+    );
+    scene.camera.y = clampCameraAxis(
+      scene.camera.y,
+      canvas.clientHeight,
+      zoom,
+      extent.maxY,
+      extent.minY,
+    );
+  }
+}
+
+/** @param {Context} ctx @param {number} now */
+function updateChat(ctx, now) {
+  const { scene } = ctx;
+  if (!ctx.isAdmin) {
+    scene.chatFeed = receiveChat(
+      scene.chatFeed,
+      chatView(scene.world, scene.localId, ctx.localChatBands),
+      scene.world.tick,
+    );
+  }
+  hearChat(scene.hearingLog, scene.chatFeed, (id) => speakerName(ctx, id));
+  ctx.chatter.update(
+    scene.chatFeed,
+    scene.localId,
+    scene.world.players[scene.localId],
+    now,
+  );
+}
+
+/** @param {Context} ctx @param {number} now */
+function updateDisplay(ctx, now) {
+  const { scene, bag, shop, frameStats } = ctx;
+  frameStats.mark("display");
+  scene.mining = miningDisplay(ctx, ctx.accumulator / TICK_MS);
+  ctx.sounds.frame(now, ctx.accumulator / TICK_MS);
+  scene.items = itemsDisplay(ctx);
+  updatePickupGrid(ctx);
+  playPanelSounds(ctx);
+  scene.inventory = inventoryDisplay(ctx);
+  bag.update(scene.inventory, heldDisplay(ctx));
+  shop.update(scene.inventory);
+  shop.steer(shopDirection(ctx), now);
+  shop.steerStick(ctx.gamepadStick.y, now);
+}
+
+/** @param {Context} ctx @param {ReturnType<typeof import('./input.js').createInput>} input @param {number} now */
+function updateLayout(ctx, input, now) {
+  const { scene, shop, frameStats } = ctx;
+  frameStats.mark("layout");
+  scene.ui = {
+    layout: currentLayout(ctx),
+    state: { pressed: input.router.pressed(), sticks: ctx.ui.sticks, now },
+  };
+  frameStats.end();
+  shop.fit(scene.ui.layout.shopList?.capacity ?? 1);
+}
+
 /**
  * Start the frame loop.
  * @param {Context} ctx
@@ -180,7 +332,7 @@ function stepWorld(ctx, now) {
  * @param {ReturnType<typeof import('./input.js').createInput>} input
  */
 export function startLoop(ctx, renderer, input) {
-  const { scene, bag, shop, canvas, frameStats, frameInfo } = ctx;
+  const { scene, frameStats, frameInfo } = ctx;
   let last = performance.now();
   /** @param {number} now */
   const frame = (now) => {
@@ -202,113 +354,12 @@ export function startLoop(ctx, renderer, input) {
     stepWorld(ctx, now);
     frameStats.end();
     const local = scene.world.players[scene.localId];
-    if (local) {
-      if (!ctx.isAdmin && scene.viewMode === "entity") {
-        frameStats.mark("visibility");
-        recomputeVisibility(
-          scene.world,
-          scene.visibility,
-          visibilityPosition(
-            local,
-            scene.world.tick + ctx.accumulator / TICK_MS,
-          ),
-        );
-        frameStats.end();
-      }
-      if (local.z !== ctx.lastPlayerZ) {
-        ctx.lastPlayerZ = local.z;
-        scene.viewZ = clamp(local.z, 0, WORLD_TOP);
-        scene.hudUntil = performance.now() + 500;
-      }
-    }
-    if (!scene.chatOpen && !scene.menu) {
-      const zoomDirection = Number(ctx.held.has("KeyN")) -
-        Number(ctx.held.has("KeyU")) + ctx.gamepadZoom;
-      if (zoomDirection) {
-        scene.zoomTarget = clamp(
-          scene.zoomTarget * Math.exp(zoomDirection * dt * 0.001),
-          0.25,
-          2,
-        );
-        scene.hudUntil = performance.now() + 500;
-      }
-    }
-    scene.zoom += (scene.zoomTarget - scene.zoom) * (1 - Math.exp(-dt * 0.012));
-    const correctionDecay = Math.exp(-dt / 140);
-    scene.renderOffset.x *= correctionDecay;
-    scene.renderOffset.y *= correctionDecay;
-    scene.renderOffset.z *= correctionDecay;
-    const look = cameraInput(ctx);
-    // The look control steers the open inventory panel, not the aim or camera.
-    const panelLook = panelLookInput(ctx);
-    bag.steer(stickDirection(panelLook.x, panelLook.y, 0.18), now);
-    const { x: cameraX, y: cameraY } = bag.isOpen ? { x: 0, y: 0 } : look;
-    if (scene.viewMode === "master") {
-      scene.camera.x += masterPanStep(cameraX, dt, scene.zoom);
-      scene.camera.y += masterPanStep(cameraY, dt, scene.zoom);
-    } else {
-      // While the pickup grid is open the look control moves its selector.
-      scene.aim = isPickupGridOpen(ctx.pickupGrid)
-        ? { x: 0, y: 0 }
-        : stickDirection(cameraX, cameraY, 0.18);
-      const pos = local
-        ? renderPosition(local, scene.world.tick + ctx.accumulator / TICK_MS)
-        : { x: 7, y: 7, z: 0 };
-      const targetX = (pos.x + scene.renderOffset.x + 0.5) * 64;
-      const targetY = (pos.y + scene.renderOffset.y + 0.5) * 64;
-      scene.camera.x = targetX;
-      scene.camera.y = targetY;
-    }
-    if (scene.viewMode === "master") {
-      const zoom = scene.zoom;
-      const extent = terrainExtent(scene.world);
-      scene.camera.x = clampCameraAxis(
-        scene.camera.x,
-        canvas.clientWidth,
-        zoom,
-        extent.maxX,
-        extent.minX,
-      );
-      scene.camera.y = clampCameraAxis(
-        scene.camera.y,
-        canvas.clientHeight,
-        zoom,
-        extent.maxY,
-        extent.minY,
-      );
-    }
-    if (!ctx.isAdmin) {
-      scene.chatFeed = receiveChat(
-        scene.chatFeed,
-        chatView(scene.world, scene.localId, ctx.localChatBands),
-        scene.world.tick,
-      );
-    }
-    hearChat(scene.hearingLog, scene.chatFeed, (id) => speakerName(ctx, id));
-    ctx.chatter.update(
-      scene.chatFeed,
-      scene.localId,
-      scene.world.players[scene.localId],
-      now,
-    );
-    frameStats.mark("display");
-    scene.mining = miningDisplay(ctx, ctx.accumulator / TICK_MS);
-    ctx.sounds.frame(now, ctx.accumulator / TICK_MS);
-    scene.items = itemsDisplay(ctx);
-    updatePickupGrid(ctx);
-    playPanelSounds(ctx);
-    scene.inventory = inventoryDisplay(ctx);
-    bag.update(scene.inventory, heldDisplay(ctx));
-    shop.update(scene.inventory);
-    shop.steer(shopDirection(ctx), now);
-    shop.steerStick(ctx.gamepadStick.y, now);
-    frameStats.mark("layout");
-    scene.ui = {
-      layout: currentLayout(ctx),
-      state: { pressed: input.router.pressed(), sticks: ctx.ui.sticks, now },
-    };
-    frameStats.end();
-    shop.fit(scene.ui.layout.shopList?.capacity ?? 1);
+    localVisibility(ctx, local);
+    steerZoom(ctx, dt);
+    steerCamera(ctx, local, now, dt);
+    updateChat(ctx, now);
+    updateDisplay(ctx, now);
+    updateLayout(ctx, input, now);
     const liveText = [
       scene.notice && now < scene.notice.until
         ? scene.notice.text

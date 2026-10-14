@@ -44,33 +44,30 @@ behaviors.set("patrol", (world, id, params) => {
   let sequence = 0;
   const points = /** @type {{x:number,y:number}[]} */ (params.waypoints ?? []);
   let index = 0, visits = 0, pauseUntil = 0;
-  return () => {
-    const player = world.players[id];
-    if (!player || !points.length) return;
-    if (world.tick < pauseUntil) {
-      moveEntity(world, id, 0, 0);
+  /** @param {import('./world.js').Player} player */
+  function tilePatrol(player) {
+    if (player.move) return;
+    const point = points[index];
+    const dx = Math.sign(start.x + point.x - player.x),
+      dy = Math.sign(start.y + point.y - player.y);
+    if (!dx && !dy) {
+      index = (index + 1) % points.length;
       return;
     }
-    if (!player.free) {
-      if (player.move) return;
-      const point = points[index];
-      const dx = Math.sign(start.x + point.x - player.x),
-        dy = Math.sign(start.y + point.y - player.y);
-      if (!dx && !dy) {
-        index = (index + 1) % points.length;
-        return;
+    const moved = startMove(world, id, dx, dy, ++sequence);
+    if (moved.ok) {
+      index = (index + 1) % points.length;
+      visits++;
+      if (visits % Number(params.pauseEvery ?? 8) === 0) {
+        pauseUntil = world.tick + (moved.move?.durationTicks ?? 0) +
+          Number(params.pauseTicks ?? 20);
       }
-      const moved = startMove(world, id, dx, dy, ++sequence);
-      if (moved.ok) {
-        index = (index + 1) % points.length;
-        visits++;
-        if (visits % Number(params.pauseEvery ?? 8) === 0) {
-          pauseUntil = world.tick + (moved.move?.durationTicks ?? 0) +
-            Number(params.pauseTicks ?? 20);
-        }
-      }
-      return;
     }
+    return;
+  }
+
+  /** @param {import('./world.js').Player} player */
+  function freePatrol(player) {
     const target = points[index];
     if (
       Math.hypot(player.x - start.x - target.x, player.y - start.y - target.y) <
@@ -93,6 +90,17 @@ behaviors.set("patrol", (world, id, params) => {
         ? Math.sign(start.y + next.y - player.y)
         : 0,
     );
+  }
+
+  return () => {
+    const player = world.players[id];
+    if (!player || !points.length) return;
+    if (world.tick < pauseUntil) {
+      moveEntity(world, id, 0, 0);
+      return;
+    }
+    if (player.free) freePatrol(player);
+    else tilePatrol(player);
   };
 });
 /** @param {string} id @param {BehaviorFactory} factory */
@@ -152,6 +160,71 @@ export function createSimulation(definition) {
     }
     return seesFrom(state.visibility.visible, state.master);
   }
+  /** @type {Record<string,(id:string,message:Record<string,unknown>,tile:import('./world.js').Tile)=>Record<string,unknown>>} */
+  const actionsByType = {
+    "move": (id, message) => {
+      const state = actor(id);
+      const result = acceptMoveIntent(world, id, {
+        dx: Number(message.dx),
+        dy: Number(message.dy),
+        sequence: Number(message.sequence),
+      }, state.sequence);
+      state.sequence = result.sequence;
+      return result;
+    },
+    "cancel": (id, message) => {
+      actor(id).sequence = Number(message.sequence);
+      return { ok: true };
+    },
+    "input": (id, message) => {
+      const state = actor(id);
+      const dx = Number(message.dx), dy = Number(message.dy);
+      if (
+        !Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) > 1 ||
+        Math.abs(dy) > 1
+      ) return { ok: false, reason: "invalid input" };
+      state.direction = { x: dx, y: dy };
+      setSprint(state.stamina, message.sprint === true);
+      return { ok: true };
+    },
+    "mode": (id, message) => {
+      actor(id).master = message.mode === "master";
+      return { ok: true };
+    },
+    "mine": (id, _message, tile) => {
+      return startMining(world, id, tile, sees(id));
+    },
+    "mine-cancel": (id, _message) => {
+      cancelMining(world, id);
+      return { ok: true };
+    },
+    "place": (id, _message, tile) => {
+      return placeStone(world, id, tile, world.shops ?? [], sees(id));
+    },
+    "hold": (id, message) => {
+      return setHeldItem(world, id, String(message.kind));
+    },
+    "pickup": (id, message, tile) => {
+      const result = pickUp(world, id, tile, message.kind);
+      return result.ok
+        ? { ...result, line: pickupLine(result.kind, result.count) }
+        : result;
+    },
+    "sell": (id, message) => {
+      return sellItems(world, id, message);
+    },
+    "typing": (id, message) => {
+      setTyping(world, id, message.typing === true);
+      return { ok: true };
+    },
+    "message": (id, message) => {
+      return { ok: submitMessage(world, id, String(message.text)) };
+    },
+    "nick": (id, message) => {
+      return setNickname(world, id, String(message.name));
+    },
+  };
+
   /** @param {string} id @param {Record<string,unknown>} message @returns {Record<string,unknown>} */
   function apply(id, message) {
     const player = Object.hasOwn(world.players, id)
@@ -163,61 +236,13 @@ export function createSimulation(definition) {
       y: Number(message.y),
       z: Number(message.z),
     };
-    switch (message.type) {
-      case "move": {
-        const state = actor(id);
-        const result = acceptMoveIntent(world, id, {
-          dx: Number(message.dx),
-          dy: Number(message.dy),
-          sequence: Number(message.sequence),
-        }, state.sequence);
-        state.sequence = result.sequence;
-        return result;
-      }
-      case "cancel":
-        actor(id).sequence = Number(message.sequence);
-        return { ok: true };
-      case "input": {
-        const state = actor(id);
-        const dx = Number(message.dx), dy = Number(message.dy);
-        if (
-          !Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) > 1 ||
-          Math.abs(dy) > 1
-        ) return { ok: false, reason: "invalid input" };
-        state.direction = { x: dx, y: dy };
-        setSprint(state.stamina, message.sprint === true);
-        return { ok: true };
-      }
-      case "mode":
-        actor(id).master = message.mode === "master";
-        return { ok: true };
-      case "mine":
-        return startMining(world, id, tile, sees(id));
-      case "mine-cancel":
-        cancelMining(world, id);
-        return { ok: true };
-      case "place":
-        return placeStone(world, id, tile, world.shops ?? [], sees(id));
-      case "hold":
-        return setHeldItem(world, id, String(message.kind));
-      case "pickup": {
-        const result = pickUp(world, id, tile, message.kind);
-        return result.ok
-          ? { ...result, line: pickupLine(result.kind, result.count) }
-          : result;
-      }
-      case "sell":
-        return sellItems(world, id, message);
-      case "typing":
-        setTyping(world, id, message.typing === true);
-        return { ok: true };
-      case "message":
-        return { ok: submitMessage(world, id, String(message.text)) };
-      case "nick":
-        return setNickname(world, id, String(message.name));
-      default:
-        return { ok: false, reason: "unknown action" };
+    if (
+      typeof message.type !== "string" ||
+      !Object.hasOwn(actionsByType, message.type)
+    ) {
+      return { ok: false, reason: "unknown action" };
     }
+    return actionsByType[message.type](id, message, tile);
   }
   const api = {
     world,

@@ -60,7 +60,9 @@ function expectContinuous(
       current.y - previous.y,
       current.z - previous.z,
     );
-    const ticks = Math.max(0.02, current.tick - previous.tick);
+    // Fractional pacing stamps mark frame start. Interpolation runs later in
+    // that frame, so sub-tick stamps cannot bound its elapsed presentation time.
+    const ticks = Math.max(1, current.tick - previous.tick);
     expect(
       distance,
       `${label} jumped from ${JSON.stringify(previous)} to ${
@@ -163,6 +165,67 @@ test("host and two joining tabs see continuous remote movement", async ({ browse
   }
   await Promise.all([host.close(), first.close()]);
 });
+type Positions =
+  ({ x: number; y: number; z: number; moving: boolean } | null)[];
+async function predictionSeparation(
+  host: Page,
+  first: Page,
+  positions: (page: Page) => Promise<Positions>,
+) {
+  let largestSeparation = 0;
+  for (let sample = 0; sample < 20; sample++) {
+    await waitTicks(first, 2);
+    const [authoritative, local] = await Promise.all([
+      positions(host),
+      positions(first),
+    ]);
+    if (authoritative[0] && local[0]) {
+      largestSeparation = Math.max(
+        largestSeparation,
+        Math.hypot(
+          authoritative[0].x - local[0].x,
+          authoritative[0].y - local[0].y,
+          authoritative[0].z - local[0].z,
+        ),
+      );
+    }
+  }
+  return largestSeparation;
+}
+
+function assertBothMoved(initial: Positions, final: Positions) {
+  expect(final[0]?.y).not.toBe(initial[0]?.y);
+  expect(final[1]?.y).not.toBe(initial[1]?.y);
+}
+
+async function waitRestingPositions(
+  host: Page,
+  pages: Page[],
+  positions: (page: Page) => Promise<Positions>,
+) {
+  try {
+    await waitFor(host, async () => {
+      const [authoritative, local, observer] = await Promise.all([
+        positions(pages[0]),
+        positions(pages[1]),
+        positions(pages[2]),
+      ]);
+      if (!authoritative.every((position) => position && !position.moving)) {
+        return false;
+      }
+      return [local, observer].every((positions) =>
+        JSON.stringify(positions) === JSON.stringify(authoritative)
+      );
+    }, { message: "host, mover and observer agreeing on resting positions" });
+  } catch (error) {
+    await test.info().attach("resting-positions", {
+      body: JSON.stringify(await Promise.all(pages.map(positions)), null, 2),
+      contentType: "application/json",
+    });
+    throw error;
+  }
+}
+
 test("held and reversed guest movement converges in host and two joining tabs", async ({ browser }) => {
   const host = await browser.newPage();
   const first = await browser.newPage();
@@ -196,49 +259,15 @@ test("held and reversed guest movement converges in host and two joining tabs", 
   const initial = await positions(host);
   await first.keyboard.down("e");
   await second.keyboard.down("e");
-  let largestSeparation = 0;
-  for (let sample = 0; sample < 20; sample++) {
-    await waitTicks(first, 2);
-    const [authoritative, local] = await Promise.all([
-      positions(host),
-      positions(first),
-    ]);
-    if (authoritative[0] && local[0]) {
-      largestSeparation = Math.max(
-        largestSeparation,
-        Math.hypot(
-          authoritative[0].x - local[0].x,
-          authoritative[0].y - local[0].y,
-          authoritative[0].z - local[0].z,
-        ),
-      );
-    }
-  }
+  const largestSeparation = await predictionSeparation(host, first, positions);
   await first.keyboard.up("e");
   await holdTicks(first, "d", 13);
   await second.keyboard.up("e");
   expect(largestSeparation).toBeLessThanOrEqual(1.5);
   // Every tab settles on the host's resting positions.
-  await waitFor(host, async () => {
-    const [authoritative, local, observer] = await Promise.all([
-      positions(host),
-      positions(first),
-      positions(second),
-    ]);
-    return authoritative.every((position, index) =>
-      position && !position.moving &&
-      local[index] && !local[index]?.moving &&
-      observer[index] && !observer[index]?.moving &&
-      position.x === local[index]?.x && position.y === local[index]?.y &&
-      position.z === local[index]?.z &&
-      position.x === observer[index]?.x &&
-      position.y === observer[index]?.y &&
-      position.z === observer[index]?.z
-    );
-  }, { message: "host, mover and observer agreeing on resting positions" });
+  await waitRestingPositions(host, [host, first, second], positions);
   const final = await positions(host);
-  expect(final[0]?.y).not.toBe(initial[0]?.y);
-  expect(final[1]?.y).not.toBe(initial[1]?.y);
+  assertBothMoved(initial, final);
   await Promise.all([host.close(), first.close(), second.close()]);
 });
 async function driveTo(
@@ -257,10 +286,14 @@ async function driveTo(
   const initial = await position();
   await page.keyboard.down(key);
   try {
-    await expect.poll(position, { intervals: [30] })
-      [target > initial ? "toBeGreaterThanOrEqual" : "toBeLessThanOrEqual"](
-        target > initial ? target - 0.12 : target + 0.12,
-      );
+    // Stop as soon as the host reaches this leg. A timed polling interval
+    // lets held movement continue between observations and can overshoot.
+    await waitFor(source, async () => {
+      const current = await position();
+      return target > initial
+        ? current >= target - 0.12
+        : current <= target + 0.12;
+    }, { message: `player reaches ${axis}=${target}` });
   } finally {
     await page.keyboard.up(key);
   }
@@ -443,12 +476,21 @@ test("guest master mode receives full terrain and entity mode restores only disc
   await expect.poll(async () => (await state()).mode).toBe("entity");
   const after = await state();
   expect(Object.values(after.terrain).flat()).toContain(0);
-  const visible = new Set(after.visible);
-  for (const [key, chunk] of Object.entries(after.terrain)) {
+  assertNewRevealsVisible(before.terrain, after.terrain, after.visible);
+  await Promise.all([host.close(), guest.close()]);
+});
+
+function assertNewRevealsVisible(
+  before: Record<string, number[]>,
+  terrain: Record<string, number[]>,
+  visibleTiles: string[],
+) {
+  const visible = new Set(visibleTiles);
+  for (const [key, chunk] of Object.entries(terrain)) {
     const [cx, cy] = key.split(",").map(Number);
-    const earlier = before.terrain[key];
+    const earlier = before[key];
     for (let index = 0; index < chunk.length; index++) {
-      if (earlier?.[index] !== 0 && earlier !== undefined) {
+      if (knownBefore(earlier, index)) {
         continue;
       }
       if (chunk[index] === 0) {
@@ -460,5 +502,8 @@ test("guest master mode receives full terrain and entity mode restores only disc
       expect(visible.has(`${x},${y},${z}`)).toBe(true);
     }
   }
-  await Promise.all([host.close(), guest.close()]);
-});
+}
+
+function knownBefore(chunk: number[] | undefined, index: number) {
+  return chunk !== undefined && chunk[index] !== 0;
+}

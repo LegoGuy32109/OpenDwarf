@@ -41,6 +41,52 @@ function nameChangeLine(before, name) {
   return `${before || "A visitor"} is now ${name}`;
 }
 
+/** @param {Context} ctx @param {string} name */
+function submitNickname(ctx, name) {
+  const { scene } = ctx;
+  if (ctx.isAdmin) ctx.guest?.send({ type: "nick", name });
+  else {
+    const before = scene.world.players[scene.localId]?.name ?? "";
+    if (ctx.simulation) {
+      ctx.simulation.enqueue(
+        scene.localId,
+        { type: "nick", name },
+        (result) => {
+          if (result.ok && result.name !== before) {
+            ctx.host?.announce(
+              nameChangeLine(before, String(result.name)),
+              scene.localId,
+            );
+          }
+          notify(
+            ctx,
+            result.ok
+              ? `Name set to ${result.name}`
+              : String(result.reason ?? "Name rejected"),
+          );
+          ctx.host?.publish();
+        },
+      );
+      return;
+    }
+    const result = setNickname(scene.world, scene.localId, name);
+    if (result.ok && result.name && result.name !== before) {
+      ctx.host?.announce(
+        nameChangeLine(before, result.name),
+        scene.localId,
+      );
+    }
+    notify(
+      ctx,
+      result.ok
+        ? `Name set to ${result.name}`
+        : result.reason ?? "Name rejected",
+    );
+    ctx.host?.publish();
+  }
+  return;
+}
+
 /** @param {Context} ctx */
 function submitChat(ctx) {
   const { scene } = ctx;
@@ -48,47 +94,7 @@ function submitChat(ctx) {
   closeChat(ctx);
   if (!text) return;
   if (text.toLowerCase().startsWith("/nick ")) {
-    const name = text.slice(6);
-    if (ctx.isAdmin) ctx.guest?.send({ type: "nick", name });
-    else {
-      const before = scene.world.players[scene.localId]?.name ?? "";
-      if (ctx.simulation) {
-        ctx.simulation.enqueue(
-          scene.localId,
-          { type: "nick", name },
-          (result) => {
-            if (result.ok && result.name !== before) {
-              ctx.host?.announce(
-                nameChangeLine(before, String(result.name)),
-                scene.localId,
-              );
-            }
-            notify(
-              ctx,
-              result.ok
-                ? `Name set to ${result.name}`
-                : String(result.reason ?? "Name rejected"),
-            );
-            ctx.host?.publish();
-          },
-        );
-        return;
-      }
-      const result = setNickname(scene.world, scene.localId, name);
-      if (result.ok && result.name && result.name !== before) {
-        ctx.host?.announce(
-          nameChangeLine(before, result.name),
-          scene.localId,
-        );
-      }
-      notify(
-        ctx,
-        result.ok
-          ? `Name set to ${result.name}`
-          : result.reason ?? "Name rejected",
-      );
-      ctx.host?.publish();
-    }
+    submitNickname(ctx, text.slice(6));
     return;
   }
   if (text.toLowerCase() === "/entity" || text.toLowerCase() === "/master") {

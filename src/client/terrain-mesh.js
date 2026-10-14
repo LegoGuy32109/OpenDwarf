@@ -38,6 +38,7 @@ const BAND_LIGHT = [0, 0, 0, 0.11];
 const SIDE = CHUNK_EDGE;
 
 /** The texture each pass of a mesh draws with, in draw order. */
+/** @type {readonly MeshPass[]} */
 export const MESH_PASSES = ["floor", "ores", "edge", "bands", "ceiling"];
 
 /** @typedef {"floor"|"ores"|"edge"|"bands"|"ceiling"} MeshPass */
@@ -116,33 +117,12 @@ export function meshIsFresh(mesh, world, cx, cy, viewZ) {
   return true;
 }
 
-/**
- * Build the master view mesh of chunk (cx, cy) at `viewZ`. It makes the same
- * quads, with the same values, as the per-tile loops it replaced.
- * @param {import('../shared/world.js').World} world @param {number} cx @param {number} cy @param {number} viewZ
- * @param {import('../shared/visibility.js').Visibility} visibility Ignored in master view.
- * @returns {TerrainMesh}
- */
-export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
-  const chunks = sources(world, cx, cy);
-  const left = cx * SIDE;
-  const top = cy * SIDE;
-  const surface = surfaceGrid(
-    world,
-    left,
-    top,
-    SIDE + 1,
-    SIDE + 1,
-    viewZ,
-    "master",
-    visibility,
-  );
-  const floor = buffer(), ores = buffer(), edge = buffer(), bands = buffer();
-  const ceiling = buffer();
+/** @typedef {ReturnType<typeof surfaceGrid>} SurfaceLookup */
+/** @typedef {{world:import('../shared/world.js').World,left:number,top:number,viewZ:number,visibility:import('../shared/visibility.js').Visibility,surface:SurfaceLookup}} MeshFrame */
+
+/** @param {number} left @param {number} top @param {SurfaceLookup} surface @param {QuadBuffer} floor @param {QuadBuffer} ores */
+function meshFloor(left, top, surface, floor, ores) {
   let tiles = 0;
-  /** @param {number} x @param {number} y @param {number} w @param {number} h @param {number} alpha */
-  const emitBand = (x, y, w, h, alpha) =>
-    quad(bands, x, y, w, h, WHITE_UV, alpha === 0.28 ? BAND_DARK : BAND_LIGHT);
   for (let y = top; y < top + SIDE; y++) {
     for (let x = left; x < left + SIDE; x++) {
       const tile = surface(x, y);
@@ -172,9 +152,15 @@ export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
       }
     }
   }
+  return tiles;
+}
+
+/** @param {MeshFrame} frame @param {QuadBuffer} out @param {typeof elevationMask} maskOf @param {[number,number,number,number]} color */
+function meshShadow(frame, out, maskOf, color) {
+  const { world, left, top, viewZ, visibility, surface } = frame;
   for (let y = top; y < top + SIDE; y++) {
     for (let x = left; x < left + SIDE; x++) {
-      const mask = elevationMask(
+      const mask = maskOf(
         world,
         x,
         y,
@@ -186,45 +172,53 @@ export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
       if (!mask) continue;
       const frame = shadowMaskToAtlasId(mask) - 1;
       quad(
-        edge,
+        out,
         (x + 0.5) * TILE,
         (y + 0.5) * TILE,
         TILE,
         TILE,
         [0, frame / 15, 1, 1 / 15],
-        EDGE_COLOR,
+        color,
       );
     }
   }
+}
+
+/**
+ * Build the master view mesh of chunk (cx, cy) at `viewZ`. It makes the same
+ * quads, with the same values, as the per-tile loops it replaced.
+ * @param {import('../shared/world.js').World} world @param {number} cx @param {number} cy @param {number} viewZ
+ * @param {import('../shared/visibility.js').Visibility} visibility Ignored in master view.
+ * @returns {TerrainMesh}
+ */
+export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
+  const chunks = sources(world, cx, cy);
+  const left = cx * SIDE;
+  const top = cy * SIDE;
+  const surface = surfaceGrid(
+    world,
+    left,
+    top,
+    SIDE + 1,
+    SIDE + 1,
+    viewZ,
+    "master",
+    visibility,
+  );
+  const floor = buffer(), ores = buffer(), edge = buffer(), bands = buffer();
+  const ceiling = buffer();
+  /** @param {number} x @param {number} y @param {number} w @param {number} h @param {number} alpha */
+  const emitBand = (x, y, w, h, alpha) =>
+    quad(bands, x, y, w, h, WHITE_UV, alpha === 0.28 ? BAND_DARK : BAND_LIGHT);
+  const frame = { world, left, top, viewZ, visibility, surface };
+  const tiles = meshFloor(left, top, surface, floor, ores);
+  meshShadow(frame, edge, elevationMask, EDGE_COLOR);
   for (let y = top; y < top + SIDE; y++) {
     for (let x = left; x < left + SIDE; x++) {
       terrainBands(surface, x, y, TILE, emitBand);
     }
   }
-  for (let y = top; y < top + SIDE; y++) {
-    for (let x = left; x < left + SIDE; x++) {
-      const mask = ceilingMask(
-        world,
-        x,
-        y,
-        viewZ,
-        "master",
-        visibility,
-        surface,
-      );
-      if (!mask) continue;
-      const frame = shadowMaskToAtlasId(mask) - 1;
-      quad(
-        ceiling,
-        (x + 0.5) * TILE,
-        (y + 0.5) * TILE,
-        TILE,
-        TILE,
-        [0, frame / 15, 1, 1 / 15],
-        CEILING_COLOR,
-      );
-    }
-  }
+  meshShadow(frame, ceiling, ceilingMask, CEILING_COLOR);
   /** @param {QuadBuffer} out */
   const sealed = (out) => out.data.slice(0, out.used);
   return {

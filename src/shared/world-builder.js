@@ -86,6 +86,18 @@ function material(material) {
     throw new RangeError("Invalid terrain material");
   }
 }
+/** @param {EntityDefinition[]} entities */
+function validateEntities(entities) {
+  const ids = new Set();
+  for (const entity of entities) {
+    tile(entity.at);
+    if (!identifier(entity.id) || ids.has(entity.id)) {
+      throw new Error(`Duplicate or empty entity ID: ${entity.id}`);
+    }
+    ids.add(entity.id);
+  }
+}
+
 /** @param {WorldDefinition} definition */
 function validateWorldDefinition(definition) {
   serializable(definition);
@@ -100,14 +112,7 @@ function validateWorldDefinition(definition) {
   if (definition.generator && !generators.has(definition.generator.id)) {
     throw new Error(`Unknown generator: ${definition.generator.id}`);
   }
-  const ids = new Set();
-  for (const entity of definition.entities) {
-    tile(entity.at);
-    if (!identifier(entity.id) || ids.has(entity.id)) {
-      throw new Error(`Duplicate or empty entity ID: ${entity.id}`);
-    }
-    ids.add(entity.id);
-  }
+  validateEntities(definition.entities);
   definition.spawns.forEach(tile);
   for (const paint of definition.paints) {
     box(paint.bounds);
@@ -243,66 +248,71 @@ export function worldBuilder() {
   };
   return api;
 }
-/** Construct terrain first, then entities once. @param {WorldDefinition} input */
-export function buildWorld(input) {
-  validateWorldDefinition(input);
-  const definition = structuredClone(input);
-  freeze(definition);
-  /** @type {import('./world.js').World} */
-  const world = { tick: 0, chunks: new Map(), players: {}, shops: [] };
-  if (!definition.generator) world.limits = { ...definition.bounds };
+/** @param {Box} b @param {number} x @param {number} y @param {number} z */
+function outsideBounds(b, x, y, z) {
+  return x < b.minX || x > b.maxX || y < b.minY || y > b.maxY || z < b.minZ ||
+    z > b.maxZ;
+}
+/** @param {Uint8Array} data @param {number} cx @param {number} cy @param {WorldDefinition} definition */
+function clipChunk(data, cx, cy, definition) {
+  for (let z = 0; z <= WORLD_TOP; z++) {
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        if (outsideBounds(definition.bounds, cx * 16 + x, cy * 16 + y, z)) {
+          data[chunkIndex(x, y, z)] = STONE;
+        }
+      }
+    }
+  }
+}
+
+/** @param {Uint8Array} data @param {number} cx @param {number} cy @param {WorldDefinition} definition @param {Paint} paint */
+function paintChunk(data, cx, cy, definition, { bounds: b, material: m }) {
+  for (let z = b.minZ; z <= b.maxZ; z++) {
+    for (
+      let y = Math.max(b.minY, cy * 16);
+      y <= Math.min(b.maxY, cy * 16 + 15);
+      y++
+    ) {
+      for (
+        let x = Math.max(b.minX, cx * 16);
+        x <= Math.min(b.maxX, cx * 16 + 15);
+        x++
+      ) {
+        if (
+          !definition.generator && outsideBounds(definition.bounds, x, y, z)
+        ) continue;
+        data[chunkIndex(localCoord(x), localCoord(y), z)] = m;
+      }
+    }
+  }
+}
+
+/** @param {WorldDefinition} definition */
+function terrainGenerator(definition) {
   const base = definition.generator
     ? generators.get(definition.generator.id)?.(
       definition.seed,
       definition.generator.params ?? {},
     )
     : null;
-  /** @param {number} cx @param {number} cy */
-  const generate = (cx, cy) => {
+  return (/** @type {number} */ cx, /** @type {number} */ cy) => {
     const data = base
       ? new Uint8Array(base(cx, cy))
       : createChunkData(definition.base);
     if (data.length !== 2048) {
       throw new RangeError("Generator returned an invalid chunk");
     }
-    if (!definition.generator) {
-      for (let z = 0; z <= WORLD_TOP; z++) {
-        for (let y = 0; y < 16; y++) {
-          for (let x = 0; x < 16; x++) {
-            const gx = cx * 16 + x, gy = cy * 16 + y, b = definition.bounds;
-            if (
-              gx < b.minX || gx > b.maxX || gy < b.minY || gy > b.maxY ||
-              z < b.minZ || z > b.maxZ
-            ) data[chunkIndex(x, y, z)] = STONE;
-          }
-        }
-      }
-    }
-    for (const { bounds: b, material: m } of definition.paints) {
-      for (let z = b.minZ; z <= b.maxZ; z++) {
-        for (
-          let y = Math.max(b.minY, cy * 16);
-          y <= Math.min(b.maxY, cy * 16 + 15);
-          y++
-        ) {
-          for (
-            let x = Math.max(b.minX, cx * 16);
-            x <= Math.min(b.maxX, cx * 16 + 15);
-            x++
-          ) {
-            const limit = definition.bounds;
-            if (
-              !definition.generator &&
-              (x < limit.minX || x > limit.maxX || y < limit.minY ||
-                y > limit.maxY || z < limit.minZ || z > limit.maxZ)
-            ) continue;
-            data[chunkIndex(localCoord(x), localCoord(y), z)] = m;
-          }
-        }
-      }
+    if (!definition.generator) clipChunk(data, cx, cy, definition);
+    for (const paint of definition.paints) {
+      paintChunk(data, cx, cy, definition, paint);
     }
     return data;
   };
+}
+
+/** @param {import('./world.js').World} world @param {WorldDefinition} definition @param {(cx:number,cy:number)=>Uint8Array} generate */
+function seedTerrain(world, definition, generate) {
   for (
     let cy = chunkCoord(definition.bounds.minY);
     cy <= chunkCoord(definition.bounds.maxY);
@@ -314,8 +324,10 @@ export function buildWorld(input) {
       cx++
     ) setChunk(world, cx, cy, generate(cx, cy));
   }
-  if (base) world.generateChunk = generate;
-  world.pinned = new Set(definition.pinned.map((p) => `${p.cx},${p.cy}`));
+}
+
+/** @param {import('./world.js').World} world @param {WorldDefinition} definition */
+function seedEntities(world, definition) {
   for (const entity of definition.entities) {
     if (entity.role === "shop") {
       world.shops?.push({ ...entity.at });
@@ -334,11 +346,31 @@ export function buildWorld(input) {
       throw new Error("Invalid initial held item");
     }
   }
+}
+
+/** @param {import('./world.js').World} world @param {WorldDefinition} definition */
+function seedDrops(world, definition) {
   for (const drop of definition.drops) {
     if (!dropItem(world, drop.at, drop.kind, drop.count)) {
       throw new Error("Invalid initial drop");
     }
   }
+}
+
+/** Construct terrain first, then entities once. @param {WorldDefinition} input */
+export function buildWorld(input) {
+  validateWorldDefinition(input);
+  const definition = structuredClone(input);
+  freeze(definition);
+  /** @type {import('./world.js').World} */
+  const world = { tick: 0, chunks: new Map(), players: {}, shops: [] };
+  if (!definition.generator) world.limits = { ...definition.bounds };
+  const generate = terrainGenerator(definition);
+  seedTerrain(world, definition, generate);
+  if (definition.generator) world.generateChunk = generate;
+  world.pinned = new Set(definition.pinned.map((p) => `${p.cx},${p.cy}`));
+  seedEntities(world, definition);
+  seedDrops(world, definition);
   let ordinal = 0;
   return {
     world,

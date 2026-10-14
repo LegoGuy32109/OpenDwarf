@@ -77,22 +77,7 @@ export const growth = (values: number[]) => {
 };
 
 /** A plain-text report of one session: who played, frame health, network, and every error and spike. */
-export function sessionReport(events: Event[]): string {
-  const out: string[] = [];
-  const first = events[0];
-  const last = events[events.length - 1];
-  const minutes = (Date.parse(last.ts) - Date.parse(first.ts)) / 60_000;
-  const commits = [
-    ...new Set(events.map((e) => e.commit?.slice(0, 7)).filter(Boolean)),
-  ];
-  const players = numbers(events.map((e) => e.players));
-  out.push(
-    `session ${first.session}${first.test ? " (test)" : ""}  ${
-      first.ts.slice(0, 19)
-    }Z  ${fixed(minutes)} min  players (NPC included) up to ${
-      players.length ? Math.max(...players) : "-"
-    }  commit ${commits.join(",") || "-"}`,
-  );
+function participantReports(events: Event[], out: string[]): void {
   const byParticipant = new Map<string, Event[]>();
   for (const event of events) {
     const key = `${event.role} ${event.participant.slice(0, 13)}`;
@@ -136,6 +121,9 @@ export function sessionReport(events: Event[]): string {
         }  ${routes.join(",") || "-"}`,
     );
   }
+}
+
+function hostUploadReport(events: Event[], out: string[]): void {
   const host = events.filter((e) => e.role === "host" && e.kind === "summary");
   if (host.length > 1) {
     const sent = host.map((e) => ({
@@ -157,6 +145,9 @@ export function sessionReport(events: Event[]): string {
       } B`,
     );
   }
+}
+
+function timelineReport(events: Event[], out: string[]): void {
   const timeline = new Map<
     string,
     { players: number; p95: number; slow: string[] }
@@ -182,6 +173,9 @@ export function sessionReport(events: Event[]): string {
       );
     }
   }
+}
+
+function notableReports(events: Event[], out: string[]): void {
   const notable = events.filter((e) =>
     e.kind === "error" || e.kind === "spike" ||
     (e.kind === "connection" && e.status !== "hosting")
@@ -200,6 +194,28 @@ export function sessionReport(events: Event[]): string {
       }`,
     );
   }
+}
+
+export function sessionReport(events: Event[]): string {
+  const out: string[] = [];
+  const first = events[0];
+  const last = events[events.length - 1];
+  const minutes = (Date.parse(last.ts) - Date.parse(first.ts)) / 60_000;
+  const commits = [
+    ...new Set(events.map((e) => e.commit?.slice(0, 7)).filter(Boolean)),
+  ];
+  const players = numbers(events.map((e) => e.players));
+  out.push(
+    `session ${first.session}${first.test ? " (test)" : ""}  ${
+      first.ts.slice(0, 19)
+    }Z  ${fixed(minutes)} min  players (NPC included) up to ${
+      players.length ? Math.max(...players) : "-"
+    }  commit ${commits.join(",") || "-"}`,
+  );
+  participantReports(events, out);
+  hostUploadReport(events, out);
+  timelineReport(events, out);
+  notableReports(events, out);
   return out.join("\n");
 }
 

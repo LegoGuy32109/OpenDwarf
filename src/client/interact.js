@@ -132,39 +132,57 @@ export function interact(ctx) {
     for (const code of ctx.held) ctx.gridKeysAtOpen.add(code);
     return;
   }
+  interactTerrain(ctx, target);
+}
+
+/** Place held stone or mine after panel and pickup actions have been resolved. @param {Context} ctx @param {import('../shared/world.js').Tile} target */
+function interactTerrain(ctx, target) {
+  const { scene } = ctx;
   const tileOpen = readTile(scene.world, target.x, target.y, target.z) === OPEN;
   if (heldDisplay(ctx) === STONE_ITEM) {
     if (!tileOpen) {
       flash(ctx, "Hold the pickaxe to mine");
       return;
     }
-    if (ctx.isAdmin) {
-      ctx.guest?.send({ type: "place", ...target });
-      ctx.sounds.own(["place", "stone"], target);
-    } else {
-      if (ctx.simulation) {
-        ctx.simulation.enqueue(
-          scene.localId,
-          { type: "place", ...target },
-          (result) => {
-            if (result.ok) ctx.sounds.own(["place", "stone"], target);
-            else flash(ctx, String(result.reason));
-          },
-        );
-        return;
-      }
-      const result = placeStone(
-        scene.world,
-        scene.localId,
-        target,
-        reservedTiles(scene.world),
-        ownSees(ctx),
-      );
-      if (result.ok) ctx.sounds.own(["place", "stone"], target);
-      else flash(ctx, result.reason);
-    }
+    placeAt(ctx, target);
     return;
   }
+  mineAt(ctx, target);
+}
+
+/** @param {Context} ctx @param {import('../shared/world.js').Tile} target */
+function placeAt(ctx, target) {
+  const { scene } = ctx;
+  if (ctx.isAdmin) {
+    ctx.guest?.send({ type: "place", ...target });
+    ctx.sounds.own(["place", "stone"], target);
+  } else {
+    if (ctx.simulation) {
+      ctx.simulation.enqueue(
+        scene.localId,
+        { type: "place", ...target },
+        (result) => {
+          if (result.ok) ctx.sounds.own(["place", "stone"], target);
+          else flash(ctx, String(result.reason));
+        },
+      );
+      return;
+    }
+    const result = placeStone(
+      scene.world,
+      scene.localId,
+      target,
+      reservedTiles(scene.world),
+      ownSees(ctx),
+    );
+    if (result.ok) ctx.sounds.own(["place", "stone"], target);
+    else flash(ctx, result.reason);
+  }
+}
+
+/** @param {Context} ctx @param {import('../shared/world.js').Tile} target */
+function mineAt(ctx, target) {
+  const { scene } = ctx;
   if (ctx.isAdmin) ctx.guest?.send({ type: "mine", ...target });
   else {
     if (ctx.simulation) {

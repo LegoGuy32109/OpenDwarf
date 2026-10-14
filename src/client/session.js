@@ -293,6 +293,12 @@ function errorDetail(error, message, file, line) {
   const text = typeof known?.message === "string"
     ? known.message
     : message ?? (typeof error === "string" ? error : "");
+  const place = errorLocation(known, file, line);
+  return `${name}: ${text}${place ? ` at ${place}` : ""}`.slice(0, 160);
+}
+
+/** @param {{stack?:unknown}|null} known @param {string|undefined} file @param {number|undefined} line */
+function errorLocation(known, file, line) {
   let place = file
     ? `${file.split(/[?#]/)[0].split("/").pop()}:${line ?? 0}`
     : "";
@@ -301,5 +307,5 @@ function errorDetail(error, message, file, line) {
       known.stack.split("\n").find((row) => /:\d+/.test(row)) ?? "",
     )?.[1] ?? "";
   }
-  return `${name}: ${text}${place ? ` at ${place}` : ""}`.slice(0, 160);
+  return place;
 }
