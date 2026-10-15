@@ -10,6 +10,13 @@ import {
 } from "./session-routes.ts";
 import { openStore } from "./store.ts";
 const ROOT = new URL("../../", import.meta.url);
+// The initial loading page needs icons before a build or its CDN base is known.
+const SHELL_ICONS: Record<string, string> = {
+  "/favicon.ico": "public/assets/icon-32.png",
+  "/assets/icon-32.png": "public/assets/icon-32.png",
+  "/assets/icon-192.png": "public/assets/icon-192.png",
+  "/assets/apple-touch-icon.png": "public/assets/apple-touch-icon.png",
+};
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -228,6 +235,8 @@ export function createApp(
   }
 
   async function getPage(request: Request, url: URL): Promise<Response | null> {
+    const icon = SHELL_ICONS[url.pathname];
+    if (request.method === "GET" && icon) return file(icon);
     // Service worker loaders (ADR 0007): the local build's, then every remote build's.
     if (
       builds.local && request.method === "GET" &&

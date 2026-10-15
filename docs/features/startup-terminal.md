@@ -15,14 +15,17 @@ hold the screen open.
 ## Delivery and stages
 
 For remote builds, `src/server/loading-page.ts` returns the installed shell's
-terminal before promotion, GitHub, or CDN work. It omits game stylesheet,
-module, and icon requests until the selected build is known. An inline request
-for the same route with `__od_page=1` gets the selected commit's full page.
-`document.open/write/close` installs that page, preserving its scripts, base,
-and configuration, including historical builds. The visible URL and host/join
-path stay unchanged. The early shell's slow timer is canceled before handoff.
-The selected page owns loading feedback after handoff. Older builds retain their
-original startup behavior.
+terminal before promotion, GitHub, or CDN work. It omits game stylesheet and
+module requests until the selected build is known. Icon links stay in the
+initial HTML. The shell serves the 32px, 192px, and Apple touch icons directly
+from its installed assets, along with a `/favicon.ico` alias for the 32px PNG.
+These routes need no promotion lookup or CDN request on any domain. An inline
+request for the same route with `__od_page=1` gets the selected commit's full
+page. `document.open/write/close` installs that page, preserving its scripts,
+base, and configuration, including historical builds. The visible URL and
+host/join path stay unchanged. The early shell's slow timer is canceled before
+handoff. The selected page owns loading feedback after handoff. Older builds
+retain their original startup behavior.
 
 Local development serves `public/index.html` directly. Its terminal starts at
 code loading. Remote delivery starts at build lookup and then hands over to that

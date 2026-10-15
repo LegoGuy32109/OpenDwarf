@@ -295,10 +295,66 @@ Deno.test("the early terminal does not wait for promotion or CDN resolution", as
   assertStringIncludes(html, 'data-shell="true"');
   assertStringIncludes(html, 'id="boot-loading"');
   assertStringIncludes(html, "data:image/png;base64,");
+  assertStringIncludes(html, '<base href="/">');
+  assertStringIncludes(
+    html,
+    'rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png"',
+  );
+  assertStringIncludes(
+    html,
+    'rel="apple-touch-icon" href="assets/apple-touch-icon.png"',
+  );
   assertEquals(html.includes('src="js/app.js"'), false);
   assertEquals(html.includes('href="css/app.css"'), false);
   assertEquals(
     (await app(new Request("https://x.example/b/x/not-a-page"))).status,
+    404,
+  );
+});
+
+Deno.test("every domain serves shell icons without build resolution", async () => {
+  const store = createMemoryStore();
+  const builds = createBuilds({
+    store: {
+      ...store,
+      getMain: () => {
+        throw new Error("icon requested a build");
+      },
+    },
+    fetch: () => {
+      throw new Error("icon requested the CDN");
+    },
+  });
+  const app = createApp(builds);
+  for (
+    const host of [
+      "od.joshhale.me",
+      "dwarf.joshhale.me",
+      "opendwarf.joshhale.me",
+    ]
+  ) {
+    for (
+      const path of [
+        "/favicon.ico",
+        "/assets/icon-32.png",
+        "/assets/icon-192.png",
+        "/assets/apple-touch-icon.png",
+      ]
+    ) {
+      const response = await app(new Request(`https://${host}${path}`));
+      assertEquals(response.status, 200, `${host}${path}`);
+      assertEquals(response.headers.get("content-type"), "image/png");
+      assertStringIncludes(response.headers.get("cache-control")!, "max-age=");
+      const source = path === "/favicon.ico" ? "/assets/icon-32.png" : path;
+      assertEquals(
+        new Uint8Array(await response.arrayBuffer()),
+        await Deno.readFile(`public${source}`),
+      );
+    }
+  }
+  assertEquals(
+    (await app(new Request("https://dwarf.joshhale.me/assets/floor.png")))
+      .status,
     404,
   );
 });

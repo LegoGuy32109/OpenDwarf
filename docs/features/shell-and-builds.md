@@ -29,12 +29,13 @@ The local build serves its page directly. The early terminal is described in
 [startup terminal](startup-terminal.md). Changes to its shell delivery need a
 shell deploy. Changes to a build's loading stages need a new client build.
 
-The shell reads the early loading page from disk. Game assets come from the CDN,
-except for the build `local` and the admin dashboard. `deno task dev` sets
-`OD_LOCAL_BUILD=1`, so `/` and `/b/local` serve the working tree, with `/js/`,
-`/css/`, `/assets/`, and `/src/` read from disk. Playwright starts its server
-the same way, so e2e specs run the working tree. `/b/<sha>` still loads from
-jsDelivr under `dev`, which needs a pushed commit.
+The shell reads the early loading page and its favicon assets from disk.
+`/favicon.ico` serves the 32px PNG, and the initial page retains its icon links.
+Game assets come from the CDN, except for the build `local` and the admin
+dashboard. `deno task dev` sets `OD_LOCAL_BUILD=1`, so `/` and `/b/local` serve
+the working tree, with `/js/`, `/css/`, `/assets/`, and `/src/` read from disk.
+Playwright starts its server the same way, so e2e specs run the working tree.
+`/b/<sha>` still loads from jsDelivr under `dev`, which needs a pushed commit.
 
 ## Build base path
 

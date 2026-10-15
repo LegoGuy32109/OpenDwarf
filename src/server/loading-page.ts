@@ -9,9 +9,7 @@ export async function loadingPage(): Promise<Response> {
   const source = await template;
   const html = source
     .replace('<html lang="en">', '<html lang="en" data-shell="true">')
-    .replace(/<!-- game-assets:start -->[\s\S]*?<!-- game-assets:end -->/, "")
-    // Icons belong to the selected commit. The early shell has no remote base.
-    .replace(/<link\s[^>]*>/g, "");
+    .replace(/<!-- game-assets:start -->[\s\S]*?<!-- game-assets:end -->/, "");
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
