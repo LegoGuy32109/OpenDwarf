@@ -263,11 +263,42 @@ Deno.test("the app serves build pages, and disk files only for the local build",
     (await app(new Request("https://x.example/src/client/app.js"))).status,
     404,
   );
-  const nope = await app(new Request("https://x.example/b/nope"));
+  const nope = await app(new Request("https://x.example/b/nope?__od_page=1"));
   assertEquals(nope.status, 404);
   await nope.body?.cancel();
   const local = createApp(setup({}, {}, { localBuild: true }).builds);
   const script = await local(new Request("https://x.example/js/app.js"));
   assertEquals(script.status, 200);
   await script.body?.cancel();
+});
+
+Deno.test("the early terminal does not wait for promotion or CDN resolution", async () => {
+  let mainReads = 0;
+  const store = createMemoryStore();
+  const builds = createBuilds({
+    store: {
+      ...store,
+      getMain: () => {
+        mainReads++;
+        throw new Error("should not resolve yet");
+      },
+    },
+    fetch: () => {
+      throw new Error("should not fetch yet");
+    },
+  });
+  const app = createApp(builds);
+  const response = await app(new Request("https://x.example/"));
+  const html = await response.text();
+  assertEquals(response.status, 200);
+  assertEquals(mainReads, 0);
+  assertStringIncludes(html, 'data-shell="true"');
+  assertStringIncludes(html, 'id="boot-loading"');
+  assertStringIncludes(html, "data:image/png;base64,");
+  assertEquals(html.includes('src="js/app.js"'), false);
+  assertEquals(html.includes('href="css/app.css"'), false);
+  assertEquals(
+    (await app(new Request("https://x.example/b/x/not-a-page"))).status,
+    404,
+  );
 });

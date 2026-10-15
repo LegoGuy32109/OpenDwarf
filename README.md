@@ -63,6 +63,7 @@ its feature there:
 - [Networking](docs/features/networking.md)
 - [Sessions and signaling](docs/features/sessions-and-signaling.md)
 - [Shell and builds](docs/features/shell-and-builds.md)
+- [Startup terminal](docs/features/startup-terminal.md)
 - [Media](docs/features/media.md)
 - [Offline play](docs/features/offline.md)
 - [Admin dashboard](docs/features/admin-dashboard.md)

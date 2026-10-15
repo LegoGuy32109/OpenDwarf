@@ -330,8 +330,9 @@ function updateLayout(ctx, input, now) {
  * @param {Context} ctx
  * @param {Awaited<ReturnType<typeof import('./render.js').createRenderer>>|null} renderer
  * @param {ReturnType<typeof import('./input.js').createInput>} input
+ * @param {()=>void} [onFirstDraw]
  */
-export function startLoop(ctx, renderer, input) {
+export function startLoop(ctx, renderer, input, onFirstDraw) {
   const { scene, frameStats, frameInfo } = ctx;
   let last = performance.now();
   /** @param {number} now */
@@ -370,7 +371,13 @@ export function startLoop(ctx, renderer, input) {
       ctx.liveStatus.textContent = liveText;
     }
     frameStats.mark("render");
-    renderer?.render(scene, ctx.accumulator / TICK_MS);
+    const worldDrawn = renderer
+      ? renderer.render(scene, ctx.accumulator / TICK_MS)
+      : true;
+    if (worldDrawn && onFirstDraw) {
+      onFirstDraw();
+      onFirstDraw = undefined;
+    }
     frameStats.end();
     requestAnimationFrame(frame);
   };

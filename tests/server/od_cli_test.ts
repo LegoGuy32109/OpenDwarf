@@ -159,7 +159,7 @@ withShell(
     const mainCommit = async () =>
       JSON.parse(
         /<script id="od-build" type="application\/json">(.*?)<\/script>/.exec(
-          await (await s.request("/")).text(),
+          await (await s.request("/?__od_page=1")).text(),
         )![1],
       ).commit;
     assertEquals(await mainCommit(), OLD);

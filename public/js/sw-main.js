@@ -257,7 +257,10 @@ function listen(scope) {
     if (url.origin === own && url.pathname.startsWith("/api/")) return;
     if (rules.isMedia(request.url, own)) {
       event.respondWith(media(request));
-    } else if (request.mode === "navigate") {
+    } else if (
+      request.mode === "navigate" ||
+      (url.origin === own && url.searchParams.get("__od_page") === "1")
+    ) {
       event.respondWith(page(request));
     } else {
       const commit = rules.buildCommitOf(request.url, own);

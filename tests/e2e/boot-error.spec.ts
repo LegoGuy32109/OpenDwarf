@@ -40,7 +40,7 @@ test(
     await expect(panel).toContainText("app.js");
   },
 );
-test("files that never arrive are listed after 15 seconds", async ({ page }) => {
+test("files that take longer keep the terminal visible with a retry", async ({ page }) => {
   await page.clock.install();
   // Hold the stylesheet and the entry module forever, as a blocked CDN would.
   await page.route("**/css/app.css", () => {});
@@ -49,9 +49,13 @@ test("files that never arrive are listed after 15 seconds", async ({ page }) => 
   await page.waitForSelector("#boot-error", { state: "attached" });
   await page.clock.fastForward(16000);
   const panel = page.locator("#boot-error");
-  await expect(panel).toBeVisible();
-  await expect(panel).toContainText("Still waiting after 15 s for:");
-  await expect(panel).toContainText("css/app.css");
-  await expect(panel).toContainText("js/app.js");
-  await evidenceShot(page, "boot-error-waiting");
+  await expect(panel).toBeHidden();
+  await expect(page.locator("#boot-current")).toContainText(
+    "Loading game code",
+  );
+  await expect(page.locator("#boot-detail")).toContainText(
+    "Taking longer than usual",
+  );
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await evidenceShot(page, "boot-loading-waiting");
 });

@@ -20,32 +20,38 @@
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
     <meta name="apple-mobile-web-app-title" content="Open Dwarf">
-    <!-- The boot-error screen. Its style and script are inline and come first,
-      so they work when the build's files cannot load: a stylesheet still
-      pending would hold back painting and every script after it. Until
-      js/app.js marks the page booted, it writes a file that failed or never
-      arrived, an uncaught error, or an unhandled rejection onto the page, so a
-      phone shows the cause instead of a blank screen. -->
+    <!-- Startup is independent of the CDN, stylesheets, and WebGL. The atlas
+      below is public/assets/font.png, embedded so the first message can use it. -->
     <style>
-    html,
-    body {
-      margin: 0;
-      background: #17191c;
-    }
-    #boot-error:not([hidden]) {
-      position: fixed;
-      inset: 0;
-      z-index: 10;
-      margin: 0;
-      padding: max(16px, env(safe-area-inset-top)) 16px 16px;
-      overflow: auto;
-      background: #17191c;
-      color: #f0e6d2;
-      font: 14px/1.4 ui-monospace, Menlo, monospace;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      -webkit-user-select: text;
-      user-select: text;
+    html, body { margin: 0; background: #17191c; color: #f0e6d2; }
+    #boot-loading { position: fixed; inset: 0; z-index: 10; overflow: auto;
+      padding: max(40px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+      background: #17191c; font: 16px/1.6 ui-monospace, monospace; }
+    #boot-loading[hidden], #boot-loading [hidden] { display: none; }
+    .boot-terminal { max-width: 640px; margin: 8vh auto 0; }
+    #boot-loading h1 { font: inherit; margin: 0 0 32px; color: #e0b45a; }
+    #boot-log { list-style: none; padding: 0; margin: 0; color: #9d9a90; }
+    #boot-log li, #boot-current { margin: 0 0 8px; }
+    #boot-current { color: #f0e6d2; }
+    #boot-detail { color: #b5ad99; min-height: 32px; margin: 16px 0 0; }
+    #boot-retry { color: #e0b45a; background: transparent; border: 1px solid #726341;
+      padding: 10px 14px; font: inherit; cursor: pointer; margin-top: 16px; }
+    #boot-retry:focus-visible { outline: 2px solid #e0b45a; outline-offset: 4px; }
+    #boot-error { white-space: pre-wrap; overflow-wrap: anywhere; color: #e6b6a5;
+      font: 13px/1.5 ui-monospace, monospace; margin: 24px 0 0; }
+    .boot-label { position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip-path: inset(50%); white-space: nowrap; }
+    .boot-pixels { display: inline; }
+    .boot-pixels i { display: inline-block; width: 8px; height: 16px;
+      vertical-align: middle; background: currentColor;
+      mask-image: url("data:image/png;base64,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"); mask-size: 256px 48px;
+      mask-position: calc(var(--x) * -8px) calc(var(--y) * -16px);
+      mask-repeat: no-repeat; image-rendering: pixelated; }
+    .boot-pixels i.boot-space { background: transparent; }
+    @media (min-width: 700px) {
+      #boot-loading { font-size: 24px; }
+      .boot-pixels i { width: 12px; height: 24px; mask-size: 384px 72px;
+        mask-position: calc(var(--x) * -12px) calc(var(--y) * -24px); }
     }
     </style>
     <script>
@@ -53,10 +59,65 @@
       const root = document.documentElement;
       const started = Date.now();
       const lines = [];
-      const loaded = new Set();
+      let failed = false;
+      let stage = "code";
+      const labels = {
+        build: "Finding the game build...",
+        code: "Loading game code...",
+        world: "Preparing the world...",
+        graphics: "Preparing graphics...",
+        frame: "Drawing the first view...",
+      };
+      // Reuse the game's 8x16 atlas in HTML. It is embedded in the style above,
+      // so even a blocked CDN cannot withhold the terminal's font.
+      const text = (element, value) => {
+        if (!element) return;
+        const pixels = document.createElement("span");
+        pixels.className = "boot-pixels";
+        pixels.setAttribute("aria-hidden", "true");
+        for (const char of value) {
+          const glyph = document.createElement("i");
+          const code = char.charCodeAt(0) - 33;
+          if (code >= 0 && code < 94) {
+            glyph.style.setProperty("--x", String(code % 32));
+            glyph.style.setProperty("--y", String(Math.floor(code / 32)));
+          } else glyph.className = "boot-space";
+          pixels.append(glyph);
+        }
+        const label = document.createElement("span");
+        label.className = "boot-label";
+        label.textContent = value;
+        element.replaceChildren(label, pixels);
+      };
+      const report = (next, detail = "") => {
+        if (failed || root.dataset.booted === "true") return;
+        const current = document.getElementById("boot-current");
+        if (next !== stage && current) {
+          const done = document.createElement("li");
+          text(done, `[ok] ${labels[stage].replace(/\.\.\.$/, "")}`);
+          document.getElementById("boot-log").append(done);
+        }
+        stage = next;
+        root.dataset.bootStage = next;
+        text(current, `> ${labels[next]}`);
+        text(document.getElementById("boot-detail"), detail);
+      };
+      const complete = () => {
+        if (failed) return;
+        root.dataset.booted = "true";
+        root.dataset.bootStage = "ready";
+        performance.mark("od-first-world-frame");
+        document.getElementById("boot-loading").hidden = true;
+      };
+      globalThis.__odLoading = { report, complete };
       const show = (line) => {
         if (root.dataset.booted === "true") return;
+        failed = true;
+        root.dataset.bootStage = "failed";
         if (line) lines.push(line);
+        text(document.getElementById("boot-current"), "[fail] The game could not start.");
+        text(document.getElementById("boot-detail"), "Check your connection, then try again.");
+        document.getElementById("boot-retry")?.removeAttribute("hidden");
         const panel = document.getElementById("boot-error");
         if (!panel) return;
         let build = "";
@@ -84,7 +145,6 @@
             error.stack ? `\n${String(error.stack).slice(0, 600)}` : ""
           }`
           : String(error);
-      addEventListener("load", (event) => loaded.add(event.target), true);
       addEventListener("error", (event) => {
         const target = event.target;
         if (target && target !== window && target.tagName) {
@@ -107,28 +167,47 @@
         show(`Unhandled: ${describe(event.reason)}`);
       });
       globalThis.__odBootError = (error) => show(describe(error));
-      setTimeout(() => {
-        if (root.dataset.booted === "true" || lines.length) return;
-        const waiting = [
-          ...document.querySelectorAll(
-            'link[rel="stylesheet"], script[type="module"][src]',
-          ),
-        ].filter((element) =>
-          !loaded.has(element) && !(element.tagName === "LINK" && element.sheet)
-        ).map((element) => `  ${element.href || element.src}`);
-        show(
-          waiting.length
-            ? `Still waiting after 15 s for:\n${waiting.join("\n")}`
-            : "The game did not start within 15 seconds.",
-        );
+      document.addEventListener("od-loading-mount", () => {
+        stage = root.dataset.shell === "true" ? "build" : "code";
+        for (const element of document.querySelectorAll("[data-boot-text]")) {
+          text(element, element.textContent);
+        }
+        if (stage === "code" && document.getElementById("od-build")) {
+          const done = document.createElement("li");
+          text(done, "[ok] Game build ready");
+          document.getElementById("boot-log").append(done);
+        }
+        report(stage);
+        document.getElementById("boot-retry").addEventListener("click", () => location.reload());
+        if (root.dataset.shell === "true") {
+          const page = new URL(location.href);
+          page.searchParams.set("__od_page", "1");
+          fetch(page).then(async (response) => {
+            if (!response.ok) throw new Error(`Build request answered ${response.status}`);
+            const html = await response.text();
+            // Replace the early shell with the selected commit's own page. Its
+            // base, scripts, and older entrypoints keep their original behavior.
+            clearTimeout(slowTimer);
+            document.open();
+            document.write(html);
+            document.close();
+          }).catch(show);
+        }
+      });
+      const slowTimer = setTimeout(() => {
+        if (root.dataset.booted === "true" || failed) return;
+        text(document.getElementById("boot-detail"), "Taking longer than usual. Still working...");
+        document.getElementById("boot-retry")?.removeAttribute("hidden");
       }, 15000);
     })();
     </script>
+    <!-- game-assets:start -->
     <!-- Loaded as print first so a slow stylesheet does not hold back painting;
       the boot-error screen above has its own style. -->
     <link rel="stylesheet" href="css/app.css" media="print"
       onload="this.media = 'all'">
     <script type="module" src="js/app.js"></script>
+    <!-- game-assets:end -->
   </head>
   <body>
     <main id="game">
@@ -138,6 +217,21 @@
       <output id="live-status" class="visually-hidden" role="status"
         aria-live="polite"></output>
     </main>
-    <pre id="boot-error" role="alert" hidden></pre>
+    <section id="boot-loading" aria-label="Game startup">
+      <div class="boot-terminal">
+        <h1 data-boot-text>OPEN DWARF</h1>
+        <ol id="boot-log" aria-label="Completed startup steps">
+          <li data-boot-text>[ok] Loading screen ready</li>
+        </ol>
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <p id="boot-current" data-boot-text>&gt; Starting Open Dwarf...</p>
+          <p id="boot-detail"></p>
+        </div>
+        <button id="boot-retry" data-boot-text hidden>Try again</button>
+        <pre id="boot-error" role="alert" hidden></pre>
+        <noscript>JavaScript is required to play Open Dwarf.</noscript>
+      </div>
+    </section>
+    <script>document.dispatchEvent(new Event("od-loading-mount"));</script>
   </body>
 </html>

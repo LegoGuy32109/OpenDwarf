@@ -32,6 +32,11 @@ The rules that need no worker (cache names, which caches to keep, the range
 answer) hang on `globalThis.odSw` in `sw-main.js`, and
 `tests/client/sw_rules_test.ts` runs them.
 
+The remote loading terminal requests its selected build document with
+`__od_page=1`. The worker treats this same-origin request as a page too, so both
+the terminal and its resolved document can load offline after caching. API
+requests remain uncached.
+
 ## Offline single player
 
 `isOffline()` is `navigator.onLine === false`. That is also true on a network

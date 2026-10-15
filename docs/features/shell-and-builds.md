@@ -16,11 +16,25 @@ the commit. `/`, `/host`, and `/join/<session>` serve main, the latest
 promotion, the same way with base `/`; before the first promotion they show a
 short message. An unknown name gets a 404 page that links to `/admin`.
 
-The shell serves no files from disk, except for the build `local` and the admin
-dashboard. `deno task dev` sets `OD_LOCAL_BUILD=1`, so `/` and `/b/local` serve
-the working tree, with `/js/`, `/css/`, `/assets/`, and `/src/` read from disk.
-Playwright starts its server the same way, so e2e specs run the working tree.
-`/b/<sha>` still loads from jsDelivr under `dev`, which needs a pushed commit.
+Remote game routes first return a small loading terminal from the installed
+shell, before reading promotions or fetching a build page. Its inline script
+requests the same path with `__od_page=1`, preserving the original query. That
+request follows the build resolution above and returns the selected commit's
+complete HTML with its original status. The terminal hands that document to the
+browser without changing the visible URL. The initial terminal response is 200
+even if resolution later fails. The terminal reports a failed request and offers
+retry. Invalid page paths still return 404 immediately.
+
+The local build serves its page directly. The early terminal is described in
+[startup terminal](startup-terminal.md). Changes to its shell delivery need a
+shell deploy. Changes to a build's loading stages need a new client build.
+
+The shell reads the early loading page from disk. Game assets come from the CDN,
+except for the build `local` and the admin dashboard. `deno task dev` sets
+`OD_LOCAL_BUILD=1`, so `/` and `/b/local` serve the working tree, with `/js/`,
+`/css/`, `/assets/`, and `/src/` read from disk. Playwright starts its server
+the same way, so e2e specs run the working tree. `/b/<sha>` still loads from
+jsDelivr under `dev`, which needs a pushed commit.
 
 ## Build base path
 

@@ -3,6 +3,7 @@
 // and rewrites it to load the commit's files from jsDelivr. `/` serves main. The local build serves
 // the working tree and exists only when the shell runs from `deno task dev`.
 import type { Store } from "./store.ts";
+import { loadingPage } from "./loading-page.ts";
 
 const REPO = "LegoGuy32109/OpenDwarf";
 const BRANCH_TTL_MS = 60_000;
@@ -158,6 +159,8 @@ export interface Builds {
   readonly local: boolean;
   /** True when the shell serves this path as a build page or a build error. */
   handles(path: string): boolean;
+  /** The early terminal for a remote page, without resolving its build. */
+  loading(path: string): Promise<Response | null>;
   /** Answers a GET for a path `handles` accepted. */
   serve(path: string): Promise<Response>;
   /**
@@ -374,6 +377,16 @@ export function createBuilds(options: BuildOptions): Builds {
     pulls,
     handles: (path) => split(path) !== null,
     resolve,
+    loading(path) {
+      const target = split(path);
+      if (
+        !target || !PAGE_PATH.test(target.rest) ||
+        (target.name !== null && !NAME.test(target.name)) ||
+        (options.localBuild &&
+          (target.name === null || target.name === LOCAL_BUILD))
+      ) return Promise.resolve(null);
+      return loadingPage();
+    },
     async worker(path) {
       const named = /^\/b\/([^/]+)\/sw\.js$/.exec(path);
       if (!named && path !== "/sw.js") return null;

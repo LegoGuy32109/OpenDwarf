@@ -121,8 +121,18 @@ function vertexAttributes(gl) {
   }
 }
 
-/** @param {HTMLCanvasElement} canvas */
-export async function createRenderer(canvas) {
+/** @param {HTMLCanvasElement} canvas
+ * @param {{onAsset?:(loaded:number,total:number)=>void}} [options]
+ */
+export async function createRenderer(canvas, options = {}) {
+  let assetCount = 0;
+  const totalAssets = 8;
+  /** @param {string} source */
+  const asset = async (source) => {
+    const result = await image(source);
+    options.onAsset?.(++assetCount, totalAssets);
+    return result;
+  };
   const context = canvas.getContext("webgl2", {
     alpha: false,
     antialias: false,
@@ -150,8 +160,8 @@ export async function createRenderer(canvas) {
   gl.uniform1i(gl.getUniformLocation(program, "u_texture"), 0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  // The font loads first, so the loading screen can draw text while the rest loads.
-  const fontImage = await image("assets/font.png");
+  // The font also supports in-game text while the remaining textures load.
+  const fontImage = await asset("assets/font.png");
   const whiteImage = document.createElement("canvas");
   whiteImage.width = whiteImage.height = 1;
   const whiteContext = whiteImage.getContext("2d");
@@ -167,13 +177,13 @@ export async function createRenderer(canvas) {
   let loaded = false;
   /** Resolves when the world's textures are ready; rejects when one cannot load. */
   const ready = Promise.all([
-    image("assets/floor.png"),
-    image("assets/dwarf.png"),
-    image("assets/edge.png"),
-    image("assets/ceiling.png"),
-    image("assets/ores.png"),
-    image("assets/items.png"),
-    image("assets/cracks.png"),
+    asset("assets/floor.png"),
+    asset("assets/dwarf.png"),
+    asset("assets/edge.png"),
+    asset("assets/ceiling.png"),
+    asset("assets/ores.png"),
+    asset("assets/items.png"),
+    asset("assets/cracks.png"),
   ]).then((images) => {
     const [floor, sprite, edge, ceiling, ores, items, cracks] =
       /** @type {HTMLImageElement[]} */ (images);
@@ -383,6 +393,7 @@ export async function createRenderer(canvas) {
     drawnTiles = 0;
     draw(scene, alpha);
     renderer.stats = { tiles: drawnTiles, quads: drawnQuads };
+    return loaded;
   }
 
   /** @typedef {{stamp:import('./terrain-mesh.js').MeshStamp,tiles:number,seen:number,parts:Record<string,{vao:WebGLVertexArrayObject,buffer:WebGLBuffer,vertices:number}>}} MeshEntry */

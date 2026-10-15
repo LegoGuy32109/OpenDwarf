@@ -13,6 +13,7 @@ import { enableLocomotion } from "../shared/locomotion.js";
 import { authoredRecipe, roomRecipe } from "../shared/world-recipes.js";
 import { createSimulation } from "../shared/simulation.js";
 import { worldSeedFromParams } from "../shared/generation.js";
+import { completeStartup, failStartup, reportStartup } from "./startup.js";
 import { createRenderer } from "./render.js";
 import { createContext } from "./context.js";
 import { createInput } from "./input.js";
@@ -32,6 +33,7 @@ import {
 
 /** @param {{worldDefinition?:import("../shared/world-builder.js").WorldDefinition}} [startup] */
 export async function startApp(startup = {}) {
+  reportStartup("world");
   const ctx = createContext();
   const { scene, canvas } = ctx;
   const mediaRandom =
@@ -65,14 +67,19 @@ export async function startApp(startup = {}) {
   } else enableLocomotion(addPlayer(scene.world, "self"));
   const input = createInput(ctx);
   input.bind();
-  const renderer = ctx.isSynthetic ? null : await createRenderer(canvas);
+  reportStartup("graphics", "Setting up WebGL...");
+  const renderer = ctx.isSynthetic ? null : await createRenderer(canvas, {
+    onAsset: (loaded, total) =>
+      reportStartup("graphics", `Textures ready: ${loaded}/${total}`),
+  });
   const finishLoading = () => {
     scene.loading = null;
-    canvas.dataset.ready = "true";
+    reportStartup("frame");
   };
   if (renderer) {
     renderer.ready.then(finishLoading).catch((error) => {
       scene.loading = "Cannot load the game. Reload to try again.";
+      failStartup(error);
       scene.telemetry?.("error", { status: "assets-failed" });
       console.error(error);
     });
@@ -84,7 +91,10 @@ export async function startApp(startup = {}) {
   startTelemetry(ctx);
   ctx.music.start();
   ctx.sfx.start();
-  startLoop(ctx, renderer, input);
+  startLoop(ctx, renderer, input, () => {
+    canvas.dataset.ready = "true";
+    completeStartup();
+  });
   exposeHarness(ctx, renderer);
   if (new URL(location.href).searchParams.has("harness")) {
     bindTestDriver(createHarnessApi(ctx, renderer), {

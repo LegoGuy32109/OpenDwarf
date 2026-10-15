@@ -246,6 +246,10 @@ export function createApp(
     }
     // Build pages: `/b/<name>/...`, and main at the root pages.
     if (builds.handles(url.pathname) && request.method === "GET") {
+      if (url.searchParams.get("__od_page") !== "1") {
+        const loading = await builds.loading(url.pathname);
+        if (loading) return loading;
+      }
       return builds.serve(url.pathname);
     }
     if (request.method === "GET") {
