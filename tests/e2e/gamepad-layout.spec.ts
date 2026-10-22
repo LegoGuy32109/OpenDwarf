@@ -137,35 +137,47 @@ test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async 
   expect(await zoom()).toBe(inBag);
   await tap(page, Y);
   await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);
-  // X opens the menu with no panel open, and closes the bag when it is open.
+  // X opens the menu, and with the bag open it replaces the bag.
   await tap(page, Y);
   await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
   await tap(page, X);
   await expect.poll(() => hasUi(page, "panel:bag")).toBe(false);
+  expect(await scene(page, (s) => s.menu)).toBe(true);
+  // Y replaces the menu with the bag.
+  await tap(page, Y);
+  await expect.poll(() => hasUi(page, "panel:bag")).toBe(true);
   expect(await scene(page, (s) => s.menu)).toBe(false);
-  await tap(page, X);
-  await expect.poll(() => scene(page, (s) => s.menu)).toBe(true);
 });
-test("X closes the shop, and B does not", async ({ page }) => {
+test("B backs out of the shop, and X replaces it with the menu", async ({ page }) => {
   await fakePad(page);
   await openWorld(page, "/?harness=1&layout=room&gamepad-debug=1");
   await ready(page);
   await page.locator("#world").click();
   await placeAt(page, 16, 13);
   await waitFrames(page, 3);
-  await page.evaluate(() => {
-    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = -1;
-  });
-  await tap(page, ZR);
-  await page.evaluate(() => {
-    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
-  });
+  // The right stick aims north at Ulgar while ZR interacts.
+  const openShop = async () => {
+    await page.evaluate(() => {
+      (globalThis as unknown as { __pad: { axes: number[] } }).__pad
+        .axes[3] = -1;
+    });
+    await tap(page, ZR);
+    await page.evaluate(() => {
+      (globalThis as unknown as { __pad: { axes: number[] } }).__pad
+        .axes[3] = 0;
+    });
+  };
+  await openShop();
   await expect.poll(() => shopOpen(page)).toBe(true);
   await evidenceShot(page, "gamepad-shop-open");
-  await tap(page, B);
   await tap(page, A);
   expect(await shopOpen(page)).toBe(true);
-  await tap(page, X);
+  await tap(page, B);
   await expect.poll(() => shopOpen(page)).toBe(false);
   expect(await scene(page, (s) => s.menu)).toBe(false);
+  await openShop();
+  await expect.poll(() => shopOpen(page)).toBe(true);
+  await tap(page, X);
+  await expect.poll(() => shopOpen(page)).toBe(false);
+  expect(await scene(page, (s) => s.menu)).toBe(true);
 });

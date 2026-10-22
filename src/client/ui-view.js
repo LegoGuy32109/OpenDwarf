@@ -14,6 +14,8 @@ import { EFFECTS_LEVELS } from "./sfx.js";
 import { heldDisplay } from "./display.js";
 import { build } from "./build.js";
 import { layoutUi } from "./ui-layout.js";
+import { openLevel } from "./input-values.js";
+import { menuRow } from "./panels.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
 
@@ -29,6 +31,7 @@ function menuView(ctx) {
     ? {
       open: true,
       page: scene.menuPage,
+      row: menuRow(ctx),
       scale: scene.uiScale,
       textSize: scene.textSize,
       sizes: TEXT_SIZES,
@@ -103,6 +106,7 @@ function uiView(ctx) {
       }
       : undefined,
     menu: menuView(ctx),
+    backButton: openLevel(ctx) !== null,
     log: {
       open: ui.logOpen,
       lines: scene.hearingLog.lines,

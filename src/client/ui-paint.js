@@ -352,6 +352,7 @@ function paintButton(ctx) {
     ? PALETTE.buttonOn
     : PALETTE.button;
   framed(paint, rect, bw, edge, fill);
+  if (element.sel) outline(paint, rect, 3 * bw, PALETTE.orange);
   if (element.glyph) {
     bitmap(
       paint,

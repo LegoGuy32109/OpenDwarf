@@ -20,7 +20,19 @@ import {
   stepPickupSelection,
 } from "./pickup-grid.js";
 import { pickupGridStacks } from "./pickup-grid-view.js";
-import { stickDirection } from "./input-values.js";
+import { nearTrader } from "../shared/shop.js";
+import { openLevel, stickDirection } from "./input-values.js";
+import { VOICES_LEVELS } from "./chatter.js";
+import { MUSIC_LEVELS } from "./music.js";
+import { EFFECTS_LEVELS } from "./sfx.js";
+import { TEXT_SIZES } from "../shared/chat.js";
+import {
+  MENU_ROWS,
+  parentLevel,
+  SETTINGS_ROWS,
+  settingsChanges,
+  stepRow,
+} from "./menu-nav.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
 
@@ -32,12 +44,107 @@ export function toggleBag(ctx, open = !ctx.bag.isOpen) {
   ctx.bag.toggle(open);
 }
 
-/** Opens or closes the menu. It shuts the panels, which would sit under it. @param {Context} ctx */
-export function toggleMenu(ctx) {
-  toggleBag(ctx, false);
+/** Close the bag, the pickup grid, and the shop panel. @param {Context} ctx */
+function closePanels(ctx) {
+  ctx.bag.toggle(false);
+  closePickupGrid(ctx.pickupGrid);
   ctx.shop.close();
-  ctx.scene.menu = !ctx.scene.menu;
+}
+
+/** Show the Escape menu's first page. @param {Context} ctx */
+function showMenu(ctx) {
+  ctx.scene.menu = true;
   ctx.scene.menuPage = "root";
+  ctx.nav.reset();
+}
+
+/** Close the Escape menu and return to the world. @param {Context} ctx */
+export function closeMenu(ctx) {
+  ctx.scene.menu = false;
+  ctx.scene.menuPage = "root";
+}
+
+/**
+ * Opens or closes the menu. It replaces an open panel, and a second press
+ * closes it. @param {Context} ctx
+ */
+export function toggleMenu(ctx) {
+  closePanels(ctx);
+  if (ctx.scene.menu) closeMenu(ctx);
+  else showMenu(ctx);
+}
+
+/** Y or the bag button: the bag replaces the open menu or panel, and a second press closes it. @param {Context} ctx */
+export function replaceWithBag(ctx) {
+  if (ctx.bag.isOpen) return ctx.bag.toggle(false);
+  if (ctx.scene.chatOpen) return;
+  closePanels(ctx);
+  closeMenu(ctx);
+  ctx.bag.toggle(true);
+}
+
+/**
+ * Back: go up one level. Settings returns to the Escape menu with its row
+ * still selected, and every outermost level returns to the world. With no menu
+ * open, the hearing log closes before the Escape menu opens.
+ * @param {Context} ctx
+ */
+export function goBack(ctx) {
+  const level = openLevel(ctx);
+  if (level === null) {
+    if (ctx.ui.logOpen) toggleLog(ctx, false);
+    else toggleMenu(ctx);
+    return;
+  }
+  if (parentLevel(level) === "menu") ctx.scene.menuPage = "root";
+  else {
+    closePanels(ctx);
+    closeMenu(ctx);
+  }
+}
+
+/** The row names of the open Escape menu page. @param {Context} ctx */
+function menuRows(ctx) {
+  return ctx.scene.menuPage === "settings" ? SETTINGS_ROWS : MENU_ROWS;
+}
+
+/** The selected row of the open Escape menu page. @param {Context} ctx */
+export function menuRow(ctx) {
+  const page = ctx.scene.menuPage === "settings" ? "settings" : "menu";
+  return menuRows(ctx)[ctx.nav.rows[page]] ?? "";
+}
+
+/** Move the selection of the Escape menu: up and down pick a row; on Settings, left and right change its value. @param {Context} ctx @param {number} dx @param {number} dy @param {(id:string)=>void} press presses a menu button by id */
+export function menuStep(ctx, dx, dy, press) {
+  const page = ctx.scene.menuPage === "settings" ? "settings" : "menu";
+  const rows = menuRows(ctx);
+  if (dy) ctx.nav.rows[page] = stepRow(ctx.nav.rows[page], rows.length, dy);
+  else if (dx && page === "settings") {
+    const change = settingsChanges(
+      {
+        sizes: TEXT_SIZES,
+        voices: VOICES_LEVELS,
+        music: MUSIC_LEVELS,
+        effects: EFFECTS_LEVELS,
+      },
+      {
+        size: ctx.scene.textSize,
+        voices: ctx.chatter.level,
+        music: ctx.music.level,
+        effects: ctx.sfx.level,
+      },
+    )[menuRow(ctx)];
+    const id = change?.(dx);
+    if (id) press(id);
+  }
+}
+
+/** Confirm on the Escape menu: choose the selected row. Value rows change with left and right, so confirm only acts on buttons. @param {Context} ctx @param {(id:string)=>void} press */
+export function menuConfirm(ctx, press) {
+  const row = menuRow(ctx);
+  if (["resume", "settings", "leave", "back"].includes(row)) {
+    press(`btn:${row}`);
+  }
 }
 
 /** @param {Context} ctx @param {boolean} [open] */
@@ -49,6 +156,14 @@ export function toggleLog(ctx, open = !ctx.ui.logOpen) {
 /** Shows or hides the small join QR below the host tools. @param {Context} ctx */
 export function toggleJoinPanel(ctx) {
   ctx.ui.joinOpen = !ctx.ui.joinOpen;
+}
+
+/** Each frame: close the shop panel when the player is out of the trader's range, as the pickup grid closes out of reach. @param {Context} ctx */
+export function updateShopReach(ctx) {
+  if (!ctx.shop.isOpen()) return;
+  const { scene } = ctx;
+  const player = scene.world.players[scene.localId];
+  if (!player || !nearTrader(scene.world, player)) ctx.shop.close();
 }
 
 /**

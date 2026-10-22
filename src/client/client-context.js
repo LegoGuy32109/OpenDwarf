@@ -17,6 +17,7 @@ import { build } from "./build.js";
 import { createInventoryPanel } from "./inventory-panel.js";
 import { createShopPanel } from "./shop-panel.js";
 import { createPickupGrid } from "./pickup-grid.js";
+import { createMenuNav } from "./menu-nav.js";
 import { createFrameStats } from "./frame-stats.js";
 
 /** @typedef {ReturnType<typeof import('./network-host.js').startHost>} Host */
@@ -247,8 +248,12 @@ export function createContext() {
     gamepadCamera: { x: 0, y: 0 },
     /** The D-pad direction. It moves the pickup grid's selector while the grid is open. */
     gamepadDpad: { x: 0, y: 0 },
-    /** The left stick's direction, or the right stick's when the left is centered, for the panels. */
+    /** The right stick's direction, which steps the menus. The left stick keeps moving the player. */
     gamepadStick: { x: 0, y: 0 },
+    /** The shared menu navigation state: the Escape menu's rows, the stick step, and the fresh-press gate. */
+    nav: createMenuNav(),
+    /** Whether Space is held, so a menu it opened is not confirmed by the same hold. */
+    confirmKeyHeld: false,
     gamepadZoom: 0,
     gamepadIndex: -1,
     unsupportedGamepadId: "",

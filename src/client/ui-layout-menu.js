@@ -42,7 +42,7 @@ function menuFrame(ctx, menu, middle) {
       "RIGHT STICK CAMERA",
       "L R LEVEL  A B ZOOM",
       "ZR ACT  ZL SPRINT",
-      "Y BAG  X MENU",
+      "Y BAG  X MENU  B BACK",
     ]
     : touchHints
     ? [
@@ -53,10 +53,10 @@ function menuFrame(ctx, menu, middle) {
       "A CHAT  B MENU",
     ]
     : [
-      "ESDF MOVE  IJKL LOOK",
+      "ESDF MOVE  IJKL CHOOSE",
       "R V LEVEL  U N ZOOM",
       "T CHAT  / COMMAND",
-      "ESC OR Q MENU",
+      "ESC OR Q BACK",
     ];
   const settings = menu.page === "settings";
   // The settings page has five labelled rows and Back; on a short screen the
@@ -116,13 +116,30 @@ function menuFrame(ctx, menu, middle) {
     });
   const inner = w - 24 * s;
   const bx = x + 12 * s;
+  /** The selected row marks its label with arrows and amber text. @param {string} row @param {string} label */
+  const rowLabel = (row, label) =>
+    menu.row === row
+      ? { text: `< ${label} >`, color: "amber" }
+      : { text: label, color: "cream" };
 
-  return { ctx, menu, x, w, cursor, inner, bx, rowH, hints, menuButton };
+  return {
+    ctx,
+    menu,
+    x,
+    w,
+    cursor,
+    inner,
+    bx,
+    rowH,
+    hints,
+    menuButton,
+    rowLabel,
+  };
 }
 
 /** @param {MenuFrame} frame */
 function settingsRows(frame) {
-  const { ctx, menu, x, w, inner, bx, rowH, menuButton } = frame;
+  const { ctx, menu, x, w, inner, bx, rowH, menuButton, rowLabel } = frame;
   const { s, ts, lh, pitch, add, box } = ctx;
   let { cursor } = frame;
 
@@ -130,8 +147,7 @@ function settingsRows(frame) {
     id: "text:menu-ui-scale",
     kind: "text",
     rect: box(x, cursor, w, lh),
-    text: "UI Scale",
-    color: "cream",
+    ...rowLabel("scale", "UI Scale"),
     scale: ts,
     align: "center",
   });
@@ -157,8 +173,7 @@ function settingsRows(frame) {
     id: "text:menu-text-size",
     kind: "text",
     rect: box(x, cursor, w, lh),
-    text: "Text Size",
-    color: "cream",
+    ...rowLabel("size", "Text Size"),
     scale: ts,
     align: "center",
   });
@@ -197,7 +212,9 @@ function settingsRows(frame) {
     menu.effectsLevels,
     menu.effects,
   );
-  menuButton("back", "Back", box(bx, cursor, inner, rowH));
+  menuButton("back", "Back", box(bx, cursor, inner, rowH), {
+    sel: menu.row === "back",
+  });
 }
 
 /** @param {MenuFrame} frame */
@@ -212,6 +229,7 @@ function rootRows(frame) {
       ["resume", "settings", "leave"][index],
       label,
       box(bx, cursor, inner, rowH),
+      { sel: menu.row === ["resume", "settings", "leave"][index] },
     );
     cursor += rowH + 4 * s;
   }
@@ -264,14 +282,13 @@ function volumeRow(
   capitalize = false,
 ) {
   if (!levels) return cursor;
-  const { ctx, x, w, inner, bx, rowH, menuButton } = frame;
+  const { ctx, x, w, inner, bx, rowH, menuButton, rowLabel } = frame;
   const { s, ts, lh, pitch, add, box } = ctx;
   add({
     id: `text:menu-${id}`,
     kind: "text",
     rect: box(x, cursor, w, lh),
-    text: label,
-    color: "cream",
+    ...rowLabel(id, label),
     scale: ts,
     align: "center",
   });

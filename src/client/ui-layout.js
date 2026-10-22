@@ -14,7 +14,7 @@
 
 import { createLayoutContext } from "./ui-layout-context.js";
 import { layoutControls } from "./ui-layout-controls.js";
-import { layoutHeld, layoutStatus } from "./ui-layout-hud.js";
+import { layoutBack, layoutHeld, layoutStatus } from "./ui-layout-hud.js";
 import {
   layoutArea,
   layoutHostList,
@@ -48,6 +48,7 @@ export function layoutUi(view) {
   const chat = layoutChat(ctx);
   layoutQr(ctx, status);
   layoutMenu(ctx, area);
+  layoutBack(ctx);
   layoutLoading(ctx);
   /** @type {Map<string,UiElement>} */
   const byId = new Map();

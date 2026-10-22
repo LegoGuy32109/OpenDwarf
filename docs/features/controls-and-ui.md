@@ -7,10 +7,9 @@ show it in the top right corner. On the host, F3 toggles a small FPS, payload
 upload, queue, and join-failure panel. It starts with a `Build <sha7> (<label>)`
 line from `build.js` (`Build local` for the working tree).
 
-Q does what Escape does: it closes the open panel (bag, pickup grid, shop,
-hearing log) first, and otherwise toggles the menu. While chat is open, Q types
-a "q". The menu's root page shows the same build line in small text at the
-bottom.
+Q does what Escape does: it goes back one menu level (see
+[Menu navigation](#menu-navigation)). While chat is open, Q types a "q". The
+menu's root page shows the same build line in small text at the bottom.
 
 In entity view, IJKL points the cursor (see [cursor](cursor.md)) at one of the
 eight neighboring tiles. R/V selects the view level; the cursor appears at the
@@ -41,15 +40,50 @@ in entity view or pans in master view. In the world, ZR (7) interacts, ZL (6)
 toggles sprint, A (1) zooms in while held, B (0) zooms out while held, Y (2)
 opens the bag, X (3) opens the menu, and L/R (4/5) change the view level (the
 names are the Nintendo Switch labels on the browser's standard indices). With a
-panel open (bag, pickup grid, shop), ZR selects, Y or X closes it, A and B do
-nothing, and zoom is off. In a panel a stick steps once when it leaves center; a
-new direction steps only 200 ms after the last step, so a sweep across a
-diagonal does not step twice; a held direction repeats after 400 ms, then every
-200 ms (`src/client/stick-step.js`, shared by the three panels). The D-pad and
-IJKL keep their own timing. The browser can report a standard layout or the raw
+menu open, the controls change as [Menu navigation](#menu-navigation) lists. In
+a menu a stick steps once when it leaves center; a new direction steps only 200
+ms after the last step, so a sweep across a diagonal does not step twice; a held
+direction repeats after 400 ms, then every 200 ms (`src/client/stick-step.js`,
+shared by the menus). The D-pad and IJKL keep their own timing in the bag, the
+pickup grid, and the shop. The browser can report a standard layout or the raw
 layout of the Afterglow Wireless Deluxe Controller. The Afterglow Wireless
 Deluxe Controller's USB connection charges it but does not send input. Pair that
 model over Bluetooth to play.
+
+## Menu navigation
+
+Settings, the inventory panel, the pickup grid, and the shop panel share one
+navigation model (`src/client/menu-nav.js`, applied in `panels.js` and
+`input.js`).
+
+| Action             | Keyboard  | Controller         | Touch                  |
+| ------------------ | --------- | ------------------ | ---------------------- |
+| Move the selection | IJKL      | D-pad, right stick | right stick            |
+| Confirm            | Space     | ZR                 | interact button, a tap |
+| Back one level     | Q, Escape | B                  | Back button            |
+| Open the menu      | Escape, Q | X                  | ESC button             |
+| Open the bag       | B         | Y                  | bag button             |
+
+- In Settings, I and K select a row and J and L change its value. Confirm acts
+  on the Back row only; value rows change with J and L.
+- Back goes up one level. Settings goes back to the Escape menu with its row
+  still selected, and every outermost menu (the Escape menu, the bag, the pickup
+  grid, the shop panel) goes back to the world. With no menu open, Q or Escape
+  closes the hearing log, and otherwise opens the Escape menu.
+- X and Y keep their world meanings, and each replaces the open menu or panel: X
+  shows the Escape menu, and Y shows the bag. A second press of the same button
+  closes it.
+- Scrolling keeps the selected row visible.
+- A newly opened menu needs a fresh confirm press. While Space, ZR, or the
+  interact button that opened it is still held, confirm does nothing.
+- ESDF and the left stick keep moving the player while a menu is open, and the
+  D-pad moves the player only with no menu open. Menu input never also aims,
+  mines, or pans the camera. A and B do not zoom with a menu open, and a B that
+  went back does not zoom out when the menu closes.
+- Chat text entry keeps its typing controls.
+
+On a touch screen a Back button shows at the top left while any menu is open and
+goes back one level. It sits above the Escape menu's scrim.
 
 The in-game keyboard has QWERTY letters, shift, a page of numbers and symbols,
 space, backspace, send, and close.

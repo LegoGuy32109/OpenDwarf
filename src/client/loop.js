@@ -32,7 +32,6 @@ import {
   speedTilesPerSecond,
 } from "../shared/locomotion.js";
 import { stepStamina } from "../shared/stamina.js";
-import { isPickupGridOpen } from "./pickup-grid.js";
 import { clamp } from "./context.js";
 import {
   heldDisplay,
@@ -47,7 +46,7 @@ import {
   shopDirection,
   stickDirection,
 } from "./input-values.js";
-import { updatePickupGrid } from "./panels.js";
+import { updatePickupGrid, updateShopReach } from "./panels.js";
 import { playPanelSounds } from "./ui-sounds.js";
 import { currentLayout } from "./ui-view.js";
 import { catchUpMs, createTickClock } from "./tick-clock.js";
@@ -86,9 +85,7 @@ function movedTile(player, before) {
 /** One world tick of the local player's movement: send the input if a guest, then move. @param {Context} ctx */
 function move(ctx) {
   const { scene, stamina } = ctx;
-  const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
-    ? { x: 0, y: 0 }
-    : inputDirection(ctx);
+  const direction = scene.chatOpen ? { x: 0, y: 0 } : inputDirection(ctx);
   ctx.pressed.clear();
   const changed = direction.x !== ctx.lastInputDirection.x ||
     direction.y !== ctx.lastInputDirection.y;
@@ -132,9 +129,7 @@ function stepStateOf(ctx) {
 /** @param {Context} ctx @param {NonNullable<Context['simulation']>} simulation */
 function simulationStep(ctx, simulation) {
   const { scene, canvas } = ctx;
-  const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
-    ? { x: 0, y: 0 }
-    : inputDirection(ctx);
+  const direction = scene.chatOpen ? { x: 0, y: 0 } : inputDirection(ctx);
   ctx.pressed.clear();
   simulation.input(scene.localId, direction, ctx.stamina.sprint);
   const view = scene.viewMode === "master" && canvas.clientWidth > 0
@@ -241,15 +236,13 @@ function steerCamera(ctx, local, now, dt) {
   // The look control steers the open inventory panel, not the aim or camera.
   const panelLook = panelLookInput(ctx);
   bag.steer(stickDirection(panelLook.x, panelLook.y, 0.18), now);
-  const { x: cameraX, y: cameraY } = bag.isOpen ? { x: 0, y: 0 } : look;
+  const { x: cameraX, y: cameraY } = look;
   if (scene.viewMode === "master") {
     scene.camera.x += masterPanStep(cameraX, dt, scene.zoom);
     scene.camera.y += masterPanStep(cameraY, dt, scene.zoom);
   } else {
-    // While the pickup grid is open the look control moves its selector.
-    scene.aim = isPickupGridOpen(ctx.pickupGrid)
-      ? { x: 0, y: 0 }
-      : stickDirection(cameraX, cameraY, 0.18);
+    // An open menu zeroes `look`: its selector takes the look control.
+    scene.aim = stickDirection(cameraX, cameraY, 0.18);
     const pos = local
       ? renderPosition(local, scene.world.tick + ctx.accumulator / TICK_MS)
       : { x: 7, y: 7, z: 0 };
@@ -305,6 +298,7 @@ function updateDisplay(ctx, now) {
   ctx.sounds.frame(now, ctx.accumulator / TICK_MS);
   scene.items = itemsDisplay(ctx);
   updatePickupGrid(ctx);
+  updateShopReach(ctx);
   playPanelSounds(ctx);
   scene.inventory = inventoryDisplay(ctx);
   bag.update(scene.inventory, heldDisplay(ctx));
@@ -358,6 +352,7 @@ export function startLoop(ctx, renderer, input, onFirstDraw) {
     localVisibility(ctx, local);
     steerZoom(ctx, dt);
     steerCamera(ctx, local, now, dt);
+    input.steerMenu(now);
     updateChat(ctx, now);
     updateDisplay(ctx, now);
     updateLayout(ctx, input, now);

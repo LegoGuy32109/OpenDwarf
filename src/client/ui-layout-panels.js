@@ -415,7 +415,7 @@ export function layoutShop(ctx, input) {
       id: "text:shop-hint",
       kind: "text",
       rect: box(x + 10 * s, panelTop + h - footH + 6 * s, w - 20 * s, pitch),
-      text: touch ? "Tap a row to sell" : "IJKL: choose  Interact: sell",
+      text: touch ? "Tap a row to sell" : "IJKL: choose  Space: sell  Q: back",
       color: "dim",
       scale: ts,
       align: "left",

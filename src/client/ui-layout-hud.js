@@ -5,6 +5,35 @@ import { ascii, wrapText } from "./ui-kit.js";
 
 /** @typedef {import('./ui-layout-context.js').LayoutContext} LayoutContext */
 
+/** The room the touch Back button takes at the top left, with the gap below it. @param {LayoutContext} ctx */
+function backHeight(ctx) {
+  return 40 * ctx.s + 6 * ctx.s;
+}
+
+/**
+ * The Back button on touch: it shows while a menu or panel is open and goes up
+ * one level. It is added after the menu, so the menu's scrim does not cover it.
+ * @param {LayoutContext} ctx
+ */
+export function layoutBack(ctx) {
+  const { view, s, cw, edge, touch, left, top, add, box } = ctx;
+  if (!touch || !view.backButton) return;
+  add({
+    id: "btn:nav-back",
+    kind: "button",
+    rect: box(
+      left + edge,
+      top + edge,
+      4 * cw + 24 * s,
+      backHeight(ctx) - 6 * s,
+    ),
+    hit: true,
+    act: "down",
+    text: "BACK",
+    align: "center",
+  });
+}
+
 /**
  * The top left column: status, then diagnostics. The log goes under both.
  * @param {LayoutContext} ctx
@@ -93,7 +122,8 @@ export function layoutStatus(ctx) {
     topRight.push(box(qrX, toolY, rightEdge - qrX, toolH));
   }
   const statusText = ascii(view.status ?? "");
-  let leftY = top + edge;
+  // The touch Back button (`layoutBack`) takes the top left while a menu is open.
+  let leftY = top + edge + (touch && view.backButton ? backHeight(ctx) : 0);
   if (statusText) {
     const available = Math.max(
       cw * 8,
