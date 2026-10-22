@@ -53,6 +53,7 @@ its feature there:
 - [Sight and view modes](docs/features/sight.md)
 - [Mining and items](docs/features/mining-and-items.md)
 - [Inventory and shop](docs/features/inventory-and-shop.md)
+- [NPC conversations](docs/features/npc-conversations.md)
 - [Placing](docs/features/placing.md)
 - [Reach and the free cursor](docs/features/reach.md)
 - [Chat](docs/features/chat.md)
@@ -89,6 +90,7 @@ Decisions:
 - [ADR 0007: Media from R2 and offline play](docs/adr/0007-media-from-r2-and-offline-play.md)
 - [ADR 0008: Sound effects from samples](docs/adr/0008-sound-effects-from-samples.md)
 - [ADR 0009: Reach, a free cursor, and the controller layout](docs/adr/0009-reach-free-cursor-and-controller.md)
+- [ADR 0010: The shopkeeper is an NPC entity](docs/adr/0010-shopkeeper-as-npc-entity.md)
 
 <!-- Add a line here for each new ADR. -->
 

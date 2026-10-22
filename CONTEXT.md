@@ -65,9 +65,19 @@ with its chatter, from the bubble's start tick.
 **Speech queue**: A speaker's messages waiting to be spoken. A queued message
 starts when the one before it finishes; until then no client receives its text.
 
+**NPC**: A named entity that the world host controls, not a player. It blocks
+movement and speaks through its speech queue. _Avoid_: Fixture, for the
+shopkeeper
+
+**Conversation choice**: A specific line a player can choose to say to an NPC to
+ask a question or request an action. Highlighting a choice is silent.
+
+**NPC reply queue**: An NPC's confirmed requests from players, answered one at a
+time in order. A player has at most one unanswered request with each NPC.
+
 **Thought icon**: The small animated icon at the upper left of an entity's head
-while its player types or while its speech queue holds a message. _Avoid_:
-Typing bubble, for the new icon
+while its player types, while an NPC prepares a reply, or while its speech queue
+holds a message. _Avoid_: Typing bubble, for the new icon
 
 **Murmur**: Quiet, filtered chatter a listener hears from a speaker inside the
 talking range but outside chat hearing range.
