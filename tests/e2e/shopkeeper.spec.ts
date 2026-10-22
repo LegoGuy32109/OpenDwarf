@@ -209,9 +209,10 @@ test("a guest sells through the host, and the host rejects what it does not hold
     // Far from the shopkeeper the host refuses.
     await readWorld(guest, (__world) =>
       __world.send({
-        type: "sell",
-        kind: "coal",
-        count: 1,
+        type: "talk",
+        npc: "npc-ulgar",
+        choice: "sale",
+        sale: { kind: "coal" },
       }));
     await expect.poll(() => notice(guest)).toContain("too far");
     // Walk up to Ulgar: the way north on its column is blocked.
@@ -222,17 +223,21 @@ test("a guest sells through the host, and the host rejects what it does not hold
     await guest.keyboard.up("e");
     await settle(guest);
     expect((await position(guest))!.y).toBeGreaterThan(SHOP.y + 0.5);
-    // A request for more than it holds, or for stone, changes nothing.
-    for (
-      const message of [
-        { type: "sell", kind: "coal", count: 4 },
-        { type: "sell", kind: "diamond", count: 1 },
-        { type: "sell", kind: "stone", count: 1 },
-      ]
-    ) {
-      await readWorld(guest, (__world, m) => __world.send(m), message);
+    // A request for stone, or for something Ulgar does not know, changes nothing.
+    for (const kind of ["stone", "nope"]) {
+      await readWorld(
+        guest,
+        (__world, sale) =>
+          __world.send({
+            type: "talk",
+            npc: "npc-ulgar",
+            choice: "sale",
+            sale,
+          }),
+        { kind },
+      );
     }
-    await expect.poll(() => notice(guest)).toContain("Cannot sell");
+    await expect.poll(() => notice(guest)).toContain("does not buy");
     // Give any coins time to arrive, to prove none do.
     await waitTicks(guest, 8);
     expect(await coins(guest)).toBe(0);

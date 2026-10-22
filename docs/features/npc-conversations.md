@@ -32,9 +32,9 @@ right stick move the selection; Space, ZR, the interact button, or a tap
 confirm; Q, Escape, B, or the Back button go back one level. A newly opened menu
 needs a fresh confirm press. ESDF and the left stick still move the player.
 
-Walking out of Ulgar's range (`nearTrader`) closes the menu and its thought
-icon. A line already spoken, and a reply already being prepared, finish
-normally. Hearing still depends on the listener's distance.
+Walking out of reach of the NPC being talked to (`reachesTrader`) closes the
+menu and its thought icon. A line already spoken, and a reply already being
+prepared, finish normally. Hearing still depends on the listener's distance.
 
 ## The reply queue
 

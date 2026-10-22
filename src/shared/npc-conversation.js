@@ -50,6 +50,11 @@ export const SALE_CHOICE = "sale";
  * and the coins paid, or owed when the coin stack is full.
  */
 /** @param {number} count */
+const COUNTABLE = new Set(["emerald", "diamond"]);
+/** "3 coal", "1 diamond", "2 diamonds". @param {number} count @param {string} name */
+const items = (count, name) =>
+  `${count} ${name}${count !== 1 && COUNTABLE.has(name) ? "s" : ""}`;
+/** @param {number} count */
 const pieces = (count) => `${count} piece${count === 1 ? "" : "s"}`;
 
 /**
@@ -61,11 +66,14 @@ const pieces = (count) => `${count} piece${count === 1 ? "" : "s"}`;
  */
 export const SALE_REPLIES = Object.freeze({
   kind: [
-    ({ name, count, coins }) => `${count} ${name}? Here's ${coinsText(coins)}.`,
     ({ name, count, coins }) =>
-      `that's ${count} ${name} for ${coinsText(coins)}. Fair trade.`,
+      `${items(count, name)}? Here's ${coinsText(coins)}.`,
     ({ name, count, coins }) =>
-      `I'll take all ${count} ${name}. ${coinsText(coins)}, counted out.`,
+      `that's ${items(count, name)} for ${coinsText(coins)}. Fair trade.`,
+    ({ name, count, coins }) =>
+      `I'll take the lot, ${items(count, name)}. ${
+        coinsText(coins)
+      }, counted out.`,
   ],
   all: [
     ({ count, coins }) =>

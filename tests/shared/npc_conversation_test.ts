@@ -439,3 +439,13 @@ Deno.test("a sale talk action runs through the simulation and returns the seller
   sim.advanceTicks(1);
   assertEquals(results, [{ ok: true, line: "Sold emerald ×2 for 30 coins" }]);
 });
+
+Deno.test("per-kind sale lines count the items in plain words", () => {
+  const spoken = (name: string, count: number) =>
+    SALE_REPLIES.kind.map((line) => line({ name, count, coins: 20 }));
+  assert(spoken("coal", 1).every((text) => text.includes("1 coal")));
+  assert(spoken("diamond", 1).every((text) => text.includes("1 diamond")));
+  assert(spoken("diamond", 2).every((text) => text.includes("2 diamonds")));
+  assert(spoken("iron ore", 3).every((text) => text.includes("3 iron ore")));
+  assert(!spoken("coal", 1).some((text) => text.includes("all 1")));
+});

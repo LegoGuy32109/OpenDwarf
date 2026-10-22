@@ -31,10 +31,10 @@ selection, a gamepad stick steps it by the same stick step rule, and interact
 (Space, ZR, or a tap on a row) sells it; Q, Escape, the gamepad's B, or the
 touch Back button goes back to the conversation, and from there to the world;
 the × button closes the panel, and the gamepad's X or Y replaces it with the
-menu or the bag. Walking out of Ulgar's range (`nearTrader`) closes the panel,
-as it closes the pickup grid out of reach. Prices: coal 1, iron ore 3, lapis 4,
-redstone 4, gold ore 8, emerald 15, diamond 20. Stone, the pickaxe, and coins
-show dimmed. Selling is spoken (see
+menu or the bag. Walking out of reach of the NPC it talks to (`reachesTrader`)
+closes the panel, as it closes the pickup grid out of reach. Prices: coal 1,
+iron ore 3, lapis 4, redstone 4, gold ore 8, emerald 15, diamond 20. Stone, the
+pickaxe, and coins show dimmed. Selling is spoken (see
 [NPC conversations](npc-conversations.md#spoken-sales)): confirming a row says
 "Sell all coal" or "Sell all ore", the host sells at once, and the sale adds a
 line such as "Sold coal ×3 for 3 coins" to the seller's hearing log. Ulgar then
@@ -45,21 +45,20 @@ answers the request.
 0010): an initial recipe entity with `npc: true`, the `trader` role, and the
 `still` behavior, controlled by the world host like the corner NPC. It follows
 the entity rules for sight and hearing with no special cases. `traderAt` finds
-it for the interact target, and `nearTrader` is the sale range check. A sale is
-a host decision. Interact on Ulgar's tile opens the panel
-(`src/client/shop-panel.js`), which only asks. A panel row sends `talk` with the
-`sale` choice and the ore kind, or `all`, and the host runs `sellItems` with the
-count it finds. The host also still accepts a bare `sell` message with an item
-kind and a count, or `all`. The host checks the entity, that a trader NPC stands
-on its tile or a neighbor on the same level, that the kind has a price (stone,
-the pickaxe, and coins do not), that the inventory holds the count, and that the
-coin stack has room. A failed check changes nothing and a guest gets
-`sell-result` (or `talk-result` for a spoken sale) with the reason. A sale
-removes the items, adds coins to the inventory's coin stack, and adds the sale
-line through `tell`, so only the seller sees it. The score is the coin count in
-the inventory panel; there is no separate readout. While the panel is open,
-interact and the look controls drive it instead of mining and aiming, and ESDF
-and the left stick still move the player.
+it for the interact target, and `reachesTrader` is the range check for every
+conversation request, sales included. A sale is a host decision. Interact on
+Ulgar's tile opens the panel (`src/client/shop-panel.js`), which only asks. A
+panel row sends `talk` with the `sale` choice and the ore kind, or `all`, and
+the host runs `sellItems` with the count it finds. The host checks the entity,
+that a trader NPC stands on its tile or a neighbor on the same level, that the
+kind has a price (stone, the pickaxe, and coins do not), that the inventory
+holds the count, and that the coin stack has room. A failed check changes
+nothing and a guest gets `talk-result` with the reason. A sale removes the
+items, adds coins to the inventory's coin stack, and adds the sale line through
+`tell`, so only the seller sees it. The score is the coin count in the inventory
+panel; there is no separate readout. While the panel is open, interact and the
+look controls drive it instead of mining and aiming, and ESDF and the left stick
+still move the player.
 
 Item kinds, stacks, and pickup are in [mining and items](mining-and-items.md).
 

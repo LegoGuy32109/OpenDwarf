@@ -16,14 +16,13 @@ export function createActionConfirmer({ attempt, player, reply }) {
     // A spoken sale confirms as a sale; its accepted result carries the line.
     const spoken = message.type === "talk" && typeof result.line === "string";
     if (message.type === "talk" && !spoken) return;
-    const sold = message.type === "sell" || spoken;
-    const at = sold
+    const at = spoken
       ? { x: centerTile(source.x), y: centerTile(source.y), z: source.z }
       : { x: message.x, y: message.y, z: message.z };
     const packet = decodeActionResult({
       type: "action-result",
       attempt: requestAttempt,
-      action: sold ? "sell" : message.type,
+      action: spoken ? "sell" : message.type,
       ...at,
     }, requestAttempt);
     if (packet) reply(packet);

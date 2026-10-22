@@ -100,14 +100,14 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     await expect.poll(() => stack(guest, "coin")).toBe(3);
     expect(await stack(guest, "coal")).toBe(0);
     expect(await systemLines(guest)).toContain("Sold coal ×3 for 3 coins");
-    // The request is spoken in turn, after the line that opened the list.
-    await expect.poll(() => heard(guest)).toContain("Gus: Sell all coal");
     // A second sale waits for the answer: it is refused and changes nothing.
     await guest.keyboard.press("Space");
     await expect.poll(() => notice(guest)).toContain(
       "still owes you an answer",
     );
     expect(await stack(guest, "lapis")).toBe(2);
+    // The request is spoken in turn, after the line that opened the list.
+    await expect.poll(() => heard(guest)).toContain("Gus: Sell all coal");
     await evidenceShot(guest, "spoken-sale-asked");
     expect(lines("kind", { name: "coal", count: 3, coins: 3 })).toContain(
       await answered(guest, 1),
@@ -138,6 +138,10 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     await expect.poll(() => stack(guest, "diamond")).toBe(1);
     const before = await stack(guest, "coin");
     expect(await sendSale(guest, { kind: "diamond" })).toBe(true);
+    // Moving away does not cancel a confirmed sale: the reply still arrives.
+    await expect.poll(() => heard(guest)).toContain("Gus: Sell all diamond");
+    await placePlayer(host, 17, 15, 4, guestId);
+    await expect.poll(() => shopOpen(guest)).toBe(false);
     expect(lines("full", { name: "diamond", count: 1, coins: 20 })).toContain(
       await answered(guest, 4),
     );
@@ -146,10 +150,6 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     expect(await systemLines(guest)).not.toContain(
       "Sold diamond ×1 for 20 coins",
     );
-    // Moving away does not cancel a confirmed sale: leave, and the reply stays.
-    await placePlayer(host, 16, 17, 4, guestId);
-    await expect.poll(() => shopOpen(guest)).toBe(false);
-    expect(await ulgarLines(guest)).toHaveLength(4);
   } finally {
     await host.close();
   }

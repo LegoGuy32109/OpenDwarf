@@ -5,7 +5,6 @@
 
 import { build } from "./build.js";
 import { droppedEntries, droppedItems, inventoryOf } from "../shared/items.js";
-import { sellItems } from "../shared/shop.js";
 import { heldItem, miningEntries } from "../shared/mining.js";
 import { chunkCoord, drainTileChanges } from "../shared/terrain.js";
 import {
@@ -98,14 +97,6 @@ export function startHost(scene, session, sounds = {}) {
   function tell(id, text) {
     if (id === scene.localId) scene.systemLine?.(text);
     else peers.get(id)?.system(text);
-  }
-
-  /**
-   * The host's check of a sale to a shop placed by the world recipe. A guest names an item kind and a count, or all.
-   * @param {string} id @param {unknown} request
-   */
-  function sellAt(id, request) {
-    return sellItems(scene.world, id, request);
   }
 
   function publish() {
@@ -283,7 +274,6 @@ export function startHost(scene, session, sounds = {}) {
       sees: () => sees(),
       tell,
       announce,
-      sellAt,
       reply(message) {
         if (channel?.readyState === "open") {
           channel.send(JSON.stringify(message));
@@ -352,7 +342,6 @@ export function startHost(scene, session, sounds = {}) {
           "place",
           "hold",
           "pickup",
-          "sell",
           "talk",
           "message",
           "typing",
@@ -377,7 +366,7 @@ export function startHost(scene, session, sounds = {}) {
               tell(playerId, result.line);
             } else if (
               !result.ok &&
-              ["mine", "place", "pickup", "sell", "talk"].includes(
+              ["mine", "place", "pickup", "talk"].includes(
                 String(message.type),
               )
             ) {
