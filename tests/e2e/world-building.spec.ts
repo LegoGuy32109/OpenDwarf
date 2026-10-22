@@ -17,11 +17,17 @@ function definition() {
   })
     .fill({ minX: 1, maxX: 7, minY: 1, maxY: 7, minZ: 1, maxZ: 1 }, OPEN)
     .spawn({ x: 4, y: 4, z: 1 }).spawn({ x: 6, y: 4, z: 1 })
-    .entity({ id: "counter", role: "shop", at: { x: 5, y: 4, z: 1 } })
+    .entity({
+      id: "counter",
+      name: "Ulgar",
+      role: "trader",
+      at: { x: 5, y: 4, z: 1 },
+      behavior: { id: "still" },
+    })
     .definition();
 }
 
-test("a serialized small world boots without implicit NPCs or generation and replays on reload", async ({ page }) => {
+test("a serialized small world boots with only its authored NPC and no generation and replays on reload", async ({ page }) => {
   const setup = definition();
   await startWorld(page, setup);
   await ready(page);
@@ -30,14 +36,24 @@ test("a serialized small world boots without implicit NPCs or generation and rep
       page,
       (w) => ({
         ids: Object.keys(w.scene.world.players),
-        shops: w.scene.world.shops,
+        counter: w.scene.world.players.counter,
         limits: w.scene.world.limits,
         position: w.scene.world.players.self,
         chunks: w.scene.world.chunks.size,
       }),
     );
-  await expect.poll(async () => (await state()).ids).toEqual(["self"]);
-  expect((await state()).shops).toEqual([{ x: 5, y: 4, z: 1 }]);
+  await expect.poll(async () => (await state()).ids).toEqual([
+    "counter",
+    "self",
+  ]);
+  expect((await state()).counter).toMatchObject({
+    name: "Ulgar",
+    npc: true,
+    role: "trader",
+    x: 5,
+    y: 4,
+    z: 1,
+  });
   expect((await state()).limits).toEqual(setup.bounds);
   expect((await state()).position).toMatchObject({ x: 4, y: 4, z: 1 });
   await waitTicks(page, 5);
@@ -48,7 +64,7 @@ test("a serialized small world boots without implicit NPCs or generation and rep
   expect((await state()).position).toMatchObject({ x: 4, y: 4, z: 1 });
 });
 
-test("a custom shop location reaches a guest and opens through real keyboard input", async ({ page, context }) => {
+test("a custom trader NPC reaches a guest and opens through real keyboard input", async ({ page, context }) => {
   const host = page, guest = await context.newPage();
   await startWorld(host, definition());
   await ready(host);
@@ -58,9 +74,9 @@ test("a custom shop location reaches a guest and opens through real keyboard inp
   await expect.poll(() => readWorld(guest, (w) => w.scene.localId)).toMatch(
     /^peer-/,
   );
-  await expect.poll(() => readWorld(guest, (w) => w.scene.world.shops)).toEqual(
-    [{ x: 5, y: 4, z: 1 }],
-  );
+  await expect.poll(() =>
+    readWorld(guest, (w) => w.scene.world.players.counter)
+  ).toMatchObject({ name: "Ulgar", role: "trader", x: 5, y: 4, z: 1 });
   expect(await readWorld(guest, (w) => w.scene.world.limits)).toEqual(
     definition().bounds,
   );

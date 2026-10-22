@@ -40,9 +40,9 @@ const MOVE_TICKS = 10;
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
 /** `start` is the tick its speech begins; a later start means it waits in the queue (ADR 0006). A bubble without one has started. */
 /** @typedef {{text:string,until:number,start?:number}} Bubble */
-/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number,npc?:boolean,held?:string}} Player */
+/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number,npc?:boolean,role?:'trader',held?:string}} Player */
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
-/** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>,shops?:Tile[],limits?:WorldBounds}} World */
+/** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>,limits?:WorldBounds}} World */
 
 /**
  * A tile blocks movement and sight unless its material is open. Unknown

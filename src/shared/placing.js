@@ -4,7 +4,6 @@ import { droppedAt, inventoryOf, STONE_ITEM, takeStack } from "./items.js";
 import { centerTile, PLAYER_SIZE } from "./locomotion.js";
 import { heldItem } from "./mining.js";
 import { inReach } from "./reach.js";
-import { SHOP_TILE } from "./shop.js";
 import { recordSound } from "./sound.js";
 import { OPEN, readTile, STONE, WORLD_TOP, writeTile } from "./terrain.js";
 
@@ -31,31 +30,15 @@ function entityOverlaps(entity, tile) {
   );
 }
 
-/** Tiles that hold an entity outside `world.players`: the shopkeeper, in the room layout. @param {string|World|undefined} layout @returns {readonly Tile[]} */
-export function reservedTiles(layout) {
-  return typeof layout === "object"
-    ? layout.shops ?? []
-    : layout === "room"
-    ? [SHOP_TILE]
-    : [];
-}
-
 /**
  * Why `player` may not place a stone on `tile` now, or null when the host would
  * place it: a real tile, a stone held, the tile in reach (path and sight, ADR
- * 0009), open, and unoccupied (no entity footprint, no dropped items, none of
- * `reserved`).
+ * 0009), open, and unoccupied (no entity footprint, no dropped items).
  * @param {World} world @param {Player} player @param {Tile} tile
- * @param {(tile:Tile) => boolean} [sees] @param {readonly Tile[]} [reserved]
+ * @param {(tile:Tile) => boolean} [sees]
  * @returns {string|null}
  */
-export function placeRefusal(
-  world,
-  player,
-  tile,
-  sees = () => true,
-  reserved = [],
-) {
+export function placeRefusal(world, player, tile, sees = () => true) {
   if (
     !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
     !Number.isInteger(tile.z) || tile.z < 0 || tile.z > WORLD_TOP
@@ -73,12 +56,7 @@ export function placeRefusal(
   }
   if (
     droppedAt(world, tile).length ||
-    Object.values(world.players).some((entity) =>
-      entityOverlaps(entity, tile)
-    ) ||
-    reserved.some((spot) =>
-      spot.x === tile.x && spot.y === tile.y && spot.z === tile.z
-    )
+    Object.values(world.players).some((entity) => entityOverlaps(entity, tile))
   ) return IN_THE_WAY;
   return null;
 }
@@ -88,19 +66,12 @@ export function placeRefusal(
  * holds the checks; `sees` is the acting entity's current sight. The tile
  * becomes stone at once through `writeTile`, and one stone leaves the inventory.
  * @param {World} world @param {string} playerId @param {Tile} tile
- * @param {readonly Tile[]} [reserved] tiles that hold an entity outside `world.players`, such as the shopkeeper
  * @param {(tile:Tile) => boolean} [sees] @returns {PlaceResult}
  */
-export function placeStone(
-  world,
-  playerId,
-  tile,
-  reserved = [],
-  sees = () => true,
-) {
+export function placeStone(world, playerId, tile, sees = () => true) {
   const player = world.players[playerId];
   if (!player) return { ok: false, reason: "unknown player" };
-  const reason = placeRefusal(world, player, tile, sees, reserved);
+  const reason = placeRefusal(world, player, tile, sees);
   if (reason) return { ok: false, reason };
   const inventory = inventoryOf(player);
   const index = inventory.findIndex((stack) => stack.kind === STONE_ITEM);

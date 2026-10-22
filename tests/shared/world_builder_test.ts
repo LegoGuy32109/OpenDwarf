@@ -76,7 +76,12 @@ Deno.test("structure placements translate terrain, entities, and spawn points wi
       bounds: { minX: 0, maxX: 2, minY: 0, maxY: 2, minZ: 0, maxZ: 0 },
       material: OPEN,
     }],
-    entities: [{ id: "shop", role: "shop", at: { x: 1, y: 1, z: 0 } }],
+    entities: [{
+      id: "shop",
+      name: "Ulgar",
+      role: "trader",
+      at: { x: 1, y: 1, z: 0 },
+    }],
     spawns: [{ x: 2, y: 2, z: 0 }],
   };
   const b = worldBuilder().place(room, { x: 2, y: 2, z: 1 }, { id: "first" })
@@ -89,7 +94,7 @@ Deno.test("structure placements translate terrain, entities, and spawn points wi
   assertEquals(readTile(built.world, 2, 2, 1), OPEN);
   assertEquals(readTile(built.world, 3, 3, 1), STONE);
   assertEquals(readTile(built.world, 8, 8, 1), OPEN);
-  assertEquals(built.world.shops, [{ x: 3, y: 3, z: 1 }]);
+  assertEquals(built.world.players["first:shop"].role, "trader");
   assertEquals(built.definition.spawns, [{ x: 4, y: 4, z: 1 }]);
   assertEquals(built.definition.entities[0].id, "first:shop");
 });
@@ -271,16 +276,44 @@ Deno.test("headless patrols, movement, stamina, and lifetimes progress entirely 
   assertEquals(sim.state("host").stamina.value, 1);
   drainSounds(sim.world);
 });
-Deno.test("built-in recipes preserve terrain and expose configured shop metadata", () => {
+Deno.test("built-in recipes preserve terrain and build Ulgar as an NPC", () => {
   const room = buildWorld(roomRecipe());
-  assertEquals(room.world.shops, [{ x: 16, y: 12, z: 4 }]);
+  const ulgar = room.world.players["npc-ulgar"];
+  assertEquals(
+    { name: ulgar.name, npc: ulgar.npc, role: ulgar.role, free: ulgar.free },
+    { name: "Ulgar", npc: true, role: "trader", free: true },
+  );
+  assertEquals({ x: ulgar.x, y: ulgar.y, z: ulgar.z }, { x: 16, y: 12, z: 4 });
+  assertEquals(room.world.players["npc-corner"].role, undefined);
   assertEquals(readTile(room.world, 16, 15, 4), OPEN);
   const test = buildWorld(authoredRecipe());
   assertEquals(Object.keys(test.world.players), []);
   assertEquals(readTile(test.world, 2, 1, 0), STONE);
-  assertEquals(encodeWorld(room.world).shops, room.world.shops);
+  assertEquals(
+    encodeWorld(room.world).players["npc-ulgar"].role,
+    "trader",
+  );
 });
-Deno.test("shop metadata with invalid coordinates is refused atomically by the wire", () => {
+Deno.test("Ulgar blocks movement: a move onto its tile is refused as occupied", () => {
+  const sim = createSimulation(roomRecipe(undefined, { npc: false }));
+  const ulgar = sim.world.players["npc-ulgar"];
+  const guest = sim.join("guest");
+  Object.assign(sim.world.players.guest, {
+    x: ulgar.x,
+    y: ulgar.y + 1,
+    z: ulgar.z,
+  });
+  assertEquals(guest.z, ulgar.z);
+  sim.enqueue("guest", { type: "move", dx: 0, dy: -1, sequence: 1 });
+  sim.advanceTicks(2);
+  assertEquals(sim.world.players.guest.y, ulgar.y + 1);
+  assertEquals(sim.world.players.guest.move, null);
+  sim.input("guest", { x: 0, y: -1 });
+  sim.advanceTicks(40);
+  assert(sim.world.players.guest.y > ulgar.y, "free movement stops at Ulgar");
+  assertEquals({ x: ulgar.x, y: ulgar.y }, { x: 16, y: 12 });
+});
+Deno.test("an entity with an unknown role is refused atomically by the wire", () => {
   const sim = createSimulation(small().definition());
   sim.join("host");
   const packet = {
@@ -300,7 +333,13 @@ Deno.test("shop metadata with invalid coordinates is refused atomically by the w
   assertEquals(
     decodeState({
       ...packet,
-      world: { ...packet.world, shops: [{ x: NaN, y: 1, z: 1 }] },
+      world: {
+        ...packet.world,
+        players: {
+          ...packet.world.players,
+          host: { ...packet.world.players.host, role: "king" },
+        },
+      },
     }),
     null,
   );
@@ -332,7 +371,6 @@ Deno.test("fixed boundaries stay solid even when a paint crosses them and mining
       sim.world.players.host,
       { x: 1, y: 3, z: 1 },
       () => true,
-      "test",
     ),
     null,
   );

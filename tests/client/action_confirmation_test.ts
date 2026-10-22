@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { createActionConfirmer } from "../../src/client/action-confirmation.js";
 import { addPlayer } from "../../src/shared/world.js";
+import { addTrader } from "../shared/fixtures.ts";
 import { createFixtureWorld } from "../../src/shared/world-builder.js";
 import type { ActionResult } from "../../src/shared/action-wire.js";
 import { hostMessages } from "../../src/client/host-messages.js";
@@ -86,7 +87,7 @@ Deno.test("fallback host handlers confirm each accepted action once and report r
   const data = ensureChunk(world, 0, 0);
   data.fill(OPEN);
   data.fill(STONE, 0, 256);
-  world.shops = [{ x: 4, y: 5, z: 1 }];
+  addTrader(world, { x: 4, y: 5, z: 1 });
   const player = addPlayer(world, "guest", { x: 5, y: 5, z: 1 });
   addStack(inventoryOf(player), "stone", 2);
   setHeldItem(world, "guest", "stone");

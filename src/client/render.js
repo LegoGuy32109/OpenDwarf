@@ -45,6 +45,8 @@ const WHITE = [1, 1, 1, 1];
 const FLOOR_UV = [0, 5 / 31, 1, 1 / 31];
 /** @type {[number,number,number,number]} */
 const REMEMBERED_TINT = [1, 0.86, 0.34, 0.95];
+/** The gold tint of a trader NPC, multiplied into the sprite. */
+const TRADER_TINT = [1, 0.78, 0.25];
 /** Floor colors per depth, so a frame allocates none. @type {[number,number,number,number][]} */
 const DEPTH_COLORS = DEPTH_TINTS.map(([r, g, b]) => [r, g, b, 1]);
 const VERTEX = `#version 300 es
@@ -846,9 +848,12 @@ export async function createRenderer(canvas, options = {}) {
         ? scene.renderOffset
         : { x: 0, y: 0, z: 0 };
       const uv = player.facingLeft ? [1, 0, -1, 1] : [0, 0, 1, 1];
-      const tint = pos.z < scene.viewZ
+      const depthTint = pos.z < scene.viewZ
         ? DEPTH_TINTS[Math.min(scene.viewZ - Math.floor(pos.z), 5)]
         : [1, 1, 1];
+      const tint = player.role === "trader"
+        ? depthTint.map((channel, i) => channel * TRADER_TINT[i])
+        : depthTint;
       quad(
         textures.sprite,
         false,
@@ -860,25 +865,8 @@ export async function createRenderer(canvas, options = {}) {
         /** @type {[number,number,number,number]} */ ([...tint, visible]),
       );
     }
-    const shopkeepers = (scene.world.shops ?? []).filter((at) =>
-      scene.viewZ === at.z &&
-      (scene.viewMode === "master" ||
-        tileVisibility(scene.visibility, at.x, at.y, at.z) === "visible")
-    );
-    for (const shopkeeper of shopkeepers) {
-      quad(
-        textures.sprite,
-        false,
-        snap(shopkeeper.x * TILE, cameraX, width),
-        snap(shopkeeper.y * TILE, cameraY, height),
-        TILE,
-        TILE,
-        [0, 0, 1, 1],
-        [1, 0.78, 0.25, 1],
-      );
-    }
     flush();
-    return { players, opacity, shopkeepers };
+    return { players, opacity };
   }
 
   /** @param {Frame} frame */
@@ -1021,23 +1009,6 @@ export async function createRenderer(canvas, options = {}) {
         Math.round((cell.y + cell.size - cameraY) * zoom + height / 2) -
           16 * scale - 2 * dpr,
         scale,
-      );
-    }
-  }
-
-  /** @param {WorldFrame} frame */
-  function drawShopNames(frame) {
-    const { dpr, width, height, zoom, cameraX, cameraY, scale, shopkeepers } =
-      frame;
-    for (const shopkeeper of shopkeepers) {
-      text(
-        "Shopkeeper",
-        Math.round(((shopkeeper.x + 0.5) * TILE - cameraX) * zoom + width / 2) -
-          5 * scale * 8,
-        Math.round(((shopkeeper.y + 1) * TILE - cameraY) * zoom + height / 2) +
-          4 * dpr,
-        scale,
-        [1, 0.82, 0.4, 1],
       );
     }
   }
@@ -1350,7 +1321,6 @@ export async function createRenderer(canvas, options = {}) {
     drawPickup(frame);
     drawItemCounts(worldFrame);
     drawPickupCounts(worldFrame);
-    drawShopNames(worldFrame);
     drawPlayerNames(worldFrame);
     const chatFrame = { ...worldFrame, ...prepareChat(worldFrame) };
     drawBubbles(chatFrame);

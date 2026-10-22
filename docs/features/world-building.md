@@ -12,8 +12,8 @@ setup before the session starts so tests can declare the entities they need.
 
 World setup previously crossed `app.js` and `session.js`. Tests removed an
 implicit corner NPC after boot. Recipes now declare terrain, generation, spawn
-points, shops, and NPCs before play. Tests request the NPC only when they need
-it.
+points, and NPCs (the shopkeeper among them) before play. Tests request the NPC
+only when they need it.
 
 ## Construction rules
 
@@ -29,8 +29,10 @@ Generators and behaviors use registered names and serializable parameters.
 Functions are resolved by the runtime rather than embedded in the definition.
 
 NPC behavior stays simple in this pass: an NPC stands still or follows a
-configured patrol route. A placed shopkeeper provides the basic shop
-interaction. Its design can grow in a later NPC pass.
+configured patrol route. The shopkeeper is one of these NPCs: Ulgar stands still
+(`behavior: { id: "still" }`) with the `trader` role, and the trader role is
+what opens the shop. Its design can grow in a later NPC pass (see
+[NPC conversations](npc-conversations.md)).
 
 ### Structures
 
@@ -157,11 +159,19 @@ simulation.advanceTicks(21);
 
 A structure contains local `paints`, `entities`, and `spawns`. An entity has an
 `id` and `at`, with optional `name`, `inventory`, `held`, and `behavior`.
-`role: "shop"` contributes a stationary shop tile with the basic shop behavior.
-Shops travel in authoritative snapshots so a guest uses the same locations.
-Protocol version 5 carries shop tiles, NPC flags, and fixed-world bounds. An
-older peer must reload or join the matching historical build. Other initial
-entities are NPCs. A joining participant is a player.
+`role: "trader"` gives the NPC the shop conversation. The role is set on the
+entity (`player.role`) and travels with it in every snapshot, so a guest finds
+the shopkeeper in `world.players` like any other entity. There is no separate
+shop location: the earlier `role: "shop"` shop tile and `world.shops` are gone
+(ADR 0010). Protocol version 7 carries the `role` field in place of shop tiles.
+An older peer must reload or join the matching historical build. Every initial
+entity is an NPC. A joining participant is a player.
+
+The spawn room's recipe places Ulgar at (16, 12) on level 4, against the north
+wall. It blocks movement like any entity, so a player reaches it from a
+neighboring tile. The host's sale check and the interact target both read
+Ulgar's position from `world.players` (`traderAt` and `nearTrader` in
+`shop.js`).
 
 Definitions carry `version: 1`. Loading checks JSON values, coordinates,
 materials, entity IDs, and generator names. A simulation also resolves behavior

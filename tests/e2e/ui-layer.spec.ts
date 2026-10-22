@@ -338,7 +338,7 @@ test.describe("phone", () => {
     ).toBe("diamond");
     await evidenceShot(page, "inventory-panel-phone");
     await tapUi(page, "btn:bag-close");
-    // Stand on the shopkeeper's tile, so interact opens the shop.
+    // Stand south of Ulgar with the aim held north, so interact opens the shop.
     await readWorld(page, (__world) => {
       const { scene } = __world;
       __world.edit({
@@ -346,14 +346,16 @@ test.describe("phone", () => {
           id: scene.world.players[scene.localId].id,
           at: {
             x: 16,
-            y: 12,
+            y: 13,
             z: scene.world.players[scene.localId].z,
           },
         }],
       });
     });
     await waitFrames(page, 3);
+    await page.keyboard.down("i");
     await tapUi(page, "btn:interact");
+    await page.keyboard.up("i");
     await expect.poll(() => shopOpen(page)).toBe(true);
     await evidenceShot(page, "shop-panel-phone");
     await tapUi(page, "row:gold ore");

@@ -120,7 +120,7 @@ export function createSimulation(definition) {
   /** @type {(()=>void)[]} */
   const npcs = [];
   for (const entity of definition.entities) {
-    if (entity.role === "shop" || !entity.behavior) continue;
+    if (!entity.behavior) continue;
     const factory = behaviors.get(entity.behavior.id);
     if (!factory) throw new Error(`Unknown behavior: ${entity.behavior.id}`);
     npcs.push(factory(world, entity.id, entity.behavior.params ?? {}));
@@ -199,7 +199,7 @@ export function createSimulation(definition) {
       return { ok: true };
     },
     "place": (id, _message, tile) => {
-      return placeStone(world, id, tile, world.shops ?? [], sees(id));
+      return placeStone(world, id, tile, sees(id));
     },
     "hold": (id, message) => {
       return setHeldItem(world, id, String(message.kind));

@@ -20,7 +20,7 @@ import {
 /** @typedef {import('./world.js').Tile} Tile */
 /** @typedef {{minX:number,minY:number,minZ:number,maxX:number,maxY:number,maxZ:number}} Box */
 /** @typedef {{id:string,params?:Record<string,unknown>}} Component */
-/** @typedef {{id:string,at:Tile,name?:string,role?:'shop',behavior?:Component,inventory?:import('./items.js').Stack[],held?:string,free?:boolean}} EntityDefinition */
+/** @typedef {{id:string,at:Tile,name?:string,role?:'trader',behavior?:Component,inventory?:import('./items.js').Stack[],held?:string,free?:boolean}} EntityDefinition */
 /** @typedef {{bounds:Box,material:number}} Paint */
 /** @typedef {{version:1,seed:number,base:number,bounds:Box,generator:Component|null,paints:Paint[],entities:EntityDefinition[],spawns:Tile[],drops:{at:Tile,kind:string,count:number}[],pinned:{cx:number,cy:number}[],unloadGraceTicks:number}} WorldDefinition */
 /** @typedef {{paints?:Paint[],entities?:EntityDefinition[],spawns?:Tile[]}} Structure */
@@ -329,13 +329,10 @@ function seedTerrain(world, definition, generate) {
 /** @param {import('./world.js').World} world @param {WorldDefinition} definition */
 function seedEntities(world, definition) {
   for (const entity of definition.entities) {
-    if (entity.role === "shop") {
-      world.shops?.push({ ...entity.at });
-      continue;
-    }
     const player = addPlayer(world, entity.id, entity.at);
     player.name = entity.name ?? "";
     player.npc = true;
+    if (entity.role) player.role = entity.role;
     if (entity.free !== false) enableLocomotion(player);
     for (const stack of entity.inventory ?? []) {
       if (!addStack(inventoryOf(player), stack.kind, stack.count)) {
@@ -363,7 +360,7 @@ export function buildWorld(input) {
   const definition = structuredClone(input);
   freeze(definition);
   /** @type {import('./world.js').World} */
-  const world = { tick: 0, chunks: new Map(), players: {}, shops: [] };
+  const world = { tick: 0, chunks: new Map(), players: {} };
   if (!definition.generator) world.limits = { ...definition.bounds };
   const generate = terrainGenerator(definition);
   seedTerrain(world, definition, generate);

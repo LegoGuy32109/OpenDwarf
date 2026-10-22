@@ -22,7 +22,8 @@ import {
   pathReach,
   seesFrom,
 } from "../../src/shared/reach.js";
-import { SHOP_TILE } from "../../src/shared/shop.js";
+import { SHOPKEEPER_TILE as SHOP_TILE } from "../../src/shared/spawn-room.js";
+import { addTrader } from "./fixtures.ts";
 import { tileKey } from "../../src/shared/visibility.js";
 
 const sees = () => true;
@@ -30,7 +31,6 @@ const sees = () => true;
 /** Solid rock everywhere; the dwarf stands at (5, 5) on level 2 in an open cell. */
 function rock() {
   const world = createWorld();
-  delete world.shops;
   ensureChunk(world, 0, 0).fill(STONE);
   const player = addPlayer(world, "self", { x: 5, y: 5, z: 2 });
   open(world, 5, 5, 2);
@@ -107,12 +107,12 @@ Deno.test("a dropped item shows when its tile or the floor under it is seen", ()
 Deno.test("interactPreview names the action the host would take", () => {
   const { world, player } = rock();
   const at = (x: number, y: number, z: number) =>
-    interactPreview(world, player, { x, y, z }, sees, "test");
+    interactPreview(world, player, { x, y, z }, sees);
   assertEquals(at(6, 5, 2), "mine");
   assertEquals(at(6, 5, 1), null, "nothing to mine, and out of reach");
   assertEquals(at(8, 5, 2), null, "out of reach");
   assertEquals(
-    interactPreview(world, player, { x: 6, y: 5, z: 2 }, () => false, "test"),
+    interactPreview(world, player, { x: 6, y: 5, z: 2 }, () => false),
     null,
     "unseen",
   );
@@ -133,16 +133,16 @@ Deno.test("interactPreview names the action the host would take", () => {
   assertEquals(at(5, 5, 2), "pickup", "the dwarf's own tile");
 });
 
-Deno.test("interactPreview names the shopkeeper outside the test layout", () => {
+Deno.test("interactPreview names a trader NPC next to the player and not out of reach", () => {
   const world = createWorld();
-  delete world.shops;
   ensureChunk(world, 0, 0).fill(OPEN);
+  addTrader(world, SHOP_TILE);
   const player = addPlayer(world, "self", {
     x: SHOP_TILE.x + 1,
     y: SHOP_TILE.y,
     z: SHOP_TILE.z,
   });
-  assertEquals(interactPreview(world, player, SHOP_TILE, sees, "room"), "shop");
   assertEquals(interactPreview(world, player, SHOP_TILE, sees), "shop");
-  assert(interactPreview(world, player, SHOP_TILE, sees, "test") !== "shop");
+  player.x += 3;
+  assert(interactPreview(world, player, SHOP_TILE, sees) !== "shop");
 });

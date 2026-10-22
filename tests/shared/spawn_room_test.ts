@@ -180,19 +180,24 @@ Deno.test("a player walks out the doorway, and down the stairs into the tunnel",
   assertEquals(walk(world, "self", south), DOORWAY);
   // Blocked beyond the doorway: it opens into solid stone.
   assertEquals(startMove(world, "self", 0, 1, 99).ok, false);
-  // Back up to the room, across to the stairs, down and along the tunnel.
-  const north = Array(DOORWAY.y - STAIRS[0].y).fill([0, -1]) as Array<
+  // Back up to the room, around Ulgar's tile, to the stairs, down and along the tunnel.
+  const north = Array(DOORWAY.y - STAIRS[0].y - 1).fill([0, -1]) as Array<
     [number, number]
   >;
   assertEquals(walk(world, "self", north), {
     x: DOORWAY.x,
-    y: STAIRS[0].y,
+    y: STAIRS[0].y + 1,
     z: ROOM_Z,
   });
-  const east = Array(STAIRS[0].x - DOORWAY.x).fill([1, 0]) as Array<
+  const east = Array(STAIRS[0].x - 1 - DOORWAY.x).fill([1, 0]) as Array<
     [number, number]
   >;
-  assertEquals(walk(world, "self", east), { ...STAIRS[0], z: ROOM_Z - 1 });
+  walk(world, "self", east);
+  walk(world, "self", [[0, -1]]);
+  assertEquals(walk(world, "self", [[1, 0]]), {
+    ...STAIRS[0],
+    z: ROOM_Z - 1,
+  });
   assertEquals(walk(world, "self", [[1, 0]]), STAIRS[1]);
   const tunnel = Array(TUNNEL.maxX - STAIRS[1].x).fill([1, 0]) as Array<
     [number, number]

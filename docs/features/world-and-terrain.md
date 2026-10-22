@@ -3,12 +3,13 @@
 A normal page starts the spawn room through `roomRecipe` in
 `src/shared/world-recipes.js` and the shared [world builder](world-building.md):
 a 9×7 room at z 4 in the 2×2 spawn chunks, one doorway in its south wall that
-opens into solid stone, two stair tiles down to a tunnel at z 2, and a reserved
-shopkeeper tile. The spawn chunks are generated from the world seed like any
-other chunk. The room, stairs and tunnel are then dug into a solid stone
-`SHELL`, so caves never break into them. The tunnel runs on east until it opens
-into a generated cave. The host and every joining player spawn inside the room,
-and the corner NPC walks a square in its south west corner.
+opens into solid stone, two stair tiles down to a tunnel at z 2, and the
+shopkeeper NPC Ulgar against the north wall. The spawn chunks are generated from
+the world seed like any other chunk. The room, stairs and tunnel are then dug
+into a solid stone `SHELL`, so caves never break into them. The tunnel runs on
+east until it opens into a generated cave. The host and every joining player
+spawn inside the room, and the corner NPC walks a square in its south west
+corner.
 
 Every world uses the same seed for now, `WORLD_SEED` in
 `src/shared/generation.js`, made from the text `opendwarf-1`. That seed was

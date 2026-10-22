@@ -106,7 +106,13 @@ export function roomRecipe(seed = WORLD_SEED, options = { npc: true }) {
         material: OPEN,
       },
     ],
-    entities: [{ id: "shopkeeper", role: "shop", at: { x: 16, y: 12, z: 4 } }],
+    entities: [{
+      id: "npc-ulgar",
+      name: "Ulgar",
+      role: "trader",
+      at: { x: 16, y: 12, z: 4 },
+      behavior: { id: "still" },
+    }],
     spawns: [
       { x: 16, y: 15, z: 4 },
       { x: 15, y: 15, z: 4 },
