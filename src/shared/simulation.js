@@ -22,6 +22,7 @@ import { placeStone } from "./placing.js";
 import { pickUp, pickupLine } from "./items.js";
 import { setHeldItem } from "./held-item.js";
 import { sellItems } from "./shop.js";
+import { createConversations } from "./npc-conversation.js";
 import {
   createVisibility,
   recomputeVisibility,
@@ -111,10 +112,12 @@ export function registerWorldBehavior(id, factory) {
   behaviors.set(id, factory);
 }
 /** @param {WorldDefinition} definition */
-export function createSimulation(definition) {
+/** @param {WorldDefinition} definition @param {{random?:()=>number}} [options] `random` picks NPC replies and thinking jitter */
+export function createSimulation(definition, options = {}) {
   const built = buildWorld(definition);
   const { world } = built;
   definition = built.definition;
+  const conversations = createConversations(world, options.random);
   /** @type {Map<string,{direction:{x:number,y:number},stamina:ReturnType<typeof createStamina>,visibility:ReturnType<typeof createVisibility>,master:boolean,sequence:number}>} */
   const actors = new Map();
   /** @type {(()=>void)[]} */
@@ -213,6 +216,9 @@ export function createSimulation(definition) {
     "sell": (id, message) => {
       return sellItems(world, id, message);
     },
+    "talk": (id, message) => {
+      return conversations.ask(id, message.npc, message.choice);
+    },
     "typing": (id, message) => {
       setTyping(world, id, message.typing === true);
       return { ok: true };
@@ -297,6 +303,7 @@ export function createSimulation(definition) {
           action.done?.(result);
         }
         for (const tick of npcs) tick();
+        conversations.step();
         for (const [id, state] of actors) {
           if (!world.players[id]) continue;
           moveEntity(

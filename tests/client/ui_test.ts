@@ -41,6 +41,13 @@ const STACKS = [
   { kind: "emerald", count: 1 },
   { kind: "coin", count: 99 },
 ];
+/** The trader panel's fields besides its rows and selection. */
+const ITEMS_PANEL = {
+  open: true,
+  level: "items" as const,
+  title: "Ulgar",
+  choices: [],
+};
 const ROWS = [
   { type: "all" as const, coins: 20, count: 5, enabled: true },
   ...STACKS.map((stack) => ({
@@ -194,7 +201,7 @@ for (const [name, screen] of Object.entries(SCREENS)) {
       inside(screen as typeof PORTRAIT, layout.byId.get(`slot:${stack.kind}`)!);
     }
     const shop = layoutUi(view(screen, {
-      shop: { open: true, rows: ROWS, selected: "coal", scroll: 0 },
+      shop: { ...ITEMS_PANEL, rows: ROWS, selected: "coal", scroll: 0 },
     }));
     const shopPanel = shop.byId.get("panel:shop")!;
     inside(screen as typeof PORTRAIT, shopPanel);
@@ -212,6 +219,24 @@ for (const [name, screen] of Object.entries(SCREENS)) {
       }
     }
     assert(shop.shopList!.capacity >= 1);
+    const talk = layoutUi(view(screen, {
+      shop: {
+        ...ITEMS_PANEL,
+        level: "conversation",
+        choices: [
+          { name: "talk:sell", text: "I have ore to trade", on: true },
+          { name: "talk:buys", text: "What do you buy?", on: false },
+        ],
+        rows: [],
+        selected: "talk:sell",
+        scroll: 0,
+      },
+    }));
+    inside(screen as typeof PORTRAIT, talk.byId.get("panel:shop")!);
+    assertEquals(talk.byId.get("text:shop-context-0")!.text?.length! > 0, true);
+    // A short screen scrolls the list, so only the first line is certain.
+    assertEquals(talk.byId.get("row:talk:sell")!.text, "I have ore to trade");
+    assertEquals(talk.byId.get("row:talk:sell")!.on, true);
   });
 
   Deno.test(`the in-game keyboard fits in ${name}`, () => {
@@ -465,7 +490,7 @@ Deno.test("a pointer on empty space belongs to the world", () => {
 
 Deno.test("a row in a scrolling list taps on release and scrolls on drag", () => {
   const { r, layout, events } = router(view(PORTRAIT, {
-    shop: { open: true, rows: ROWS, selected: "coal", scroll: 0 },
+    shop: { ...ITEMS_PANEL, rows: ROWS, selected: "coal", scroll: 0 },
   }));
   const row = layout.byId.get("row:coal")!;
   const x = row.rect.x + 20;

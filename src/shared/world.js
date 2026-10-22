@@ -19,6 +19,8 @@ export const WORLD_EDGE = CHUNK_EDGE;
 const EXPANDED_WORLD_EDGE = 32;
 export const Z_LEVELS_BELOW = 5;
 export const TICK_MS = 50;
+/** The roles an NPC entity may have. A definition and a snapshot accept only these. */
+export const ROLES = Object.freeze(["trader"]);
 /** Bubbles that have started and are still up; waiting ones do not count. */
 export const MAX_BUBBLES = 3;
 /** Messages one speaker may have waiting to start; more are refused. */

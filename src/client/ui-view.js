@@ -120,6 +120,9 @@ function uiView(ctx) {
     },
     shop: {
       open: shop.isOpen(),
+      level: shop.level,
+      title: shop.npc?.name ?? "Shopkeeper",
+      choices: shop.choices,
       rows: shop.rows,
       selected: shop.selected,
       scroll: shop.scroll,

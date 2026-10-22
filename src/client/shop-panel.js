@@ -1,6 +1,7 @@
 // @ts-check
 
 import { rowRequest, shopRows } from "../shared/shop.js";
+import { TRADER_CHOICES } from "../shared/npc-conversation.js";
 import { createStickStepper } from "./stick-step.js";
 
 /** @typedef {import('../shared/items.js').Stack} Stack */
@@ -12,7 +13,11 @@ const REPEAT_FIRST_MS = 350;
 const REPEAT_MS = 150;
 
 /**
- * The shop panel's state: sellable stacks with unit price and count, and a
+ * The trader's panel: a conversation with the NPC, and the item list one level
+ * inside it. The conversation lists the lines the player can say; confirming
+ * one asks the host to speak it (`talk`), and "I have ore to trade" also opens
+ * the item list. Back from the list returns to the conversation with its
+ * selection kept. The item list holds sellable stacks with unit price and count, and a
  * "Sell all ore" row. Stacks the shopkeeper does not buy show dimmed and the
  * selection skips them. IJKL, the look stick, or the D-pad move the selection
  * through `steer`; interact confirms through `confirm`; a tap on a row sells
@@ -20,9 +25,17 @@ const REPEAT_MS = 150;
  * (`ui.js`) lays the rows out and draws them.
  * @param {object} options
  * @param {(request:SaleRequest)=>void} options.sell asks the world host for a sale
+ * @param {(npcId:string,choice:string)=>void} options.talk asks the world host to speak a line
  * @param {(text:string)=>void} options.flash
+ * @param {()=>void} [options.onOpenChange] called when the panel opens or closes
  */
-export function createShopPanel({ sell, flash }) {
+export function createShopPanel({ sell, talk, flash, onOpenChange }) {
+  /** @type {"conversation"|"items"} */
+  let level = "conversation";
+  /** The NPC the conversation is with. @type {{id:string,name:string}|null} */
+  let npc = null;
+  /** The selected conversation choice, kept while the item list is open. */
+  let choiceIndex = 0;
   /** @type {ShopRow[]} */
   let rows = [];
   /** The selected row's identity, so a changed inventory keeps the selection. */
@@ -51,15 +64,25 @@ export function createShopPanel({ sell, flash }) {
 
   /** Scroll so the selected row shows. */
   function reveal() {
-    const at = rows.findIndex((row) => keyOf(row) === selectedKey);
+    const talking = level === "conversation";
+    const count = talking ? TRADER_CHOICES.length : rows.length;
+    const at = talking
+      ? choiceIndex
+      : rows.findIndex((row) => keyOf(row) === selectedKey);
     if (at < 0) return;
     if (at < scroll) scroll = at;
     else if (at >= scroll + capacity) scroll = at - capacity + 1;
-    scroll = Math.max(0, Math.min(scroll, Math.max(0, rows.length - capacity)));
+    scroll = Math.max(0, Math.min(scroll, Math.max(0, count - capacity)));
   }
 
   /** @param {number} step -1 for up, 1 for down */
   function move(step) {
+    if (level === "conversation") {
+      choiceIndex = (choiceIndex + step + TRADER_CHOICES.length) %
+        TRADER_CHOICES.length;
+      reveal();
+      return;
+    }
     const enabled = rows.filter((row) => row.enabled);
     if (!enabled.length) return;
     const at = enabled.findIndex((row) => keyOf(row) === selectedKey);
@@ -68,7 +91,27 @@ export function createShopPanel({ sell, flash }) {
     reveal();
   }
 
+  /** Open the item list from the conversation, starting at its first row. */
+  function openItems() {
+    level = "items";
+    selectedKey = "";
+    scroll = 0;
+    settleSelection();
+  }
+
+  function close() {
+    const wasOpen = open;
+    open = false;
+    if (wasOpen) onOpenChange?.();
+  }
+
   function confirm() {
+    if (level === "conversation") {
+      const choice = TRADER_CHOICES[choiceIndex];
+      if (npc) talk(npc.id, choice.id);
+      if (choice.id === "sell") openItems();
+      return;
+    }
     const row = rows[selectedIndex()];
     if (!row) {
       flash("Nothing to sell");
@@ -80,21 +123,44 @@ export function createShopPanel({ sell, flash }) {
   return {
     isOpen: () => open,
     /**
-     * Show the panel. A direction already held (an aim that opened it) does
-     * not move the selection until it is released.
-     * @param {number} [direction]
+     * Start a conversation with a trader NPC. A direction already held (an aim
+     * that opened it) does not move the selection until it is released.
+     * @param {number} [direction] @param {{id:string,name:string}} [trader]
      */
-    open(direction = 0) {
+    open(direction = 0, trader) {
+      const wasOpen = open;
       open = true;
+      level = "conversation";
+      choiceIndex = 0;
+      npc = trader ?? null;
       heldDirection = direction;
       nextRepeat = Infinity;
       stick.releaseFirst();
       selectedKey = "";
       scroll = 0;
       settleSelection();
+      if (!wasOpen) onOpenChange?.();
     },
-    close() {
-      open = false;
+    close,
+    /** Back: the item list returns to the conversation, which closes. */
+    back() {
+      if (level === "items") level = "conversation";
+      else close();
+    },
+    get level() {
+      return level;
+    },
+    /** The NPC being talked to, or null. */
+    get npc() {
+      return npc;
+    },
+    /** The conversation's choices, with the selected one marked. */
+    get choices() {
+      return TRADER_CHOICES.map((choice, index) => ({
+        name: `talk:${choice.id}`,
+        text: choice.line,
+        on: index === choiceIndex,
+      }));
     },
     /** Take the player's current inventory. @param {readonly Stack[]} inventory */
     update(inventory) {
@@ -117,6 +183,15 @@ export function createShopPanel({ sell, flash }) {
      * A tap on a row: sell it when the shopkeeper buys it. @param {string} name
      */
     tapRow(name) {
+      if (level === "conversation") {
+        const index = TRADER_CHOICES.findIndex((choice) =>
+          `talk:${choice.id}` === name
+        );
+        if (index < 0) return;
+        choiceIndex = index;
+        confirm();
+        return;
+      }
       const row = rows.find((candidate) => keyOf(candidate) === name);
       if (!row) return;
       if (!row.enabled) {
@@ -133,15 +208,21 @@ export function createShopPanel({ sell, flash }) {
     },
     /** Scroll by whole rows from a drag or the wheel. @param {number} step */
     scrollBy(step) {
+      const count = level === "conversation"
+        ? TRADER_CHOICES.length
+        : rows.length;
       scroll = Math.max(
         0,
-        Math.min(scroll + step, Math.max(0, rows.length - capacity)),
+        Math.min(scroll + step, Math.max(0, count - capacity)),
       );
     },
     get rows() {
       return rows;
     },
     get selected() {
+      if (level === "conversation") {
+        return `talk:${TRADER_CHOICES[choiceIndex].id}`;
+      }
       return selectedIndex() >= 0 ? selectedKey : "";
     },
     get scroll() {

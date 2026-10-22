@@ -313,6 +313,27 @@ Deno.test("Ulgar blocks movement: a move onto its tile is refused as occupied", 
   assert(sim.world.players.guest.y > ulgar.y, "free movement stops at Ulgar");
   assertEquals({ x: ulgar.x, y: ulgar.y }, { x: 16, y: 12 });
 });
+Deno.test("a definition with an unknown entity role is refused when it loads", () => {
+  assertThrows(
+    () =>
+      createSimulation(
+        small().entity({
+          id: "npc",
+          at: { x: 2, y: 2, z: 1 },
+          role: "king" as "trader",
+        }).definition(),
+      ),
+    Error,
+    "Unknown entity role",
+  );
+  const trader = small().entity({
+    id: "npc",
+    at: { x: 2, y: 2, z: 1 },
+    role: "trader",
+  }).definition();
+  assertEquals(createSimulation(trader).world.players.npc.role, "trader");
+});
+
 Deno.test("an entity with an unknown role is refused atomically by the wire", () => {
   const sim = createSimulation(small().definition());
   sim.join("host");

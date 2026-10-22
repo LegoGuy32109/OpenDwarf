@@ -96,7 +96,9 @@ export function goBack(ctx) {
     else toggleMenu(ctx);
     return;
   }
-  if (parentLevel(level) === "menu") ctx.scene.menuPage = "root";
+  const parent = parentLevel(level);
+  if (parent === "menu") ctx.scene.menuPage = "root";
+  else if (parent === "shop") ctx.shop.back();
   else {
     closePanels(ctx);
     closeMenu(ctx);
@@ -158,7 +160,7 @@ export function toggleJoinPanel(ctx) {
   ctx.ui.joinOpen = !ctx.ui.joinOpen;
 }
 
-/** Each frame: close the shop panel when the player is out of the trader's range, as the pickup grid closes out of reach. @param {Context} ctx */
+/** Each frame: close the trader conversation when the player is out of the trader's range, as the pickup grid closes out of reach. @param {Context} ctx */
 export function updateShopReach(ctx) {
   if (!ctx.shop.isOpen()) return;
   const { scene } = ctx;
@@ -194,15 +196,13 @@ export function updatePickupGrid(ctx) {
   const direction = ctx.gamepadDpad.x || ctx.gamepadDpad.y
     ? ctx.gamepadDpad
     : stickDirection(ctx.cameraStick.x, ctx.cameraStick.y, 0.5);
-  if (!scene.menu) {
-    stepPickupSelection(pickupGrid, stacks.length, direction, now);
-  }
+  stepPickupSelection(pickupGrid, stacks.length, direction, now);
   // The gamepad look stick follows the shared stick step rule.
   const step = pickupGrid.stick.update(
     stickDirection(ctx.gamepadCamera.x, ctx.gamepadCamera.y, 0.5),
     now,
   );
-  if (step && !scene.menu) {
+  if (step) {
     moveSelection(pickupGrid, stacks.length, step.x, step.y);
   }
   scene.pickupCells = scene.viewZ === pickupGrid.tile?.z && player
@@ -216,7 +216,7 @@ const GRID_KEYS = { KeyI: [0, -1], KeyK: [0, 1], KeyJ: [-1, 0], KeyL: [1, 0] };
 /** IJKL moves the selector, with the browser's key repeat for a held key. @param {Context} ctx @param {string} code @param {boolean} repeat */
 export function gridKey(ctx, code, repeat) {
   const step = GRID_KEYS[code];
-  if (!step || !isPickupGridOpen(ctx.pickupGrid) || ctx.scene.menu) return;
+  if (!step || !isPickupGridOpen(ctx.pickupGrid)) return;
   if (repeat && ctx.gridKeysAtOpen.has(code)) return;
   moveSelection(ctx.pickupGrid, pickupGridStacks(ctx).length, step[0], step[1]);
 }
@@ -224,7 +224,7 @@ export function gridKey(ctx, code, repeat) {
 /** A tap on a square selects it. @param {Context} ctx @param {number} clientX @param {number} clientY */
 export function tapPickupGrid(ctx, clientX, clientY) {
   const { scene } = ctx;
-  if (!isPickupGridOpen(ctx.pickupGrid) || scene.menu) return;
+  if (!isPickupGridOpen(ctx.pickupGrid)) return;
   const rect = ctx.canvas.getBoundingClientRect();
   const cell = cellAtPoint(
     scene.pickupCells,

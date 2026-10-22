@@ -9,6 +9,7 @@ import {
   tile,
 } from "./wire-parse.js";
 import { WORLD_TOP } from "./terrain.js";
+import { ROLES } from "./world.js";
 import { decodeChunks, MAX_REVEAL_CHUNKS } from "./chunk-wire.js";
 import { unpackVisibility } from "./visibility-wire.js";
 
@@ -73,7 +74,7 @@ const PLAYER_REQUIRED = {
 const PLAYER_OPTIONAL = {
   viewMotion: (value) => movement(value, true),
   npc: boolean,
-  role: (value) => value === "trader",
+  role: (value) => ROLES.includes(/** @type {string} */ (value)),
   free: boolean,
   size: (value) => finite(value, 0.01, 4),
   vx: (value) => finite(value, -10, 10),

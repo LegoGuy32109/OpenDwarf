@@ -3,6 +3,7 @@
 
 import { ascii, clamp, wrapText } from "./ui-kit.js";
 import { itemInfo } from "../shared/items.js";
+import { TRADER_DESCRIPTION } from "../shared/npc-conversation.js";
 
 /** @typedef {import('./ui-types.js').Rect} Rect */
 /** @typedef {import('./ui-types.js').UiLayout} UiLayout */
@@ -355,34 +356,71 @@ function shopRow(row, selected) {
 }
 
 /**
- * The shop panel.
+ * The trader panel: the conversation (the NPC's description as silent context
+ * above the lines the player can say), or the item list inside it.
  * @param {LayoutContext} ctx
  * @param {Pick<ReturnType<typeof import('./ui-layout-panels.js').layoutArea>, "panelTop" | "panelLimit" | "middle" | "headerH" | "frame">} input
  */
 export function layoutShop(ctx, input) {
-  const { view, s, ts, lh, pitch, edge, touch, safeRect, add, box } = ctx;
+  const { view, s, ts, lh, pitch, cw, edge, touch, safeRect, add, box } = ctx;
   const { panelTop, panelLimit, middle, headerH, frame } = input;
   /** @type {UiLayout["shopList"]} */
   let shopList = null;
   const shop = view.shop;
   if (shop?.open) {
+    const talking = shop.level === "conversation";
     const w = Math.min(380 * s, safeRect.w - 2 * edge);
     const limit = panelLimit(middle, w);
     const rowH = Math.max(40 * s, lh + 12 * s);
     const footH = pitch + 10 * s;
-    const maxH = Math.max(headerH + footH + rowH + 16 * s, limit - panelTop);
+    const description = talking
+      ? wrapText(TRADER_DESCRIPTION, Math.floor((w - 20 * s) / cw))
+      : [];
+    const contextH = description.length
+      ? description.length * pitch + 8 * s
+      : 0;
+    const top = headerH + contextH;
+    const maxH = Math.max(top + footH + rowH + 16 * s, limit - panelTop);
     const capacity = Math.max(
       1,
-      Math.floor((maxH - headerH - footH - 12 * s) / (rowH + 4 * s)),
+      Math.floor((maxH - top - footH - 12 * s) / (rowH + 4 * s)),
     );
-    const shown = Math.min(capacity, shop.rows.length);
+    const entries = talking
+      ? shop.choices.map((choice) => ({
+        name: choice.name,
+        text: ascii(choice.text),
+        on: choice.on,
+      }))
+      : shop.rows.map((row) => shopRow(row, shop.selected));
+    const shown = Math.min(capacity, entries.length);
     const listH = shown * (rowH + 4 * s) + 12 * s;
-    const h = headerH + listH + footH;
+    const h = top + listH + footH;
     const x = middle - w / 2;
-    frame("shop", box(x, panelTop, w, h), "SHOPKEEPER BUYS", "amber");
-    const maxScroll = Math.max(0, shop.rows.length - capacity);
+    frame(
+      "shop",
+      box(x, panelTop, w, h),
+      ascii(talking ? shop.title : `${shop.title} buys`).toUpperCase(),
+      "amber",
+    );
+    description.forEach((line, n) =>
+      add({
+        id: `text:shop-context-${n}`,
+        kind: "text",
+        rect: box(
+          x + 10 * s,
+          panelTop + headerH + 4 * s + n * pitch,
+          w - 20 * s,
+          pitch,
+        ),
+        text: line,
+        color: "dim",
+        scale: ts,
+        align: "left",
+      })
+    );
+    const maxScroll = Math.max(0, entries.length - capacity);
     const scroll = clamp(Math.round(shop.scroll), 0, maxScroll);
-    const listTop = panelTop + headerH;
+    const listTop = panelTop + top;
     add({
       id: "list:shop",
       kind: "zone",
@@ -393,11 +431,10 @@ export function layoutShop(ctx, input) {
       scroll: "shop",
     });
     for (let n = 0; n < shown; n++) {
-      const row = shop.rows[scroll + n];
-      if (!row) break;
-      const name = row.type === "all" ? "all" : row.kind;
+      const entry = entries[scroll + n];
+      if (!entry) break;
       add({
-        id: `row:${name}`,
+        id: `row:${entry.name}`,
         kind: "row",
         rect: box(
           x + 6 * s,
@@ -408,14 +445,18 @@ export function layoutShop(ctx, input) {
         hit: true,
         act: "tap",
         scroll: "shop",
-        ...shopRow(row, shop.selected),
+        ...entry,
       });
     }
     add({
       id: "text:shop-hint",
       kind: "text",
       rect: box(x + 10 * s, panelTop + h - footH + 6 * s, w - 20 * s, pitch),
-      text: touch ? "Tap a row to sell" : "IJKL: choose  Space: sell  Q: back",
+      text: talking
+        ? touch ? "Tap a line to say it" : "IJKL: choose  Space: say  Q: back"
+        : touch
+        ? "Tap a row to sell"
+        : "IJKL: choose  Space: sell  Q: back",
       color: "dim",
       scale: ts,
       align: "left",

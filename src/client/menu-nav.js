@@ -2,7 +2,7 @@
 
 /**
  * The navigation rules every menu shares (Settings, the inventory panel, the
- * pickup grid, and the shop panel): which menu is the open level, where Back
+ * pickup grid, and the trader conversation): which menu is the open level, where Back
  * goes, the Settings rows, and the fresh-press
  * rule for Confirm. The rules are pure; `panels.js` and `input.js` apply them.
  * See `docs/features/controls-and-ui.md`.
@@ -12,9 +12,10 @@ import { createStickStepper } from "./stick-step.js";
 
 /**
  * A menu level. The outermost menu is "menu" (the Escape menu), and "settings"
- * sits one level inside it. The bag, the pickup grid, and the shop panel are
- * outermost levels of their own.
- * @typedef {"menu"|"settings"|"bag"|"grid"|"shop"} MenuLevel
+ * sits one level inside it. The bag, the pickup grid, and the trader
+ * conversation ("shop") are outermost levels of their own; the item list
+ * ("shop-items") sits one level inside the conversation.
+ * @typedef {"menu"|"settings"|"bag"|"grid"|"shop"|"shop-items"} MenuLevel
  */
 
 /** The Escape menu's rows, in order. */
@@ -35,7 +36,8 @@ export const SETTINGS_ROWS = [
  * @returns {MenuLevel|null}
  */
 export function parentLevel(level) {
-  return level === "settings" ? "menu" : null;
+  if (level === "settings") return "menu";
+  return level === "shop-items" ? "shop" : null;
 }
 
 /**

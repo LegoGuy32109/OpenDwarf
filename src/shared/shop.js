@@ -63,6 +63,14 @@ export function nearTrader(world, player) {
   );
 }
 
+/** Whether the trader NPC `npcId` stands on `player`'s tile or a neighboring one on the same level. @param {World} world @param {Player} player @param {string} npcId */
+export function reachesTrader(world, player, npcId) {
+  const entity = Object.hasOwn(world.players, npcId)
+    ? world.players[npcId]
+    : undefined;
+  return !!entity && isTrader(entity) && inPickupReach(player, tileOf(entity));
+}
+
 /** @param {unknown} kind @returns {number} the unit price, or 0 when the kind cannot be sold */
 export function priceOf(kind) {
   return typeof kind === "string" && Object.hasOwn(PRICES, kind)

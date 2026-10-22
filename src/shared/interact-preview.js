@@ -14,18 +14,18 @@ import { traderAt } from "./shop.js";
 
 /**
  * What interact would do on `tile` for this entity now, or null when it would
- * do nothing: the order is pickup, shop, place, mine, as in placing.md. It runs
+ * do nothing: the order is shop, pickup, place, mine (the conversation wins on a trader's tile, as `interact` opens it first). It runs
  * the checks the host runs, so a null answer means the host would refuse. A
- * trader NPC on the tile, in reach, opens the shop.
+ * trader NPC on the tile, in reach, opens the conversation.
  * @param {World} world @param {Player} player @param {Tile} tile
  * @param {(tile:Tile) => boolean} sees
  * @returns {InteractAction}
  */
 export function interactPreview(world, player, tile, sees) {
+  if (traderAt(world, tile) && inPickupReach(player, tile)) return "shop";
   if (droppedAt(world, tile).length && inPickupReach(player, tile)) {
     return "pickup";
   }
-  if (traderAt(world, tile) && inPickupReach(player, tile)) return "shop";
   if (!placeRefusal(world, player, tile, sees)) return "place";
   if (!miningRefusal(world, player, tile, sees)) return "mine";
   return null;
