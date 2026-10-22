@@ -27,8 +27,8 @@ until seen again. A `mining` message lists the actions a peer can see (and its
 own), with elapsed and total time, so a peer draws the breaking decal
 (Excalibur's ten destroy stages in `public/assets/cracks.png`, one per tenth of
 the mining time) on other players' tiles and for the miner's own; there is no
-progress square (see [cursor](cursor.md)). Clients cancel when the aim changes
-by sending `mine-cancel`.
+progress square (see [cursor](cursor.md)). A guest sends `mine-cancel` when
+interact cancels or retargets mining, not when the aim moves.
 
 ## Items
 

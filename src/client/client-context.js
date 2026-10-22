@@ -132,6 +132,9 @@ export function createContext() {
     /** Plays the sound events the world host sends this client. */
     hearSounds:
       /** @type {((list:import('../shared/sound.js').HeardSound[])=>void)|undefined} */ (undefined),
+    /** Plays a local action after the world host accepts it. */
+    ownAction:
+      /** @type {((result:import('../shared/action-wire.js').ActionResult)=>void)|undefined} */ (undefined),
     /** Plays the track the world host cues (ADR 0009). */
     followMusic:
       /** @type {((cue:{key:string,hash:string},offsetSeconds:number)=>void)|undefined} */ (undefined),
@@ -282,6 +285,7 @@ export function createContext() {
       ),
   };
   scene.hearSounds = (list) => ctx.sounds.hear(list);
+  scene.ownAction = (result) => ctx.sounds.action(result);
   scene.followMusic = (cue, offset) => ctx.music.follow(cue, offset);
   return ctx;
 }

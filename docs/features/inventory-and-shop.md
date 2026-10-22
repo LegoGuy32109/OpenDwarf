@@ -44,3 +44,9 @@ interact and the look controls drive it instead of mining and aiming, and
 movement input is ignored.
 
 Item kinds, stacks, and pickup are in [mining and items](mining-and-items.md).
+
+## Potential improvements
+
+The reach and controller map (#97) leaves an inventory panel redesign
+unspecified. No replacement design is approved or implemented, and it is outside
+that map's acceptance requirements.

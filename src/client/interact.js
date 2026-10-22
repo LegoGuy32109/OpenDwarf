@@ -42,7 +42,6 @@ function pickUpAt(ctx, target, kind) {
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "pickup", ...target, kind });
-    ctx.sounds.own(["pickup"], target);
     return;
   }
   if (ctx.simulation) {
@@ -155,7 +154,6 @@ function placeAt(ctx, target) {
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "place", ...target });
-    ctx.sounds.own(["place", "stone"], target);
   } else {
     if (ctx.simulation) {
       ctx.simulation.enqueue(

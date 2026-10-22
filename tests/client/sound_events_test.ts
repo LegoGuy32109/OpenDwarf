@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { createSoundEvents } from "../../src/client/sound-events.js";
 import { LATE_MS } from "../../src/client/sfx.js";
+import { decodeActionResult } from "../../src/shared/action-wire.js";
 import { addPlayer } from "../../src/shared/world.js";
 import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 import { enableLocomotion } from "../../src/shared/locomotion.js";
@@ -55,6 +56,38 @@ function setup() {
     setHeardAt: (time: number | null) => heardAt = time,
   };
 }
+
+Deno.test("validated action success plays one fixed own sound and rejects stale or malformed results", () => {
+  const { sounds, played } = setup();
+  const receive = (value: unknown) => {
+    const result = decodeActionResult(value, "current");
+    if (result) sounds.action(result);
+  };
+  for (const action of ["pickup", "place", "sell"]) {
+    const value = {
+      type: "action-result",
+      attempt: "current",
+      action,
+      x: 4,
+      y: 5,
+      z: 1,
+    };
+    receive({ ...value, attempt: "old" });
+    receive({ ...value, x: NaN });
+    receive({ ...value, action: "mine" });
+    receive({ ...value, tags: ["untrusted"] });
+  }
+  assertEquals(played.map((call) => call.tags), [
+    ["pickup"],
+    ["place", "stone"],
+    ["sell"],
+  ]);
+  assertEquals(sounds.log.length, 3);
+  assert(
+    sounds.log.every((event) => event.own && !event.muffled && event.x === 4),
+  );
+  assert(played.every((call) => call.options === undefined));
+});
 
 Deno.test("a heard event plays at its presentation time, muffled when unseen", () => {
   const { sounds, played, setHeardAt } = setup();

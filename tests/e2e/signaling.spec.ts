@@ -19,6 +19,7 @@ test(
         (__world) => __world.scene.sessionId,
       );
       await openWorld(guest, `/join/${session}?harness=1`);
+      await ready(guest);
       // The corner NPC is also a player, so wait for the guest's own entity.
       await expect.poll(() =>
         readWorld(guest, (__world) => {

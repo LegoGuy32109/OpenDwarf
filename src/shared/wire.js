@@ -21,7 +21,7 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {Envelope & {type:"motion",tick:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const MAX_PACKET_BYTES = 256 * 1024;
 const MAX_ENTITIES = 1024;
 

@@ -22,6 +22,7 @@ test("a host and a guest connect through real Xirsys", async ({ browser }) => {
     await ready(host);
     const session = await readWorld(host, (__world) => __world.scene.sessionId);
     await openWorld(guest, `${base}/join/${session}?harness=1`);
+    await ready(guest);
     // The corner NPC is also a player, so wait for the guest's own entity.
     await expect.poll(() =>
       readWorld(guest, (__world) => {

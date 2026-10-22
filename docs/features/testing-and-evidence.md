@@ -73,6 +73,12 @@ unit tests check messages sent by the client, not their delivery to the host.
 
 ## Browser specs wait on game time
 
+`openWorld` and page navigation can finish before asynchronous game startup.
+Call `await ready(page)` for each host and guest before `readWorld` or polling
+game state. A test that inspects the loading screen instead waits for the
+specific startup stage it needs. After startup, wait for the state being tested
+or for world ticks. Sleeps and retries can hide readiness races.
+
 World time follows the wall clock and drops whatever a slow frame cannot catch
 up on, so a fixed sleep or a time limit lets less of the game happen on a loaded
 machine or a CI runner. Specs therefore never sleep, read the clock, or set a
@@ -120,7 +126,10 @@ the script does not start a server. `--duration=900` gives a 15-minute hold. The
 host and four guests render WebGL. Other guests connect without rendering. Use
 `--rendered=19` for host plus 19 rendered guests, `--world=32` for the larger
 world, or `--view=master` to compare master view. `--rate=20` is a harness-only
-experiment. The live default remains 10 Hz pending the rate review.
+experiment. Josh selected the live 10 Hz default after the
+[September comparisons](../stress-runs/2026-09-30-protocol-split.md), followed
+by the [15-minute group run](../stress-runs/2026-09-30-protocol-sustained.md).
+Those results predate the current terrain reveal deltas.
 
 By default each browser delays game-message delivery by 50 ms, approximating 100
 ms round trip without changing ICE or physical packet delay. Add
@@ -128,9 +137,15 @@ ms round trip without changing ICE or physical packet delay. Add
 Reliable state/chat/input are not dropped. These conditions do not simulate
 physical SCTP loss. Reports and traces land under ignored `exports/benchmarks/`.
 Run browser workloads sequentially and keep served files unchanged during a run.
-Reviewed summaries belong in [stress-run reports](../stress-runs/README.md). The
-older `deno task stress` runner remains for historical comparisons, but its
-committed-step movement counters do not measure continuous movement correctly.
+Per-peer build timings need careful interpretation: `filterMs` includes sight
+and reveal work, `encodeMs` measures only `JSON.stringify`, and `sendMs`
+measures the synchronous channel call. Wire record construction, terrain RLE,
+and visibility packing occur outside `encodeMs`. `encodedChars` counts
+JavaScript string units, not UTF-8 bytes. Use data-channel byte counters for
+payload rates. Reviewed summaries belong in
+[stress-run reports](../stress-runs/README.md). The older `deno task stress`
+runner remains for historical comparisons, but its committed-step movement
+counters do not measure continuous movement correctly.
 
 `deno task capture:sync` records a five-second visual comparison from the host
 and the 20th peer against the deployed site. All 20 peers use WebRTC, while the

@@ -5,6 +5,7 @@
 import { createWorld } from "../shared/world.js";
 import { build } from "./build.js";
 import { applyReveal } from "../shared/reveal.js";
+import { decodeActionResult } from "../shared/action-wire.js";
 import { mergeSnapshot } from "../shared/reconcile.js";
 import { renderPosition, TICK_MS } from "../shared/world.js";
 import { createVisibility, tileKey } from "../shared/visibility.js";
@@ -403,6 +404,10 @@ export function joinWorld(scene, session) {
 
   /** @type {Record<string,(value:Record<string,unknown>)=>void>} */
   const packetHandlers = {
+    "action-result"(value) {
+      const result = decodeActionResult(value, attempt);
+      if (result) scene.ownAction?.(result);
+    },
     system(value) {
       if (typeof value.text === "string" && value.text.length <= 120) {
         scene.systemLine?.(value.text);

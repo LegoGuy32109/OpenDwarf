@@ -18,3 +18,9 @@ at, or at rest on the tile being mined.
 the draw parameters (color, opacity, icon frame, icon opacity), and
 `localCursor(scene)` finds the tile. `render.js` draws what they return, and
 `__od.cursor()` exposes the same state to the e2e specs.
+
+## Potential improvements
+
+The reach and controller map (#97) leaves a Dwarf Fortress style breaking decal
+unspecified. That art change has no approved design and is not implemented. The
+existing cracks satisfy the map's cracks-only progress rule.

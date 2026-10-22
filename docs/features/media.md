@@ -54,3 +54,10 @@ The four `R2_*` variables above are set in Deno Deploy. Without them the
 production shell serves from its own (empty) `media/` folder, so `/media/...`
 answers `404`. `deno task smoke` checks `/media/index/music.v1.json`: it follows
 the redirect and expects `200` and JSON with a `tracks` array.
+
+## Potential improvements
+
+A CI check against a real bucket could supplement the local fixture and signer
+tests. Its credentials and test scope are not specified or implemented. Other
+large asset kinds remain future content, as described above. Neither is a
+remaining acceptance requirement of the media and offline map (#85).

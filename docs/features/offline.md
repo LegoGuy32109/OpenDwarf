@@ -13,6 +13,37 @@ scope `<build base>` (`build.base`). `startApp` calls it last, after the frame
 loop starts, so it never delays the first frame. `?sw=0` skips it. A failed
 registration is ignored: the game runs without a worker.
 
+The first navigation, modules and textures can load before the worker controls
+the page. After the first world frame, the client waits for its registered
+worker to activate and sends a `cache-build` message with the page URL, files
+base and completed resource URLs. The worker checks that the page matches the
+sending client and keeps that page, its `__od_page=1` resolved document, and
+only the static files under that build's local or immutable CDN paths. It
+fetches these without credentials and never bootstraps API or media requests.
+The acknowledgment reports success only after the cache writes finish. This
+background preparation needs no second online reload and does not delay the
+first frame. A failed fetch or cache write leaves offline preparation incomplete
+while the online game continues.
+
+A bare preview address such as `/b/local` is normalized to `/b/local/` with
+`history.replaceState`, preserving its query and hash before registration.
+Chromium still treats the original document as outside the worker's scope, so
+that document must not wait for `navigator.serviceWorker.ready` or a controller.
+It prepares the cache by messaging its active registration directly. The next
+navigation to the canonical URL, including the first offline reload, receives
+worker control. The worker permits only this exact bare-to-canonical client
+alias with the same query, without widening its scope to sibling branches.
+
+Resource observation retains URLs even if later audio requests fill the
+browser's timing buffer. It stops and releases the retained URLs when
+preparation finishes or registration is skipped. An unsupported observer leaves
+the normal resource snapshot available. A missing or unsuccessful acknowledgment
+fails preparation quietly, with a 30 s bound on the reply wait. For a remote
+build, the resolved document must still name the loaded commit and files base.
+Pages are published to the cache only after that check and the build-file writes
+succeed, so a branch that moves during preparation cannot replace a prior
+offline page with an uncached build.
+
 ## What the worker caches
 
 | Request                                                                                      | Rule                                                                                                                                               |
@@ -23,7 +54,7 @@ registration is ignored: the game runs without a worker.
 | `/api/` and anything else                                                                    | Network only. Never cached.                                                                                                                        |
 
 The worker keeps the newest three `od-build-*` caches; it records the commits it
-has seen in `od-build-index`. `od-media` is the music player's cache, keyed by
+has seen in `od-recent-builds`. `od-media` is the music player's cache, keyed by
 the full media URL, and the worker reads the same entries. The worker calls
 `skipWaiting` and `clients.claim`, so a new build's worker takes over on the
 next load.
@@ -57,8 +88,9 @@ check as usual.
 ## Tests
 
 `tests/e2e/offline.spec.ts` loads the page, waits for the worker to control it,
-goes offline with `context.setOffline(true)`, reloads, and checks that the game
-draws, the player moves, and a `Range` request for a fixture track answers `206`
-from the cache. Every other spec runs with `serviceWorkers: "block"`
+waits for that first visit's page and build files to be cached, goes offline
+with `context.setOffline(true)`, reloads, and checks that the game draws, the
+player moves, and a `Range` request for a fixture track answers `206` from the
+cache. Every other spec runs with `serviceWorkers: "block"`
 (`playwright.config.ts`), because a worker answers its page's requests where
 `page.route` cannot see them.

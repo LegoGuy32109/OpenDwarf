@@ -54,11 +54,21 @@ off unless `sfx=1`.
 The panels play `["ui", "open"]` when the bag, the shop or the pickup grid
 opens, and `["ui", "click"]` when their selection moves
 (`src/client/ui-sounds.js`, checked each frame). `["sell"]` plays when your sale
-succeeds. A guest hears it when it sends the sale, because the host answers a
-refusal and nothing else. These sounds are never sound events.
+succeeds. A guest waits for the host's success result before playing its sale
+sound, so a refused sale stays silent. These sounds are local and are never
+sound events. See [sound events](sound-events.md) for the accepted-action
+confirmation path.
 
 ## Diagnostics and harness
 
 F3 shows one line: `Effects <loaded>/<total> samples  <n> playing`. With
 `?harness=1`, `globalThis.__od.sfx` has `state()`, `log` (each play's `tags`,
 `key`, `rate`, `gain` and `muffled`), and `setRandom(source)` for a fixed pick.
+
+## Potential improvements
+
+Ambient sound and moods that select ambient loops remain unspecified in the
+sound-effects map (#92). Loudness normalization of the samples is also an
+unimplemented idea with no approved processing policy. Neither is part of that
+map's acceptance requirements. Place-based music is a separate idea recorded in
+[music](music.md).

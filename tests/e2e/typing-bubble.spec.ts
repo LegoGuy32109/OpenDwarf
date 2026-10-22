@@ -8,6 +8,7 @@ test("other players see the thought icon while a player types", async ({ page, c
   const session = await readWorld(page, (__world) => __world.scene.sessionId);
   const guest = await context.newPage();
   await openWorld(guest, `/join/${session}?harness=1`);
+  await ready(guest);
   await expect.poll(() =>
     readWorld(guest, (__world) => Boolean(__world.wireDebug()?.state))
   ).toBeTruthy();

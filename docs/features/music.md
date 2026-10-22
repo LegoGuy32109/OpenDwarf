@@ -108,3 +108,11 @@ music); `tests/e2e/music-shared.spec.ts` runs a host and a guest on the fixture
 media; the e2e spec is `tests/e2e/music.spec.ts`, which plays the fixture media
 (`tests/e2e/fixtures/media`: two tones and an index entry whose file is
 missing).
+
+## Potential improvements
+
+Places or events could select a mood or cue different music for different
+players. Maps #85 and #97 leave that behavior unspecified. It has no approved
+design and is not implemented. The current fixed mood and shared host conductor
+remain the accepted scope. Ambient loops are a separate idea recorded in
+[sound effects](sound-effects.md).

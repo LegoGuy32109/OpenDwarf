@@ -70,8 +70,6 @@ export function sellRequest(ctx, request) {
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "sell", ...request });
-    // The host answers only a refusal, so a guest hears its own request.
-    ctx.sfx.play(["sell"]);
     return;
   }
   if (ctx.simulation) {

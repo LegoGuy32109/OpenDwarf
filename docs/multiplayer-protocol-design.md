@@ -1,10 +1,21 @@
 # Multiplayer protocol improvement design
 
-Status: implementation is complete for the confirmed scope. Ten final 20-peer
-comparisons passed. Josh selected 10 Hz after reviewing the comparison. The
+Status: the September implementation is complete for the confirmed scope. Josh
+confirmed closing issue #9 for that scope, with the remaining proposals kept as
+potential improvements. Ten final 20-peer comparisons passed. Josh selected 10
+Hz after reviewing the comparison. The
 [15-minute group run](stress-runs/2026-09-30-protocol-sustained.md) passed with
 20/20 peers moving in every minute. Josh reports that the build looks right
 while testing phone and host/controller responsiveness.
+
+Terrain synchronization changed later under
+[ADR 0005](adr/0005-bounded-terrain-sync-and-chunk-unloading.md). Current state
+packets send bounded recipient-specific tile reveals, including complete
+remembered copies on join, mode change, or resync. Visibility still sends full
+visible bitsets. These later changes were not measured in the September runs.
+See [networking](features/networking.md) for the current format and recovery
+limits. The settled decisions below record the September scope, including its
+then-deferred terrain work.
 
 See [the comparison report](stress-runs/2026-09-30-protocol-split.md). Source:
 [GitHub issue #9](https://github.com/LegoGuy32109/OpenDwarf/issues/9).
@@ -116,13 +127,30 @@ push with the commit, implemented scope, results, and remaining work.
   partial opacity, stop/reversal behavior, collisions, and elevation steps.
 - Keep content out of diagnostics. Record message IDs and timing where needed.
 
-## Deferred work
+## Potential improvements
 
-- Terrain/visibility section revisions and cell/chunk deltas. Static terrain
-  still has recipient-specific discovery and memory, so these need a separate
-  synchronization design when measurements justify it.
+- Terrain baseline identifiers/revisions and visibility deltas. Terrain tile
+  reveals are implemented under ADR 0005. The reliable ordered channel carries
+  them, but has no explicit missing-baseline or resend-completion detection.
+  Revisit this contract if current measurements show recovery errors or payload
+  growth that bounded reveals do not address.
 - Motion deltas, binary encoding, and coordinate quantization.
 - Input replay and replacement-input transport.
+
+These remain proposals, not required transport replacements. Benchmark current
+16×16 and 32×32 entity/master workloads before choosing another format. Compare
+UTF-8 payload bytes, wire construction, encoding/decoding time, queues, frame
+cost, and corrections. A binary comparison must include sparse and dense terrain
+and visibility, and must preserve exact coordinate and memory semantics.
+
+Revisit input replay if deterministic stop, reversal, collision, or elevation
+checks under delay and jitter show incorrect convergence or disruptive
+corrections. Existing reconciliation keeps nearby prediction and accepts larger
+host corrections. It has no timed input history or replay. A replay design must
+first change acknowledgments from received input to input applied by the host
+simulation, then define shared replay timing and independent presentation
+smoothing. Historical correction counts alone do not establish that this larger
+change is necessary.
 
 The first measurements are recorded in
 [the stage 1 report](stress-runs/2026-09-30-protocol-stage1.md).

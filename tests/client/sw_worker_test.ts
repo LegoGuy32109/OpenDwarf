@@ -7,6 +7,123 @@ type WorkerEvent = {
   waitUntil: (work: Promise<unknown>) => void;
   respondWith: (response: Promise<Response>) => void;
 };
+
+Deno.test("bootstrap acknowledges completed page/build writes and reports partial failure", async () => {
+  const handlers = new Map<string, (event: unknown) => void>();
+  const stores = new Map<string, ReturnType<typeof createFakeCache>>();
+  const writes: (() => void)[] = [];
+  const requests: { url: string; credentials: string | undefined }[] = [];
+  let fail = false;
+  let defer = true;
+  let body = "body";
+  let resolvedDocument: string | null = null;
+  const open = (name: string) => {
+    let cache = stores.get(name);
+    if (!cache) {
+      cache = createFakeCache();
+      const put = cache.put.bind(cache);
+      cache.put = (url, response) =>
+        defer
+          ? new Promise<undefined>((resolve) =>
+            writes.push(() => void put(url, response).then(resolve))
+          )
+          : put(url, response);
+      stores.set(name, cache);
+    }
+    return Promise.resolve(cache);
+  };
+  await withGlobals({
+    importScripts: () => {},
+    location: { origin: "https://od.test" },
+    skipWaiting: () => Promise.resolve(),
+    clients: { claim: () => Promise.resolve() },
+    addEventListener: (kind: string, listener: (event: unknown) => void) =>
+      handlers.set(kind, listener),
+    caches: {
+      open,
+      keys: () => Promise.resolve([...stores.keys()]),
+      delete: (name: string) => Promise.resolve(stores.delete(name)),
+    },
+    fetch: (url: string, options: RequestInit) => {
+      requests.push({ url, credentials: options.credentials });
+      return Promise.resolve(
+        new Response(
+          fail
+            ? "failed"
+            : url.includes("__od_page") && resolvedDocument !== null
+            ? resolvedDocument
+            : body,
+          { status: fail ? 503 : 200 },
+        ),
+      );
+    },
+  }, async () => {
+    await import("../../public/js/sw-main.js?bootstrap");
+    const page = "https://od.test/b/demo/";
+    const data = {
+      type: "cache-build",
+      page,
+      base: "https://od.test/",
+      files: ["https://od.test/js/app.js", "https://od.test/api/v1/status"],
+    };
+    const replies: unknown[] = [];
+    let work: Promise<unknown> | undefined;
+    const dispatch = (source: string) =>
+      handlers.get("message")!({
+        data,
+        source: { url: source },
+        ports: [{ postMessage: (reply: unknown) => replies.push(reply) }],
+        waitUntil: (pending: Promise<unknown>) => work = pending,
+      });
+    dispatch("https://foreign.test/");
+    assertEquals(work, undefined);
+    assertEquals(requests, []);
+    dispatch(page);
+    // Pause the first cache write. No ready acknowledgment may precede it.
+    for (let turn = 0; turn < 10 && writes.length === 0; turn++) {
+      await Promise.resolve();
+    }
+    assertEquals(writes.length, 1);
+    assertEquals(replies, []);
+    assertEquals(stores.get("od-pages")?.store.size ?? 0, 0);
+    defer = false;
+    writes.shift()!();
+    await work;
+    assertEquals(replies, [{ ok: true }]);
+    assertEquals([...stores.get("od-pages")!.store.keys()], [
+      page,
+      `${page}?__od_page=1`,
+    ]);
+    assertEquals(
+      [...stores.get("od-build-local")!.store.keys()],
+      data.files.slice(0, 1),
+    );
+    assertEquals(
+      requests.every((request) => request.credentials === "omit"),
+      true,
+    );
+    fail = true;
+    dispatch(page);
+    await work;
+    assertEquals(replies, [{ ok: true }, { ok: false }]);
+    fail = false;
+    body = "new-page-must-not-replace-prior-copy";
+    const root = `https://cdn.jsdelivr.net/gh/LegoGuy32109/OpenDwarf@${
+      "a".repeat(40)
+    }/`;
+    data.base = `${root}public/`;
+    data.files = [`${root}src/client/app.js`];
+    resolvedDocument = `<base href="${root}public/"><script id="od-build">` +
+      JSON.stringify({ commit: "b".repeat(40) }) + "</script>";
+    dispatch(page);
+    await work;
+    assertEquals(replies.at(-1), { ok: false });
+    assertEquals(
+      await (await stores.get("od-pages")!.match(page))!.text(),
+      "body",
+    );
+  });
+});
 Deno.test("worker media routing handles network, cached ranges, offline fallback and rejected requests", async () => {
   const handlers = new Map<string, (event: WorkerEvent) => void>();
   const cache = createFakeCache();

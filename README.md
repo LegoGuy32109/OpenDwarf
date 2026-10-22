@@ -27,16 +27,16 @@ shell code needs `deno task deploy`. See
 
 ## Controls
 
-| Action           | Keyboard              | Touch                        |
-| ---------------- | --------------------- | ---------------------------- |
-| Move             | ESDF                  | left stick                   |
-| Speed, sprint    | G, H                  | buttons under the left stick |
-| Aim, pan         | IJKL                  | right stick                  |
-| View level, zoom | R/V, U/N, mouse wheel | two-finger drag, pinch       |
-| Interact, mine   | Space                 | pickaxe button               |
-| Inventory        | B                     | bag button                   |
-| Chat, command    | T, `/`                | A button                     |
-| Menu             | Escape, Q             | B button                     |
+| Action           | Keyboard              | Touch                         |
+| ---------------- | --------------------- | ----------------------------- |
+| Move             | ESDF                  | left stick                    |
+| Sprint           | H                     | button beside the right stick |
+| Aim, pan         | IJKL                  | right stick                   |
+| View level, zoom | R/V, U/N, mouse wheel | two-finger drag, pinch        |
+| Interact, mine   | Space                 | pickaxe button                |
+| Inventory        | B                     | bag button                    |
+| Chat, command    | T, `/`                | speech bubble button          |
+| Menu             | Escape, Q             | ESC button                    |
 
 Gamepad buttons and the rest are in
 [controls and UI](docs/features/controls-and-ui.md).

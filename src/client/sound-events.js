@@ -4,7 +4,8 @@
  * Plays the sound events this client hears and its own sounds (ADR 0008,
  * docs/features/sound-events.md). The world host sends the events in range;
  * this client plays each at its tick's presentation time. Its own steps,
- * mining and placing play at once from local state, and never wait for the host.
+ * and mining play from local state. Guest place, pickup, and sale sounds wait
+ * for the host to confirm success.
  */
 
 import { LATE_MS } from "./sfx.js";
@@ -68,6 +69,15 @@ export function createSoundEvents({ scene, sfx }) {
   return {
     log,
     own,
+    /** Play a validated successful local action at full gain.
+     * @param {import('../shared/action-wire.js').ActionResult} result
+     */
+    action(result) {
+      const tags = result.action === "place"
+        ? ["place", "stone"]
+        : [result.action];
+      own(tags, result);
+    },
     /**
      * Play the events the world host sent: each at its tick's presentation
      * time, muffled when the source is out of sight. One that is more than

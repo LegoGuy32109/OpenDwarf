@@ -1,8 +1,8 @@
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
-import { type Page } from "@playwright/test";
+import { type BrowserContext, type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { holdUntil, waitTicks } from "./time.ts";
+import { holdUntil, waitFor, waitTicks } from "./time.ts";
 import { ready } from "./ui.ts";
 type Played = {
   tags: string[];
@@ -19,6 +19,12 @@ const position = (page: Page) =>
     const scene = __world.scene;
     return scene.world.players[scene.localId];
   });
+/** Confirm the listener has stopped in both authoritative and predicted state. */
+const stationary = (page: Page, id?: string) =>
+  readWorld(page, (world, id) => {
+    const player = world.scene.world.players[id ?? world.scene.localId];
+    return Math.hypot(player.vx ?? 0, player.vy ?? 0) < 0.01;
+  }, id);
 /** Stand the host's player still at a position. */
 const placeAt = (page: Page, x: number, y: number) =>
   readWorld(page, (__world, [px, py]) => {
@@ -38,18 +44,20 @@ const placeAt = (page: Page, x: number, y: number) =>
 const isStep = (sound: Played, own: boolean) =>
   sound.tags[0] === "step" && sound.own === own;
 /** Open a host and a guest that joined it. */
-async function pair(browser: import("@playwright/test").Browser) {
-  const host = await browser.newPage();
-  const guest = await browser.newPage();
+async function pair(host: Page, context: BrowserContext) {
+  const guest = await context.newPage();
   await openWorld(host, "/?harness=1");
   await ready(host);
   const session = await readWorld(host, (__world) => __world.scene.sessionId);
   await openWorld(guest, `/join/${session}?harness=1`);
   await ready(guest);
+  await expect.poll(() =>
+    readWorld(guest, (world) => Boolean(world.wireDebug()?.state))
+  ).toBe(true);
   return { host, guest };
 }
-test("each hears its own steps as own, and the other hears them in range", async ({ browser }) => {
-  const { host, guest } = await pair(browser);
+test("each hears its own steps as own, and the other hears them in range", async ({ page, context }) => {
+  const { host, guest } = await pair(page, context);
   const hostSteps = async () =>
     (await sounds(guest)).filter((sound) =>
       isStep(sound, false) && sound.y > 5
@@ -80,8 +88,12 @@ test("each hears its own steps as own, and the other hears them in range", async
   await evidenceShot(guest, "sound-events-steps");
   await Promise.all([host.close(), guest.close()]);
 });
-test("a source behind rock is muffled, one beyond 12 tiles is not heard", async ({ browser }) => {
-  const { host, guest } = await pair(browser);
+test("a source behind rock is muffled, one beyond 12 tiles is not heard", async ({ page, context }) => {
+  const { host, guest } = await pair(page, context);
+  // Prove the stationary listener sees this tile before the wall changes sight.
+  const seesSource = () =>
+    readWorld(guest, (world) => world.scene.visibility.visible.has("2,9,0"));
+  await expect.poll(seesSource).toBe(true);
   // A stone wall between the host's side and the guest, across the whole room.
   await readWorld(host, (__world) => {
     const terrain = __world.materials;
@@ -104,6 +116,7 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
   await placeAt(host, 2, 9);
   await expect.poll(async () => (await position(guest))?.x).toBeGreaterThan(5);
   await waitTicks(host, 10);
+  expect(await seesSource()).toBe(false);
   const before = (await sounds(guest)).length;
   await holdUntil(
     host,
@@ -115,9 +128,16 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
   const behind = (await sounds(guest)).slice(before).filter((sound) =>
     sound.x < 5
   );
-  expect(behind.every((sound) => sound.muffled)).toBe(true);
+  expect(behind.length).toBeGreaterThanOrEqual(2);
+  expect(behind.map((sound) => sound.muffled)).toEqual(
+    behind.map(() => true),
+  );
   await evidenceShot(guest, "sound-events-muffled");
-  // The guest walks to the far west, the host to the far east: more than 12 tiles apart.
+  // Walk by the host's authoritative listener position, with room for prediction
+  // corrections before checking silence beyond the 12-tile hearing range.
+  const guestId = await readWorld(guest, (world) => world.scene.localId);
+  const listenerX = () =>
+    readWorld(host, (world, id) => world.scene.world.players[id].x, guestId);
   await readWorld(host, (__world) => {
     const terrain = __world.materials;
     for (let y = 3; y <= 14; y++) {
@@ -139,10 +159,19 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
   await holdUntil(
     guest,
     "s",
-    async () => ((await position(guest))?.x ?? 99) < 2.6,
+    async () => (await listenerX()) < 1.6,
   );
+  await waitFor(host, async () => {
+    const [authoritative, predicted] = await Promise.all([
+      stationary(host, guestId),
+      stationary(guest),
+    ]);
+    return authoritative && predicted;
+  }, { message: "listener stopped on both peers" });
   await placeAt(host, 14.6, 13);
   await waitTicks(host, 10);
+  expect(Math.abs((await position(host))!.x - (await listenerX())))
+    .toBeGreaterThan(12);
   expect(Math.abs((await position(host))!.x - (await position(guest))!.x))
     .toBeGreaterThan(12);
   const mark = (await sounds(guest)).length;

@@ -49,6 +49,91 @@ const rules = (function () {
   }
 
   /**
+   * Bootstrap only the sender's page and the loaded files of its build. A
+   * remote base names one immutable CDN commit; local files use the existing
+   * build-path allowlist. API, media and credential-bearing URLs never enter.
+   * @param {string} clientUrl @param {unknown} message @param {string} origin
+   * @returns {{pages:string[],files:{url:string,commit:string}[],base:string,commit:string}|null}
+   */
+  function bootstrapPlan(clientUrl, message, origin) {
+    const data =
+      /** @type {{type?:unknown,page?:unknown,base?:unknown,files?:unknown}|null} */ (message);
+    if (
+      data?.type !== "cache-build" || typeof data.page !== "string" ||
+      typeof data.base !== "string" || !Array.isArray(data.files) ||
+      data.files.length > 1024
+    ) return null;
+    try {
+      const client = new URL(clientUrl);
+      const page = new URL(data.page);
+      const base = new URL(data.base);
+      client.hash = page.hash = "";
+      const canonical = new URL(client);
+      if (/^\/b\/[A-Za-z0-9._~-]+$/.test(canonical.pathname)) {
+        canonical.pathname += "/";
+      }
+      if (
+        client.origin !== origin ||
+        (page.href !== client.href && page.href !== canonical.href) ||
+        page.username || page.password || base.username || base.password ||
+        !/^\/(?:b\/[A-Za-z0-9._~-]+(?:\/(?:host|join\/[A-Za-z0-9_-]{8,80})?)?|host|join\/[A-Za-z0-9_-]{8,80})?$/
+          .test(page.pathname) ||
+        base.search || base.hash
+      ) return null;
+      const remote = /^\/gh\/[^/]+\/[^/@]+@([0-9a-f]{7,40})\/public\/$/.exec(
+        base.pathname,
+      );
+      const local = base.origin === origin && base.pathname === "/";
+      if (!local && (base.origin !== "https://cdn.jsdelivr.net" || !remote)) {
+        return null;
+      }
+      const root = base.href.replace(/public\/$/, "");
+      const files = [];
+      for (const value of new Set(data.files)) {
+        if (typeof value !== "string") continue;
+        const url = new URL(value);
+        if (url.username || url.password) continue;
+        const commit = buildCommitOf(url.href, origin);
+        if (
+          !commit ||
+          (local
+            ? commit !== "local"
+            : commit !== remote?.[1] || !url.href.startsWith(root) ||
+              !/^(public\/(js|assets|css)|src)\//.test(
+                url.href.slice(root.length),
+              ))
+        ) continue;
+        files.push({ url: url.href, commit });
+      }
+      const resolved = new URL(page);
+      resolved.searchParams.set("__od_page", "1");
+      return {
+        pages: [page.href, resolved.href],
+        files,
+        base: base.href,
+        commit: remote?.[1] ?? "local",
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** A mutable branch must still resolve to the build that requested caching. @param {string} html @param {string} base @param {string} commit */
+  function matchesBuildPage(html, base, commit) {
+    if (commit === "local") return true;
+    const config =
+      /<script\b[^>]*\bid=["']od-build["'][^>]*>\s*(\{[\s\S]*?\})\s*<\/script>/
+        .exec(html);
+    const files = /<base\b[^>]*\bhref=["']([^"']+)["']/.exec(html);
+    try {
+      return !!config && !!files && JSON.parse(config[1]).commit === commit &&
+        new URL(files[1]).href === base;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Which `od-build-*` caches to delete: all but the newest `KEEP_BUILDS`, and never the one in
    * use. `recent` lists commits, newest first. A cache not in the list counts as oldest.
    * @param {string[]} names every cache name @param {string[]} recent commits, newest first
@@ -122,6 +207,8 @@ const rules = (function () {
     buildCacheName,
     buildCommitOf,
     isMedia,
+    bootstrapPlan,
+    matchesBuildPage,
     buildCachesToDelete,
     parseRange,
     answerRange,
@@ -133,7 +220,8 @@ const rules = (function () {
  * @typedef {{skipWaiting():Promise<void>,clients:{claim():Promise<void>},location:{origin:string},
  * addEventListener(type:string,listener:(event:WorkerEvent)=>void):void}} WorkerScope
  * @typedef {{request:Request,waitUntil(work:Promise<unknown>):void,
- * respondWith(response:Promise<Response>):void}} WorkerEvent
+ * respondWith(response:Promise<Response>):void,data?:unknown,
+ * source?:{url?:string}|null,ports?:MessagePort[]}} WorkerEvent
  */
 
 const PAGE_TIMEOUT_MS = 3000;
@@ -242,6 +330,42 @@ async function media(request) {
   return rules.answerRange(response, range);
 }
 
+/** Cache the completed first visit, including the remote loading shell's document. @param {NonNullable<ReturnType<typeof rules.bootstrapPlan>>} plan */
+async function cacheBootstrap(plan) {
+  /** @type {{url:string,response:Response}[]} */
+  const documents = [];
+  for (const url of plan.pages) {
+    // bootstrapPlan restricts this to the sending client's page, with no credentials.
+    // fallow-ignore-next-line security-sink
+    const response = await fetch(url, { credentials: "omit" });
+    if (!response.ok) throw new Error("Page unavailable");
+    if (
+      new URL(url).searchParams.get("__od_page") === "1" &&
+      !rules.matchesBuildPage(
+        await response.clone().text(),
+        plan.base,
+        plan.commit,
+      )
+    ) throw new Error("Build changed during offline preparation");
+    documents.push({ url, response });
+  }
+  const commits = new Set();
+  await Promise.all(plan.files.map(async ({ url, commit }) => {
+    const cache = await caches.open(rules.buildCacheName(commit));
+    if (commit !== "local" && await cache.match(url)) return;
+    // bootstrapPlan allows only the sending build's static resource paths.
+    // fallow-ignore-next-line security-sink
+    const response = await fetch(url, { credentials: "omit" });
+    if (!keepable(response)) throw new Error("Build file unavailable");
+    await cache.put(url, response);
+    commits.add(commit);
+  }));
+  for (const commit of commits) await prune(commit);
+  // Publish pages only after the build they name is available offline.
+  const pages = await caches.open("od-pages");
+  for (const { url, response } of documents) await pages.put(url, response);
+}
+
 /** @param {WorkerScope} scope */
 function listen(scope) {
   const own = scope.location.origin;
@@ -250,6 +374,15 @@ function listen(scope) {
     "activate",
     (event) => event.waitUntil(scope.clients.claim()),
   );
+  scope.addEventListener("message", (event) => {
+    const plan = rules.bootstrapPlan(event.source?.url ?? "", event.data, own);
+    if (!plan) return;
+    const reply = (/** @type {boolean} */ ok) =>
+      event.ports?.[0]?.postMessage({ ok });
+    event.waitUntil(
+      cacheBootstrap(plan).then(() => reply(true), () => reply(false)),
+    );
+  });
   scope.addEventListener("fetch", (event) => {
     const request = event.request;
     if (request.method !== "GET") return;

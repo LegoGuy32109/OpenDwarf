@@ -52,6 +52,15 @@ string, a coordinate out of bounds or not a number, a tick that is not a safe
 integer, and a `seen` that is not a boolean. The host's own player hears through
 the same `soundsFor`, handed to `scene.hearSounds`.
 
+Pickup, place, and sell requests receive a separate success-only
+`{type:"action-result",attempt,action,x,y,z}` on the reliable channel. Both the
+simulation callback and fallback action handlers confirm only accepted actions.
+A queued result belongs to the attempt that submitted it, and cannot confirm on
+a replacement connection. `decodeActionResult` in `action-wire.js` validates the
+current attempt, supported action, and bounded integer coordinates. Sound tags
+come from the client's fixed action mapping. Protocol version 6 requires both
+pages to refresh together for this confirmation contract.
+
 ## Client
 
 `src/client/sound-events.js` (`ctx.sounds`):
@@ -62,12 +71,13 @@ the same `soundsFor`, handed to `scene.hearSounds`.
   presentation time from `scene.presentation.timeOfTick(tick)`, the same 150 ms
   behind as remote sprites. An event more than 500 ms (`LATE_MS`) after its time
   is dropped. With no clock yet, it plays at once.
-- Your own sounds play at once, without a position, and are logged `own`: steps
-  from your predicted motion (`ownSteps`, once per world tick in `loop.js`),
-  mining hits and the break from your own mining progress (`frame`, from
+- Your own sounds play without a position and are logged `own`: steps play from
+  your predicted motion (`ownSteps`, once per world tick in `loop.js`), mining
+  hits and the break from your own mining progress (`frame`, from
   `scene.mining`; a break plays when the progress reached 90% and the action
-  then ended), and place and pickup when you send the request (a guest), or when
-  the host's rule accepts it (the host's player).
+  then ended). Pickup, place, and sell play when the host accepts the action. A
+  guest waits for the validated success result, while the host's own player
+  plays at local acceptance. Refused actions make no action sound.
 - `frame` also calls `ctx.sfx.setListener` with the local entity's position
   every frame.
 

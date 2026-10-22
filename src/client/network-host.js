@@ -12,7 +12,6 @@ import {
   createPendingReveal,
   drainReveal,
   markAllPending,
-  revealChanges as addRevealedChanges,
   syncLoadedChunks,
 } from "../shared/reveal.js";
 import { itemSeen, seesFrom } from "../shared/reach.js";
@@ -46,6 +45,8 @@ import {
   ticket,
 } from "./network-common.js";
 import { hostMessages } from "./host-messages.js";
+import { revealPeerChanges } from "./network-reveal.js";
+import { createActionConfirmer } from "./action-confirmation.js";
 
 /** @typedef {import('./network-common.js').Scene} Scene */
 /** @typedef {import('./network-common.js').Signal} Signal */
@@ -288,6 +289,11 @@ export function startHost(scene, session, sounds = {}) {
           channel.send(JSON.stringify(message));
         }
       },
+      confirmAction: createActionConfirmer({
+        attempt: () => activeAttempt,
+        player: () => scene.world.players[playerId],
+        reply: (message) => hostPeer.reply(message),
+      }),
       channel: () => channel,
       resync() {
         resendTerrain();
@@ -353,11 +359,14 @@ export function startHost(scene, session, sounds = {}) {
         ].includes(String(message.type))
       ) {
         const before = scene.world.players[playerId]?.name ?? "";
+        const requestAttempt = activeAttempt;
         sounds.simulation.enqueue(
           playerId,
           message,
           (/** @type {Record<string,unknown>} */ result) => {
+            if (activeAttempt !== requestAttempt) return;
             if (!scene.world.players[playerId]) return;
+            hostPeer.confirmAction(message, result, requestAttempt);
             if (message.type === "nick") {
               if (result.ok && result.name !== before) {
                 announce(`${before || "A visitor"} is now ${result.name}`);
@@ -708,7 +717,7 @@ export function startHost(scene, session, sounds = {}) {
         !joined || channel?.readyState !== "open" ||
         !scene.world.players[playerId]
       ) return;
-      const revealed = addRevealedChanges({
+      const revealed = revealPeerChanges({
         mode,
         sight,
         remembered: rememberedTerrain,
@@ -716,8 +725,9 @@ export function startHost(scene, session, sounds = {}) {
         pending: pendingReveal,
       }, changes);
       if (!revealed) return;
-      // Sight may now pass through the tile; the next snapshot recomputes it.
-      if (mode === "entity") sight.sample = "";
+      // Geometry can change sight without moving the viewer to a new sample.
+      // Fence motion against the reliable mask produced by this invalidation.
+      if (mode === "entity") lastSight = "";
       publishToPeer();
     }
 

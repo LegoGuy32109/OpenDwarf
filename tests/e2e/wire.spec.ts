@@ -8,6 +8,7 @@ test("unordered motion waits for sight, rejects old attempts, and survives older
   await ready(host);
   const session = await readWorld(host, (__world) => __world.scene.sessionId);
   await openWorld(guest, `/join/${session}?harness=1`);
+  await ready(guest);
   await expect.poll(() =>
     readWorld(guest, (__world) => Boolean(__world.wireDebug()?.state))
   ).toBeTruthy();
@@ -128,6 +129,7 @@ test("an incompatible join ends with a refresh instruction", async ({ browser })
     server.onMessage((message) => socket.send(message));
   });
   await openWorld(guest, `/join/${session}?harness=1`);
+  await ready(guest);
   await expect.poll(() =>
     readWorld(
       guest,
@@ -152,6 +154,7 @@ test("reliable chat survives simulated motion loss and jitter", {
     guest,
     `/join/${session}?harness=1&loss=0.2&delay=50&jitter=60`,
   );
+  await ready(guest);
   await expect.poll(() =>
     readWorld(guest, (__world) => Boolean(__world.wireDebug()?.state))
   ).toBeTruthy();

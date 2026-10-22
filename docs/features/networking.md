@@ -19,9 +19,9 @@ position updates about every 100 ms while entities move. Both browsers present
 remote players about 150 ms behind the latest authoritative tick, interpolating
 between received positions (remote player and NPC sprites interpolate recent
 host positions). Full snapshots acknowledge that recipient's latest received
-input sequence, processed input, and correct meaningful local prediction errors;
-the joining tab predicts its own position. Meaningful corrections ease back
-toward the host position. The renderer does not queue old remote paths.
+input sequence and correct meaningful local prediction errors; the joining tab
+predicts its own position. Meaningful corrections ease back toward the host
+position. The renderer does not queue old remote paths.
 
 The reliable ordered `world` channel carries state, chat, and input. The
 unordered `motion` channel has `maxRetransmits: 0` and carries independent
@@ -43,6 +43,11 @@ sees writes it and publishes a state packet at once. The host drains the pending
 reveal when it builds the packet, not earlier, because the snapshot sender may
 coalesce publishes and drop one.
 
+A visible geometry change invalidates cached sight even when a snapshot already
+copied the changed material into memory. The next mask advances `sightRevision`
+even if the viewer stays on the same tile, fencing delayed motion from the old
+view.
+
 `reveal` maps a chunk key to a run-length chunk string (`chunk-wire.js`).
 Material 0 (`UNKNOWN`) means no change, so the guest copies only the other tiles
 into its own remembered terrain in `scene.world.chunks`. A packet holds at most
@@ -58,18 +63,19 @@ has loaded.
 ## Validation and versions
 
 The wire uses validated JSON and rejects incompatible versions with a refresh
-instruction. Protocol version 5 requires a matching join/offer version and
-carries configured shops, NPC flags, and fixed-world bounds. Complete snapshots
-are validated before scene mutation. Motion packets carry attempt, view, and
-sight revisions so delayed updates cannot restore an older view; motion is
-fenced by connection attempt, view revision, sight revision, and tick. The guest
-retains only the newest motion awaiting reliable sight. Older reliable state can
-refresh sight without rewinding newer remote positions. A reveal in such a state
-still applies, because the host drained it when it built the packet. Invalid
-motion is discarded. Malformed reliable state requests a full resync, and the
-host then sends the guest's whole remembered terrain again. Repeated recovery
-failure closes the connection with a refresh instruction. An incomplete join
-attempt expires after ten seconds, independently of player creation.
+instruction. Protocol version 6 requires a matching join/offer version and adds
+accepted action results to version 5's configured shops, NPC flags, and
+fixed-world bounds. Complete snapshots are validated before scene mutation.
+Motion packets carry attempt, view, and sight revisions so delayed updates
+cannot restore an older view; motion is fenced by connection attempt, view
+revision, sight revision, and tick. The guest retains only the newest motion
+awaiting reliable sight. Older reliable state can refresh sight without
+rewinding newer remote positions. A reveal in such a state still applies,
+because the host drained it when it built the packet. Invalid motion is
+discarded. Malformed reliable state requests a full resync, and the host then
+sends the guest's whole remembered terrain again. Repeated recovery failure
+closes the connection with a refresh instruction. An incomplete join attempt
+expires after ten seconds, independently of player creation.
 
 This is not rollback netcode. Input acknowledgments indicate the latest received
 direction, not completed movement. Input replay remains deferred. WebRTC uses
@@ -86,8 +92,52 @@ memory for a later rejoin while the host world remains open. Ping activity also
 expires a silent connection.
 
 A new attempt, a change of view mode, and a `resync` request make the guest
-start its copy over. The host then marks every tile it holds for that guest as
-pending, and they go out in batches of `MAX_REVEAL_CHUNKS`.
+receive every tile the host holds for that view again, in batches of
+`MAX_REVEAL_CHUNKS`. A new attempt or view mode clears the guest's terrain copy.
+A `resync` fills the existing copy. There is no terrain baseline identifier,
+terrain revision, or completion marker for a multi-packet resend. Recovery
+detects malformed state and motion waiting too long for sight, but cannot detect
+a well-formed packet that omits a required terrain reveal.
+
+## Wire format
+
+Both channels send JSON strings, capped at 256 KiB of UTF-8 before decoding. The
+join and offer carry `version`. State, motion, and chat carry `attempt`,
+`viewRevision`, and `sightRevision`. Revisions, ticks, and input sequences are
+nonnegative safe integers. Coordinates `x` and `y` retain JavaScript number
+precision without quantization. Player `z` is an integer level. Decoders bound
+coordinates and validate entity records before accepting a packet.
+
+A state holds `world` (tick, explicit player fields, configured shops, and
+optional fixed-world bounds), `reveal`, `visibility`, `mode`, `playerId`,
+`chat`, and `acknowledgedSequence`. Motion holds `tick`, explicit player
+records, and `acknowledgedSequence`. Chat has its own reliable packet with a
+tick and chat records. Control commands have separate schemas in
+`control-wire.js`.
+
+Each reveal chunk is a base64 string of byte pairs: material, then run length
+minus one (1–256 cells per run). Decoding must fill exactly 2,048 cells, ordered
+by `z`, local `y`, then local `x` (fastest). Material 0 means no change.
+Visibility uses `bitset-v2`: base64 bytes per chunk for levels -1 through 8,
+ordered by level, local `y`, then local `x`. Bit 0 is the least significant bit
+of each byte. These byte encodings have no multibyte endianness convention.
+Visibility sends the complete visible mask. Terrain supplies remembered tiles,
+so the wire does not send a separate memory mask.
+
+The wire types and validation live in `wire.js`, `wire-parse.js`,
+`chunk-wire.js`, `visibility-wire.js`, and `action-wire.js`. Base64 fields
+inside JSON do not constitute a binary transport. A matched binary format
+comparison remains deferred under the
+[protocol design](../multiplayer-protocol-design.md).
+
+Successful guest pickup, place, and sell actions receive
+`{type:"action-result",attempt,action,x,y,z}` on the reliable channel.
+Coordinates are integer tiles. Pickup and place identify the target, and sell
+identifies the seller's tile. The guest accepts only its current attempt and one
+of these three actions, then plays fixed local sound tags. Refused actions send
+only the existing refusal notice. A simulation result from an earlier attempt
+cannot confirm an action on its replacement connection. See
+[sound events](sound-events.md).
 
 ## Diagnostics
 
@@ -106,7 +156,11 @@ for those device measurements.
 - Joining players receive filtered state snapshots in `/entity` and can see
   brief corrections when the host rejects a predicted move. There is no clock
   synchronization, input replay, or authoritative server.
-- Offline caching is deferred. A visitor needs the website to load the game.
+- After a cached visit, a visitor can load a single-player world offline. See
+  [offline play](offline.md) for service-worker caching and connection limits.
+- Visibility deltas and terrain baseline revisions remain deferred. Current
+  terrain reveals already send recipient-specific changed tiles. Motion packets
+  remain independent entity records.
 
 ## Background tab
 

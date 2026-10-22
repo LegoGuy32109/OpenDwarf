@@ -74,3 +74,14 @@ chunk meshes a second. The e2e check `tests/e2e/mesh-cache.spec.ts` covers
 mining, placing and a `viewZ` change in master view, and
 `tests/client/terrain_mesh_test.ts` covers the invalidation rules. A screenshot
 of the same master view is byte-identical before and after.
+
+## Potential improvements
+
+Spreading mesh builds across frames could reduce the spikes when new terrain
+appears. No build budget or scheduling policy is approved or implemented. The
+mesh cache acceptance target (#110) covers panning without terrain changes, so
+the reported median does not promise that every frame stays below 2 ms.
+
+A fresh GPU comparison could measure the current mesh path alongside the
+software WebGL results above. It is a possible follow-up measurement, not a
+completed check or an additional acceptance requirement of map #106.
