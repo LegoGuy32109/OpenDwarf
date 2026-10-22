@@ -37,7 +37,7 @@ function fakeContext() {
     ui: { logOpen: false, logScroll: 0 },
     nav: createMenuNav(),
     bag: createInventoryPanel({ onHold: () => {}, onOpenChange: () => {} }),
-    shop: createShopPanel({ sell: () => {}, talk: () => {}, flash: () => {} }),
+    shop: createShopPanel({ talk: () => {}, flash: () => {} }),
     pickupGrid: createPickupGrid(),
     chatter: { level: "all" },
     music: { level: "50" },
@@ -255,7 +255,6 @@ Deno.test("the trader conversation sits above the item list, and Back restores i
   const talked: string[][] = [];
   const ctx = fakeContext();
   ctx.shop = createShopPanel({
-    sell: () => {},
     talk: (npc, choice) => talked.push([npc, choice]),
     flash: () => {},
   });
@@ -287,7 +286,6 @@ Deno.test("opening the conversation raises the thought icon through onOpenChange
   const changes: boolean[] = [];
   let open = false;
   const shop = createShopPanel({
-    sell: () => {},
     talk: () => {},
     flash: () => {},
     onOpenChange: () => changes.push(open = shop.isOpen()),
@@ -297,4 +295,37 @@ Deno.test("opening the conversation raises the thought icon through onOpenChange
   shop.back();
   assertEquals(changes, [true, false]);
   assertEquals(open, false);
+});
+
+Deno.test("item list rows speak a sale request to the NPC, and Back shows the restored choice", () => {
+  const talked: unknown[][] = [];
+  const shop = createShopPanel({
+    talk: (...args) => talked.push(args),
+    flash: () => {},
+  });
+  shop.update([
+    { kind: "pickaxe", count: 1 },
+    { kind: "coal", count: 3 },
+    { kind: "lapis", count: 2 },
+  ]);
+  shop.fit(1);
+  shop.open(0, { id: "npc-ulgar", name: "Ulgar" });
+  shop.confirm();
+  // The first row is "Sell all ore".
+  shop.confirm();
+  shop.move(1);
+  shop.confirm();
+  assertEquals(talked.slice(1), [
+    ["npc-ulgar", "sale", { all: true }],
+    ["npc-ulgar", "sale", { kind: "coal" }],
+  ]);
+  // The list scrolled; Back reveals the selected choice again.
+  shop.move(1);
+  assertEquals(shop.scroll > 0, true);
+  shop.back();
+  assertEquals([shop.level, shop.selected, shop.scroll], [
+    "conversation",
+    "talk:sell",
+    0,
+  ]);
 });

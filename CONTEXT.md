@@ -75,6 +75,10 @@ ask a question or request an action. Highlighting a choice is silent.
 **NPC reply queue**: An NPC's confirmed requests from players, answered one at a
 time in order. A player has at most one unanswered request with each NPC.
 
+**Spoken sale**: A sale made by saying "Sell all [ore]" or "Sell all ore" to a
+trader. It is a request: the host sells at once, and the NPC's reply describes
+the actual result.
+
 **Thought icon**: The small animated icon at the upper left of an entity's head
 while its player types, while an NPC prepares a reply, or while its speech queue
 holds a message. _Avoid_: Typing bubble, for the new icon
@@ -238,9 +242,9 @@ latest authoritative position. It does not change world state. _Avoid_:
 Presentation buffer
 
 **Shopkeeper**: Ulgar, the NPC against the north wall of the spawn room, with
-the trader role. It buys ore for coins at fixed prices and sells nothing yet. It
-blocks movement; interact on its tile from a neighboring tile opens the shop
-panel.
+the trader role. It buys ore for coins at fixed prices by spoken sale and sells
+nothing yet. It blocks movement; interact on its tile from a neighboring tile
+opens the shop panel.
 
 **Trader**: An NPC role that adds the shop conversation to an NPC. It does not
 make a second kind of entity.

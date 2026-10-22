@@ -1,7 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
 import type { Context } from "../../src/client/context.js";
 import { interact } from "../../src/client/interact.js";
-import { sellRequest } from "../../src/client/client-actions.js";
+import { talkRequest } from "../../src/client/client-actions.js";
+import { createShopPanel } from "../../src/client/shop-panel.js";
+import { updateShopReach } from "../../src/client/panels.js";
 import { createPickupGrid } from "../../src/client/pickup-grid.js";
 import {
   addStack,
@@ -345,17 +347,24 @@ Deno.test("interact sends guest mining, cancellation, placing, and single pickup
   assertEquals(f.sounds, [], "guest requests wait for accepted host results");
 });
 
-Deno.test("a guest sale request is silent until the host confirms it", () => {
+Deno.test("a guest spoken sale is silent until the host confirms it", () => {
   const f = fixture(true);
   const played: string[][] = [];
-  sellRequest(
+  talkRequest(
     {
       ...f.ctx,
       sfx: { play: (tags: string[]) => played.push(tags) },
     } as unknown as Context,
-    { kind: "coal", count: 1 },
+    "npc-ulgar",
+    "sale",
+    { kind: "coal" },
   );
-  assertEquals(f.messages, [{ type: "sell", kind: "coal", count: 1 }]);
+  assertEquals(f.messages, [{
+    type: "talk",
+    npc: "npc-ulgar",
+    choice: "sale",
+    sale: { kind: "coal" },
+  }]);
   assertEquals(played, []);
   assertEquals(f.sounds, []);
 });
@@ -427,4 +436,21 @@ Deno.test("interact reports master view and an invalid view level without acting
   f.act();
   assertEquals(f.scene.notice?.text, "Nothing to mine there");
   assertEquals(f.messages, []);
+});
+
+Deno.test("the shop closes when the player leaves reach of the NPC it talks to, not any trader", () => {
+  const f = fixture();
+  const other = addTrader(f.world, { x: 9, y: 9, z: 1 }, "npc-other");
+  const shop = createShopPanel({ talk: () => {}, flash: () => {} });
+  const ctx = {
+    scene: { world: f.world, localId: f.player.id },
+    shop,
+  } as unknown as Context;
+  shop.open(0, { id: "npc-ulgar", name: "Ulgar" });
+  // Beside another trader but far from Ulgar: the conversation ends.
+  f.player.x = other.x;
+  f.player.y = other.y + 1;
+  f.player.z = other.z;
+  updateShopReach(ctx);
+  assertEquals(shop.isOpen(), false);
 });

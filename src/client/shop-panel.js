@@ -1,12 +1,12 @@
 // @ts-check
 
 import { rowRequest, shopRows } from "../shared/shop.js";
-import { TRADER_CHOICES } from "../shared/npc-conversation.js";
+import { SALE_CHOICE, TRADER_CHOICES } from "../shared/npc-conversation.js";
 import { createStickStepper } from "./stick-step.js";
 
 /** @typedef {import('../shared/items.js').Stack} Stack */
 /** @typedef {import('../shared/shop.js').ShopRow} ShopRow */
-/** @typedef {import('../shared/shop.js').SaleRequest} SaleRequest */
+/** @typedef {import('../shared/shop.js').SpokenSale} SpokenSale */
 
 /** Milliseconds before a held direction moves the selection again. */
 const REPEAT_FIRST_MS = 350;
@@ -17,19 +17,22 @@ const REPEAT_MS = 150;
  * inside it. The conversation lists the lines the player can say; confirming
  * one asks the host to speak it (`talk`), and "I have ore to trade" also opens
  * the item list. Back from the list returns to the conversation with its
- * selection kept. The item list holds sellable stacks with unit price and count, and a
- * "Sell all ore" row. Stacks the shopkeeper does not buy show dimmed and the
- * selection skips them. IJKL, the look stick, or the D-pad move the selection
- * through `steer`; interact confirms through `confirm`; a tap on a row sells
- * it. The panel only asks: the world host decides every sale. The UI layer
+ * selection kept. Opening the item list is navigation, not a host decision: it
+ * needs no answer to `talk`, because the host checks every sale, and a refusal
+ * (such as an unanswered request) flashes its reason while the list stays open.
+ * The item list holds a "Sell all ore" row and one "Sell all [ore]" row per
+ * stack, each with its count and total in coins. Stacks the shopkeeper does not
+ * buy show dimmed and the selection skips them. IJKL, the look stick, or the
+ * D-pad move the selection through `steer`; interact confirms through
+ * `confirm`; a tap on a row sells it by speaking the request to the NPC (the
+ * `sale` choice). The panel only asks: the world host decides every sale. The UI layer
  * (`ui.js`) lays the rows out and draws them.
  * @param {object} options
- * @param {(request:SaleRequest)=>void} options.sell asks the world host for a sale
- * @param {(npcId:string,choice:string)=>void} options.talk asks the world host to speak a line
+ * @param {(npcId:string,choice:string,sale?:SpokenSale)=>void} options.talk asks the world host to speak a line, or to sell by speaking one
  * @param {(text:string)=>void} options.flash
  * @param {()=>void} [options.onOpenChange] called when the panel opens or closes
  */
-export function createShopPanel({ sell, talk, flash, onOpenChange }) {
+export function createShopPanel({ talk, flash, onOpenChange }) {
   /** @type {"conversation"|"items"} */
   let level = "conversation";
   /** The NPC the conversation is with. @type {{id:string,name:string}|null} */
@@ -117,7 +120,7 @@ export function createShopPanel({ sell, talk, flash, onOpenChange }) {
       flash("Nothing to sell");
       return;
     }
-    sell(rowRequest(row));
+    if (npc) talk(npc.id, SALE_CHOICE, rowRequest(row));
   }
 
   return {
@@ -146,6 +149,7 @@ export function createShopPanel({ sell, talk, flash, onOpenChange }) {
     back() {
       if (level === "items") {
         level = "conversation";
+        scroll = 0;
         reveal();
       } else close();
     },

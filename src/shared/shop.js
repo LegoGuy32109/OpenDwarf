@@ -57,7 +57,7 @@ export function traderAt(world, tile) {
 }
 
 /** Whether a trader stands on `player`'s tile or a neighboring one on the same level. @param {World} world @param {Player} player */
-export function nearTrader(world, player) {
+function nearTrader(world, player) {
   return Object.values(world.players).some((entity) =>
     isTrader(entity) && inPickupReach(player, tileOf(entity))
   );
@@ -89,7 +89,7 @@ export function coinsIn(stacks) {
 }
 
 /** @param {number} count */
-function coinsText(count) {
+export function coinsText(count) {
   return `${count} coin${count === 1 ? "" : "s"}`;
 }
 
@@ -109,10 +109,6 @@ export function saleLine(sold, coins) {
   }`;
 }
 
-/**
- * @typedef {{kind:string,count:number}|{all:true}} SaleRequest
- * A sale of `count` items of one kind, or of every sellable item.
- */
 /**
  * @typedef {{ok:true,sold:{kind:string,count:number}[],coins:number,line:string}|{ok:false,reason:string}} SaleResult
  */
@@ -181,7 +177,7 @@ export function sellItems(world, playerId, request) {
 
 /**
  * A row of the shop panel: a stack with its unit price, or the sell all row.
- * @typedef {{type:"all",coins:number,count:number,enabled:boolean}|{type:"stack",kind:string,count:number,price:number,enabled:boolean}} ShopRow
+ * @typedef {{type:"all",coins:number,count:number,enabled:boolean}|{type:"stack",kind:string,count:number,price:number,coins:number,enabled:boolean}} ShopRow
  */
 
 /**
@@ -207,14 +203,18 @@ export function shopRows(stacks) {
       kind: stack.kind,
       count: stack.count,
       price: priceOf(stack.kind),
+      coins: stack.count * priceOf(stack.kind),
       enabled: isSellable(stack.kind),
     })),
   ];
 }
 
-/** The sale request a row makes. @param {ShopRow} row @returns {SaleRequest} */
+/**
+ * @typedef {{kind:string}|{all:true}} SpokenSale
+ * What a conversation asks Ulgar to buy: every item of one kind, or all ore.
+ */
+
+/** The spoken sale a row makes: "Sell all <ore>" or "Sell all ore". @param {ShopRow} row @returns {SpokenSale} */
 export function rowRequest(row) {
-  return row.type === "all"
-    ? { all: true }
-    : { kind: row.kind, count: row.count };
+  return row.type === "all" ? { all: true } : { kind: row.kind };
 }

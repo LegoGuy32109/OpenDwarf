@@ -3,7 +3,6 @@
 
 import { setTyping } from "../shared/world.js";
 import { setHeldItem } from "../shared/held-item.js";
-import { sellItems } from "../shared/shop.js";
 /** @typedef {import("./client-context.js").Context} Context */
 
 /** @param {Context} ctx @param {string} text */
@@ -61,51 +60,25 @@ export function holdItem(ctx, kind) {
 }
 
 /**
- * Ask for a sale. A guest sends the request and the world host checks it; the
- * host's own player goes through the same `sellItems` check.
- * @param {Context} ctx
- * @param {import('../shared/shop.js').SaleRequest} request
- */
-export function sellRequest(ctx, request) {
-  const { scene } = ctx;
-  if (ctx.isAdmin) {
-    ctx.guest?.send({ type: "sell", ...request });
-    return;
-  }
-  if (ctx.simulation) {
-    ctx.simulation.enqueue(
-      scene.localId,
-      { type: "sell", ...request },
-      (result) => {
-        if (result.ok) {
-          scene.systemLine(String(result.line));
-          ctx.sfx.play(["sell"]);
-        } else flash(ctx, `Cannot sell: ${result.reason}`);
-      },
-    );
-    return;
-  }
-  const result = sellItems(scene.world, scene.localId, request);
-  if (result.ok) {
-    scene.systemLine(result.line);
-    ctx.sfx.play(["sell"]);
-  } else flash(ctx, `Cannot sell: ${result.reason}`);
-}
-
-/**
  * Ask an NPC to be spoken to: the world host speaks the player's line and
  * queues the NPC's reply. The host checks the NPC, the range, and that no
- * earlier request still waits.
+ * earlier request still waits. A sale choice names the ore to sell; the host
+ * sells at once, and an accepted sale returns the seller's private line.
  * @param {Context} ctx @param {string} npc @param {string} choice
+ * @param {import('../shared/shop.js').SpokenSale} [sale]
  */
-export function talkRequest(ctx, npc, choice) {
+export function talkRequest(ctx, npc, choice, sale) {
   const { scene } = ctx;
-  const message = { type: "talk", npc, choice };
+  const message = { type: "talk", npc, choice, ...(sale ? { sale } : {}) };
   if (ctx.isAdmin) {
     ctx.guest?.send(message);
     return;
   }
   ctx.simulation?.enqueue(scene.localId, message, (result) => {
     if (!result.ok) flash(ctx, String(result.reason));
+    else if (typeof result.line === "string") {
+      scene.systemLine(result.line);
+      ctx.sfx.play(["sell"]);
+    }
   });
 }

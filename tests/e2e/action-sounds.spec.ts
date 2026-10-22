@@ -80,10 +80,16 @@ test("guest action sounds follow host acceptance exactly once, and refusals stay
   const id = await readWorld(guest, (world) => world.scene.localId);
   const place = { type: "place", x: 6, y: 4, z: 1 };
   const pickup = { type: "pickup", x: 5, y: 5, z: 1, kind: "coal" };
-  const sell = { type: "sell", kind: "coal", count: 1 };
+  const sell = {
+    type: "talk",
+    npc: "shop",
+    choice: "sale",
+    sale: { kind: "coal" },
+  };
+  const sellStone = { ...sell, sale: { kind: "stone" } };
   await refuse(guest, place, "stone");
   await refuse(guest, pickup, "nothing");
-  await refuse(guest, sell, "do not have");
+  await refuse(guest, sellStone, "does not buy");
   expect(await actionSounds(guest)).toEqual([]);
 
   await giveItems(host, "stone", 2, id);
@@ -112,7 +118,8 @@ test("guest action sounds follow host acceptance exactly once, and refusals stay
   expect(await send(guest, sell)).toBe(true);
   await expect.poll(() => inventory(guest, "coin")).toBe(1);
   await expect.poll(() => inventory(guest, "coal")).toBe(0);
-  await refuse(guest, sell, "do not have");
+  // Ulgar's answer to the sale is still owed, so a second request is refused.
+  await refuse(guest, sell, "still owes you an answer");
   // Allow reliable sound delivery and prove there is no duplicate remote echo.
   await waitTicks(guest, 20);
   expect(await actionSounds(guest)).toEqual([

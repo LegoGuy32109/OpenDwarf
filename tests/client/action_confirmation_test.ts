@@ -8,10 +8,9 @@ import { hostMessages } from "../../src/client/host-messages.js";
 import type { HostPeer } from "../../src/client/host-messages.js";
 import { addStack, dropItem, inventoryOf } from "../../src/shared/items.js";
 import { setHeldItem } from "../../src/shared/held-item.js";
-import { sellItems } from "../../src/shared/shop.js";
 import { ensureChunk, OPEN, STONE } from "../../src/shared/terrain.js";
 
-Deno.test("only accepted pickup/place/sell actions confirm, using the action or seller tile", () => {
+Deno.test("only accepted pickup and place actions confirm, using the action tile", () => {
   const world = createFixtureWorld();
   const player = addPlayer(world, "guest", { x: 3.2, y: 4.8, z: 1 });
   const sent: ActionResult[] = [];
@@ -20,7 +19,7 @@ Deno.test("only accepted pickup/place/sell actions confirm, using the action or 
     player: () => player,
     reply: (packet) => sent.push(packet),
   });
-  for (const action of ["pickup", "place", "sell"]) {
+  for (const action of ["pickup", "place"]) {
     const message = { type: action, x: 6, y: 7, z: 2 };
     confirm(message, { ok: false, reason: "refused" });
     confirm(message, { ok: "true" });
@@ -43,17 +42,9 @@ Deno.test("only accepted pickup/place/sell actions confirm, using the action or 
       y: 7,
       z: 2,
     },
-    {
-      type: "action-result",
-      attempt: "current",
-      action: "sell",
-      x: 3,
-      y: 5,
-      z: 1,
-    },
   ]);
   confirm({ type: "mine", x: 6, y: 7, z: 2 }, { ok: true });
-  assertEquals(sent.length, 3);
+  assertEquals(sent.length, 2);
 });
 
 Deno.test("a pending simulation result cannot confirm to a replacement connection", () => {
@@ -99,7 +90,6 @@ Deno.test("fallback host handlers confirm each accepted action once and report r
     playerId: "guest",
     sees: () => () => true,
     tell: (_id: string, text: string) => lines.push(text),
-    sellAt: (id: string, request: unknown) => sellItems(world, id, request),
     reply,
     confirmAction: createActionConfirmer({
       attempt: () => "current",
@@ -109,9 +99,8 @@ Deno.test("fallback host handlers confirm each accepted action once and report r
   } as unknown as HostPeer;
   const place = { type: "place", x: 6, y: 5, z: 1 };
   const pickup = { type: "pickup", x: 5, y: 6, z: 1, kind: "coal" };
-  const sell = { type: "sell", kind: "coal", count: 1 };
   dropItem(world, pickup, "coal", 1);
-  for (const message of [place, pickup, sell]) {
+  for (const message of [place, pickup]) {
     const handler = hostMessages.get(message.type)!;
     handler(peer, message);
     handler(peer, message);
@@ -120,13 +109,40 @@ Deno.test("fallback host handlers confirm each accepted action once and report r
     replies.filter((packet) => packet.type === "action-result").map((packet) =>
       packet.action
     ),
-    ["place", "pickup", "sell"],
+    ["place", "pickup"],
   );
   assertEquals(
     replies.filter((packet) => packet.type !== "action-result").map((packet) =>
       packet.type
     ),
-    ["place-result", "pickup-result", "sell-result"],
+    ["place-result", "pickup-result"],
   );
-  assertEquals(lines.length, 2);
+  assertEquals(lines.length, 1);
+});
+
+Deno.test("a spoken sale confirms as a sale only when the host accepted it", () => {
+  const world = createFixtureWorld();
+  const player = addPlayer(world, "guest", { x: 3.2, y: 4.8, z: 1 });
+  const sent: ActionResult[] = [];
+  const confirm = createActionConfirmer({
+    attempt: () => "current",
+    player: () => player,
+    reply: (packet) => sent.push(packet),
+  });
+  const message = { type: "talk", npc: "npc-ulgar", choice: "sale" };
+  // A refused request, a refused outcome (nothing to sell), and a spoken
+  // question carry no sale line, so none confirms.
+  confirm(message, { ok: false, reason: "too far to talk" });
+  confirm(message, { ok: true });
+  confirm({ ...message, choice: "buys" }, { ok: true });
+  assertEquals(sent, []);
+  confirm(message, { ok: true, line: "Sold coal ×3 for 3 coins" });
+  assertEquals(sent, [{
+    type: "action-result",
+    attempt: "current",
+    action: "sell",
+    x: 3,
+    y: 5,
+    z: 1,
+  }]);
 });

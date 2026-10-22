@@ -238,25 +238,13 @@ Deno.test("shop rows dim what the shopkeeper does not buy", () => {
   ]);
   assertEquals(rows[0], { type: "all", count: 5, coins: 11, enabled: true });
   assertEquals(rowRequest(rows[0]), { all: true });
-  assertEquals(rowRequest(rows[3]), { kind: "coal", count: 3 });
+  assertEquals(rowRequest(rows[3]), { kind: "coal" });
   assertEquals(shopRows([{ kind: PICKAXE, count: 1 }])[0].enabled, false);
 });
 
-Deno.test("the wire accepts a sell request and rejects malformed ones", () => {
-  assert(decodeControl({ type: "sell", kind: "coal", count: 3 }));
-  assert(decodeControl({ type: "sell", all: true }));
-  for (
-    const value of [
-      { type: "sell" },
-      { type: "sell", kind: "coal" },
-      { type: "sell", kind: "coal", count: 0 },
-      { type: "sell", kind: "coal", count: 1.5 },
-      { type: "sell", kind: "coal", count: 99999 },
-      { type: "sell", kind: 4, count: 1 },
-      { type: "sell", kind: "x".repeat(40), count: 1 },
-      { type: "sell", all: "yes" },
-    ]
-  ) assertEquals(decodeControl(value), null, JSON.stringify(value));
+Deno.test("the wire has no bare sell message: a sale is a spoken request", () => {
+  assertEquals(decodeControl({ type: "sell", kind: "coal", count: 3 }), null);
+  assertEquals(decodeControl({ type: "sell", all: true }), null);
 });
 
 Deno.test("selling the last of the held kind makes the pickaxe held again", () => {

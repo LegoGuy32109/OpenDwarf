@@ -20,7 +20,6 @@ import { setNickname, setTyping, submitMessage } from "../shared/world.js";
  *   sees: () => (tile:{x:number,y:number,z:number}) => boolean,
  *   tell: (id:string, text:string) => void,
  *   announce: (text:string, exceptId?:string) => void,
- *   sellAt: (id:string, request:unknown) => {ok:true,line:string}|{ok:false,reason:string},
  *   reply: (message:Record<string,unknown>) => void,
  *   confirmAction: (message:Record<string,unknown>,result:Record<string,unknown>,requestAttempt?:string) => void,
  *   channel: () => RTCDataChannel|null,
@@ -113,13 +112,6 @@ export const hostMessages = new Map([
     if (result.ok) {
       peer.tell(peer.playerId, pickupLine(result.kind, result.count));
     } else peer.reply({ type: "pickup-result", reason: result.reason });
-    return true;
-  }],
-  ["sell", (peer, message) => {
-    const result = peer.sellAt(peer.playerId, message);
-    peer.confirmAction(message, result);
-    if (result.ok) peer.tell(peer.playerId, result.line);
-    else peer.reply({ type: "sell-result", reason: result.reason });
     return true;
   }],
   ["move", (peer, message) => {

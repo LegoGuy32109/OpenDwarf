@@ -1,6 +1,14 @@
 // @ts-check
 
-import { isTrader, reachesTrader } from "./shop.js";
+import { inventoryOf, itemInfo, MAX_STACK_COUNT } from "./items.js";
+import {
+  coinsText,
+  isSellable,
+  isTrader,
+  priceOf,
+  reachesTrader,
+  sellItems,
+} from "./shop.js";
 import { speechDurationMs, syllableCount, voiceFromId } from "./speech.js";
 import { bubbleStart, submitMessage, TICK_MS } from "./world.js";
 
@@ -14,6 +22,7 @@ import { bubbleStart, submitMessage, TICK_MS } from "./world.js";
 
 /** @typedef {import('./world.js').World} World */
 /** @typedef {import('./world.js').Player} Player */
+/** @typedef {import('./shop.js').SaleResult} SaleResult */
 /** @typedef {{id:string,line:string,replies?:readonly string[]}} Choice */
 
 /** The silent context a trader's menu shows. */
@@ -32,6 +41,69 @@ export const TRADER_CHOICES = Object.freeze([
   { id: "buys", line: "What do you buy?", replies: BUY_REPLIES },
 ]);
 
+/** The choice id of a spoken sale. It carries a `sale` request: one ore kind or all ore. */
+export const SALE_CHOICE = "sale";
+
+/**
+ * @typedef {{name:string,count:number,coins:number}} SaleFacts
+ * The real numbers of a sale: the item name (a per-kind sale), the item count,
+ * and the coins paid, or owed when the coin stack is full.
+ */
+/** Item names that take an s in the plural. */
+const COUNTABLE = new Set(["emerald", "diamond"]);
+/** "3 coal", "1 diamond", "2 diamonds". @param {number} count @param {string} name */
+const items = (count, name) =>
+  `${count} ${name}${count !== 1 && COUNTABLE.has(name) ? "s" : ""}`;
+/** @param {number} count */
+const pieces = (count) => `${count} piece${count === 1 ? "" : "s"}`;
+
+/**
+ * The authored answers to a spoken sale, three per outcome. Each is a function
+ * of the sale's real numbers and reads after "<name>, " like `BUY_REPLIES`.
+ * `kind` and `all` are accepted sales, `nothing` is a request with nothing to
+ * sell, and `full` is a sale refused because the coin stack is full.
+ * @type {Readonly<Record<"kind"|"all"|"nothing"|"full",readonly ((facts:SaleFacts)=>string)[]>>}
+ */
+export const SALE_REPLIES = Object.freeze({
+  kind: [
+    ({ name, count, coins }) =>
+      `${items(count, name)}? Here's ${coinsText(coins)}.`,
+    ({ name, count, coins }) =>
+      `that's ${items(count, name)} for ${coinsText(coins)}. Fair trade.`,
+    ({ name, count, coins }) =>
+      `I'll take the lot, ${items(count, name)}. ${
+        coinsText(coins)
+      }, counted out.`,
+  ],
+  all: [
+    ({ count, coins }) =>
+      `${pieces(count)} of ore? Here's ${coinsText(coins)}.`,
+    ({ count, coins }) =>
+      `that's the lot, ${pieces(count)} for ${coinsText(coins)}.`,
+    ({ count, coins }) =>
+      `I'll take all of it, ${pieces(count)}. ${coinsText(coins)} for you.`,
+  ],
+  nothing: [
+    () => "you have none of that to sell me.",
+    () => "no ore of that sort in your pack. Come back with some.",
+    () => "no ore, no coin. Mine something first.",
+  ],
+  full: [
+    ({ coins }) =>
+      `I owe you ${
+        coinsText(coins)
+      }, but you cannot carry more than ${MAX_STACK_COUNT} coins.`,
+    ({ coins }) =>
+      `${
+        coinsText(coins)
+      } is more coin than your purse holds. Spend some first.`,
+    ({ coins }) =>
+      `your purse is full. I cannot pay you ${
+        coinsText(coins)
+      } until you spend some.`,
+  ],
+});
+
 /** The NPC's thinking time bounds, in milliseconds. */
 export const THINK_MIN_MS = 1000;
 export const THINK_MAX_MS = 3000;
@@ -43,7 +115,7 @@ export function traderChoice(id) {
   return TRADER_CHOICES.find((choice) => choice.id === id);
 }
 
-/** Pick one of a choice's authored replies. The host calls this once, so every listener hears the same line. @param {readonly string[]} replies @param {()=>number} random */
+/** Pick one of a choice's authored replies. The host calls this once, so every listener hears the same line. @template T @param {readonly T[]} replies @param {()=>number} random @returns {T} */
 export function pickReply(replies, random) {
   return replies[
     Math.min(replies.length - 1, Math.floor(random() * replies.length))
@@ -95,52 +167,134 @@ export function createConversations(world, random = Math.random) {
     return queue;
   };
 
+  /**
+   * The player and trader a request is for, or the reason it is refused. The
+   * host checks the player, the NPC, and the range.
+   * @param {string} playerId @param {unknown} npcId
+   * @returns {{player:Player,npc:Player}|{ok:false,reason:string}}
+   */
+  function parties(playerId, npcId) {
+    const player = world.players[playerId];
+    if (!player) return { ok: false, reason: "unknown player" };
+    const npc = typeof npcId === "string" && Object.hasOwn(world.players, npcId)
+      ? world.players[npcId]
+      : undefined;
+    if (!npc || !isTrader(npc)) {
+      return { ok: false, reason: "nobody to talk to" };
+    }
+    if (!reachesTrader(world, player, npc.id)) {
+      return { ok: false, reason: "too far to talk" };
+    }
+    return { player, npc };
+  }
+
+  /** The refusal for a player whose earlier request still waits for this NPC, or null. @param {Player} player @param {Player} npc */
+  function owedAnswer(player, npc) {
+    if (!queueOf(npc.id).some((item) => item.playerId === player.id)) {
+      return null;
+    }
+    return {
+      ok: /** @type {const} */ (false),
+      reason: `${npc.name || "The trader"} still owes you an answer`,
+    };
+  }
+
+  /**
+   * Speak the player's line, keeping the thought icon the open menu raised. A
+   * refusal changes nothing.
+   * @param {Player} player @param {string} line
+   */
+  function speak(player, line) {
+    const typing = player.typing;
+    const spoken = submitMessage(world, player.id, line);
+    player.typing = typing;
+    return spoken;
+  }
+
+  /** Queue the NPC's reply to the player's spoken line. @param {Player} player @param {Player} npc @param {string} reply */
+  function queueReply(player, npc, reply) {
+    queueOf(npc.id).push({
+      playerId: player.id,
+      name: player.name || "Traveler",
+      reply,
+      lineEnd: speechEnd(player),
+      speakAt: null,
+    });
+  }
+
+  /**
+   * A confirmed sale: the player says "Sell all <ore>", the host sells at
+   * once with the existing sale rule, and the NPC's reply describes the actual
+   * result. A request that names no sellable kind is refused before anything is
+   * spoken. A sale that finds nothing to sell, or no room for the coins, is
+   * spoken and answered, and changes nothing.
+   * @param {Player} player @param {Player} npc @param {unknown} sale
+   * @returns {{ok:true,line?:string}|{ok:false,reason:string}}
+   */
+  function sellByTalk(player, npc, sale) {
+    const asked = /** @type {{all?:unknown,kind?:unknown}} */ (sale ?? {});
+    const kind = typeof asked.kind === "string" ? asked.kind : "";
+    const all = asked.all === true;
+    if (!all && !isSellable(kind)) {
+      return { ok: false, reason: "the trader does not buy that" };
+    }
+    const owed = owedAnswer(player, npc);
+    if (owed) return owed;
+    const name = all ? "ore" : itemInfo(kind)?.name ?? kind;
+    if (!speak(player, `Sell all ${name}`)) {
+      return { ok: false, reason: "you are talking too much" };
+    }
+    const lots = inventoryOf(player).filter((stack) =>
+      isSellable(stack.kind) && (all || stack.kind === kind)
+    );
+    const facts = {
+      name,
+      count: lots.reduce((sum, lot) => sum + lot.count, 0),
+      coins: lots.reduce((sum, lot) => sum + lot.count * priceOf(lot.kind), 0),
+    };
+    /** @type {SaleResult} */
+    const result = lots.length
+      ? sellItems(
+        world,
+        player.id,
+        all ? { all: true } : { kind, count: facts.count },
+      )
+      : { ok: false, reason: "nothing to sell" };
+    const outcome = result.ok
+      ? all ? "all" : "kind"
+      : result.reason === "too many coins"
+      ? "full"
+      : "nothing";
+    queueReply(player, npc, pickReply(SALE_REPLIES[outcome], random)(facts));
+    return result.ok ? { ok: true, line: result.line } : { ok: true };
+  }
+
   return {
     /**
      * A player confirms a choice. The host checks the player, the NPC, the
      * range, and that no earlier request of the player's waits for this NPC.
-     * @param {string} playerId @param {unknown} npcId @param {unknown} choiceId
-     * @returns {{ok:true}|{ok:false,reason:string}}
+     * A `sale` choice carries the ore to sell.
+     * @param {string} playerId @param {unknown} npcId @param {unknown} choiceId @param {unknown} [sale]
+     * @returns {{ok:true,line?:string}|{ok:false,reason:string}}
      */
-    ask(playerId, npcId, choiceId) {
-      const player = world.players[playerId];
-      if (!player) return { ok: false, reason: "unknown player" };
-      const npc =
-        typeof npcId === "string" && Object.hasOwn(world.players, npcId)
-          ? world.players[npcId]
-          : undefined;
-      if (!npc || !isTrader(npc)) {
-        return { ok: false, reason: "nobody to talk to" };
-      }
-      if (!reachesTrader(world, player, npc.id)) {
-        return { ok: false, reason: "too far to talk" };
-      }
+    ask(playerId, npcId, choiceId, sale) {
+      const found = parties(playerId, npcId);
+      if ("ok" in found) return found;
+      const { player, npc } = found;
+      if (choiceId === SALE_CHOICE) return sellByTalk(player, npc, sale);
       const choice = typeof choiceId === "string"
         ? traderChoice(choiceId)
         : undefined;
       if (!choice) return { ok: false, reason: "unknown choice" };
-      const queue = queueOf(npc.id);
-      if (choice.replies && queue.some((item) => item.playerId === playerId)) {
-        return {
-          ok: false,
-          reason: `${npc.name || "The trader"} still owes you an answer`,
-        };
+      if (choice.replies) {
+        const owed = owedAnswer(player, npc);
+        if (owed) return owed;
       }
-      // The thought icon the menu raised stays up while the menu is open.
-      const typing = player.typing;
-      if (!submitMessage(world, playerId, choice.line)) {
-        player.typing = typing;
+      if (!speak(player, choice.line)) {
         return { ok: false, reason: "you are talking too much" };
       }
-      player.typing = typing;
       if (choice.replies) {
-        queue.push({
-          playerId,
-          name: player.name || "Traveler",
-          reply: pickReply(choice.replies, random),
-          lineEnd: speechEnd(player),
-          speakAt: null,
-        });
+        queueReply(player, npc, pickReply(choice.replies, random));
       }
       return { ok: true };
     },

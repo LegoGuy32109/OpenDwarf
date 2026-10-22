@@ -2,7 +2,7 @@ import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { waitFrames } from "./time.ts";
+import { waitFor, waitFrames } from "./time.ts";
 import {
   chatDraft,
   clickUi,
@@ -362,7 +362,19 @@ test.describe("phone", () => {
     await expect.poll(() => hasUi(page, "row:all")).toBe(true);
     await evidenceShot(page, "shop-panel-phone");
     await tapUi(page, "row:gold ore");
-    await waitFrames(page, 3);
+    // A sale is a request: the next one waits for Ulgar's answer.
+    await waitFor(
+      page,
+      () =>
+        readWorld(
+          page,
+          (__world) =>
+            __world.scene.hearingLog.lines.some((line) =>
+              line.kind === "chat" && line.speaker === "Ulgar"
+            ),
+        ),
+      { maxTicks: 600, message: "Ulgar answered the first sale" },
+    );
     await tapUi(page, "row:all");
     await expect.poll(async () =>
       (await readWorld(page, (__world) => __world.scene.inventory)).find((

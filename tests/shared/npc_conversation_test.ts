@@ -4,6 +4,8 @@ import { assert, assertEquals } from "@std/assert";
 import {
   BUY_REPLIES,
   createConversations,
+  SALE_CHOICE,
+  SALE_REPLIES,
   THINK_MAX_MS,
   THINK_MIN_MS,
   thinkingTicks,
@@ -16,6 +18,12 @@ import {
 } from "../../src/shared/world.js";
 import { roomRecipe } from "../../src/shared/world-recipes.js";
 import { createSimulation } from "../../src/shared/simulation.js";
+import {
+  addStack,
+  COIN,
+  inventoryOf,
+  MAX_STACK_COUNT,
+} from "../../src/shared/items.js";
 import { createOpenField } from "./fixtures.ts";
 import { addTrader } from "./fixtures.ts";
 
@@ -239,4 +247,205 @@ Deno.test("a talk action runs through the simulation, and the host picks the rep
     }
   }
   assertEquals(heard, [`Ada, ${BUY_REPLIES[0]}`]);
+});
+
+const SALE = SALE_CHOICE;
+const ROLLS = [[0, 0], [0.5, 1], [0.99, 2]];
+
+/** A player's inventory as plain stacks. */
+const stacksOf = (world: ReturnType<typeof setup>["world"], id: string) =>
+  inventoryOf(world.players[id]).map(({ kind, count }) => ({ kind, count }));
+
+Deno.test("each sale outcome has three authored lines that read after the asker's name", () => {
+  for (const [outcome, lines] of Object.entries(SALE_REPLIES)) {
+    assertEquals(lines.length, 3, outcome);
+    for (const line of lines) {
+      const text = line({ name: "coal", count: 3, coins: 3 });
+      assert(/^(I\b|[a-z\d])/.test(text), text);
+    }
+  }
+});
+
+Deno.test("a per-kind sale sells at once and Ulgar's reply, from its own line set, has the real numbers", () => {
+  for (const [roll, index] of ROLLS) {
+    const { conversations, world, run, heard } = setup(() => roll);
+    addStack(inventoryOf(world.players.ada), "coal", 3);
+    addStack(inventoryOf(world.players.ada), "iron ore", 2);
+    const asked = conversations.ask("ada", "npc-ulgar", SALE, {
+      kind: "coal",
+    });
+    assertEquals(asked, { ok: true, line: "Sold coal ×3 for 3 coins" });
+    // The sale is done before the reply: coal gone, coins paid, iron kept.
+    assertEquals(stacksOf(world, "ada").filter((s) => s.kind !== "pickaxe"), [
+      { kind: "iron ore", count: 2 },
+      { kind: COIN, count: 3 },
+    ]);
+    assertEquals(world.players.ada.messages?.[0].text, "Sell all coal");
+    run(400);
+    const reply = SALE_REPLIES.kind[index]({
+      name: "coal",
+      count: 3,
+      coins: 3,
+    });
+    assertEquals(heard.map((line) => line.text), [`Ada, ${reply}`]);
+    assert(reply.includes("3 coal") && reply.includes("3 coins"), reply);
+  }
+});
+
+Deno.test("an all-ore sale sells every ore kind and Ulgar's reply states the real count and coins", () => {
+  for (const [roll, index] of ROLLS) {
+    const { conversations, world, run, heard } = setup(() => roll);
+    addStack(inventoryOf(world.players.ada), "coal", 3);
+    addStack(inventoryOf(world.players.ada), "diamond", 1);
+    addStack(inventoryOf(world.players.ada), "stone", 5);
+    const asked = conversations.ask("ada", "npc-ulgar", SALE, { all: true });
+    assertEquals(asked, { ok: true, line: "Sold 4 ore for 23 coins" });
+    assertEquals(stacksOf(world, "ada"), [
+      { kind: "pickaxe", count: 1 },
+      { kind: "stone", count: 5 },
+      { kind: COIN, count: 23 },
+    ]);
+    assertEquals(world.players.ada.messages?.[0].text, "Sell all ore");
+    run(400);
+    assertEquals(heard.map((line) => line.text), [
+      `Ada, ${SALE_REPLIES.all[index]({ name: "ore", count: 4, coins: 23 })}`,
+    ]);
+  }
+});
+
+Deno.test("selling with nothing to sell is spoken and answered, and changes nothing", () => {
+  for (const sale of [{ all: true }, { kind: "coal" }]) {
+    for (const [roll, index] of ROLLS) {
+      const { conversations, world, run, heard } = setup(() => roll);
+      addStack(inventoryOf(world.players.ada), "stone", 2);
+      const before = stacksOf(world, "ada");
+      assertEquals(conversations.ask("ada", "npc-ulgar", SALE, sale), {
+        ok: true,
+      });
+      assertEquals(stacksOf(world, "ada"), before);
+      run(400);
+      assertEquals(heard.map((line) => line.text), [
+        `Ada, ${SALE_REPLIES.nothing[index]({ name: "", count: 0, coins: 0 })}`,
+      ]);
+    }
+  }
+});
+
+Deno.test("a full coin stack refuses the sale, keeps the ore, and Ulgar says what it owes", () => {
+  for (const [roll, index] of ROLLS) {
+    const { conversations, world, run, heard } = setup(() => roll);
+    addStack(inventoryOf(world.players.ada), COIN, MAX_STACK_COUNT - 1);
+    addStack(inventoryOf(world.players.ada), "diamond", 2);
+    const before = stacksOf(world, "ada");
+    assertEquals(
+      conversations.ask("ada", "npc-ulgar", SALE, { kind: "diamond" }),
+      { ok: true },
+    );
+    assertEquals(stacksOf(world, "ada"), before);
+    run(400);
+    const reply = SALE_REPLIES.full[index]({
+      name: "diamond",
+      count: 2,
+      coins: 40,
+    });
+    assertEquals(heard.map((line) => line.text), [`Ada, ${reply}`]);
+    assert(reply.includes("40 coins"), reply);
+  }
+});
+
+Deno.test("a refused sale request changes nothing and speaks nothing", () => {
+  const { conversations, world, ada } = setup();
+  addStack(inventoryOf(ada), "coal", 3);
+  const before = stacksOf(world, "ada");
+  for (
+    const sale of [
+      undefined,
+      null,
+      {},
+      { kind: "stone" },
+      { kind: "coin" },
+      {
+        kind: "nope",
+      },
+      { kind: 7 },
+      { all: 1 },
+      "all",
+    ]
+  ) {
+    assertEquals(conversations.ask("ada", "npc-ulgar", SALE, sale).ok, false);
+  }
+  // Out of reach, or not a trader.
+  assertEquals(conversations.ask("ada", "bo", SALE, { all: true }).ok, false);
+  ada.x = 12;
+  ada.y = 12;
+  assertEquals(
+    conversations.ask("ada", "npc-ulgar", SALE, { all: true }),
+    { ok: false, reason: "too far to talk" },
+  );
+  assertEquals(stacksOf(world, "ada"), before);
+  assertEquals(ada.messages ?? [], []);
+  assertEquals(conversations.waiting("npc-ulgar"), []);
+});
+
+Deno.test("a sale is a request: one unanswered request per player, and its reply joins the same queue", () => {
+  const { conversations, world, run, heard } = setup();
+  addStack(inventoryOf(world.players.ada), "coal", 3);
+  addStack(inventoryOf(world.players.bo), "lapis", 1);
+  assert(conversations.ask("ada", "npc-ulgar", BUYS).ok);
+  // Ada's sale waits behind her unanswered question: nothing is sold.
+  assertEquals(
+    conversations.ask("ada", "npc-ulgar", SALE, { all: true }),
+    { ok: false, reason: "Ulgar still owes you an answer" },
+  );
+  assertEquals(stacksOf(world, "ada").some((s) => s.kind === "coal"), true);
+  assert(conversations.ask("bo", "npc-ulgar", SALE, { kind: "lapis" }).ok);
+  assertEquals(conversations.waiting("npc-ulgar"), ["ada", "bo"]);
+  // A sale is a request too: Bo cannot sell again until answered.
+  assertEquals(
+    conversations.ask("bo", "npc-ulgar", SALE, { all: true }).ok,
+    false,
+  );
+  run(900);
+  assertEquals(heard.map((line) => line.text.split(",")[0]), ["Ada", "Bo"]);
+  assertEquals(heard[1].text.includes("1 lapis"), true);
+});
+
+Deno.test("walking away does not cancel a confirmed sale or its reply", () => {
+  const { conversations, world, ada, run, heard } = setup();
+  addStack(inventoryOf(ada), "coal", 3);
+  assert(conversations.ask("ada", "npc-ulgar", SALE, { all: true }).ok);
+  ada.x = 12;
+  ada.y = 12;
+  run(400);
+  assertEquals(stacksOf(world, "ada").at(-1), { kind: COIN, count: 3 });
+  assertEquals(heard.length, 1);
+});
+
+Deno.test("a sale talk action runs through the simulation and returns the seller's line", () => {
+  const sim = createSimulation(roomRecipe(), { random: () => 0 });
+  const ulgar = sim.world.players["npc-ulgar"];
+  const joined = sim.join("ada");
+  joined.x = ulgar.x;
+  joined.y = ulgar.y + 1;
+  joined.z = ulgar.z;
+  joined.name = "Ada";
+  addStack(inventoryOf(joined), "emerald", 2);
+  const results: Record<string, unknown>[] = [];
+  sim.enqueue(
+    "ada",
+    { type: "talk", npc: "npc-ulgar", choice: SALE, sale: { kind: "emerald" } },
+    (r) => results.push(r),
+  );
+  sim.advanceTicks(1);
+  assertEquals(results, [{ ok: true, line: "Sold emerald ×2 for 30 coins" }]);
+});
+
+Deno.test("per-kind sale lines count the items in plain words", () => {
+  const spoken = (name: string, count: number) =>
+    SALE_REPLIES.kind.map((line) => line({ name, count, coins: 20 }));
+  assert(spoken("coal", 1).every((text) => text.includes("1 coal")));
+  assert(spoken("diamond", 1).every((text) => text.includes("1 diamond")));
+  assert(spoken("diamond", 2).every((text) => text.includes("2 diamonds")));
+  assert(spoken("iron ore", 3).every((text) => text.includes("3 iron ore")));
+  assert(!spoken("coal", 1).some((text) => text.includes("all 1")));
 });

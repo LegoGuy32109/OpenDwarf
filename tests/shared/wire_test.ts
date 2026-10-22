@@ -338,6 +338,11 @@ Deno.test("control requires integer octants, bounded strings, and proper types",
   assert(decodeControl({ type: "ping", id: "ping-id" }));
   assert(decodeControl({ type: "resync" }));
   assert(decodeControl({ type: "talk", npc: "npc-ulgar", choice: "buys" }));
+  for (const sale of [{ all: true }, { kind: "iron ore" }]) {
+    assert(
+      decodeControl({ type: "talk", npc: "npc-ulgar", choice: "sale", sale }),
+    );
+  }
   for (
     const value of [
       { type: "input", dx: 0.1, dy: 0, sequence: 20 },
@@ -349,6 +354,10 @@ Deno.test("control requires integer octants, bounded strings, and proper types",
       { type: "talk", npc: "npc-ulgar" },
       { type: "talk", npc: 7, choice: "buys" },
       { type: "talk", npc: "npc-ulgar", choice: "x".repeat(25) },
+      { type: "talk", npc: "npc-ulgar", choice: "sale", sale: {} },
+      { type: "talk", npc: "npc-ulgar", choice: "sale", sale: { all: 1 } },
+      { type: "talk", npc: "npc-ulgar", choice: "sale", sale: "coal" },
+      { type: "talk", npc: "npc-ulgar", choice: "sale", sale: null },
       { type: "unknown" },
       null,
     ]

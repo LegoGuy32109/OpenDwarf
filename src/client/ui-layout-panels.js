@@ -3,6 +3,7 @@
 
 import { ascii, clamp, wrapText } from "./ui-kit.js";
 import { itemInfo } from "../shared/items.js";
+import { coinsText } from "../shared/shop.js";
 import { TRADER_DESCRIPTION } from "../shared/npc-conversation.js";
 
 /** @typedef {import('./ui-types.js').Rect} Rect */
@@ -339,17 +340,15 @@ function shopRow(row, selected) {
     item: row.type === "all" ? undefined : row.kind,
     text: row.type === "all"
       ? "Sell all ore"
+      : row.enabled
+      ? `Sell all ${ascii(itemInfo(row.kind)?.name ?? row.kind)}`
       : ascii(itemInfo(row.kind)?.name ?? row.kind),
     sub2: row.type === "all"
       ? row.enabled ? `x${row.count}` : ""
       : `x${row.count}`,
-    sub: row.type === "all"
-      ? row.enabled
-        ? `${row.coins} coin${row.coins === 1 ? "" : "s"}`
-        : "no ore"
-      : row.enabled
-      ? `${row.price} each`
-      : "not bought",
+    sub: !row.enabled
+      ? row.type === "all" ? "no ore" : "not bought"
+      : coinsText(row.coins),
     on: row.enabled && name === selected,
     dim: !row.enabled,
   };

@@ -21,7 +21,6 @@ import { cancelMining, startMining, stepMining } from "./mining.js";
 import { placeStone } from "./placing.js";
 import { pickUp, pickupLine } from "./items.js";
 import { setHeldItem } from "./held-item.js";
-import { sellItems } from "./shop.js";
 import { createConversations } from "./npc-conversation.js";
 import {
   createVisibility,
@@ -212,11 +211,8 @@ export function createSimulation(definition, options = {}) {
         ? { ...result, line: pickupLine(result.kind, result.count) }
         : result;
     },
-    "sell": (id, message) => {
-      return sellItems(world, id, message);
-    },
     "talk": (id, message) => {
-      return conversations.ask(id, message.npc, message.choice);
+      return conversations.ask(id, message.npc, message.choice, message.sale);
     },
     "typing": (id, message) => {
       setTyping(world, id, message.typing === true);
