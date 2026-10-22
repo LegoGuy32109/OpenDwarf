@@ -2,7 +2,7 @@ import { openWorld, placePlayer, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { waitFrames, waitTicks } from "./time.ts";
+import { waitFor, waitFrames, waitTicks } from "./time.ts";
 import { ready, say, shopOpen } from "./ui.ts";
 const ASK = "What do you buy?";
 const localId = (page: Page) =>
@@ -16,6 +16,12 @@ const heard = (page: Page) =>
 /** The lines Ulgar spoke, which name the player they answer. */
 const ulgarLines = async (page: Page) =>
   (await heard(page)).filter((line) => line.startsWith("Ulgar: "));
+/** Whether Ulgar shows its thought icon. */
+const ulgarThinking = (page: Page) =>
+  readWorld(
+    page,
+    (__world) => __world.scene.world.players["npc-ulgar"].typing === true,
+  );
 /** Whether the player with this id shows the thought icon on the host's world. */
 const thinking = (host: Page, id: string) =>
   readWorld(
@@ -80,19 +86,18 @@ test("two players ask what Ulgar buys, and Ulgar answers each in order by name",
     await askWhatYouBuy(guest);
     await expect.poll(() => heard(watcher)).toContain(`Gus: ${ASK}`);
     // Ulgar thinks, then answers Hana first and Gus second, one at a time.
-    await expect.poll(
-      () =>
-        readWorld(
-          host,
-          (__world) => __world.scene.world.players["npc-ulgar"].typing,
-        ),
-      { timeout: 15_000 },
-    )
-      .toBe(true);
+    await waitFor(host, () => ulgarThinking(host), {
+      message: "Ulgar thinking",
+    });
     await evidenceShot(watcher, "trader-ulgar-thinking");
-    await expect.poll(async () => (await ulgarLines(watcher)).length, {
-      timeout: 30_000,
-    }).toBe(2);
+    await waitFor(
+      watcher,
+      async () => (await ulgarLines(watcher)).length === 2,
+      {
+        maxTicks: 600,
+        message: "Ulgar replies",
+      },
+    );
     const [first, second] = await ulgarLines(watcher);
     expect(first).toMatch(/^Ulgar: Hana, /);
     expect(second).toMatch(/^Ulgar: Gus, /);
@@ -124,9 +129,14 @@ test("walking out of range closes the menu, and the pending reply still arrives"
     await expect.poll(() => shopOpen(host)).toBe(false);
     await expect.poll(() => thinking(host, "self")).toBe(false);
     // The reply that was being prepared finishes normally.
-    await expect.poll(async () => (await ulgarLines(watcher)).length, {
-      timeout: 30_000,
-    }).toBe(1);
+    await waitFor(
+      watcher,
+      async () => (await ulgarLines(watcher)).length === 1,
+      {
+        maxTicks: 600,
+        message: "Ulgar replies",
+      },
+    );
     expect((await ulgarLines(watcher))[0]).toMatch(/^Ulgar: Hana, /);
   } finally {
     await Promise.all([host.close(), watcher.close()]);
@@ -148,19 +158,12 @@ test("a conversation with Ulgar shows both thought icons and a reply that names 
   await page.keyboard.press("Space");
   await expect.poll(() => heard(page)).toEqual([`Hana: ${ASK}`]);
   // Ulgar thinks while the player browses, then answers by name.
-  await expect.poll(
-    () =>
-      readWorld(
-        page,
-        (__world) => __world.scene.world.players["npc-ulgar"].typing,
-      ),
-    { timeout: 15_000 },
-  )
-    .toBe(true);
+  await waitFor(page, () => ulgarThinking(page), { message: "Ulgar thinking" });
   expect(await thinking(page, "self")).toBe(true);
-  await expect.poll(async () => (await ulgarLines(page)).length, {
-    timeout: 30_000,
-  }).toBe(1);
+  await waitFor(page, async () => (await ulgarLines(page)).length === 1, {
+    maxTicks: 600,
+    message: "Ulgar replies",
+  });
   expect((await ulgarLines(page))[0]).toMatch(/^Ulgar: Hana, /);
   await evidenceShot(page, "trader-conversation-reply");
   // A second question works once Ulgar has answered the first.
