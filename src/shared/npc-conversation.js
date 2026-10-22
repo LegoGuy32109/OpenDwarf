@@ -49,7 +49,7 @@ export const SALE_CHOICE = "sale";
  * The real numbers of a sale: the item name (a per-kind sale), the item count,
  * and the coins paid, or owed when the coin stack is full.
  */
-/** @param {number} count */
+/** Item names that take an s in the plural. */
 const COUNTABLE = new Set(["emerald", "diamond"]);
 /** "3 coal", "1 diamond", "2 diamonds". @param {number} count @param {string} name */
 const items = (count, name) =>
