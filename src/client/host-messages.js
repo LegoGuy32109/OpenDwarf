@@ -6,7 +6,7 @@
 import { pickUp, pickupLine } from "../shared/items.js";
 import { setHeldItem } from "../shared/held-item.js";
 import { cancelMining, startMining } from "../shared/mining.js";
-import { placeStone, reservedTiles } from "../shared/placing.js";
+import { placeStone } from "../shared/placing.js";
 import { setNickname, setTyping, submitMessage } from "../shared/world.js";
 
 /**
@@ -85,7 +85,6 @@ export const hostMessages = new Map([
       peer.scene.world,
       peer.playerId,
       tileOf(message),
-      reservedTiles(peer.scene.world),
       peer.sees(),
     );
     peer.confirmAction(message, result);

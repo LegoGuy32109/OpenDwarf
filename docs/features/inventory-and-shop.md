@@ -17,30 +17,34 @@ Coins are an item and the score; the inventory panel shows them.
 
 ## Shop
 
-In the spawn room a gold-tinted shopkeeper stands on the north wall. Interact
-with that tile highlighted (or standing on it) opens the shop panel: every stack
-you carry with its count and unit price, and a "Sell all ore" row. IJKL or the
-D-pad move the selection, a gamepad stick steps it by the same stick step rule,
-and interact (ZR, or a tap on a row) sells it; Escape, the gamepad's Y or X, or
-the × button closes the panel. Prices: coal 1, iron ore 3, lapis 4, redstone 4,
-gold ore 8, emerald 15, diamond 20. Stone, the pickaxe, and coins show dimmed.
-Each sale adds a line such as "Sold coal ×3 for 3 coins" to the seller's hearing
-log.
+In the spawn room the shopkeeper Ulgar, a gold-tinted NPC with its name drawn
+under it, stands against the north wall. It blocks movement, so a player cannot
+stand on its tile. Interact from a neighboring tile with Ulgar's tile
+highlighted opens the shop panel: every stack you carry with its count and unit
+price, and a "Sell all ore" row. IJKL or the D-pad move the selection, a gamepad
+stick steps it by the same stick step rule, and interact (ZR, or a tap on a row)
+sells it; Escape, the gamepad's Y or X, or the × button closes the panel.
+Prices: coal 1, iron ore 3, lapis 4, redstone 4, gold ore 8, emerald 15,
+diamond 20. Stone, the pickaxe, and coins show dimmed. Each sale adds a line
+such as "Sold coal ×3 for 3 coins" to the seller's hearing log.
 
 `src/shared/shop.js` holds the price table (`PRICES`, one place) and
-`sellItems`, the one sale rule. The shopkeeper stands on `SHOPKEEPER_TILE` in
-the room layout only and is a drawn fixture, not an entity: it does not block
-movement. A sale is a host decision. Interact on the shopkeeper's tile opens the
-panel (`src/client/shop-panel.js`), which only asks. The host's own player calls
+`sellItems`, the one sale rule. Ulgar is an NPC entity in `world.players` (ADR
+0010): an initial recipe entity with `npc: true`, the `trader` role, and the
+`still` behavior, controlled by the world host like the corner NPC. It follows
+the entity rules for sight and hearing with no special cases. `traderAt` finds
+it for the interact target, and `nearTrader` is the sale range check. A sale is
+a host decision. Interact on Ulgar's tile opens the panel
+(`src/client/shop-panel.js`), which only asks. The host's own player calls
 `sellItems`; a guest sends `sell` with an item kind and a count, or `all`. The
-host checks the entity, that its tile is the shopkeeper's or a neighbor on the
-same level, that the kind has a price (stone, the pickaxe, and coins do not),
-that the inventory holds the count, and that the coin stack has room. A failed
-check changes nothing and a guest gets `sell-result` with the reason. A sale
-removes the items, adds coins to the inventory's coin stack, and adds the sale
-line through `tell`, so only the seller sees it. The score is the coin count in
-the inventory panel; there is no separate readout. While the panel is open,
-interact and the look controls drive it instead of mining and aiming, and
+host checks the entity, that a trader NPC stands on its tile or a neighbor on
+the same level, that the kind has a price (stone, the pickaxe, and coins do
+not), that the inventory holds the count, and that the coin stack has room. A
+failed check changes nothing and a guest gets `sell-result` with the reason. A
+sale removes the items, adds coins to the inventory's coin stack, and adds the
+sale line through `tell`, so only the seller sees it. The score is the coin
+count in the inventory panel; there is no separate readout. While the panel is
+open, interact and the look controls drive it instead of mining and aiming, and
 movement input is ignored.
 
 Item kinds, stacks, and pickup are in [mining and items](mining-and-items.md).

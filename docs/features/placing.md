@@ -25,18 +25,17 @@ pickaxe otherwise. It still acts on `pointerdown`.
 `placeStone` in `src/shared/placing.js` is the one check. The world host runs it
 for its own player and for every guest. It rejects, in this order:
 
-| Reason                    | Case                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| `no stone held`           | stone is not the held item, or the inventory has none                                    |
-| `Something is in the way` | the target is the entity's own tile                                                      |
-| `out of reach`            | the tile is not in [reach](reach.md): the 3×3×3 around the entity, by an open path, seen |
-| `tile is not open`        | the tile is not air                                                                      |
-| `Something is in the way` | dropped items lie on it, an entity footprint overlaps it, or it is the shopkeeper's tile |
+| Reason                    | Case                                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `no stone held`           | stone is not the held item, or the inventory has none                                          |
+| `Something is in the way` | the target is the entity's own tile                                                            |
+| `out of reach`            | the tile is not in [reach](reach.md): the 3×3×3 around the entity, by an open path, seen       |
+| `tile is not open`        | the tile is not air                                                                            |
+| `Something is in the way` | dropped items lie on it, an entity footprint overlaps it, or an NPC such as Ulgar stands on it |
 
-An entity footprint covers a player, an NPC, and the player's own body. A
-walking entity also blocks the tile it leaves and the tile it walks into. The
-shopkeeper is not in `world.players`, so `reservedTiles` names its tile in the
-room layout.
+An entity footprint covers a player, an NPC (the shopkeeper Ulgar included), and
+the player's own body. A walking entity also blocks the tile it leaves and the
+tile it walks into.
 
 ## Network
 

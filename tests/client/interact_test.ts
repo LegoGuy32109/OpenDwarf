@@ -19,7 +19,8 @@ import {
   stepMining,
 } from "../../src/shared/mining.js";
 import { COAL, DIAMOND } from "../../src/shared/materials.js";
-import { SHOP_TILE } from "../../src/shared/shop.js";
+import { SHOPKEEPER_TILE as SHOP_TILE } from "../../src/shared/spawn-room.js";
+import { addTrader } from "../shared/fixtures.ts";
 import {
   ensureChunk,
   OPEN,
@@ -384,10 +385,9 @@ Deno.test("interact confirms the bag and shop before acting on terrain", () => {
   assertEquals(miningActions(f.world).size, 0);
 });
 
-Deno.test("interact opens the room shop before picking up on its tile", () => {
+Deno.test("interact opens the shop from a neighbor of Ulgar before picking up on its tile", () => {
   const f = fixture();
-  f.scene.layout = "room";
-  f.world.shops = [SHOP_TILE];
+  addTrader(f.world, SHOP_TILE);
   Object.assign(f.player, {
     x: SHOP_TILE.x - 1,
     y: SHOP_TILE.y,

@@ -59,7 +59,13 @@ test("guest action sounds follow host acceptance exactly once, and refusals stay
     minZ: 1,
     maxZ: 1,
   }, OPEN).spawn({ x: 4, y: 4, z: 1 }).spawn({ x: 5, y: 4, z: 1 })
-    .entity({ id: "shop", role: "shop", at: { x: 5, y: 3, z: 1 } })
+    .entity({
+      id: "shop",
+      name: "Ulgar",
+      role: "trader",
+      at: { x: 5, y: 3, z: 1 },
+      behavior: { id: "still" },
+    })
     .definition();
   await startWorld(host, setup);
   await ready(host);

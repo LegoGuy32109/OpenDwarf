@@ -8,7 +8,7 @@ import {
   itemInfo,
   MAX_STACK_COUNT,
 } from "./items.js";
-import { SHOPKEEPER_TILE } from "./spawn-room.js";
+import { centerTile } from "./locomotion.js";
 
 /**
  * The shop. The shopkeeper buys ore at fixed prices and pays in coins, which
@@ -34,8 +34,34 @@ export const PRICES = Object.freeze({
   "diamond": 20,
 });
 
-/** The tile the shopkeeper stands on, in the spawn room layout only. */
-export const SHOP_TILE = SHOPKEEPER_TILE;
+/** @typedef {import('./world.js').Player} Player */
+/** @typedef {import('./world.js').Tile} Tile */
+
+/** The tile an entity stands on. @param {Player} entity @returns {Tile} */
+function tileOf(entity) {
+  return { x: centerTile(entity.x), y: centerTile(entity.y), z: entity.z };
+}
+
+/** Whether an NPC entity is a trader, the role that opens the shop (ADR 0010). @param {Player} entity */
+export function isTrader(entity) {
+  return entity.npc === true && entity.role === "trader";
+}
+
+/** The trader NPC standing on `tile`, or undefined. @param {World} world @param {Tile} tile */
+export function traderAt(world, tile) {
+  return Object.values(world.players).find((entity) => {
+    if (!isTrader(entity)) return false;
+    const at = tileOf(entity);
+    return at.x === tile.x && at.y === tile.y && at.z === tile.z;
+  });
+}
+
+/** Whether a trader stands on `player`'s tile or a neighboring one on the same level. @param {World} world @param {Player} player */
+export function nearTrader(world, player) {
+  return Object.values(world.players).some((entity) =>
+    isTrader(entity) && inPickupReach(player, tileOf(entity))
+  );
+}
 
 /** @param {unknown} kind @returns {number} the unit price, or 0 when the kind cannot be sold */
 export function priceOf(kind) {
@@ -85,7 +111,7 @@ export function saleLine(sold, coins) {
 
 /**
  * Sell items from an entity's inventory to the shopkeeper, on the world host.
- * The host checks the entity, its reach to the shopkeeper's tile, the kind's
+ * The host checks the entity, its reach to a trader NPC's tile, the kind's
  * price, and that the inventory holds the count. A sale changes nothing unless
  * it passes every check. Coins join the inventory's coin stack.
  * @param {World} world @param {string} playerId @param {unknown} request @returns {SaleResult}
@@ -93,10 +119,12 @@ export function saleLine(sold, coins) {
 export function sellItems(world, playerId, request) {
   const player = world.players[playerId];
   if (!player) return { ok: false, reason: "unknown player" };
-  const shops = world.shops ?? [SHOP_TILE];
-  if (!shops.length) return { ok: false, reason: "no shop here" };
-  if (!shops.some((at) => inPickupReach(player, at))) {
-    return { ok: false, reason: "too far from the shopkeeper" };
+  if (!nearTrader(world, player)) {
+    const anyTrader = Object.values(world.players).some(isTrader);
+    return {
+      ok: false,
+      reason: anyTrader ? "too far from the shopkeeper" : "no shop here",
+    };
   }
   const inventory = inventoryOf(player);
   /** @type {{kind:string,count:number}[]} */

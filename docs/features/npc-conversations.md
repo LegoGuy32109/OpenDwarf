@@ -1,7 +1,9 @@
 # NPC conversations
 
-Design agreed in a grilling session on 2026-10-21. These changes are not
-implemented. The current shop behavior remains in
+Design agreed in a grilling session on 2026-10-21. Ticket #119 implemented the
+first part: the shopkeeper is the NPC Ulgar, an entity that blocks movement and
+follows entity sight and hearing. The conversation, speech, and menu behavior
+below is not implemented. The current shop behavior remains in
 [inventory and shop](inventory-and-shop.md). ADR 0010 records why the shopkeeper
 becomes an NPC entity.
 

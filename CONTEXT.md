@@ -182,7 +182,8 @@ down.
 and it refills in proportion over twelve seconds while the entity does not
 sprint.
 
-**Shopkeeper**: The NPC in the spawn room who buys items for coins.
+**Shopkeeper**: The NPC in the spawn room who buys items for coins. Its name is
+Ulgar.
 
 **Spawn room**: The authored room in the spawn chunk where joining players first
 appear.
@@ -236,9 +237,13 @@ terrain overlap. One footprint can overlap several tiles at once.
 latest authoritative position. It does not change world state. _Avoid_:
 Presentation buffer
 
-**Shopkeeper**: A fixed character on the reserved tile in the spawn room who
-buys ore for coins at fixed prices. It sells nothing yet. Interact on its tile
-opens the shop panel.
+**Shopkeeper**: Ulgar, the NPC against the north wall of the spawn room, with
+the trader role. It buys ore for coins at fixed prices and sells nothing yet. It
+blocks movement; interact on its tile from a neighboring tile opens the shop
+panel.
+
+**Trader**: An NPC role that adds the shop conversation to an NPC. It does not
+make a second kind of entity.
 
 **Coin**: The item the shopkeeper pays in. A player's coin count is the score.
 

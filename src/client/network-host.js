@@ -500,7 +500,6 @@ export function startHost(scene, session, sounds = {}) {
             reveal,
             world: encodeWorld({
               ...view.world,
-              shops: scene.world.shops,
               limits: scene.world.limits,
             }),
             chat: chatView(scene.world, playerId, chatBands),

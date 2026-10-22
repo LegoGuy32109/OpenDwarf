@@ -289,7 +289,6 @@ export function joinWorld(scene, session) {
 
   /** @param {World} snapshot @param {'master'|'entity'} incomingMode @param {import('../shared/visibility.js').Visibility} visibility */
   function finishState(snapshot, incomingMode, visibility) {
-    scene.world.shops = snapshot.shops ?? [];
     scene.world.limits = snapshot.limits;
     scene.viewMode = incomingMode;
     scene.visibility = visibility;

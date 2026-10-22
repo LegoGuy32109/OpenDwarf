@@ -12,9 +12,9 @@ import { OPEN, readTile } from "../shared/terrain.js";
 import { highlightedTile } from "../shared/target.js";
 import { cancelMining, miningActions, startMining } from "../shared/mining.js";
 import { seesFrom } from "../shared/reach.js";
-import { placeStone, reservedTiles } from "../shared/placing.js";
+import { placeStone } from "../shared/placing.js";
 import { pickUp, pickupLine, STONE_ITEM } from "../shared/items.js";
-import { SHOP_TILE } from "../shared/shop.js";
+import { traderAt } from "../shared/shop.js";
 import {
   isPickupGridOpen,
   markRequested,
@@ -28,13 +28,9 @@ import { pickupGridStacks } from "./pickup-grid-view.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
 
-/** Whether the highlighted tile holds the shopkeeper. @param {Context} ctx @param {{x:number,y:number,z:number}} target */
+/** Whether the highlighted tile holds a trader NPC. @param {Context} ctx @param {{x:number,y:number,z:number}} target */
 function isShopkeeper(ctx, target) {
-  const shops = ctx.scene.world.shops ??
-    (ctx.scene.layout === "room" ? [SHOP_TILE] : []);
-  return shops.some((at) =>
-    target.x === at.x && target.y === at.y && target.z === at.z
-  );
+  return traderAt(ctx.scene.world, target) !== undefined;
 }
 
 /** Pick up the stack of one kind from a tile. The host checks reach and who asked first. @param {Context} ctx @param {{x:number,y:number,z:number}} target @param {string} kind */
@@ -170,7 +166,6 @@ function placeAt(ctx, target) {
       scene.world,
       scene.localId,
       target,
-      reservedTiles(scene.world),
       ownSees(ctx),
     );
     if (result.ok) ctx.sounds.own(["place", "stone"], target);

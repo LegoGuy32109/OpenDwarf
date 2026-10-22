@@ -17,11 +17,11 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {Omit<Player,'typing'|'message'|'messageUntil'>} MotionPlayer */
 /** @typedef {import('./chat.js').ChatRecord} ChatRecord */
 /** @typedef {{attempt:string,viewRevision:number,sightRevision:number}} Envelope */
-/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'shops'|'limits'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
+/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'limits'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
 /** @typedef {Envelope & {type:"motion",tick:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const MAX_PACKET_BYTES = 256 * 1024;
 const MAX_ENTITIES = 1024;
 
@@ -73,6 +73,7 @@ const PLAYER_REQUIRED = {
 const PLAYER_OPTIONAL = {
   viewMotion: (value) => movement(value, true),
   npc: boolean,
+  role: (value) => value === "trader",
   free: boolean,
   size: (value) => finite(value, 0.01, 4),
   vx: (value) => finite(value, -10, 10),
@@ -98,6 +99,7 @@ export function encodeMotionPlayers(players) {
       move: value.move,
       ...(value.viewMotion ? { viewMotion: value.viewMotion } : {}),
       ...(value.npc !== undefined ? { npc: value.npc } : {}),
+      ...(value.role !== undefined ? { role: value.role } : {}),
       ...(value.free !== undefined ? { free: value.free } : {}),
       ...(value.size !== undefined ? { size: value.size } : {}),
       ...(value.vx !== undefined ? { vx: value.vx } : {}),
@@ -212,12 +214,11 @@ function chatRecords(value) {
 }
 
 /** Wire form of a world snapshot: players keep only wire fields. Terrain travels as `reveal`. */
-/** @param {Pick<World,'tick'|'players'|'shops'|'limits'>} world */
+/** @param {Pick<World,'tick'|'players'|'limits'>} world */
 export function encodeWorld(world) {
   return {
     tick: world.tick,
     players: encodeMotionPlayers(world.players),
-    ...(world.shops ? { shops: world.shops.map((at) => ({ ...at })) } : {}),
     ...(world.limits ? { limits: { ...world.limits } } : {}),
   };
 }
@@ -239,13 +240,6 @@ function validWorldLimits(b) {
 
 /** @param {Record<string,unknown>} world */
 function worldMetadata(world) {
-  if (
-    world.shops !== undefined &&
-    (!Array.isArray(world.shops) || world.shops.length > 1024 ||
-      !world.shops.every((at) =>
-        record(at) && tile(at) && [at.x, at.y, at.z].every(Number.isInteger)
-      ))
-  ) return false;
   if (world.limits !== undefined) {
     if (!validWorldLimits(world.limits)) return false;
   }
@@ -313,9 +307,6 @@ export function decodeState(value) {
       tick: parsed.world.tick,
       players: parsedPlayers,
       ...(parsed.world.limits ? { limits: { ...parsed.world.limits } } : {}),
-      ...(parsed.world.shops
-        ? { shops: parsed.world.shops.map((at) => ({ ...at })) }
-        : {}),
     },
     reveal,
     chat,

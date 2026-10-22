@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { createAuthoredWorld } from "../../src/shared/authored-terrain.js";
+import { addTrader } from "./fixtures.ts";
 import { addPlayer, isSolid, startMove } from "../../src/shared/world.js";
 import {
   boundaryOpacity,
@@ -123,6 +124,17 @@ Deno.test("guest snapshot excludes hidden entities and undiscovered terrain", ()
   assertEquals(seenMaterial({ chunks: remembered }, 9, 8, 0), UNKNOWN);
   assertEquals(seenMaterial({ chunks: remembered }, 6, 8, 0), OPEN);
   assert(!JSON.stringify(snapshot).includes("secret"));
+});
+
+Deno.test("a trader NPC out of sight is absent from the guest snapshot, like any entity", () => {
+  const world = createAuthoredWorld();
+  addPlayer(world, "viewer", { x: 7, y: 8, z: 0 });
+  addTrader(world, { x: 9, y: 8, z: 0 }, "hidden-trader");
+  addTrader(world, { x: 6, y: 8, z: 0 }, "seen-trader");
+  const snapshot = entityView(world, "viewer", createVisibility(), new Map());
+  assertEquals(snapshot.world.players["hidden-trader"], undefined);
+  assertEquals(snapshot.world.players["seen-trader"]?.role, "trader");
+  assert(!JSON.stringify(snapshot).includes("hidden-trader"));
 });
 
 Deno.test("a crossing entity never sends a hidden move endpoint", () => {

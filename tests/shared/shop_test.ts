@@ -16,17 +16,19 @@ import {
   rowRequest,
   saleLine,
   sellItems,
-  SHOP_TILE,
   shopRows,
+  traderAt,
 } from "../../src/shared/shop.js";
 import { decodeControl } from "../../src/shared/wire.js";
+import { SHOPKEEPER_TILE as SHOP_TILE } from "../../src/shared/spawn-room.js";
+import { addTrader } from "./fixtures.ts";
 import { setHeldItem } from "../../src/shared/held-item.js";
 import { heldItem } from "../../src/shared/mining.js";
 
 /** A world with a player standing next to the shopkeeper, and one far away. */
 function shopWorld(): World {
   const world = createWorld();
-  world.shops = [SHOP_TILE];
+  addTrader(world, SHOP_TILE);
   addPlayer(world, "near", {
     x: SHOP_TILE.x,
     y: SHOP_TILE.y + 1,
@@ -140,6 +142,36 @@ Deno.test("selling needs the player next to the shopkeeper on its level", () => 
     false,
   );
   assertEquals(inventoryOf(world.players.far)[1], { kind: "coal", count: 2 });
+});
+
+Deno.test("a trader NPC is found on its own tile only, and no trader means no shop", () => {
+  const world = shopWorld();
+  assertEquals(traderAt(world, SHOP_TILE)?.name, "Ulgar");
+  assertEquals(
+    traderAt(world, { ...SHOP_TILE, y: SHOP_TILE.y + 1 }),
+    undefined,
+  );
+  assertEquals(
+    traderAt(world, { ...SHOP_TILE, z: SHOP_TILE.z - 1 }),
+    undefined,
+  );
+  addStack(inventoryOf(world.players.near), "coal", 1);
+  delete world.players["npc-ulgar"];
+  assertEquals(
+    sellItems(world, "near", { kind: "coal", count: 1 }),
+    { ok: false, reason: "no shop here" },
+  );
+});
+
+Deno.test("only an NPC with the trader role opens the shop", () => {
+  const world = shopWorld();
+  addStack(inventoryOf(world.players.near), "coal", 1);
+  world.players["npc-ulgar"].npc = false;
+  assertEquals(traderAt(world, SHOP_TILE), undefined);
+  assertEquals(
+    sellItems(world, "near", { kind: "coal", count: 1 }).ok,
+    false,
+  );
 });
 
 Deno.test("sell all ore sells every sellable stack and keeps the rest", () => {

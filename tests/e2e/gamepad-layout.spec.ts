@@ -151,9 +151,15 @@ test("X closes the shop, and B does not", async ({ page }) => {
   await openWorld(page, "/?harness=1&layout=room&gamepad-debug=1");
   await ready(page);
   await page.locator("#world").click();
-  await placeAt(page, 16, 12);
+  await placeAt(page, 16, 13);
   await waitFrames(page, 3);
+  await page.evaluate(() => {
+    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = -1;
+  });
   await tap(page, ZR);
+  await page.evaluate(() => {
+    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
+  });
   await expect.poll(() => shopOpen(page)).toBe(true);
   await evidenceShot(page, "gamepad-shop-open");
   await tap(page, B);

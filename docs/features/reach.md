@@ -30,8 +30,8 @@ unit tests do that.
 the mining and placing checks it calls can import `inReach`) names the action
 interact would take on a tile: `pickup`, `shop`, `place`, `mine`, or null. It
 runs the checks the host runs (`miningRefusal`, `placeRefusal`, the pickup
-reach), so a null answer means the host would refuse. The shopkeeper stands in
-every layout but `"test"`.
+reach), so a null answer means the host would refuse. `shop` means a trader NPC,
+Ulgar in the spawn room, stands on the tile within pickup reach.
 
 ## Free cursor
 

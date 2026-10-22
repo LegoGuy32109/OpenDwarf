@@ -18,12 +18,9 @@ import {
 import { setHeldItem } from "../../src/shared/held-item.js";
 import { enableLocomotion } from "../../src/shared/locomotion.js";
 import { completeMining, startMining } from "../../src/shared/mining.js";
-import {
-  IN_THE_WAY,
-  placeStone,
-  reservedTiles,
-} from "../../src/shared/placing.js";
-import { SHOP_TILE } from "../../src/shared/shop.js";
+import { IN_THE_WAY, placeStone } from "../../src/shared/placing.js";
+import { SHOPKEEPER_TILE } from "../../src/shared/spawn-room.js";
+import { addTrader } from "./fixtures.ts";
 import { decodeControl } from "../../src/shared/wire.js";
 
 /** A player at (5, 5, 1) holding 3 stone, with open air at (6, 5, 1). */
@@ -83,7 +80,7 @@ Deno.test("the host rejects a place out of reach or unseen, and allows another l
     reason: "out of reach",
   });
   assertEquals(
-    placeStone(world, "self", { x: 6, y: 5, z: 1 }, [], () => false),
+    placeStone(world, "self", { x: 6, y: 5, z: 1 }, () => false),
     { ok: false, reason: "out of reach" },
   );
   assertEquals(placeStone(world, "self", { x: 8, y: 5, z: 2 }).ok, false);
@@ -92,7 +89,7 @@ Deno.test("the host rejects a place out of reach or unseen, and allows another l
   assertEquals(readTile(world, 6, 5, 2), STONE);
   assertEquals(stoneCount(world), 2);
   assert(
-    placeStone(world, "self", { x: 6, y: 6, z: 1 }, [], () => true).ok,
+    placeStone(world, "self", { x: 6, y: 6, z: 1 }, () => true).ok,
     "seen",
   );
   assertEquals(stoneCount(world), 1);
@@ -162,23 +159,27 @@ Deno.test("an entity that straddles the tile edge, or is walking into it, blocks
   assertEquals(placeStone(moving, "self", { x: 6, y: 5, z: 1 }).ok, false);
 });
 
-Deno.test("the shopkeeper's tile is reserved in the room layout only", () => {
-  assertEquals(reservedTiles("room"), [SHOP_TILE]);
-  assertEquals(reservedTiles("test"), []);
-  assertEquals(reservedTiles(undefined), []);
+Deno.test("a stone cannot go on a trader NPC's tile", () => {
   const world = field();
   const player = addPlayer(world, "self", {
-    x: SHOP_TILE.x,
-    y: SHOP_TILE.y + 1,
-    z: SHOP_TILE.z,
+    x: SHOPKEEPER_TILE.x,
+    y: SHOPKEEPER_TILE.y + 1,
+    z: SHOPKEEPER_TILE.z,
   });
+  addTrader(world, SHOPKEEPER_TILE);
   addStack(inventoryOf(player), STONE_ITEM, 1);
   setHeldItem(world, "self", STONE_ITEM);
-  writeTile(world, SHOP_TILE.x, SHOP_TILE.y, SHOP_TILE.z, OPEN);
-  assertEquals(
-    placeStone(world, "self", SHOP_TILE, reservedTiles("room")).ok,
-    false,
+  writeTile(
+    world,
+    SHOPKEEPER_TILE.x,
+    SHOPKEEPER_TILE.y,
+    SHOPKEEPER_TILE.z,
+    OPEN,
   );
+  assertEquals(placeStone(world, "self", SHOPKEEPER_TILE), {
+    ok: false,
+    reason: IN_THE_WAY,
+  });
 });
 
 Deno.test("a placed stone can be mined again and drops one stone", () => {

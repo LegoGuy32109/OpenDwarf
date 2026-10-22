@@ -5,7 +5,7 @@ import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { holdUntil, waitFrames, waitTicks } from "./time.ts";
 import { ready, shopOpen, shopRow, tapUi, uiRect } from "./ui.ts";
-// The shopkeeper stands at (16, 12) on level 4, in the spawn room.
+// Ulgar, the shopkeeper NPC, stands at (16, 12) on level 4, in the spawn room.
 const SHOP = { x: 16, y: 12, z: 4 };
 const position = (page: Page) =>
   readWorld(page, (__world) => {
@@ -109,6 +109,9 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await startHost(page);
   await expect.poll(() => coins(page)).toBe(0);
   // Down the stairs into the tunnel, then mine coal and iron ore.
+  // Ulgar blocks the way north on its own column, so the route bends east first.
+  await walkUntil(page, "e", (p) => p.y <= 13.2);
+  await walkUntil(page, "f", (p) => p.x >= 17.8);
   await walkUntil(page, "e", (p) => p.y <= 12.1);
   await walkUntil(page, "f", (p) => p.z === 2 && p.x >= 21.2);
   await placeAt(page, 22, 12); // the coal is one tile north of tile 22
@@ -188,8 +191,14 @@ test("a guest sells through the host, and the host rejects what it does not hold
         count: 1,
       }));
     await expect.poll(() => notice(guest)).toContain("too far");
-    // Walk next to the shopkeeper.
+    // Walk up to Ulgar: the way north on its column is blocked.
     await walkUntil(guest, "e", (p) => p.y <= 13.2);
+    await walkUntil(guest, "f", (p) => p.x >= 15.8);
+    await guest.keyboard.down("e");
+    await waitTicks(guest, 20);
+    await guest.keyboard.up("e");
+    await settle(guest);
+    expect((await position(guest))!.y).toBeGreaterThan(SHOP.y + 0.5);
     // A request for more than it holds, or for stone, changes nothing.
     for (
       const message of [
@@ -236,9 +245,12 @@ test("the shop works by touch on a phone", async ({ browser }) => {
     await give(phone, "gold ore", 2);
     await give(phone, "lapis", 1);
     await give(phone, "stone", 5);
-    // Standing on the shopkeeper's tile highlights it with no aim.
-    await placeAt(phone, SHOP.x, SHOP.y);
+    // From the tile south of Ulgar, with the aim held north, interact opens the shop.
+    await placeAt(phone, SHOP.x, SHOP.y + 1);
+    await waitFrames(phone, 2);
+    await phone.keyboard.down("i");
     await tapUi(phone, "btn:interact");
+    await phone.keyboard.up("i");
     await expect.poll(() => shopOpen(phone)).toBe(true);
     await expect.poll(async () => (await shopRow(phone, "stone"))?.dim).toBe(
       true,
@@ -280,7 +292,7 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
   await startHost(page, "&gamepad-debug=1");
   await give(page, "coal", 2);
   await give(page, "diamond", 1);
-  await placeAt(page, SHOP.x, SHOP.y);
+  await placeAt(page, SHOP.x, SHOP.y + 1);
   await waitFrames(page, 2);
   // The frame loop reads the pad once per frame, and a held D-pad repeats after
   // a wall-clock delay. So the button is down for exactly one game frame: the
@@ -302,7 +314,14 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
           requestAnimationFrame(() => resolve());
         });
       }), button);
+  // The look stick aims north at Ulgar while ZR interacts.
+  await page.evaluate(() => {
+    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = -1;
+  });
   await press(7); // ZR interact opens the shop
+  await page.evaluate(() => {
+    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
+  });
   await expect.poll(() => shopOpen(page)).toBe(true);
   await expect.poll(async () => (await shopRow(page, "all"))?.selected).toBe(
     true,
@@ -332,4 +351,22 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
   await expect.poll(() => coins(page)).toBe(20);
   await press(3); // X closes
   await expect.poll(() => shopOpen(page)).toBe(false);
+});
+test("Ulgar stands in the spawn room as a named NPC with a gold tint", async ({ page }) => {
+  await startHost(page);
+  await placeAt(page, SHOP.x, SHOP.y + 3);
+  await waitFrames(page, 3);
+  const ulgar = await readWorld(
+    page,
+    (__world) => __world.scene.world.players["npc-ulgar"],
+  );
+  expect(ulgar).toMatchObject({
+    name: "Ulgar",
+    npc: true,
+    role: "trader",
+    x: SHOP.x,
+    y: SHOP.y,
+    z: SHOP.z,
+  });
+  await evidenceShot(page, "ulgar-spawn-room");
 });
