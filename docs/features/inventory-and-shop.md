@@ -49,16 +49,17 @@ it for the interact target, and `reachesTrader` is the range check for every
 conversation request, sales included. A sale is a host decision. Interact on
 Ulgar's tile opens the panel (`src/client/shop-panel.js`), which only asks. A
 panel row sends `talk` with the `sale` choice and the ore kind, or `all`, and
-the host runs `sellItems` with the count it finds. The host checks the entity,
-that a trader NPC stands on its tile or a neighbor on the same level, that the
-kind has a price (stone, the pickaxe, and coins do not), that the inventory
-holds the count, and that the coin stack has room. A failed check changes
-nothing and a guest gets `talk-result` with the reason. A sale removes the
-items, adds coins to the inventory's coin stack, and adds the sale line through
-`tell`, so only the seller sees it. The score is the coin count in the inventory
-panel; there is no separate readout. While the panel is open, interact and the
-look controls drive it instead of mining and aiming, and ESDF and the left stick
-still move the player.
+the host runs `sellItems` with the count it finds. The host refuses with
+`talk-result` and the reason, before anything is spoken or sold, when the entity
+or NPC is unknown, the player is out of reach of the NPC, the kind has no price
+(stone, the pickaxe, and coins have none), the player still has an unanswered
+request, or the player speaks too fast. Two outcomes are spoken and answered,
+and change nothing: nothing to sell, and a coin stack with no room for the
+coins. A sale removes the items, adds coins to the inventory's coin stack, and
+adds the sale line through `tell`, so only the seller sees it. The score is the
+coin count in the inventory panel; there is no separate readout. While the panel
+is open, interact and the look controls drive it instead of mining and aiming,
+and ESDF and the left stick still move the player.
 
 Item kinds, stacks, and pickup are in [mining and items](mining-and-items.md).
 

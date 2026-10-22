@@ -84,8 +84,8 @@ export const SALE_REPLIES = Object.freeze({
       `I'll take all of it, ${pieces(count)}. ${coinsText(coins)} for you.`,
   ],
   nothing: [
-    () => "you have nothing I buy.",
-    () => "your hands are empty of ore. Come back with some.",
+    () => "you have none of that to sell me.",
+    () => "no ore of that sort in your pack. Come back with some.",
     () => "no ore, no coin. Mine something first.",
   ],
   full: [

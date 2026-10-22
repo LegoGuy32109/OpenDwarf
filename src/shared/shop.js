@@ -57,7 +57,7 @@ export function traderAt(world, tile) {
 }
 
 /** Whether a trader stands on `player`'s tile or a neighboring one on the same level. @param {World} world @param {Player} player */
-export function nearTrader(world, player) {
+function nearTrader(world, player) {
   return Object.values(world.players).some((entity) =>
     isTrader(entity) && inPickupReach(player, tileOf(entity))
   );
@@ -109,10 +109,6 @@ export function saleLine(sold, coins) {
   }`;
 }
 
-/**
- * @typedef {{kind:string,count:number}|{all:true}} SaleRequest
- * A sale of `count` items of one kind, or of every sellable item.
- */
 /**
  * @typedef {{ok:true,sold:{kind:string,count:number}[],coins:number,line:string}|{ok:false,reason:string}} SaleResult
  */
