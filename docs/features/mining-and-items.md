@@ -59,7 +59,8 @@ per stack with its icon and count. IJKL, the look stick, or the D-pad moves the
 orange selector (the D-pad does not walk you while the grid is open), and a tap
 on a square selects it. Interact picks up the selected stack. With more than
 nine stacks a small gray plus shows in the bottom-right square, and moving down
-scrolls. Escape, or walking out of reach, closes the grid.
+scrolls. ESDF still walks you. Q, Escape, the gamepad's B, the touch Back
+button, or walking out of reach closes the grid.
 
 A pickup is a host decision. Interact on a highlighted tile that holds dropped
 items calls `pickUp` on the host, or sends a `pickup` request with the tile from

@@ -86,9 +86,7 @@ function movedTile(player, before) {
 /** One world tick of the local player's movement: send the input if a guest, then move. @param {Context} ctx */
 function move(ctx) {
   const { scene, stamina } = ctx;
-  const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
-    ? { x: 0, y: 0 }
-    : inputDirection(ctx);
+  const direction = scene.chatOpen ? { x: 0, y: 0 } : inputDirection(ctx);
   ctx.pressed.clear();
   const changed = direction.x !== ctx.lastInputDirection.x ||
     direction.y !== ctx.lastInputDirection.y;
@@ -132,9 +130,7 @@ function stepStateOf(ctx) {
 /** @param {Context} ctx @param {NonNullable<Context['simulation']>} simulation */
 function simulationStep(ctx, simulation) {
   const { scene, canvas } = ctx;
-  const direction = scene.chatOpen || scene.menu || ctx.shop.isOpen()
-    ? { x: 0, y: 0 }
-    : inputDirection(ctx);
+  const direction = scene.chatOpen ? { x: 0, y: 0 } : inputDirection(ctx);
   ctx.pressed.clear();
   simulation.input(scene.localId, direction, ctx.stamina.sprint);
   const view = scene.viewMode === "master" && canvas.clientWidth > 0
@@ -358,6 +354,7 @@ export function startLoop(ctx, renderer, input, onFirstDraw) {
     localVisibility(ctx, local);
     steerZoom(ctx, dt);
     steerCamera(ctx, local, now, dt);
+    input.steerMenu(now);
     updateChat(ctx, now);
     updateDisplay(ctx, now);
     updateLayout(ctx, input, now);

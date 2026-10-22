@@ -55,6 +55,8 @@ test("the volume setting persists, and F3 shows the music line", async ({ page }
   expect((await state(page)).level).toBe("75");
   await page.keyboard.press("Escape");
   await clickUi(page, "btn:settings");
+  // Escape goes back one level: Settings to the menu, then to the world.
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await page.mouse.click(640, 400);
   await expect.poll(async () => (await state(page)).status).toBe("playing");

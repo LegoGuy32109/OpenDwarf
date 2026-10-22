@@ -14,10 +14,9 @@ import { VOICES_KEY, VOICES_LEVELS } from "./chatter.js";
 import { MUSIC_KEY, MUSIC_LEVELS } from "./music.js";
 import { EFFECTS_KEY, EFFECTS_LEVELS } from "./sfx.js";
 import { setSprint } from "../shared/stamina.js";
-import { closePickupGrid, isPickupGridOpen } from "./pickup-grid.js";
 import { createPointerRouter } from "./ui-pointer.js";
 import { clamp, notify } from "./context.js";
-import { panelLookInput, stickDirection } from "./input-values.js";
+import { openLevel, panelLookInput, stickDirection } from "./input-values.js";
 import { interact } from "./interact.js";
 import {
   chatKey,
@@ -27,7 +26,12 @@ import {
   stopBackspaceRepeat,
 } from "./chat-input.js";
 import {
+  closeMenu,
+  goBack,
   gridKey,
+  menuConfirm,
+  menuStep,
+  replaceWithBag,
   tapPickupGrid,
   toggleBag,
   toggleJoinPanel,
@@ -36,6 +40,7 @@ import {
 } from "./panels.js";
 import { currentLayout, scrollList, toggleFullscreen } from "./ui-view.js";
 import { joinSession } from "./session.js";
+import { MENU_ROWS } from "./menu-nav.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
 
@@ -128,10 +133,7 @@ function readCameraAxes(ctx, pad) {
   ctx.gamepadCamera = Math.hypot(cameraX, cameraY) < 0.18
     ? { x: 0, y: 0 }
     : { x: cameraX, y: cameraY };
-  const leftStick = stickDirection(pad.axes[0] ?? 0, pad.axes[1] ?? 0, 0.3);
-  ctx.gamepadStick = leftStick.x || leftStick.y
-    ? leftStick
-    : stickDirection(cameraX, cameraY, 0.5);
+  ctx.gamepadStick = stickDirection(cameraX, cameraY, 0.5);
 }
 
 /** @param {Context} ctx @param {{x:number,y:number}} previousDirection @param {Set<number>} buttons */
@@ -155,16 +157,20 @@ function readGamepadAxes(ctx, pad, buttons) {
   );
   const { x: dpadX, y: dpadY } = gamepadDpad(pad, buttons);
   ctx.gamepadDpad = { x: dpadX, y: dpadY };
-  if ((dpadX || dpadY) && !isPickupGridOpen(ctx.pickupGrid)) {
+  // The D-pad walks in the world; an open menu uses it to choose.
+  const menuOpen = openLevel(ctx) !== null;
+  if ((dpadX || dpadY) && !menuOpen) {
     ctx.gamepadDirection = { x: dpadX, y: dpadY };
   }
   readCameraAxes(ctx, pad);
-  const panelOpen = ctx.bag.isOpen || isPickupGridOpen(ctx.pickupGrid) ||
-    ctx.shop.isOpen();
-  // A zooms in and B zooms out while held. Panels turn zoom off.
-  ctx.gamepadZoom = panelOpen
-    ? 0
-    : Number(buttons.has(1)) - Number(buttons.has(0));
+  // A zooms in and B zooms out while held. Menus turn zoom off, and a B that
+  // went Back keeps zoom out off until it is released.
+  if (!buttons.has(0)) ctx.nav.zoomOutBlocked = false;
+  const zoomIn = Number(!menuOpen && buttons.has(1));
+  const zoomOut = Number(
+    !menuOpen && !ctx.nav.zoomOutBlocked && buttons.has(0),
+  );
+  ctx.gamepadZoom = zoomIn - zoomOut;
   if (gamepadActive(ctx, previousDirection, buttons)) {
     scene.inputMode = "gamepad";
   }
@@ -172,28 +178,28 @@ function readGamepadAxes(ctx, pad, buttons) {
     ctx.bag.steer(ctx.gamepadDpad, performance.now());
     ctx.bag.steerStick(ctx.gamepadStick, performance.now());
   }
-  return panelOpen;
+  return menuOpen;
 }
 
-/** @param {Context} ctx @param {(index:number)=>boolean} newlyPressed @param {boolean} panelOpen */
-function gamepadActions(ctx, newlyPressed, panelOpen) {
+/** @param {Context} ctx @param {(index:number)=>boolean} newlyPressed @param {boolean} menuOpen */
+function gamepadActions(ctx, newlyPressed, menuOpen) {
   const { scene } = ctx;
-  // Y or X closes the open panel; X opens the menu only with no panel open.
-  if (newlyPressed(2) || newlyPressed(3)) {
-    if (panelOpen) {
-      toggleBag(ctx, false);
-      closePickupGrid(ctx.pickupGrid);
-      ctx.shop.close();
-    } else if (newlyPressed(3)) {
-      if (scene.chatOpen) closeChat(ctx);
-      toggleMenu(ctx);
-    } else toggleBag(ctx);
+  // B goes back one level. The press must not also zoom out once the menu is gone.
+  if (newlyPressed(0) && menuOpen) {
+    ctx.nav.zoomOutBlocked = true;
+    goBack(ctx);
   }
+  // Y opens the bag and X the menu; each replaces what is open.
+  if (newlyPressed(2)) replaceWithBag(ctx);
+  if (newlyPressed(3)) {
+    if (scene.chatOpen) closeChat(ctx);
+    toggleMenu(ctx);
+  }
+  if (!scene.chatOpen && newlyPressed(7)) confirmOrInteract(ctx);
   if (!scene.chatOpen && !scene.menu) {
     if (newlyPressed(4)) changeLayer(ctx, -1);
     if (newlyPressed(5)) changeLayer(ctx, 1);
-    if (newlyPressed(7)) interact(ctx);
-    if (newlyPressed(6) && !panelOpen) toggleSprint(ctx);
+    if (newlyPressed(6) && !menuOpen) toggleSprint(ctx);
   }
 }
 
@@ -212,36 +218,80 @@ function pollGamepad(ctx) {
   const buttons = new Set(
     pad.buttons.flatMap((button, index) => button.pressed ? [index] : []),
   );
-  const panelOpen = readGamepadAxes(ctx, pad, buttons);
+  const menuOpen = readGamepadAxes(ctx, pad, buttons);
   gamepadActions(
     ctx,
     (index) => buttons.has(index) && !ctx.gamepadButtons.has(index),
-    panelOpen,
+    menuOpen,
   );
   ctx.gamepadButtons = buttons;
 }
 
+/** Press a menu button by its id, as a tap on it would. @param {Context} ctx @param {string} id */
+function pressMenuButton(ctx, id) {
+  uiAction(ctx, { id, kind: "button", rect: { x: 0, y: 0, w: 0, h: 0 } });
+}
+
+/**
+ * Space, ZR, or the interact button: confirm in the open menu, or interact
+ * with the world. A newly opened menu ignores the press that is still held.
+ * @param {Context} ctx
+ */
+function confirmOrInteract(ctx) {
+  if (openLevel(ctx) === null) return interact(ctx);
+  if (!ctx.nav.armed) return;
+  if (ctx.scene.menu) menuConfirm(ctx, (id) => pressMenuButton(ctx, id));
+  else interact(ctx);
+}
+
+/**
+ * Step the Escape menu's selection from the D-pad, the right stick, or the
+ * on-screen look stick by the shared stick step rule, and keep the fresh-press
+ * gate current. IJKL step on the key press. Call it once a frame.
+ * @param {Context} ctx @param {ReadonlySet<string>} pressed the UI element ids held down @param {number} now
+ */
+function steerMenu(ctx, pressed, now) {
+  const { scene, nav } = ctx;
+  nav.update(
+    openLevel(ctx),
+    ctx.confirmKeyHeld || ctx.gamepadButtons.has(7) ||
+      pressed.has("btn:interact"),
+  );
+  if (!scene.menu) {
+    nav.stick.releaseFirst();
+    return;
+  }
+  const direction = ctx.gamepadDpad.x || ctx.gamepadDpad.y
+    ? ctx.gamepadDpad
+    : ctx.gamepadStick.x || ctx.gamepadStick.y
+    ? ctx.gamepadStick
+    : stickDirection(ctx.cameraStick.x, ctx.cameraStick.y, 0.5);
+  const step = nav.stick.update(direction, now);
+  if (step) {
+    menuStep(ctx, step.x, step.y, (id) => pressMenuButton(ctx, id));
+  }
+}
+
 /** @type {Record<string,(ctx:Context)=>unknown>} */
 const UI_ACTIONS = {
-  "btn:interact": interact,
+  "btn:interact": confirmOrInteract,
+  "btn:nav-back": goBack,
   "btn:sprint": toggleSprint,
   "btn:chat": openChat,
   "btn:log": toggleLog,
   "btn:menu": toggleMenu,
-  "btn:bag": toggleBag,
+  "btn:bag": replaceWithBag,
   "btn:fullscreen": (ctx) => void toggleFullscreen(ctx),
   "btn:qr": toggleJoinPanel,
   "btn:update": () => location.reload(),
   "btn:log-close": (ctx) => toggleLog(ctx, false),
   "btn:bag-close": (ctx) => toggleBag(ctx, false),
   "btn:shop-close": (ctx) => ctx.shop.close(),
-  "scrim:menu": (ctx) => {
-    ctx.scene.menu = false;
-  },
-  "btn:resume": (ctx) => {
-    ctx.scene.menu = false;
-  },
+  "scrim:menu": closeMenu,
+  "btn:resume": closeMenu,
   "btn:settings": (ctx) => {
+    ctx.nav.rows.menu = MENU_ROWS.indexOf("settings");
+    ctx.nav.rows.settings = 0;
     ctx.scene.menuPage = "settings";
   },
   "btn:back": (ctx) => {
@@ -403,16 +453,14 @@ function bindWorldGesture(ctx) {
   return { down, move, release };
 }
 
-/** @param {Context} ctx @param {KeyboardEvent} event */
+/** @type {Record<string,[number,number]>} */
+const MENU_KEYS = { KeyI: [0, -1], KeyK: [0, 1], KeyJ: [-1, 0], KeyL: [1, 0] };
+
+/** Q and Escape go back one level. @param {Context} ctx @param {KeyboardEvent} event */
 function escapeKey(ctx, event) {
   event.preventDefault();
   if (event.repeat) return;
-  if (ctx.bag.isOpen) return toggleBag(ctx, false);
-  if (isPickupGridOpen(ctx.pickupGrid)) return closePickupGrid(ctx.pickupGrid);
-  if (ctx.shop.isOpen()) return ctx.shop.close();
-  if (ctx.ui.logOpen) return toggleLog(ctx, false);
-  ctx.scene.menu = !ctx.scene.menu;
-  ctx.scene.menuPage = "root";
+  goBack(ctx);
 }
 /** @type {Record<string,(ctx:Context)=>unknown>} */
 const KEY_ACTIONS = {
@@ -421,7 +469,7 @@ const KEY_ACTIONS = {
   KeyT: openChat,
   Slash: (ctx) => openChat(ctx, "/"),
   KeyH: toggleSprint,
-  Space: interact,
+  Space: confirmOrInteract,
 };
 /** @param {Context} ctx @param {KeyboardEvent} event */
 function commandKey(ctx, event) {
@@ -455,16 +503,19 @@ function globalKey(ctx, event) {
   return commandKey(ctx, event);
 }
 
-/** @param {Context} ctx @param {KeyboardEvent} event */
-function shopKey(ctx, event) {
-  const { shop } = ctx;
-  if (
-    shop.isOpen() && ["KeyI", "KeyK", "KeyJ", "KeyL"].includes(event.code)
-  ) {
-    // IJKL choose a row in the shop panel; a held key repeats in `shop.steer`.
+/** IJKL choose in the Escape menu and the shop panel; the bag and the pickup grid read them in `worldKey` and `gridKey`. @param {Context} ctx @param {KeyboardEvent} event */
+function menuKey(ctx, event) {
+  const step = MENU_KEYS[event.code];
+  if (!step) return false;
+  if (ctx.scene.menu) {
     event.preventDefault();
-    if (!event.repeat && event.code === "KeyI") shop.move(-1);
-    if (!event.repeat && event.code === "KeyK") shop.move(1);
+    menuStep(ctx, step[0], step[1], (id) => pressMenuButton(ctx, id));
+    return true;
+  }
+  if (ctx.shop.isOpen()) {
+    // A held key repeats in `shop.steer`.
+    event.preventDefault();
+    if (!event.repeat && step[1]) ctx.shop.move(step[1]);
     return true;
   }
   return false;
@@ -513,7 +564,8 @@ function worldKey(ctx, event) {
 
 /** @param {Context} ctx @param {KeyboardEvent} event */
 function keyDown(ctx, event) {
-  if (globalKey(ctx, event) || shopKey(ctx, event)) return;
+  if (event.code === "Space") ctx.confirmKeyHeld = true;
+  if (globalKey(ctx, event) || menuKey(ctx, event)) return;
   worldKey(ctx, event);
 }
 
@@ -610,7 +662,12 @@ export function createInput(ctx) {
       keyDown(ctx, event);
     });
     document.addEventListener("keyup", (event) => {
-      if (event.code === "Space") event.preventDefault();
+      if (event.code === "Space") {
+        event.preventDefault();
+        ctx.confirmKeyHeld = false;
+        // Arm the open menu now, so a quick press after the release counts.
+        ctx.nav.update(openLevel(ctx), false);
+      }
       ctx.held.delete(event.code);
       ctx.gridKeysAtOpen.delete(event.code);
       if (["KeyR", "KeyV", "KeyU", "KeyN"].includes(event.code)) {
@@ -620,6 +677,7 @@ export function createInput(ctx) {
     globalThis.addEventListener("blur", () => {
       ctx.held.clear();
       ctx.pressed.clear();
+      ctx.confirmKeyHeld = false;
       router.releaseAll();
       ctx.joystick = { x: 0, y: 0 };
       ctx.cameraStick = { x: 0, y: 0 };
@@ -646,5 +704,11 @@ export function createInput(ctx) {
     }, { passive: false });
   }
 
-  return { bind, poll: () => pollGamepad(ctx), router };
+  return {
+    bind,
+    poll: () => pollGamepad(ctx),
+    steerMenu: (/** @type {number} */ now) =>
+      steerMenu(ctx, router.pressed(), now),
+    router,
+  };
 }

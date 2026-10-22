@@ -30,6 +30,7 @@
  * @property {string} [item] an item kind to draw
  * @property {number} [count]
  * @property {boolean} [on] a toggled button, or the selected row or slot
+ * @property {boolean} [sel] the row the menu selection is on, drawn with an outline
  * @property {boolean} [held] the slot of the held item
  * @property {boolean} [dim]
  * @property {boolean} [locked]
@@ -68,7 +69,8 @@
  * @property {boolean} [bagOpenButton]
  * @property {{move:Knob,look:Knob}} [sticks]
  * @property {{open:boolean,draft:string,page:"letters"|"symbols",shift:boolean}} [chat]
- * @property {{open:boolean,page:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],effects?:string,effectsLevels?:readonly string[],mode:string,build?:string,audio?:string}} [menu]
+ * @property {{open:boolean,page:string,row?:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],effects?:string,effectsLevels?:readonly string[],mode:string,build?:string,audio?:string}} [menu]
+ * @property {boolean} [backButton] a menu or panel is open, so touch shows the Back button
  * @property {{open:boolean,lines:readonly HearingLine[],scroll:number}} [log]
  * @property {{open:boolean,stacks:readonly Stack[],selected:number,held:string}} [bag]
  * @property {{open:boolean,rows:readonly ShopRow[],selected:string,scroll:number}} [shop]

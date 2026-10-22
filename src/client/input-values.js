@@ -6,6 +6,9 @@
  * events (`input.js` does); `interact.js`, `panels.js`, and `loop.js` read here.
  */
 
+import { isPickupGridOpen } from "./pickup-grid.js";
+import { capturedInputs } from "./menu-nav.js";
+
 /** @typedef {import('./client-context.js').Context} Context */
 
 /** @param {number} x @param {number} y @param {number} deadzone */
@@ -30,8 +33,8 @@ export function stickDirection(x, y, deadzone) {
 export function inputDirection(ctx) {
   const { held, pressed } = ctx;
   if (ctx.joystick.x || ctx.joystick.y) return ctx.joystick;
-  // The D-pad and left stick steer the open inventory panel instead of walking.
-  if (!ctx.bag.isOpen && (ctx.gamepadDirection.x || ctx.gamepadDirection.y)) {
+  // The D-pad walks only with no menu open (`readGamepadAxes`); the left stick always walks.
+  if (ctx.gamepadDirection.x || ctx.gamepadDirection.y) {
     return ctx.gamepadDirection;
   }
   return {
@@ -44,7 +47,7 @@ export function inputDirection(ctx) {
 
 /** The look stick, IJKL, and controller camera input combined. @param {Context} ctx */
 function lookInput(ctx) {
-  const controllerCamera = ctx.scene.chatOpen || ctx.scene.menu
+  const controllerCamera = ctx.scene.chatOpen
     ? { x: 0, y: 0 }
     : ctx.gamepadCamera;
   return {
@@ -65,9 +68,20 @@ export function panelLookInput(ctx) {
   };
 }
 
-/** The aim input, held still while the shop panel uses the look controls. @param {Context} ctx */
+/** The open menu level, or null with none open. The panels and the menu never open together. @param {Context} ctx @returns {import('./menu-nav.js').MenuLevel|null} */
+export function openLevel(ctx) {
+  if (ctx.bag.isOpen) return "bag";
+  if (isPickupGridOpen(ctx.pickupGrid)) return "grid";
+  if (ctx.shop.isOpen()) return "shop";
+  if (ctx.scene.menu) {
+    return ctx.scene.menuPage === "settings" ? "settings" : "menu";
+  }
+  return null;
+}
+
+/** The aim input, held still while an open menu uses the look controls: a menu never also aims, mines, or pans the camera. @param {Context} ctx */
 export function cameraInput(ctx) {
-  return ctx.shop.isOpen() ? { x: 0, y: 0 } : lookInput(ctx);
+  return capturedInputs(openLevel(ctx)).look ? { x: 0, y: 0 } : lookInput(ctx);
 }
 
 /** Up or down on the on-screen look stick or the D-pad, for the shop panel. IJKL act on key presses, and the gamepad sticks use `shop.steerStick`. @param {Context} ctx */
