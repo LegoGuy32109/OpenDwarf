@@ -12,7 +12,13 @@ import { createSoundEvents } from "./sound-events.js";
 import { createSfx, EFFECTS_KEY, parseEffectsLevel } from "./sfx.js";
 import { addSystemLine, createHearingLog } from "../shared/hearing-log.js";
 import { createStamina } from "../shared/stamina.js";
-import { flash, holdItem, sellRequest, typing } from "./client-actions.js";
+import {
+  flash,
+  holdItem,
+  sellRequest,
+  talkRequest,
+  typing,
+} from "./client-actions.js";
 import { build } from "./build.js";
 import { createInventoryPanel } from "./inventory-panel.js";
 import { createShopPanel } from "./shop-panel.js";
@@ -230,8 +236,14 @@ export function createContext() {
       sell: (request) => {
         sellRequest(ctx, request);
       },
+      talk: (npc, choice) => {
+        talkRequest(ctx, npc, choice);
+      },
       flash: (text) => {
         flash(ctx, text);
+      },
+      onOpenChange: () => {
+        typing(ctx);
       },
     }),
     pickupGrid: createPickupGrid(),

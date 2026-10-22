@@ -159,12 +159,14 @@ simulation.advanceTicks(21);
 
 A structure contains local `paints`, `entities`, and `spawns`. An entity has an
 `id` and `at`, with optional `name`, `inventory`, `held`, and `behavior`.
-`role: "trader"` gives the NPC the shop conversation. The role is set on the
-entity (`player.role`) and travels with it in every snapshot, so a guest finds
-the shopkeeper in `world.players` like any other entity. There is no separate
-shop location: the earlier `role: "shop"` shop tile and `world.shops` are gone
-(ADR 0010). Protocol version 7 carries the `role` field in place of shop tiles.
-An older peer must reload or join the matching historical build. Every initial
+`role: "trader"` gives the NPC the trader conversation: interact opens its menu
+and the host answers its questions (see
+[NPC conversations](npc-conversations.md)). The role is set on the entity
+(`player.role`) and travels with it in every snapshot, so a guest finds the
+shopkeeper in `world.players` like any other entity. There is no separate shop
+location: the earlier `role: "shop"` shop tile and `world.shops` are gone (ADR
+0010). Protocol version 7 carries the `role` field in place of shop tiles. An
+older peer must reload or join the matching historical build. Every initial
 entity is an NPC. A joining participant is a player.
 
 The spawn room's recipe places Ulgar at (16, 12) on level 4, against the north
@@ -174,8 +176,9 @@ Ulgar's position from `world.players` (`traderAt` and `nearTrader` in
 `shop.js`).
 
 Definitions carry `version: 1`. Loading checks JSON values, coordinates,
-materials, entity IDs, and generator names. A simulation also resolves behavior
-names. The loaded definition is frozen and isolated from the caller.
+materials, entity IDs, entity roles (an unknown role is refused), and generator
+names. A simulation also resolves behavior names. The loaded definition is
+frozen and isolated from the caller.
 
 `registerWorldGenerator(id, factory)` adds a generator factory that takes the
 seed and parameters and returns a chunk function `(cx, cy) => Uint8Array`.

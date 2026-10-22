@@ -42,6 +42,7 @@ const RULES = {
     value.all === true ||
     (identifier(value.kind, 24) && counter(value.count, MAX_STACK_COUNT) &&
       value.count >= 1),
+  talk: (value) => identifier(value.npc) && identifier(value.choice, 24),
   mode: (value) => value.mode === "entity" || value.mode === "master",
   typing: (value) => typeof value.typing === "boolean",
   message: (value) => text(value.text, 120),

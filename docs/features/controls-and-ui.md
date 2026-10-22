@@ -52,8 +52,8 @@ model over Bluetooth to play.
 
 ## Menu navigation
 
-Settings, the inventory panel, the pickup grid, and the shop panel share one
-navigation model (`src/client/menu-nav.js`, applied in `panels.js` and
+Settings, the inventory panel, the pickup grid, and the trader conversation
+share one navigation model (`src/client/menu-nav.js`, applied in `panels.js` and
 `input.js`).
 
 | Action             | Keyboard  | Controller         | Touch                  |
@@ -68,8 +68,9 @@ navigation model (`src/client/menu-nav.js`, applied in `panels.js` and
   on the Back row only; value rows change with J and L.
 - Back goes up one level. Settings goes back to the Escape menu with its row
   still selected, and every outermost menu (the Escape menu, the bag, the pickup
-  grid, the shop panel) goes back to the world. With no menu open, Q or Escape
-  closes the hearing log, and otherwise opens the Escape menu.
+  grid, the trader conversation) goes back to the world. The item list inside
+  the conversation goes back to the conversation first. With no menu open, Q or
+  Escape closes the hearing log, and otherwise opens the Escape menu.
 - X and Y keep their world meanings, and each replaces the open menu or panel: X
   shows the Escape menu, and Y shows the bag. A second press of the same button
   closes it.

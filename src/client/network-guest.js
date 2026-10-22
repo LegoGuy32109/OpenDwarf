@@ -47,6 +47,7 @@ import {
 const RESULT_NOTICES = new Map([
   ["pickup-result", { max: 40, prefix: "Cannot pick up: " }],
   ["sell-result", { max: 60, prefix: "Cannot sell: " }],
+  ["talk-result", { max: 60, prefix: "" }],
   ["place-result", { max: 40, prefix: "" }],
   ["mine-result", { max: 40, prefix: "Cannot mine: " }],
 ]);

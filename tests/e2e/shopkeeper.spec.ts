@@ -71,6 +71,11 @@ const tileAt = (page: Page, x: number, y: number, z: number) =>
       )?.[tz * 256 + (ty % 16) * 16 + (tx % 16)] ?? -1,
     [x, y, z],
   );
+/** Confirm "I have ore to trade", which opens the item list inside the conversation. */
+async function openItems(page: Page) {
+  await page.keyboard.press("Space");
+  await expect.poll(() => shopRow(page, "all")).not.toBeNull();
+}
 /** With the aim held, interact. Interact reads the held aim keys at once. */
 async function interactAiming(page: Page, ...keys: string[]) {
   for (const key of keys) {
@@ -129,6 +134,7 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await walkUntil(page, "s", (p) => p.z === 4 && p.x <= 17.2);
   await interactAiming(page, ...(await aimAtShopkeeper(page)));
   await expect.poll(() => shopOpen(page)).toBe(true);
+  await openItems(page);
   expect((await shopRow(page, "all"))?.text).toBe("Sell all ore");
   expect((await shopRow(page, "all"))?.price).toBe("4 coins");
   await expect.poll(async () => (await shopRow(page, "pickaxe"))?.dim).toBe(
@@ -162,7 +168,10 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await expect.poll(() => coins(page)).toBe(4);
   expect(await systemLines(page)).toContain("Sold coal ×1 for 1 coin");
   await evidenceShot(page, "shop-score");
-  // Escape closes the panel and the player can walk again.
+  // Escape goes back to the conversation, and a second one closes the panel.
+  await page.keyboard.press("Escape");
+  await expect.poll(() => shopRow(page, "all")).toBeNull();
+  expect(await shopOpen(page)).toBe(true);
   await page.keyboard.press("Escape");
   await expect.poll(() => shopOpen(page)).toBe(false);
   expect(await inventory(page)).toEqual([
@@ -217,6 +226,7 @@ test("a guest sells through the host, and the host rejects what it does not hold
     // Aim at the shopkeeper from wherever the guest stands.
     await interactAiming(guest, ...(await aimAtShopkeeper(guest)));
     await expect.poll(() => shopOpen(guest)).toBe(true);
+    await openItems(guest);
     await expect.poll(async () => (await shopRow(guest, "stone"))?.dim).toBe(
       true,
     );
@@ -252,6 +262,7 @@ test("the shop works by touch on a phone", async ({ browser }) => {
     await tapUi(phone, "btn:interact");
     await phone.keyboard.up("i");
     await expect.poll(() => shopOpen(phone)).toBe(true);
+    await tapUi(phone, "row:talk:sell");
     await expect.poll(async () => (await shopRow(phone, "stone"))?.dim).toBe(
       true,
     );
@@ -323,6 +334,7 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
     (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
   });
   await expect.poll(() => shopOpen(page)).toBe(true);
+  await press(7); // ZR says "I have ore to trade" and opens the item list
   await expect.poll(async () => (await shopRow(page, "all"))?.selected).toBe(
     true,
   );

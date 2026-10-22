@@ -357,6 +357,9 @@ test.describe("phone", () => {
     await tapUi(page, "btn:interact");
     await page.keyboard.up("i");
     await expect.poll(() => shopOpen(page)).toBe(true);
+    await evidenceShot(page, "shop-conversation-phone");
+    await tapUi(page, "row:talk:sell");
+    await expect.poll(() => hasUi(page, "row:all")).toBe(true);
     await evidenceShot(page, "shop-panel-phone");
     await tapUi(page, "row:gold ore");
     await waitFrames(page, 3);

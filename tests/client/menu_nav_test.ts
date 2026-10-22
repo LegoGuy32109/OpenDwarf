@@ -37,7 +37,7 @@ function fakeContext() {
     ui: { logOpen: false, logScroll: 0 },
     nav: createMenuNav(),
     bag: createInventoryPanel({ onHold: () => {}, onOpenChange: () => {} }),
-    shop: createShopPanel({ sell: () => {}, flash: () => {} }),
+    shop: createShopPanel({ sell: () => {}, talk: () => {}, flash: () => {} }),
     pickupGrid: createPickupGrid(),
     chatter: { level: "all" },
     music: { level: "50" },
@@ -50,6 +50,7 @@ Deno.test("Back goes up one level: Settings to the menu, then to the world", () 
   assertEquals(parentLevel("menu"), null);
   assertEquals(parentLevel("bag"), null);
   assertEquals(parentLevel("shop"), null);
+  assertEquals(parentLevel("shop-items"), "shop");
   assertEquals(parentLevel("grid"), null);
   assertEquals(parentLevel(null), null);
 
@@ -248,4 +249,52 @@ Deno.test("a child menu opened by a confirm needs its own fresh press", () => {
   // A menu opened with nothing held is ready at once.
   nav.update("bag", false);
   assertEquals(nav.armed, true);
+});
+
+Deno.test("the trader conversation sits above the item list, and Back restores it", () => {
+  const talked: string[][] = [];
+  const ctx = fakeContext();
+  ctx.shop = createShopPanel({
+    sell: () => {},
+    talk: (npc, choice) => talked.push([npc, choice]),
+    flash: () => {},
+  });
+  ctx.shop.open(0, { id: "npc-ulgar", name: "Ulgar" });
+  assertEquals([openLevel(ctx), ctx.shop.level], ["shop", "conversation"]);
+  assertEquals(ctx.shop.choices.map((choice) => choice.text), [
+    "I have ore to trade",
+    "What do you buy?",
+  ]);
+  // Highlighting is silent: nothing is asked until a choice is confirmed.
+  ctx.shop.move(1);
+  assertEquals(talked, []);
+  ctx.shop.move(-1);
+  ctx.shop.confirm();
+  assertEquals(talked, [["npc-ulgar", "sell"]]);
+  assertEquals(openLevel(ctx), "shop-items");
+  // Back returns to the conversation with the same choice selected.
+  goBack(ctx);
+  assertEquals([openLevel(ctx), ctx.shop.selected], ["shop", "talk:sell"]);
+  ctx.shop.move(1);
+  ctx.shop.confirm();
+  assertEquals(talked.at(-1), ["npc-ulgar", "buys"]);
+  assertEquals(openLevel(ctx), "shop", "a spoken question keeps the menu open");
+  goBack(ctx);
+  assertEquals(openLevel(ctx), null);
+});
+
+Deno.test("opening the conversation raises the thought icon through onOpenChange", () => {
+  const changes: boolean[] = [];
+  let open = false;
+  const shop = createShopPanel({
+    sell: () => {},
+    talk: () => {},
+    flash: () => {},
+    onOpenChange: () => changes.push(open = shop.isOpen()),
+  });
+  shop.open(0, { id: "npc-ulgar", name: "Ulgar" });
+  shop.open(0, { id: "npc-ulgar", name: "Ulgar" });
+  shop.back();
+  assertEquals(changes, [true, false]);
+  assertEquals(open, false);
 });

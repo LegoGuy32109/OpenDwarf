@@ -73,7 +73,7 @@
  * @property {boolean} [backButton] a menu or panel is open, so touch shows the Back button
  * @property {{open:boolean,lines:readonly HearingLine[],scroll:number}} [log]
  * @property {{open:boolean,stacks:readonly Stack[],selected:number,held:string}} [bag]
- * @property {{open:boolean,rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
+ * @property {{open:boolean,level:"conversation"|"items",title:string,choices:readonly {name:string,text:string,on:boolean}[],rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
  * @property {{open:boolean,status:string,stats:string,items:readonly {id:string}[]}} [sessions]
  */
 /** @typedef {{active:boolean,x:number,y:number}} Knob the knob offset from the stick center in CSS pixels */

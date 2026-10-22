@@ -353,6 +353,7 @@ export function startHost(scene, session, sounds = {}) {
           "hold",
           "pickup",
           "sell",
+          "talk",
           "message",
           "typing",
           "nick",
@@ -376,7 +377,9 @@ export function startHost(scene, session, sounds = {}) {
               tell(playerId, result.line);
             } else if (
               !result.ok &&
-              ["mine", "place", "pickup", "sell"].includes(String(message.type))
+              ["mine", "place", "pickup", "sell", "talk"].includes(
+                String(message.type),
+              )
             ) {
               hostPeer.reply({
                 type: `${message.type}-result`,

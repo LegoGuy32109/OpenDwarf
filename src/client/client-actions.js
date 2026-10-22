@@ -20,7 +20,7 @@ export function flash(ctx, text) {
 export function typing(ctx) {
   const { scene } = ctx;
   const value = scene.chatDraft.trim();
-  const next = ctx.bag.isOpen ||
+  const next = ctx.bag.isOpen || ctx.shop.isOpen() ||
     scene.chatOpen && value.length > 0 && !value.startsWith("/");
   if (next === ctx.lastTyping) return;
   ctx.lastTyping = next;
@@ -90,4 +90,22 @@ export function sellRequest(ctx, request) {
     scene.systemLine(result.line);
     ctx.sfx.play(["sell"]);
   } else flash(ctx, `Cannot sell: ${result.reason}`);
+}
+
+/**
+ * Ask an NPC to be spoken to: the world host speaks the player's line and
+ * queues the NPC's reply. The host checks the NPC, the range, and that no
+ * earlier request still waits.
+ * @param {Context} ctx @param {string} npc @param {string} choice
+ */
+export function talkRequest(ctx, npc, choice) {
+  const { scene } = ctx;
+  const message = { type: "talk", npc, choice };
+  if (ctx.isAdmin) {
+    ctx.guest?.send(message);
+    return;
+  }
+  ctx.simulation?.enqueue(scene.localId, message, (result) => {
+    if (!result.ok) flash(ctx, String(result.reason));
+  });
 }

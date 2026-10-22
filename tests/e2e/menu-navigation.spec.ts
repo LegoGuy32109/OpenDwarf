@@ -193,7 +193,10 @@ test("with the shop open the player walks with ESDF, the panel closes out of ran
   await openShop(page);
   await page.keyboard.up("Space");
   await holdLookKeys(page);
-  // A confirm sells the selected row and does not mine.
+  // A confirm says "I have ore to trade" and opens the item list; the next one
+  // sells the selected row. Neither mines.
+  await page.keyboard.press("Space");
+  await expect.poll(() => hasUi(page, "row:all")).toBe(true);
   await page.keyboard.press("Space");
   await expect.poll(async () => {
     const stacks = await readWorld(page, (w) => w.scene.inventory);

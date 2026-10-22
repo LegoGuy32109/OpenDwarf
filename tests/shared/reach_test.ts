@@ -133,6 +133,19 @@ Deno.test("interactPreview names the action the host would take", () => {
   assertEquals(at(5, 5, 2), "pickup", "the dwarf's own tile");
 });
 
+Deno.test("interactPreview names the conversation when items lie on a trader's tile", () => {
+  const world = createWorld();
+  ensureChunk(world, 0, 0).fill(OPEN);
+  addTrader(world, SHOP_TILE);
+  const player = addPlayer(world, "self", {
+    x: SHOP_TILE.x + 1,
+    y: SHOP_TILE.y,
+    z: SHOP_TILE.z,
+  });
+  dropItem(world, SHOP_TILE, "coal", 1);
+  assertEquals(interactPreview(world, player, SHOP_TILE, sees), "shop");
+});
+
 Deno.test("interactPreview names a trader NPC next to the player and not out of reach", () => {
   const world = createWorld();
   ensureChunk(world, 0, 0).fill(OPEN);

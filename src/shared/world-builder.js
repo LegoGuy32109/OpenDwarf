@@ -2,7 +2,7 @@
 // Serializable world construction, shared by browser and headless sessions.
 import { MAX_MATERIAL } from "./materials.js";
 import { identifier } from "./wire-parse.js";
-import { addPlayer } from "./world.js";
+import { addPlayer, ROLES } from "./world.js";
 import { enableLocomotion } from "./locomotion.js";
 import { addStack, dropItem, inventoryOf } from "./items.js";
 import { setHeldItem } from "./held-item.js";
@@ -95,6 +95,9 @@ function validateEntities(entities) {
       throw new Error(`Duplicate or empty entity ID: ${entity.id}`);
     }
     ids.add(entity.id);
+    if (entity.role !== undefined && !ROLES.includes(entity.role)) {
+      throw new Error(`Unknown entity role: ${entity.role}`);
+    }
   }
 }
 

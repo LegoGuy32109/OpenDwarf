@@ -71,7 +71,9 @@ export function panelLookInput(ctx) {
 export function openLevel(ctx) {
   if (ctx.bag.isOpen) return "bag";
   if (isPickupGridOpen(ctx.pickupGrid)) return "grid";
-  if (ctx.shop.isOpen()) return "shop";
+  if (ctx.shop.isOpen()) {
+    return ctx.shop.level === "items" ? "shop-items" : "shop";
+  }
   if (ctx.scene.menu) {
     return ctx.scene.menuPage === "settings" ? "settings" : "menu";
   }

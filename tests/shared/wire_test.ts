@@ -337,6 +337,7 @@ Deno.test("control requires integer octants, bounded strings, and proper types",
   );
   assert(decodeControl({ type: "ping", id: "ping-id" }));
   assert(decodeControl({ type: "resync" }));
+  assert(decodeControl({ type: "talk", npc: "npc-ulgar", choice: "buys" }));
   for (
     const value of [
       { type: "input", dx: 0.1, dy: 0, sequence: 20 },
@@ -345,6 +346,9 @@ Deno.test("control requires integer octants, bounded strings, and proper types",
       { type: "typing", typing: "true" },
       { type: "message", text: "x".repeat(121) },
       { type: "mode", mode: "admin" },
+      { type: "talk", npc: "npc-ulgar" },
+      { type: "talk", npc: 7, choice: "buys" },
+      { type: "talk", npc: "npc-ulgar", choice: "x".repeat(25) },
       { type: "unknown" },
       null,
     ]

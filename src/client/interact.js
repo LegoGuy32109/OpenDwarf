@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * The interact order and what it starts: opening the shop, picking up dropped
+ * The interact order and what it starts: opening the trader conversation, picking up dropped
  * items (one stack, or the pickup grid for several), placing held stone, and
  * mining with its lock. A guest sends each order to the world host, which
  * checks reach and ownership; the world host's own player goes through the same
@@ -27,11 +27,6 @@ import { cameraInput, shopDirection, stickDirection } from "./input-values.js";
 import { pickupGridStacks } from "./pickup-grid-view.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
-
-/** Whether the highlighted tile holds a trader NPC. @param {Context} ctx @param {{x:number,y:number,z:number}} target */
-function isShopkeeper(ctx, target) {
-  return traderAt(ctx.scene.world, target) !== undefined;
-}
 
 /** Pick up the stack of one kind from a tile. The host checks reach and who asked first. @param {Context} ctx @param {{x:number,y:number,z:number}} target @param {string} kind */
 function pickUpAt(ctx, target, kind) {
@@ -112,8 +107,9 @@ export function interact(ctx) {
     return;
   }
   stopMining(ctx);
-  if (isShopkeeper(ctx, target)) {
-    shop.open(shopDirection(ctx));
+  const trader = traderAt(scene.world, target);
+  if (trader) {
+    shop.open(shopDirection(ctx), { id: trader.id, name: trader.name });
     return;
   }
   const stacks = droppedHere(ctx, target);
