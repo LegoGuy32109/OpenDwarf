@@ -1,14 +1,16 @@
-import { dropItems, giveItems, placePlayer } from "./world.ts";
+import { dropItems, giveItems, placePlayer, setTile } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { holdUntil, waitFrames } from "./time.ts";
-import { hasUi, ready, shopOpen, tapUi, uiRect } from "./ui.ts";
+import { holdUntil, waitFor, waitFrames, waitTicks } from "./time.ts";
+import { hasUi, heldSlot, ready, say, shopOpen, tapUi, uiRect } from "./ui.ts";
 // Every menu shares one navigation model: ESDF keeps walking, IJKL choose,
 // Space confirms, and Q, Escape, controller B, or the touch Back button go
 // back one level.
+// Ulgar stands at (16, 12); a player talks to it from a neighboring tile.
 const SHOP = { x: 16, y: 12 };
+const STONE = 2;
 // The controller layout of ADR 0009, with the Nintendo Switch labels.
 const B = 0;
 const ZR = 7;
@@ -59,16 +61,43 @@ async function walkWest(page: Page) {
     .toBeNull();
   return startX - (await position(page))!.x;
 }
-/** Hold every look key for some frames and confirm: the menu takes them, not the world. */
-async function lookAndConfirm(page: Page) {
+/** Hold each look key for some frames: the menu takes them, so the world aim stays still. */
+async function holdLookKeys(page: Page) {
   for (const key of ["i", "k", "j", "l"]) {
     await page.keyboard.down(key);
     await waitFrames(page, 3);
-    const state = await sceneState(page);
-    expect(state.aim).toEqual({ x: 0, y: 0 });
-    expect(state.mining).toBe(0);
+    expect((await sceneState(page)).aim).toEqual({ x: 0, y: 0 });
     await page.keyboard.up(key);
   }
+}
+const STONE_TILE = { x: 4, y: 3 };
+/** Put stone south of the player at (4, 2), the tile "k" aims at. */
+const placeStone = (page: Page) =>
+  setTile(page, STONE_TILE.x, STONE_TILE.y, 0, STONE);
+const stoneTile = (page: Page) =>
+  readWorld(
+    page,
+    (__world, [x, y]) =>
+      __world.scene.world.chunks.get("0,0")?.[y * 16 + x] ?? -1,
+    [STONE_TILE.x, STONE_TILE.y],
+  );
+/** Confirm with the aim held on the stone: the menu acts on it and nothing is mined. */
+async function expectNoMining(page: Page, confirm: () => Promise<void>) {
+  await page.keyboard.down("k");
+  await confirm();
+  await waitTicks(page, 6);
+  await page.keyboard.up("k");
+  expect((await sceneState(page)).mining).toBe(0);
+  expect(await stoneTile(page)).toBe(STONE);
+}
+/** Open Ulgar's shop from the tile south of it. */
+async function openShop(page: Page) {
+  await placePlayer(page, SHOP.x, SHOP.y + 1);
+  await waitFrames(page, 2);
+  await page.keyboard.down("i");
+  await page.keyboard.press("Space");
+  await page.keyboard.up("i");
+  await expect.poll(() => shopOpen(page)).toBe(true);
 }
 async function openGrid(page: Page) {
   await placePlayer(page, 4, 2);
@@ -105,10 +134,11 @@ test("with Settings open the player walks with ESDF, Q goes back one level, and 
   await page.keyboard.press("l");
   await expect.poll(() => readWorld(page, (__world) => __world.scene.uiScale))
     .toBeGreaterThan(scaleBefore);
-  // IJKL never aim, mine, or pan the camera while a menu is open.
-  const cameraBefore = (await sceneState(page)).camera;
-  await lookAndConfirm(page);
-  expect((await sceneState(page)).camera).toEqual(cameraBefore);
+  // IJKL never aim while a menu is open, and a confirm with the aim on stone does not mine.
+  await holdLookKeys(page);
+  await placeStone(page);
+  await expectNoMining(page, () => page.keyboard.press("Space"));
+  expect((await sceneState(page)).page).toBe("settings");
   // ESDF keeps moving the player with Settings open.
   expect(await walkWest(page)).toBeGreaterThanOrEqual(1);
   expect((await sceneState(page)).page).toBe("settings");
@@ -119,6 +149,9 @@ test("with Settings open the player walks with ESDF, Q goes back one level, and 
   expect((await sceneState(page)).menu).toBe(true);
   expect(await selectedButton(page, "btn:settings")).toBe(true);
   await evidenceShot(page, "menu-parent-selection");
+  // ESDF also walks with the Escape menu's first page open.
+  expect(await walkWest(page)).toBeGreaterThanOrEqual(1);
+  expect((await sceneState(page)).menu).toBe(true);
   await page.keyboard.press("q");
   await expect.poll(async () => (await sceneState(page)).menu).toBe(false);
 });
@@ -127,9 +160,15 @@ test("with the bag open the player walks with ESDF and Q closes it", async ({ pa
   await startHost(page);
   await placePlayer(page, 4, 2);
   await giveItems(page, "coal", 3);
+  await placeStone(page);
   await page.keyboard.press("b");
   await expect.poll(() => bagOpen(page)).toBe(true);
-  await lookAndConfirm(page);
+  await holdLookKeys(page);
+  // A confirm with the pickaxe held and stone aimed at holds the item; it does not mine.
+  await expectNoMining(page, () => page.keyboard.press("Space"));
+  await page.keyboard.press("l");
+  await page.keyboard.press("Space");
+  await expect.poll(() => heldSlot(page)).toBe("coal");
   expect(await walkWest(page)).toBeGreaterThanOrEqual(1);
   expect(await bagOpen(page)).toBe(true);
   await page.keyboard.press("q");
@@ -140,7 +179,7 @@ test("with the bag open the player walks with ESDF and Q closes it", async ({ pa
 test("with the pickup grid open the player walks with ESDF and Q closes it", async ({ page }) => {
   await startHost(page);
   await openGrid(page);
-  await lookAndConfirm(page);
+  await holdLookKeys(page);
   expect(await walkWest(page)).toBeGreaterThanOrEqual(1);
   expect(await gridOpen(page)).toBe(true);
   await page.keyboard.press("q");
@@ -148,33 +187,52 @@ test("with the pickup grid open the player walks with ESDF and Q closes it", asy
   expect((await sceneState(page)).menu).toBe(false);
 });
 
-test("with the shop open the player walks with ESDF and Q closes it", async ({ page }) => {
+test("with the shop open the player walks with ESDF, the panel closes out of range, and Q closes it", async ({ page }) => {
   await startHost(page, "&layout=room");
-  await placePlayer(page, SHOP.x, SHOP.y);
   await giveItems(page, "coal", 2);
-  await waitFrames(page, 2);
-  await page.keyboard.press("Space");
-  await expect.poll(() => shopOpen(page)).toBe(true);
+  await openShop(page);
   await page.keyboard.up("Space");
-  await lookAndConfirm(page);
-  // ESDF walks south off the shopkeeper's tile, and the panel stays open.
-  const startY = (await position(page))!.y;
+  await holdLookKeys(page);
+  // A confirm sells the selected row and does not mine.
+  await page.keyboard.press("Space");
+  await expect.poll(async () => {
+    const stacks = await readWorld(page, (w) => w.scene.inventory);
+    return stacks.find((stack) => stack.kind === "coin")?.count ?? 0;
+  }).toBe(2);
+  // ESDF walks along the wall to a tile still next to Ulgar, and the panel stays open.
   await holdUntil(
     page,
-    "d",
-    async () => (await position(page))!.y >= startY + 1,
+    "f",
+    async () => (await position(page))!.x >= SHOP.x + 1,
   );
+  await expect.poll(async () => (await position(page))?.move ?? null)
+    .toBeNull();
   expect(await shopOpen(page)).toBe(true);
   await evidenceShot(page, "shop-walking");
+  // One more tile and Ulgar is out of range: the panel closes.
+  await holdUntil(
+    page,
+    "f",
+    async () => (await position(page))!.x >= SHOP.x + 2,
+  );
+  await expect.poll(() => shopOpen(page)).toBe(false);
+  // Back in range, it opens again and Q closes it.
+  await placePlayer(page, SHOP.x, SHOP.y + 1);
+  await waitFrames(page, 2);
+  await page.keyboard.down("i");
+  await page.keyboard.press("Space");
+  await page.keyboard.up("i");
+  await expect.poll(() => shopOpen(page)).toBe(true);
   await page.keyboard.press("q");
   await expect.poll(() => shopOpen(page)).toBe(false);
 });
 
-test("a held confirm cannot choose in the menu it just opened", async ({ page }) => {
+test("a Space repeat does not choose in the menu it just opened", async ({ page }) => {
   await startHost(page);
   await page.keyboard.press("Escape");
   await page.keyboard.press("k");
-  // Space opens Settings and stays down; its repeat must not choose the Back row.
+  // Space opens Settings and stays down; its key repeat must not choose the Back row.
+  // (The fresh-press gate itself is covered by unit tests: no input path reaches it yet.)
   await page.keyboard.down("Space");
   await expect.poll(async () => (await sceneState(page)).page).toBe("settings");
   await page.keyboard.press("i"); // wraps to the Back row
@@ -227,6 +285,9 @@ test("a controller moves with the left stick, chooses with the right stick, and 
   // The bag opens by key, and B backs out of it.
   await page.keyboard.press("b");
   await expect.poll(() => bagOpen(page)).toBe(true);
+  await placeStone(page);
+  // ZR confirms in the bag with the aim on stone: it holds the item and mines nothing.
+  await expectNoMining(page, () => pad.press(ZR));
   await pad.press(B);
   await expect.poll(() => bagOpen(page)).toBe(false);
   // The menu: B goes back one level at a time, and the right stick chooses a row.
@@ -241,9 +302,9 @@ test("a controller moves with the left stick, chooses with the right stick, and 
   // The left stick walks while the menu is open.
   const startX = (await position(page))!.x;
   await pad.stick(-1, 0, [0, 1]);
-  await expect.poll(async () => (await position(page))!.x).toBeLessThan(
-    startX - 0.5,
-  );
+  await waitFor(page, async () => (await position(page))!.x < startX - 0.5, {
+    message: "the left stick walking",
+  });
   await pad.stick(0, 0, [0, 1]);
   expect((await sceneState(page)).page).toBe("settings");
   await pad.press(B);
@@ -257,6 +318,37 @@ test("a controller moves with the left stick, chooses with the right stick, and 
   expect(await readWorld(page, (__world) => __world.scene.zoomTarget)).toBe(
     zoom,
   );
+  // B closes the pickup grid too, without zooming out.
+  await placePlayer(page, 4, 2);
+  await openGrid(page);
+  await pad.press(B);
+  await expect.poll(() => gridOpen(page)).toBe(false);
+  await waitFrames(page, 5);
+  expect(await readWorld(page, (__world) => __world.scene.zoomTarget)).toBe(
+    zoom,
+  );
+});
+
+test("in master view a menu stops IJKL from panning the camera", async ({ page }) => {
+  await startHost(page);
+  await say(page, "/master");
+  await expect.poll(() => readWorld(page, (__world) => __world.scene.viewMode))
+    .toBe("master");
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await sceneState(page)).menu).toBe(true);
+  await waitFrames(page, 3);
+  const before = (await sceneState(page)).camera;
+  await page.keyboard.down("l");
+  await waitFrames(page, 10);
+  await page.keyboard.up("l");
+  expect((await sceneState(page)).camera).toEqual(before);
+  // With the menu closed the same key pans.
+  await page.keyboard.press("q");
+  await expect.poll(async () => (await sceneState(page)).menu).toBe(false);
+  await page.keyboard.down("l");
+  await waitFrames(page, 10);
+  await page.keyboard.up("l");
+  expect((await sceneState(page)).camera.x).toBeGreaterThan(before.x);
 });
 
 test("on a phone the Back button shows while a menu is open and goes back one level", async ({ browser }) => {

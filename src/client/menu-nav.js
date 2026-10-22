@@ -3,7 +3,7 @@
 /**
  * The navigation rules every menu shares (Settings, the inventory panel, the
  * pickup grid, and the shop panel): which menu is the open level, where Back
- * goes, which inputs a menu captures, the Settings rows, and the fresh-press
+ * goes, the Settings rows, and the fresh-press
  * rule for Confirm. The rules are pure; `panels.js` and `input.js` apply them.
  * See `docs/features/controls-and-ui.md`.
  */
@@ -36,29 +36,6 @@ export const SETTINGS_ROWS = [
  */
 export function parentLevel(level) {
   return level === "settings" ? "menu" : null;
-}
-
-/** What a menu takes from the player's input. */
-const CAPTURES = {
-  /** IJKL, the D-pad, and the right stick move the selection. */
-  look: true,
-  /** Space, ZR, the interact button, or a tap chooses. */
-  confirm: true,
-  /** Q, Escape, B, or the Back button goes up one level. */
-  back: true,
-};
-
-/**
- * The inputs an open menu captures, or none with no menu open. Movement is
- * never captured: ESDF and the left stick keep moving the player. A captured
- * `look` never also aims, mines, or pans the camera.
- * @param {MenuLevel|null} level
- * @returns {{look:boolean,confirm:boolean,back:boolean,move:boolean}}
- */
-export function capturedInputs(level) {
-  return level
-    ? { ...CAPTURES, move: false }
-    : { look: false, confirm: false, back: false, move: false };
 }
 
 /**

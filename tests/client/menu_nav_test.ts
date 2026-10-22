@@ -1,6 +1,5 @@
 import { assertEquals } from "@std/assert";
 import {
-  capturedInputs,
   createMenuNav,
   MENU_ROWS,
   parentLevel,
@@ -18,10 +17,15 @@ import {
   replaceWithBag,
   toggleMenu,
 } from "../../src/client/panels.js";
-import { openLevel } from "../../src/client/input-values.js";
+import {
+  cameraInput,
+  inputDirection,
+  openLevel,
+} from "../../src/client/input-values.js";
 import { createInventoryPanel } from "../../src/client/inventory-panel.js";
 import { createShopPanel } from "../../src/client/shop-panel.js";
 import {
+  closePickupGrid,
   createPickupGrid,
   openPickupGrid,
 } from "../../src/client/pickup-grid.js";
@@ -169,21 +173,52 @@ Deno.test("settings changes name the button a value step presses", () => {
   assertEquals(change.effects(1), "btn:effects:off");
 });
 
-Deno.test("an open menu captures the look, confirm, and back inputs but never movement", () => {
-  for (const level of ["menu", "settings", "bag", "grid", "shop"] as const) {
-    assertEquals(capturedInputs(level), {
-      look: true,
-      confirm: true,
-      back: true,
-      move: false,
-    });
-  }
-  assertEquals(capturedInputs(null), {
-    look: false,
-    confirm: false,
-    back: false,
-    move: false,
+Deno.test("an open menu takes the look keys but leaves ESDF walking", () => {
+  const ctx = fakeContext() as unknown as Record<string, unknown> & {
+    held: Set<string>;
+  };
+  Object.assign(ctx, {
+    held: new Set(["KeyI", "KeyL", "KeyF"]),
+    pressed: new Set<string>(),
+    joystick: { x: 0, y: 0 },
+    cameraStick: { x: 0, y: 0 },
+    gamepadDirection: { x: 0, y: 0 },
+    gamepadCamera: { x: 0, y: 0 },
   });
+  const typed = ctx as unknown as Parameters<typeof cameraInput>[0];
+  // With nothing open, IJKL aim.
+  assertEquals(cameraInput(typed), { x: 1, y: -1 });
+  const opens: [string, () => void][] = [
+    ["menu", () => toggleMenu(typed)],
+    ["bag", () => typed.bag.toggle(true)],
+    ["shop", () => typed.shop.open()],
+    [
+      "grid",
+      () => openPickupGrid(typed.pickupGrid, { x: 1, y: 1, z: 0 }, 0),
+    ],
+  ];
+  for (const [level, open] of opens) {
+    closeMenu(typed);
+    typed.bag.toggle(false);
+    typed.shop.close();
+    closePickupGrid(typed.pickupGrid);
+    open();
+    assertEquals(openLevel(typed), level);
+    assertEquals(cameraInput(typed), { x: 0, y: 0 }, `${level} aim`);
+    assertEquals(inputDirection(typed), { x: 1, y: 0 }, `${level} walk`);
+  }
+});
+
+Deno.test("with a menu open the left stick still walks", () => {
+  const ctx = fakeContext() as unknown as Parameters<typeof inputDirection>[0];
+  Object.assign(ctx, {
+    held: new Set<string>(),
+    pressed: new Set<string>(),
+    joystick: { x: 0, y: 0 },
+    gamepadDirection: { x: -1, y: 0 },
+  });
+  toggleMenu(ctx);
+  assertEquals(inputDirection(ctx), { x: -1, y: 0 });
 });
 
 Deno.test("a newly opened menu ignores the confirm press that is still held", () => {

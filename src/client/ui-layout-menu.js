@@ -53,7 +53,7 @@ function menuFrame(ctx, menu, middle) {
       "A CHAT  B MENU",
     ]
     : [
-      "ESDF MOVE  IJKL LOOK",
+      "ESDF MOVE  IJKL CHOOSE",
       "R V LEVEL  U N ZOOM",
       "T CHAT  / COMMAND",
       "ESC OR Q BACK",

@@ -465,7 +465,7 @@ function escapeKey(ctx, event) {
 /** @type {Record<string,(ctx:Context)=>unknown>} */
 const KEY_ACTIONS = {
   Backquote: toggleLog,
-  KeyB: toggleBag,
+  KeyB: replaceWithBag,
   KeyT: openChat,
   Slash: (ctx) => openChat(ctx, "/"),
   KeyH: toggleSprint,

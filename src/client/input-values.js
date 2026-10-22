@@ -7,7 +7,6 @@
  */
 
 import { isPickupGridOpen } from "./pickup-grid.js";
-import { capturedInputs } from "./menu-nav.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
 
@@ -81,7 +80,7 @@ export function openLevel(ctx) {
 
 /** The aim input, held still while an open menu uses the look controls: a menu never also aims, mines, or pans the camera. @param {Context} ctx */
 export function cameraInput(ctx) {
-  return capturedInputs(openLevel(ctx)).look ? { x: 0, y: 0 } : lookInput(ctx);
+  return openLevel(ctx) !== null ? { x: 0, y: 0 } : lookInput(ctx);
 }
 
 /** Up or down on the on-screen look stick or the D-pad, for the shop panel. IJKL act on key presses, and the gamepad sticks use `shop.steerStick`. @param {Context} ctx */

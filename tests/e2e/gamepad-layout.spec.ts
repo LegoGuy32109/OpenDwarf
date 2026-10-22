@@ -155,13 +155,19 @@ test("B backs out of the shop, and X replaces it with the menu", async ({ page }
   await page.locator("#world").click();
   await placeAt(page, 16, 13);
   await waitFrames(page, 3);
-  await page.evaluate(() => {
-    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = -1;
-  });
-  await tap(page, ZR);
-  await page.evaluate(() => {
-    (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = 0;
-  });
+  // The right stick aims north at Ulgar while ZR interacts.
+  const openShop = async () => {
+    await page.evaluate(() => {
+      (globalThis as unknown as { __pad: { axes: number[] } }).__pad
+        .axes[3] = -1;
+    });
+    await tap(page, ZR);
+    await page.evaluate(() => {
+      (globalThis as unknown as { __pad: { axes: number[] } }).__pad
+        .axes[3] = 0;
+    });
+  };
+  await openShop();
   await expect.poll(() => shopOpen(page)).toBe(true);
   await evidenceShot(page, "gamepad-shop-open");
   await tap(page, A);
@@ -169,7 +175,7 @@ test("B backs out of the shop, and X replaces it with the menu", async ({ page }
   await tap(page, B);
   await expect.poll(() => shopOpen(page)).toBe(false);
   expect(await scene(page, (s) => s.menu)).toBe(false);
-  await tap(page, ZR);
+  await openShop();
   await expect.poll(() => shopOpen(page)).toBe(true);
   await tap(page, X);
   await expect.poll(() => shopOpen(page)).toBe(false);

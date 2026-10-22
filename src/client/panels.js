@@ -20,6 +20,7 @@ import {
   stepPickupSelection,
 } from "./pickup-grid.js";
 import { pickupGridStacks } from "./pickup-grid-view.js";
+import { nearTrader } from "../shared/shop.js";
 import { openLevel, stickDirection } from "./input-values.js";
 import { VOICES_LEVELS } from "./chatter.js";
 import { MUSIC_LEVELS } from "./music.js";
@@ -155,6 +156,14 @@ export function toggleLog(ctx, open = !ctx.ui.logOpen) {
 /** Shows or hides the small join QR below the host tools. @param {Context} ctx */
 export function toggleJoinPanel(ctx) {
   ctx.ui.joinOpen = !ctx.ui.joinOpen;
+}
+
+/** Each frame: close the shop panel when the player is out of the trader's range, as the pickup grid closes out of reach. @param {Context} ctx */
+export function updateShopReach(ctx) {
+  if (!ctx.shop.isOpen()) return;
+  const { scene } = ctx;
+  const player = scene.world.players[scene.localId];
+  if (!player || !nearTrader(scene.world, player)) ctx.shop.close();
 }
 
 /**
