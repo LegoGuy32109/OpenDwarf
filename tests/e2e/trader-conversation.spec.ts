@@ -4,8 +4,6 @@ import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { waitFrames, waitTicks } from "./time.ts";
 import { ready, say, shopOpen } from "./ui.ts";
-// Ulgar, the shopkeeper NPC, stands at (16, 12) on level 4, in the spawn room.
-const ULGAR = { x: 16, y: 12, z: 4 };
 const ASK = "What do you buy?";
 const localId = (page: Page) =>
   readWorld(page, (__world) => __world.scene.localId);
