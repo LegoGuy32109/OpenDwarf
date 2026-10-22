@@ -65,6 +65,19 @@ Deno.test("the host picks the reply line, one of the three authored lines", () =
   }
 });
 
+Deno.test("every authored reply reads after the asker's name", () => {
+  for (const reply of BUY_REPLIES) {
+    assert(/^(I\b|[a-z])/.test(reply), reply);
+  }
+  const { conversations, run, heard } = setup(() => 0.5);
+  conversations.ask("ada", "npc-ulgar", BUYS);
+  run(400);
+  assertEquals(
+    heard[0].text,
+    "Ada, anything that glitters out of the rock is ore or gems. Never stone.",
+  );
+});
+
 Deno.test("a confirmed line is spoken by the asker at once", () => {
   const { conversations, world, run, heard } = setup();
   const asked = conversations.ask("ada", "npc-ulgar", BUYS);
@@ -121,7 +134,7 @@ Deno.test("a player has one unanswered request per NPC", () => {
   const { conversations, run } = setup();
   assert(conversations.ask("ada", "npc-ulgar", BUYS).ok);
   const again = conversations.ask("ada", "npc-ulgar", BUYS);
-  assertEquals(again.ok, false);
+  assertEquals(again, { ok: false, reason: "Ulgar still owes you an answer" });
   assertEquals(conversations.waiting("npc-ulgar"), ["ada"]);
   // Another player is not blocked, and Ada may ask again once answered.
   assert(conversations.ask("bo", "npc-ulgar", BUYS).ok);

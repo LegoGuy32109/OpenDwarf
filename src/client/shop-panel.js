@@ -144,8 +144,10 @@ export function createShopPanel({ sell, talk, flash, onOpenChange }) {
     close,
     /** Back: the item list returns to the conversation, which closes. */
     back() {
-      if (level === "items") level = "conversation";
-      else close();
+      if (level === "items") {
+        level = "conversation";
+        reveal();
+      } else close();
     },
     get level() {
       return level;

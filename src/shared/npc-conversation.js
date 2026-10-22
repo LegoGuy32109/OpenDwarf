@@ -19,11 +19,11 @@ import { bubbleStart, submitMessage, TICK_MS } from "./world.js";
 /** The silent context a trader's menu shows. */
 export const TRADER_DESCRIPTION = "An ore buyer with coin to trade.";
 
-/** The authored answers to "What do you buy?". The host picks one. */
+/** The authored answers to "What do you buy?". The host picks one. Each reads after "<name>, ", so it starts in lower case unless it starts with "I". */
 export const BUY_REPLIES = Object.freeze([
   "I buy coal, iron, lapis, redstone, gold, emeralds and diamonds.",
-  "Anything that glitters out of the rock. Ore and gems, never stone.",
-  "Bring me ore and gems and I pay in coin. Stone and tools I leave.",
+  "anything that glitters out of the rock is ore or gems. Never stone.",
+  "bring me ore and gems and I pay in coin. Stone and tools I leave.",
 ]);
 
 /** The trader's choices, in menu order. Only a choice with replies is answered. @type {readonly Choice[]} */
@@ -123,7 +123,7 @@ export function createConversations(world, random = Math.random) {
       if (choice.replies && queue.some((item) => item.playerId === playerId)) {
         return {
           ok: false,
-          reason: `${npc.name || "They"} still owe you an answer`,
+          reason: `${npc.name || "The trader"} still owes you an answer`,
         };
       }
       // The thought icon the menu raised stays up while the menu is open.
@@ -171,7 +171,7 @@ export function createConversations(world, random = Math.random) {
       }
     },
 
-    /** The asker names waiting on an NPC, in answer order. @param {string} npcId */
+    /** The ids of the players waiting on an NPC, in answer order. @param {string} npcId */
     waiting(npcId) {
       return (queues.get(npcId) ?? []).map((item) => item.playerId);
     },

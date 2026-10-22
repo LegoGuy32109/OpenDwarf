@@ -111,7 +111,6 @@ export function registerWorldBehavior(id, factory) {
   }
   behaviors.set(id, factory);
 }
-/** @param {WorldDefinition} definition */
 /** @param {WorldDefinition} definition @param {{random?:()=>number}} [options] `random` picks NPC replies and thinking jitter */
 export function createSimulation(definition, options = {}) {
   const built = buildWorld(definition);
