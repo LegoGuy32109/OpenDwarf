@@ -130,3 +130,30 @@ Deno.test("fallback host handlers confirm each accepted action once and report r
   );
   assertEquals(lines.length, 2);
 });
+
+Deno.test("a spoken sale confirms as a sale only when the host accepted it", () => {
+  const world = createFixtureWorld();
+  const player = addPlayer(world, "guest", { x: 3.2, y: 4.8, z: 1 });
+  const sent: ActionResult[] = [];
+  const confirm = createActionConfirmer({
+    attempt: () => "current",
+    player: () => player,
+    reply: (packet) => sent.push(packet),
+  });
+  const message = { type: "talk", npc: "npc-ulgar", choice: "sale" };
+  // A refused request, a refused outcome (nothing to sell), and a spoken
+  // question carry no sale line, so none confirms.
+  confirm(message, { ok: false, reason: "too far to talk" });
+  confirm(message, { ok: true });
+  confirm({ ...message, choice: "buys" }, { ok: true });
+  assertEquals(sent, []);
+  confirm(message, { ok: true, line: "Sold coal ×3 for 3 coins" });
+  assertEquals(sent, [{
+    type: "action-result",
+    attempt: "current",
+    action: "sell",
+    x: 3,
+    y: 5,
+    z: 1,
+  }]);
+});

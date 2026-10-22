@@ -238,7 +238,7 @@ Deno.test("shop rows dim what the shopkeeper does not buy", () => {
   ]);
   assertEquals(rows[0], { type: "all", count: 5, coins: 11, enabled: true });
   assertEquals(rowRequest(rows[0]), { all: true });
-  assertEquals(rowRequest(rows[3]), { kind: "coal", count: 3 });
+  assertEquals(rowRequest(rows[3]), { kind: "coal" });
   assertEquals(shopRows([{ kind: PICKAXE, count: 1 }])[0].enabled, false);
 });
 

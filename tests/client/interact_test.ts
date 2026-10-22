@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { Context } from "../../src/client/context.js";
 import { interact } from "../../src/client/interact.js";
-import { sellRequest } from "../../src/client/client-actions.js";
+import { talkRequest } from "../../src/client/client-actions.js";
 import { createPickupGrid } from "../../src/client/pickup-grid.js";
 import {
   addStack,
@@ -345,17 +345,24 @@ Deno.test("interact sends guest mining, cancellation, placing, and single pickup
   assertEquals(f.sounds, [], "guest requests wait for accepted host results");
 });
 
-Deno.test("a guest sale request is silent until the host confirms it", () => {
+Deno.test("a guest spoken sale is silent until the host confirms it", () => {
   const f = fixture(true);
   const played: string[][] = [];
-  sellRequest(
+  talkRequest(
     {
       ...f.ctx,
       sfx: { play: (tags: string[]) => played.push(tags) },
     } as unknown as Context,
-    { kind: "coal", count: 1 },
+    "npc-ulgar",
+    "sale",
+    { kind: "coal" },
   );
-  assertEquals(f.messages, [{ type: "sell", kind: "coal", count: 1 }]);
+  assertEquals(f.messages, [{
+    type: "talk",
+    npc: "npc-ulgar",
+    choice: "sale",
+    sale: { kind: "coal" },
+  }]);
   assertEquals(played, []);
   assertEquals(f.sounds, []);
 });

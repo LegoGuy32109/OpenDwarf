@@ -26,6 +26,9 @@ function move(value) {
 /** @param {unknown} value @param {number} length */
 const text = (value, length) =>
   typeof value === "string" && value.length <= length;
+/** A spoken sale names one ore kind or all ore. @param {unknown} value */
+const saleRequest = (value) =>
+  record(value) && (value.all === true || identifier(value.kind, 24));
 /** @type {Record<string,(value:Record<string,unknown>)=>boolean>} */
 const RULES = {
   input: (value) =>
@@ -42,7 +45,9 @@ const RULES = {
     value.all === true ||
     (identifier(value.kind, 24) && counter(value.count, MAX_STACK_COUNT) &&
       value.count >= 1),
-  talk: (value) => identifier(value.npc) && identifier(value.choice, 24),
+  talk: (value) =>
+    identifier(value.npc) && identifier(value.choice, 24) &&
+    (value.sale === undefined || saleRequest(value.sale)),
   mode: (value) => value.mode === "entity" || value.mode === "master",
   typing: (value) => typeof value.typing === "boolean",
   message: (value) => text(value.text, 120),

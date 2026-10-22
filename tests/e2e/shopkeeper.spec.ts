@@ -3,7 +3,7 @@ import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
-import { holdUntil, waitFrames, waitTicks } from "./time.ts";
+import { holdUntil, waitFor, waitFrames, waitTicks } from "./time.ts";
 import { ready, shopOpen, shopRow, tapUi, uiRect } from "./ui.ts";
 // Ulgar, the shopkeeper NPC, stands at (16, 12) on level 4, in the spawn room.
 const SHOP = { x: 16, y: 12, z: 4 };
@@ -22,6 +22,17 @@ const systemLines = (page: Page) =>
       .filter((line) => line.kind === "system").map((line) => line.text));
 const notice = (page: Page) =>
   readWorld(page, (__world) => __world.scene.notice?.text ?? "");
+/** Wait until Ulgar has answered `count` requests this page heard: a sale is a request, so the next one waits for the answer. */
+const answered = (page: Page, count: number) =>
+  waitFor(
+    page,
+    async () =>
+      (await readWorld(page, (__world) =>
+        __world.scene.hearingLog.lines.filter((line) =>
+          line.kind === "chat" && line.speaker === "Ulgar"
+        ).length)) >= count,
+    { maxTicks: 600, message: `Ulgar answered ${count}` },
+  );
 /** Stand the host's player still on a tile. */
 const placeAt = (page: Page, x: number, y: number) =>
   readWorld(page, (__world, [px, py]) => {
@@ -140,7 +151,8 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await expect.poll(async () => (await shopRow(page, "pickaxe"))?.dim).toBe(
     true,
   );
-  expect((await shopRow(page, "iron ore"))?.price).toBe("3 each");
+  expect((await shopRow(page, "iron ore"))?.text).toBe("Sell all iron ore");
+  expect((await shopRow(page, "iron ore"))?.price).toBe("3 coins");
   await evidenceShot(page, "shop-open");
   // IJKL choose a row and interact sells it.
   await page.keyboard.press("k");
@@ -157,6 +169,7 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await expect.poll(() => coins(page)).toBe(3);
   await expect.poll(() => coins(page)).toBe(3);
   expect(await systemLines(page)).toContain("Sold iron ore ×1 for 3 coins");
+  await answered(page, 1);
   await evidenceShot(page, "shop-sold-iron");
   // The sell all row takes the rest, and the coins follow.
   // The sold row is gone, so the selection falls back to the first row.
@@ -167,6 +180,7 @@ test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ 
   await expect.poll(() => coins(page)).toBe(4);
   await expect.poll(() => coins(page)).toBe(4);
   expect(await systemLines(page)).toContain("Sold coal ×1 for 1 coin");
+  await answered(page, 2);
   await evidenceShot(page, "shop-score");
   // Escape goes back to the conversation, and a second one closes the panel.
   await page.keyboard.press("Escape");
@@ -276,6 +290,7 @@ test("the shop works by touch on a phone", async ({ browser }) => {
     await tapUi(phone, "row:gold ore");
     await expect.poll(() => coins(phone)).toBe(16);
     await expect.poll(() => coins(phone)).toBe(16);
+    await answered(phone, 1);
     await tapUi(phone, "btn:interact"); // sells the selected row
     await expect.poll(() => coins(phone)).toBe(20);
     await evidenceShot(phone, "shop-phone-sold");

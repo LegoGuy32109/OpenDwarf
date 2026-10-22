@@ -216,7 +216,7 @@ export function createSimulation(definition, options = {}) {
       return sellItems(world, id, message);
     },
     "talk": (id, message) => {
-      return conversations.ask(id, message.npc, message.choice);
+      return conversations.ask(id, message.npc, message.choice, message.sale);
     },
     "typing": (id, message) => {
       setTyping(world, id, message.typing === true);

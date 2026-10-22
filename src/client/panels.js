@@ -20,7 +20,7 @@ import {
   stepPickupSelection,
 } from "./pickup-grid.js";
 import { pickupGridStacks } from "./pickup-grid-view.js";
-import { nearTrader } from "../shared/shop.js";
+import { reachesTrader } from "../shared/shop.js";
 import { openLevel, stickDirection } from "./input-values.js";
 import { VOICES_LEVELS } from "./chatter.js";
 import { MUSIC_LEVELS } from "./music.js";
@@ -160,12 +160,15 @@ export function toggleJoinPanel(ctx) {
   ctx.ui.joinOpen = !ctx.ui.joinOpen;
 }
 
-/** Each frame: close the trader conversation when the player is out of the trader's range, as the pickup grid closes out of reach. @param {Context} ctx */
+/** Each frame: close the trader conversation when the player is out of range of the NPC being talked to, as the pickup grid closes out of reach. @param {Context} ctx */
 export function updateShopReach(ctx) {
   if (!ctx.shop.isOpen()) return;
   const { scene } = ctx;
   const player = scene.world.players[scene.localId];
-  if (!player || !nearTrader(scene.world, player)) ctx.shop.close();
+  const npc = ctx.shop.npc;
+  if (!player || !npc || !reachesTrader(scene.world, player, npc.id)) {
+    ctx.shop.close();
+  }
 }
 
 /**

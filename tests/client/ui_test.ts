@@ -55,6 +55,7 @@ const ROWS = [
     kind: stack.kind,
     count: stack.count,
     price: 1,
+    coins: stack.count,
     enabled: stack.kind !== "pickaxe",
   })),
 ];
@@ -532,4 +533,17 @@ Deno.test("keyboard keys act on pointer down and show pressed", () => {
   assertEquals([...r.pressed()].sort(), ["key:e", "key:h"]);
   r.up({ id: 1, x: 0, y: 0 });
   assertEquals(events.at(-1), "release:key:h");
+});
+
+Deno.test("the item list rows read Sell all [ore] with count and total coins", () => {
+  const layout = layoutUi(view(PORTRAIT, {
+    shop: { ...ITEMS_PANEL, rows: ROWS, selected: "coal", scroll: 0 },
+  }));
+  const coal = layout.byId.get("row:coal")!;
+  assertEquals(coal.text, "Sell all coal");
+  assertEquals([coal.sub2, coal.sub], [
+    `x${STACKS[2].count}`,
+    `${STACKS[2].count} coins`,
+  ]);
+  assertEquals(layout.byId.get("row:all")!.text, "Sell all ore");
 });
