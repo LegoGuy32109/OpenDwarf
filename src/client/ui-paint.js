@@ -547,7 +547,10 @@ function paintChatbar(ctx) {
     : draft;
   const y = rect.y + (rect.h - 16 * ts) / 2;
   paint.text(`> ${shown}${caret}`, rect.x + 8 * ts, y, ts, PALETTE.cream);
-  const count = `${element.count ?? 0}/${CHAT_LIMIT}`;
+  const remaining = CHAT_LIMIT - (element.count ?? 0);
+  const count = remaining < 40
+    ? `${remaining} left`
+    : `${element.count ?? 0}/${CHAT_LIMIT}`;
   paint.text(
     count,
     rect.x + rect.w - 8 * ts - textWidth(count, ts),

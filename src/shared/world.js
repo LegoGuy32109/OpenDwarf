@@ -1,6 +1,7 @@
 // @ts-check
 
 import { identifier } from "./wire-parse.js";
+import { messagePieces } from "./message-pieces.js";
 import { speechDurationMs, voiceFromId } from "./speech.js";
 import {
   CHUNK_EDGE,
@@ -23,12 +24,13 @@ export const TICK_MS = 50;
 export const ROLES = Object.freeze(["trader"]);
 /** Bubbles that have started and are still up; waiting ones do not count. */
 export const MAX_BUBBLES = 3;
-/** Messages one speaker may have waiting to start; more are refused. */
+/** Waiting messages per speaker; message pieces count as one message. */
 export const MAX_QUEUED = 5;
 /** Silence after speech ends before a bubble expires, in ticks (two seconds). */
 const BUBBLE_LINGER_TICKS = 40;
 const BUBBLE_BASE_TICKS = 100;
 const BUBBLE_LONG_LENGTH = 40;
+const CHAT_LIMIT = 240;
 
 /** Five seconds, plus one tick per character past 40 so long messages can be read. @param {string} text */
 export function bubbleTicks(text) {
@@ -41,8 +43,8 @@ const MOVE_TICKS = 10;
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
 /** `start` is the tick its speech begins; a later start means it waits in the queue (ADR 0006). A bubble without one has started. */
-/** @typedef {{text:string,until:number,start?:number}} Bubble */
-/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number,npc?:boolean,role?:'trader',held?:string}} Player */
+/** @typedef {{text:string,until:number,start?:number,group?:number,part?:number,parts?:number}} Bubble */
+/** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],messageSequence?:number,viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number,npc?:boolean,role?:'trader',held?:string}} Player */
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
 /** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>,limits?:WorldBounds}} World */
 
@@ -242,6 +244,13 @@ export function advanceTicks(world, count = 1) {
         player.messages = player.messages.filter((bubble) =>
           world.tick < bubble.until
         );
+        const started = player.messages.filter((bubble) =>
+          bubbleStart(bubble) <= world.tick
+        );
+        const waiting = player.messages.filter((bubble) =>
+          bubbleStart(bubble) > world.tick
+        );
+        player.messages = [...started.slice(-MAX_BUBBLES), ...waiting];
       }
       if (player.message && world.tick >= player.messageUntil) {
         player.message = "";
@@ -299,8 +308,8 @@ export function speechTicks(text, id) {
 }
 
 /**
- * Queue a message as a bubble. A speaker says one message at a time, so the
- * bubble starts when the speaker's previous bubble finishes speaking, or now.
+ * Queue a message as ordered bubbles. A speaker says one piece at a time, so
+ * each piece starts when the previous piece finishes speaking, or now.
  * It expires two seconds after its speech ends, and never sooner than
  * `bubbleTicks` counted from its start (ADR 0006). Returns false for an empty
  * message or a full queue.
@@ -309,35 +318,50 @@ export function speechTicks(text, id) {
 export function submitMessage(world, id, message) {
   const player = world.players[id];
   if (!player) return false;
-  const text = message.trim().slice(0, 120);
   player.typing = false;
-  if (!text) return false;
+  const text = message.trim();
+  if (!text || text.length > CHAT_LIMIT) return false;
+  const pieces = messagePieces(text);
   const live = (player.messages ?? []).filter((bubble) =>
     world.tick < bubble.until
   );
   const waiting = live.filter((bubble) => bubbleStart(bubble) > world.tick);
-  if (waiting.length >= MAX_QUEUED) return false;
+  const waitingMessages = new Set(waiting.map((bubble) => bubble.group));
+  if (waitingMessages.size >= MAX_QUEUED) return false;
   const started = live.filter((bubble) => bubbleStart(bubble) <= world.tick);
   const previous = live.at(-1);
-  const start = Math.max(
+  let start = Math.max(
     world.tick,
     previous ? bubbleStart(previous) + speechTicks(previous.text, id) : 0,
   );
-  const speech = speechTicks(text, id);
-  const until = start + Math.max(
-    speech + BUBBLE_LINGER_TICKS,
-    bubbleTicks(text),
-  );
-  player.messages = [
-    ...started.slice(-(MAX_BUBBLES - (start <= world.tick ? 1 : 0))),
-    ...waiting,
-    {
-      text,
+  const group = (player.messageSequence ?? 0) + 1;
+  player.messageSequence = group;
+  const added = pieces.map((piece, part) => {
+    const speech = speechTicks(piece, id);
+    const until = start + Math.max(
+      speech + BUBBLE_LINGER_TICKS,
+      bubbleTicks(piece),
+    );
+    const bubble = {
+      text: piece,
       until,
       start,
-    },
+      group,
+      part,
+      parts: pieces.length,
+    };
+    start += speech;
+    return bubble;
+  });
+  const lastAdded = added.at(-1);
+  if (!lastAdded) return false;
+  const startsNow = added[0].start <= world.tick;
+  player.messages = [
+    ...started.slice(-(MAX_BUBBLES - (startsNow ? 1 : 0))),
+    ...waiting,
+    ...added,
   ];
   player.message = text;
-  player.messageUntil = Math.max(until, player.messageUntil);
+  player.messageUntil = Math.max(lastAdded.until, player.messageUntil);
   return true;
 }

@@ -129,12 +129,12 @@ function players(value) {
   );
 }
 
-/** A message holds at most 120 characters, so no more syllables than that. */
-const MAX_SYLLABLES = 120;
+/** Each speech piece holds at most 40 characters. */
+const MAX_SYLLABLES = 40;
 
 /** @type {import('./wire-parse.js').FieldRules} */
 const CHAT_OPTIONAL = {
-  text: (value) => shortText(value, 120, true),
+  text: (value) => shortText(value, 240, true),
   talking: boolean,
   typing: boolean,
   queued: boolean,
@@ -148,13 +148,22 @@ function bubbles(item) {
     item.text === undefined || !Array.isArray(item.bubbles) ||
     item.bubbles.length > 3
   ) return false;
-  return item.bubbles.every((bubble) =>
-    record(bubble) &&
-    fields(bubble, {
-      text: (value) => shortText(value, 120, true),
-      expiresTick: counter,
-    }, { startTick: counter })
-  );
+  return item.bubbles.every((bubble) => {
+    if (
+      !record(bubble) || !fields(bubble, {
+        text: (value) => shortText(value, 40, true),
+        expiresTick: counter,
+      }, { startTick: counter, group: counter, part: counter, parts: counter })
+    ) {
+      return false;
+    }
+    const grouped = bubble.group !== undefined || bubble.part !== undefined ||
+      bubble.parts !== undefined;
+    return !grouped || (
+      counter(bubble.group) && counter(bubble.part) &&
+      counter(bubble.parts) && bubble.parts > 0 && bubble.part < bubble.parts
+    );
+  });
 }
 
 /** @param {Record<string,unknown>} item */
@@ -200,6 +209,9 @@ function chatRecords(value) {
           ...(bubble.startTick !== undefined
             ? { startTick: bubble.startTick }
             : {}),
+          ...(bubble.group !== undefined ? { group: bubble.group } : {}),
+          ...(bubble.part !== undefined ? { part: bubble.part } : {}),
+          ...(bubble.parts !== undefined ? { parts: bubble.parts } : {}),
         })),
       }
       : {}),

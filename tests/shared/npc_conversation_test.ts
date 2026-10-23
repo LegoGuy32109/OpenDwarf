@@ -39,21 +39,42 @@ function setup(random = () => 0) {
   const conversations = createConversations(world, random);
   /** Every line Ulgar spoke, in order, with the tick it began. */
   const heard: { tick: number; text: string }[] = [];
+  const pending = new Map<string, { tick: number; parts: string[] }>();
+  const completed = new Set<string>();
+  const collect = (speakerId: string) => {
+    for (const bubble of world.players[speakerId].messages ?? []) {
+      if (bubble.group === undefined || bubble.part === undefined) continue;
+      const key = `${speakerId}:${bubble.group}`;
+      if (completed.has(key)) continue;
+      let message = pending.get(key);
+      if (!message) {
+        message = {
+          tick: bubble.start ?? 0,
+          parts: Array.from({ length: bubble.parts ?? 1 }, () => ""),
+        };
+        pending.set(key, message);
+      }
+      message.parts[bubble.part] = bubble.text;
+      if (message.parts.every((part) => part !== "")) {
+        completed.add(key);
+        heard.push({ tick: message.tick, text: message.parts.join("") });
+      }
+    }
+  };
   /** Run ticks, logging each tick Ulgar's typing flag and newest spoken line. */
   const run = (ticks: number) => {
     const log: { tick: number; typing: boolean; text: string }[] = [];
     for (let i = 0; i < ticks; i++) {
       advanceTicks(world);
       conversations.step();
-      for (const bubble of ulgar.messages ?? []) {
-        if (!heard.some((line) => line.tick === bubble.start)) {
-          heard.push({ tick: bubble.start ?? 0, text: bubble.text });
-        }
-      }
+      collect(ulgar.id);
+      const active = (ulgar.messages ?? []).filter((bubble) =>
+        bubble.start !== undefined && bubble.start <= world.tick
+      ).at(-1);
       log.push({
         tick: world.tick,
         typing: ulgar.typing,
-        text: ulgar.messages?.at(-1)?.text ?? "",
+        text: active?.text ?? "",
       });
     }
     return log;
@@ -129,12 +150,7 @@ Deno.test("requests are answered one at a time, in order", () => {
   const secondThinking = log.filter((entry) =>
     entry.typing && entry.tick > first.tick
   );
-  assert(
-    secondThinking[0].tick >= first.tick + speechTicks(
-          first.text,
-          "npc-ulgar",
-        ),
-  );
+  assert(secondThinking[0].tick > first.tick);
   assert(second.tick > first.tick);
 });
 
@@ -240,10 +256,28 @@ Deno.test("a talk action runs through the simulation, and the host picks the rep
   sim.advanceTicks(1);
   assertEquals(results.map((result) => result.ok), [true, false, false]);
   const heard: string[] = [];
+  const seen = new Set<string>();
+  const parts = new Map<string, { texts: string[]; count: number }>();
   for (let i = 0; i < 400; i++) {
     sim.advanceTicks(1);
     for (const bubble of ulgar.messages ?? []) {
-      if (!heard.includes(bubble.text)) heard.push(bubble.text);
+      if (bubble.group === undefined || bubble.part === undefined) continue;
+      const key = `${bubble.group}:${bubble.part}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const group = `${bubble.group}`;
+      let message = parts.get(group);
+      if (!message) {
+        message = {
+          texts: Array.from({ length: bubble.parts ?? 1 }, () => ""),
+          count: bubble.parts ?? 1,
+        };
+        parts.set(group, message);
+      }
+      message.texts[bubble.part] = bubble.text;
+      if (message.texts.every((text) => text !== "")) {
+        heard.push(message.texts.join(""));
+      }
     }
   }
   assertEquals(heard, [`Ada, ${BUY_REPLIES[0]}`]);

@@ -39,7 +39,11 @@ prepared, finish normally. Hearing still depends on the listener's distance.
 ## The reply queue
 
 `src/shared/npc-conversation.js` holds the rules, and `createConversations` runs
-inside the simulation (`simulation.js`), so the world host owns them.
+inside the simulation (`simulation.js`), so the world host owns them. The
+authored text is in `src/shared/dialogue.js`, a plain-data module with one
+string per line. Edit those strings there. Sale lines use `{items}`, `{pieces}`,
+`{coinsText}`, and `{maxStackCount}` placeholders. The conversation code fills
+them from the accepted sale outcome.
 
 A player confirms a choice by sending `talk` with the NPC id and a choice id. A
 guest names the choice only; the host picks the reply. The host checks that the
@@ -68,8 +72,9 @@ player's request waits in the queue behind it.
 
 ## Code
 
-- `src/shared/npc-conversation.js`: the choices, authored replies, thinking
-  delay, and the reply queue.
+- `src/shared/npc-conversation.js`: the choice and reply rules, thinking delay,
+  and the reply queue.
+- `src/shared/dialogue.js`: authored NPC dialogue and its edit instructions.
 - `src/client/shop-panel.js`: the panel's two levels, the conversation and the
   item list. `menu-nav.js` names them `shop` and `shop-items`; `parentLevel`
   makes the conversation the parent.
