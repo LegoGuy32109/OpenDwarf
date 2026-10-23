@@ -27,9 +27,9 @@ import { MUSIC_LEVELS } from "./music.js";
 import { EFFECTS_LEVELS } from "./sfx.js";
 import { TEXT_SIZES } from "../shared/chat.js";
 import {
-  MENU_ROWS,
+  menuRows,
   parentLevel,
-  SETTINGS_ROWS,
+  selectedMenuRow,
   settingsChanges,
   stepRow,
 } from "./menu-nav.js";
@@ -105,21 +105,15 @@ export function goBack(ctx) {
   }
 }
 
-/** The row names of the open Escape menu page. @param {Context} ctx */
-function menuRows(ctx) {
-  return ctx.scene.menuPage === "settings" ? SETTINGS_ROWS : MENU_ROWS;
-}
-
 /** The selected row of the open Escape menu page. @param {Context} ctx */
 export function menuRow(ctx) {
-  const page = ctx.scene.menuPage === "settings" ? "settings" : "menu";
-  return menuRows(ctx)[ctx.nav.rows[page]] ?? "";
+  return selectedMenuRow(ctx.scene.menuPage, ctx.nav.rows);
 }
 
 /** Move the selection of the Escape menu: up and down pick a row; on Settings, left and right change its value. @param {Context} ctx @param {number} dx @param {number} dy @param {(id:string)=>void} press presses a menu button by id */
 export function menuStep(ctx, dx, dy, press) {
   const page = ctx.scene.menuPage === "settings" ? "settings" : "menu";
-  const rows = menuRows(ctx);
+  const rows = menuRows(ctx.scene.menuPage);
   if (dy) ctx.nav.rows[page] = stepRow(ctx.nav.rows[page], rows.length, dy);
   else if (dx && page === "settings") {
     const change = settingsChanges(

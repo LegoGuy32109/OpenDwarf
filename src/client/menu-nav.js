@@ -30,6 +30,17 @@ export const SETTINGS_ROWS = [
   "back",
 ];
 
+/** The row names of an Escape menu page. @param {string} page */
+export function menuRows(page) {
+  return page === "settings" ? SETTINGS_ROWS : MENU_ROWS;
+}
+
+/** The selected row of an Escape menu page. @param {string} page @param {{menu:number,settings:number}} rows the selected index per page */
+export function selectedMenuRow(page, rows) {
+  const key = page === "settings" ? "settings" : "menu";
+  return menuRows(key)[rows[key]] ?? "";
+}
+
 /**
  * The menu one Back press goes to: the parent level, or null for the world.
  * @param {MenuLevel|null} level

@@ -15,7 +15,7 @@ import { heldDisplay } from "./display.js";
 import { build } from "./build.js";
 import { layoutUi } from "./ui-layout.js";
 import { openLevel } from "./input-values.js";
-import { menuRow } from "./panels.js";
+import { selectedMenuRow } from "./menu-nav.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
 
@@ -31,7 +31,7 @@ function menuView(ctx) {
     ? {
       open: true,
       page: scene.menuPage,
-      row: menuRow(ctx),
+      row: selectedMenuRow(scene.menuPage, ctx.nav.rows),
       scale: scene.uiScale,
       textSize: scene.textSize,
       sizes: TEXT_SIZES,
