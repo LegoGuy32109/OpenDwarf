@@ -79,3 +79,21 @@ Deno.test("hearing log keeps every stacked message that arrives in one update", 
   hearChat(log, chatView(world, "listener", new Map()), (id) => id);
   assertEquals(log.lines.map((line) => line.text), ["first", "second"]);
 });
+
+Deno.test("hearing log joins ordered pieces into one line as they start", () => {
+  const world = createWorld();
+  addPlayer(world, "listener", { x: 0, y: 0, z: 0 });
+  addPlayer(world, "speaker", { x: 2, y: 0, z: 0 });
+  const log = createHearingLog();
+  const bands = new Map();
+  const text =
+    "a long message that needs several separate pieces to speak aloud";
+  submitMessage(world, "speaker", text);
+  const pieces = world.players.speaker.messages!;
+  for (const piece of pieces) {
+    world.tick = piece.start!;
+    hearChat(log, chatView(world, "listener", bands), (id) => id);
+  }
+  assertEquals(log.lines.filter((line) => line.kind === "chat").length, 1);
+  assertEquals(log.lines[0].text, text);
+});

@@ -65,6 +65,10 @@ with its chatter, from the bubble's start tick.
 **Speech queue**: A speaker's messages waiting to be spoken. A queued message
 starts when the one before it finishes; until then no client receives its text.
 
+**Message piece**: One part of a chat message of at most 40 characters. The
+world host queues its pieces in order, and listeners hear the complete message
+as one hearing-log line.
+
 **NPC**: A named entity that the world host controls, not a player. It blocks
 movement and speaks through its speech queue. _Avoid_: Fixture, for the
 shopkeeper
@@ -104,7 +108,7 @@ canvas and nothing else visible.
 
 **In-game keyboard**: The keyboard the game draws at the bottom of the safe area
 on touch while chat is open. It has QWERTY letters, shift, a page of numbers and
-symbols, space, backspace, send, and close, and holds the 120 characters a
+symbols, space, backspace, send, and close, and holds the 240 characters a
 message may have. The system keyboard never opens. _Avoid_: On-screen keyboard,
 when the system's keyboard is meant
 
