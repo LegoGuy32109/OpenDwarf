@@ -32,10 +32,13 @@ const heard = (page: Page) =>
 const ulgarLines = async (page: Page) =>
   (await heard(page)).filter((line) => line.startsWith("Ulgar: Gus, "));
 /** Wait for Ulgar's `count`th answer to Gus, and return it. A sale is a request, so the next one waits for it. */
-async function answered(page: Page, count: number) {
-  await waitFor(page, async () => (await ulgarLines(page)).length >= count, {
+async function answered(page: Page, count: number, expected: string[]) {
+  await waitFor(page, async () => {
+    const lines = await ulgarLines(page);
+    return lines.length >= count && expected.includes(lines[count - 1]);
+  }, {
     maxTicks: 600,
-    message: `Ulgar answered ${count}`,
+    message: `Ulgar finished answer ${count}`,
   });
   return (await ulgarLines(page))[count - 1];
 }
@@ -109,9 +112,8 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     // The request is spoken in turn, after the line that opened the list.
     await expect.poll(() => heard(guest)).toContain("Gus: Sell all coal");
     await evidenceShot(guest, "spoken-sale-asked");
-    expect(lines("kind", { name: "coal", count: 3, coins: 3 })).toContain(
-      await answered(guest, 1),
-    );
+    const kindReplies = lines("kind", { name: "coal", count: 3, coins: 3 });
+    expect(kindReplies).toContain(await answered(guest, 1, kindReplies));
     await evidenceShot(guest, "spoken-sale-answered");
 
     // Sell all ore: the lapis goes, the stone stays.
@@ -119,17 +121,19 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     await expect.poll(() => stack(guest, "coin")).toBe(11);
     expect(await stack(guest, "stone")).toBe(4);
     expect(await systemLines(guest)).toContain("Sold lapis ×2 for 8 coins");
-    expect(lines("all", { name: "ore", count: 2, coins: 8 })).toContain(
-      await answered(guest, 2),
-    );
+    const allReplies = lines("all", { name: "ore", count: 2, coins: 8 });
+    expect(allReplies).toContain(await answered(guest, 2, allReplies));
     // The host never saw the guest's private sale lines.
     expect(await systemLines(host)).not.toContain("Sold coal ×3 for 3 coins");
 
     // Nothing left to sell: the request is spoken and answered, nothing changes.
     expect(await sendSale(guest, { all: true })).toBe(true);
-    expect(lines("nothing", { name: "ore", count: 0, coins: 0 })).toContain(
-      await answered(guest, 3),
-    );
+    const nothingReplies = lines("nothing", {
+      name: "ore",
+      count: 0,
+      coins: 0,
+    });
+    expect(nothingReplies).toContain(await answered(guest, 3, nothingReplies));
     expect(await stack(guest, "coin")).toBe(11);
 
     // A full coin stack refuses the sale, keeps the ore, and Ulgar says so.
@@ -142,9 +146,8 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     await expect.poll(() => heard(guest)).toContain("Gus: Sell all diamond");
     await placePlayer(host, 17, 15, 4, guestId);
     await expect.poll(() => shopOpen(guest)).toBe(false);
-    expect(lines("full", { name: "diamond", count: 1, coins: 20 })).toContain(
-      await answered(guest, 4),
-    );
+    const fullReplies = lines("full", { name: "diamond", count: 1, coins: 20 });
+    expect(fullReplies).toContain(await answered(guest, 4, fullReplies));
     expect(await stack(guest, "diamond")).toBe(1);
     expect(await stack(guest, "coin")).toBe(before);
     expect(await systemLines(guest)).not.toContain(

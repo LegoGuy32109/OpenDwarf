@@ -46,7 +46,7 @@ const RULES = {
     (value.sale === undefined || saleRequest(value.sale)),
   mode: (value) => value.mode === "entity" || value.mode === "master",
   typing: (value) => typeof value.typing === "boolean",
-  message: (value) => text(value.text, 120),
+  message: (value) => text(value.text, 240),
   nick: (value) => text(value.name, 24),
   ping: (value) => identifier(value.id),
   pong: (value) => identifier(value.id),
