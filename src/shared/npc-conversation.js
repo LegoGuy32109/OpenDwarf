@@ -69,7 +69,7 @@ export const SALE_REPLIES = Object.freeze(
           items: items(facts.count, facts.name),
           coinsText: coinsText(facts.coins),
           maxStackCount: MAX_STACK_COUNT,
-        }),
+        }, ["items", "coinsText"]),
     ),
     all: DIALOGUE.saleReplies.all.map(
       (line) => (/** @type {SaleFacts} */ facts) =>
@@ -77,22 +77,29 @@ export const SALE_REPLIES = Object.freeze(
           pieces: pieces(facts.count),
           coinsText: coinsText(facts.coins),
           maxStackCount: MAX_STACK_COUNT,
-        }),
+        }, ["pieces", "coinsText"]),
     ),
-    nothing: DIALOGUE.saleReplies.nothing.map((line) => () => render(line, {})),
+    nothing: DIALOGUE.saleReplies.nothing.map((line) => () =>
+      render(line, {}, [])
+    ),
     full: DIALOGUE.saleReplies.full.map(
       (line) => (/** @type {SaleFacts} */ facts) =>
         render(line, {
           coinsText: coinsText(facts.coins),
           maxStackCount: MAX_STACK_COUNT,
-        }),
+        }, ["coinsText", "maxStackCount"]),
     ),
   }),
 );
 
-/** @param {string} template @param {Record<string,string|number>} values */
-function render(template, values) {
-  return template.replace(/\{(\w+)\}/g, (_match, key) => String(values[key]));
+/** @param {string} template @param {Record<string,string|number>} values @param {string[]} allowed */
+function render(template, values, allowed) {
+  return template.replace(/\{(\w+)\}/g, (_match, key) => {
+    if (!allowed.includes(key) || !Object.hasOwn(values, key)) {
+      throw new Error(`Unsupported dialogue placeholder {${key}}`);
+    }
+    return String(values[key]);
+  });
 }
 
 /** The NPC's thinking time bounds, in milliseconds. */

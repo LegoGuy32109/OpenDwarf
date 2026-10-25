@@ -35,8 +35,7 @@ export function messagePieces(message) {
       const currentLength = space + 1;
       const fitsCurrent = currentLength + wordLength <= MESSAGE_PIECE_LIMIT;
       if (
-        fitsCurrent ||
-        (wordLength <= MESSAGE_PIECE_LIMIT && currentLength >= 20)
+        fitsCurrent || currentLength >= 20
       ) {
         cut = space + 1;
       } else if (wordLength > MESSAGE_PIECE_LIMIT || currentLength < 20) {
@@ -64,6 +63,25 @@ export function messagePieces(message) {
       pieces.push(rest.slice(0, MESSAGE_PIECE_LIMIT - 1) + "-");
       rest = rest.slice(MESSAGE_PIECE_LIMIT - 1);
       continue;
+    }
+    const suffix = rest.slice(cut).trim();
+    if (
+      cut < rest.length &&
+      (/\s/.test(rest[cut]) || /^[.!?,;:–—-]+$/.test(suffix))
+    ) {
+      // A full-width boundary can leave its separator at the start of the
+      // next piece. Split the preceding token earlier so that separator stays
+      // after visible text instead of starting a bubble.
+      const tokenEnd = rest.search(/\s/);
+      const token = rest.slice(0, tokenEnd < 0 ? rest.length : tokenEnd);
+      const prefix = token.slice(0, -1);
+      if (prefix && rest.length - prefix.length <= MESSAGE_PIECE_LIMIT) {
+        pieces.push(`${prefix}-`);
+        rest = rest.slice(prefix.length);
+        continue;
+      }
+      cut--;
+      while (cut > 0 && /\s/.test(rest[cut])) cut--;
     }
     pieces.push(rest.slice(0, cut));
     rest = rest.slice(cut);

@@ -4,8 +4,11 @@
  * NPC dialogue lives in this file so writers can edit it without changing the
  * conversation rules. Keep each line as a string. Use only these placeholders:
  * `{items}`, `{pieces}`, `{coinsText}`, and `{maxStackCount}`. The game fills
- * them with the real sale outcome. Keep the lower-case starts on replies that
- * follow a player's name and comma.
+ * them with the real sale outcome. For sale replies, `kind` supports `{items}`
+ * and `{coinsText}`, `all` supports `{pieces}` and `{coinsText}`, `nothing`
+ * supports no placeholders, and `full` supports `{coinsText}` and
+ * `{maxStackCount}`. Keep the lower-case starts on replies that follow a
+ * player's name and comma.
  */
 export const DIALOGUE = Object.freeze({
   traderDescription: "An ore buyer with coin to trade.",

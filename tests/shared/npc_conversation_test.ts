@@ -38,8 +38,11 @@ function setup(random = () => 0) {
   bo.name = "Bo";
   const conversations = createConversations(world, random);
   /** Every line Ulgar spoke, in order, with the tick it began. */
-  const heard: { tick: number; text: string }[] = [];
-  const pending = new Map<string, { tick: number; parts: string[] }>();
+  const heard: { tick: number; endTick: number; text: string }[] = [];
+  const pending = new Map<
+    string,
+    { tick: number; endTick: number; parts: string[] }
+  >();
   const completed = new Set<string>();
   const collect = (speakerId: string) => {
     for (const bubble of world.players[speakerId].messages ?? []) {
@@ -50,14 +53,23 @@ function setup(random = () => 0) {
       if (!message) {
         message = {
           tick: bubble.start ?? 0,
+          endTick: bubble.start ?? 0,
           parts: Array.from({ length: bubble.parts ?? 1 }, () => ""),
         };
         pending.set(key, message);
       }
       message.parts[bubble.part] = bubble.text;
+      message.endTick = Math.max(
+        message.endTick,
+        (bubble.start ?? 0) + speechTicks(bubble.text, speakerId),
+      );
       if (message.parts.every((part) => part !== "")) {
         completed.add(key);
-        heard.push({ tick: message.tick, text: message.parts.join("") });
+        heard.push({
+          tick: message.tick,
+          endTick: message.endTick,
+          text: message.parts.join(""),
+        });
       }
     }
   };
@@ -151,7 +163,7 @@ Deno.test("requests are answered one at a time, in order", () => {
     entry.typing && entry.tick > first.tick
   );
   assert(secondThinking[0].tick > first.tick);
-  assert(second.tick > first.tick);
+  assert(second.tick >= heard[0].endTick);
 });
 
 Deno.test("a player has one unanswered request per NPC", () => {

@@ -43,7 +43,7 @@ const MOVE_TICKS = 10;
 /** @typedef {{origin:Tile,target:Tile,startPosition:Tile,startTick:number,durationTicks:number,sequence:number}} Move */
 /** @typedef {{from:Tile,to:Tile,startTick:number,durationTicks:number,sequence:number,entering:boolean}} ViewMotion */
 /** `start` is the tick its speech begins; a later start means it waits in the queue (ADR 0006). A bubble without one has started. */
-/** @typedef {{text:string,until:number,start?:number,group?:number,part?:number,parts?:number}} Bubble */
+/** @typedef {{text:string,until:number,start?:number,group?:number,part?:number,parts?:number,softHyphen?:boolean}} Bubble */
 /** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],messageSequence?:number,viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number,npc?:boolean,role?:'trader',held?:string}} Player */
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
 /** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>,limits?:WorldBounds}} World */
@@ -336,12 +336,17 @@ export function submitMessage(world, id, message) {
   );
   const group = (player.messageSequence ?? 0) + 1;
   player.messageSequence = group;
+  let sourceOffset = 0;
   const added = pieces.map((piece, part) => {
     const speech = speechTicks(piece, id);
     const until = start + Math.max(
       speech + BUBBLE_LINGER_TICKS,
       bubbleTicks(piece),
     );
+    const hasDisplayHyphen = piece.endsWith("-") &&
+      text.slice(sourceOffset, sourceOffset + piece.length) !== piece &&
+      text.slice(sourceOffset, sourceOffset + piece.length - 1) ===
+        piece.slice(0, -1);
     const bubble = {
       text: piece,
       until,
@@ -349,7 +354,9 @@ export function submitMessage(world, id, message) {
       group,
       part,
       parts: pieces.length,
+      softHyphen: hasDisplayHyphen,
     };
+    sourceOffset += piece.length - (hasDisplayHyphen ? 1 : 0);
     start += speech;
     return bubble;
   });

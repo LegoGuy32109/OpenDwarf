@@ -1,12 +1,13 @@
 // @ts-check
 
 /** @typedef {{kind:"chat"|"system",text:string,speaker?:string}} HearingLine */
-/** @typedef {{line:HearingLine,nextPart:number}} MessageLine */
+/** @typedef {{line:HearingLine,nextPart:number,softHyphen:boolean}} MessageLine */
 /** @typedef {{lines:HearingLine[],heard:Set<string>,groups:Map<string,MessageLine>,version:number}} HearingLog */
 
 export const HEARING_LOG_LIMIT = 200;
 const SYSTEM_LINE_LIMIT = 120;
 const HEARD_KEYS_LIMIT = 400;
+const MESSAGE_GROUPS_LIMIT = 200;
 
 export function createHearingLog() {
   /** @type {HearingLog} */
@@ -19,7 +20,11 @@ function append(log, line) {
   log.lines.push(line);
   log.version++;
   if (log.lines.length > HEARING_LOG_LIMIT) {
-    log.lines.splice(0, log.lines.length - HEARING_LOG_LIMIT);
+    const removed = log.lines.splice(0, log.lines.length - HEARING_LOG_LIMIT);
+    const removedLines = new Set(removed);
+    for (const [key, message] of log.groups) {
+      if (removedLines.has(message.line)) log.groups.delete(key);
+    }
   }
 }
 
@@ -70,10 +75,28 @@ export function hearChat(log, feed, nameOf) {
             speaker: nameOf(record.id),
           });
           append(log, line);
-          log.groups.set(groupKey, { line, nextPart: part + 1 });
-        } else if (part === current.nextPart) {
+          if (
+            "parts" in message && message.parts !== undefined &&
+            part + 1 < message.parts
+          ) {
+            while (log.groups.size >= MESSAGE_GROUPS_LIMIT) {
+              const oldest = log.groups.keys().next().value;
+              if (oldest === undefined) break;
+              log.groups.delete(oldest);
+            }
+            log.groups.set(groupKey, {
+              line,
+              nextPart: part + 1,
+              softHyphen: Boolean(message.softHyphen),
+            });
+          }
+        } else if (part >= current.nextPart) {
+          if (current.softHyphen && current.line.text.endsWith("-")) {
+            current.line.text = current.line.text.slice(0, -1);
+          }
           current.line.text += message.text;
-          current.nextPart++;
+          current.nextPart = part + 1;
+          current.softHyphen = Boolean(message.softHyphen);
           log.version++;
         }
         if (

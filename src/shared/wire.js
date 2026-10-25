@@ -153,7 +153,13 @@ function bubbles(item) {
       !record(bubble) || !fields(bubble, {
         text: (value) => shortText(value, 40, true),
         expiresTick: counter,
-      }, { startTick: counter, group: counter, part: counter, parts: counter })
+      }, {
+        startTick: counter,
+        group: counter,
+        part: counter,
+        parts: counter,
+        softHyphen: (value) => typeof value === "boolean",
+      })
     ) {
       return false;
     }
@@ -212,6 +218,7 @@ function chatRecords(value) {
           ...(bubble.group !== undefined ? { group: bubble.group } : {}),
           ...(bubble.part !== undefined ? { part: bubble.part } : {}),
           ...(bubble.parts !== undefined ? { parts: bubble.parts } : {}),
+          ...(bubble.softHyphen ? { softHyphen: true } : {}),
         })),
       }
       : {}),

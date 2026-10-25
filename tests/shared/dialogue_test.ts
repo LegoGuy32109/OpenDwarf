@@ -5,14 +5,6 @@ import {
   SALE_REPLIES,
 } from "../../src/shared/npc-conversation.js";
 
-const KNOWN = new Set(["items", "pieces", "coinsText", "maxStackCount"]);
-const SAMPLE = {
-  items: "3 diamonds",
-  pieces: "3 pieces",
-  coinsText: "12 coins",
-  maxStackCount: "99",
-};
-
 function strings(value: unknown): string[] {
   if (typeof value === "string") return [value];
   if (Array.isArray(value)) return value.flatMap(strings);
@@ -27,16 +19,34 @@ Deno.test("dialogue placeholders are known and every authored line renders", () 
   assert(lines.length > 0);
   for (const line of lines) {
     for (const [, key] of line.matchAll(/\{(\w+)\}/g)) {
-      assert(KNOWN.has(key), `unknown placeholder {${key}} in ${line}`);
+      assert(
+        ["items", "pieces", "coinsText", "maxStackCount"].includes(key),
+        `unknown placeholder {${key}} in ${line}`,
+      );
     }
-    const rendered = line.replace(/\{(\w+)\}/g, (_match, key: string) => {
-      assert(Object.hasOwn(SAMPLE, key), `no sample for {${key}}`);
-      return SAMPLE[key as keyof typeof SAMPLE];
-    });
-    assert(!/\{\w+\}/.test(rendered), `unrendered placeholder in ${line}`);
   }
   assertEquals(BUY_REPLIES, DIALOGUE.buyReplies);
-  for (const reply of Object.values(SALE_REPLIES).flat()) {
-    assert(reply({ name: "diamond", count: 3, coins: 12 }).length > 0);
+  const facts = { name: "diamond", count: 3, coins: 12 };
+  const expectedValues = {
+    kind: ["12 coins"],
+    all: ["12 coins"],
+    nothing: [],
+    full: ["12 coins"],
+  };
+  for (const [kind, replies] of Object.entries(SALE_REPLIES)) {
+    for (const reply of replies) {
+      const rendered = reply(facts);
+      assert(rendered.length > 0);
+      assert(!/\{\w+\}|undefined/.test(rendered), rendered);
+      for (const value of expectedValues[kind as keyof typeof SALE_REPLIES]) {
+        assert(
+          rendered.includes(value),
+          `${kind} reply omitted ${value}: ${rendered}`,
+        );
+      }
+    }
   }
+  assert(SALE_REPLIES.kind[0](facts).includes("3 diamonds"));
+  assert(SALE_REPLIES.all[0](facts).includes("3 pieces"));
+  assert(SALE_REPLIES.full[0](facts).includes("99"));
 });

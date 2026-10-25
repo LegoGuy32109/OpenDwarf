@@ -13,7 +13,7 @@ import { bubbleStart, TICK_MS } from "./world.js";
  * `syllables` rides on a talking indicator so a far listener can murmur, and
  * `startTick` says which message those syllables belong to (the newest started
  * bubble's start), so the listener can tell a murmur from text it already heard.
- * @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,queued?:boolean,syllables?:number,startTick?:number,expiresTick?:number,bubbles?:{text:string,expiresTick:number,startTick?:number,group?:number,part?:number,parts?:number}[]}} ChatRecord
+ * @typedef {{id:string,x:number,y:number,z:number,text?:string,talking?:boolean,typing?:boolean,queued?:boolean,syllables?:number,startTick?:number,expiresTick?:number,bubbles?:{text:string,expiresTick:number,startTick?:number,group?:number,part?:number,parts?:number,softHyphen?:boolean}[]}} ChatRecord
  */
 
 export const CHAT_TEXT_RADIUS = 5;
@@ -103,6 +103,7 @@ function speakerChat(tick, listener, speaker, bands) {
         ...(bubble.group === undefined ? {} : { group: bubble.group }),
         ...(bubble.part === undefined ? {} : { part: bubble.part }),
         ...(bubble.parts === undefined ? {} : { parts: bubble.parts }),
+        ...(bubble.softHyphen ? { softHyphen: true } : {}),
       })),
       ...chatFlags(speaker, queued),
     };
@@ -151,7 +152,7 @@ export function withoutChat(players) {
  * A chat record on the listening client, with host ticks turned into local
  * `performance.now()` times. A bubble's `startAt` is when its syllable reveal
  * and chatter begin there (ADR 0006); the reveal and the audio both read it.
- * @typedef {Omit<ChatRecord,"bubbles"> & {expiresAt?:number,startAt?:number,bubbles?:{text:string,expiresTick:number,startTick?:number,group?:number,part?:number,parts?:number,expiresAt?:number,startAt?:number}[]}} DisplayChatRecord
+ * @typedef {Omit<ChatRecord,"bubbles"> & {expiresAt?:number,startAt?:number,bubbles?:{text:string,expiresTick:number,startTick?:number,group?:number,part?:number,parts?:number,softHyphen?:boolean,expiresAt?:number,startAt?:number}[]}} DisplayChatRecord
  */
 
 /** @typedef {"small"|"medium"|"large"} TextSize */

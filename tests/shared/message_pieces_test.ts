@@ -21,8 +21,10 @@ Deno.test("message pieces prefer sentence, clause, then space boundaries", () =>
 
 Deno.test("message pieces use syllable hyphens and hard breaks for long tokens", () => {
   const syllabic = messagePieces(`${"mountain".repeat(6)} end`);
-  assert(syllabic[0].endsWith("-"));
-  assert(syllabic[0].length <= MESSAGE_PIECE_LIMIT);
+  assertEquals(syllabic.slice(0, 2), [
+    `${"mountain".repeat(4)}moun-`,
+    `tain${"mountain"} end`,
+  ]);
   const hard = messagePieces("x".repeat(80));
   assertEquals(hard, [`${"x".repeat(39)}-`, `${"x".repeat(39)}-`, "xx"]);
   const url = `https://example.test/${"path".repeat(12)}`;
@@ -44,11 +46,33 @@ Deno.test("message pieces move fitting words when the current piece is half full
     messagePieces(`aaaaaaaaa ${fittingWord} extra`),
     [`aaaaaaaaa `, `${fittingWord} extra`],
   );
-  const pieces = messagePieces(
-    `${"a".repeat(15)} extraordinarilyextraordinarily`,
+  assertEquals(
+    messagePieces(`${"a".repeat(15)} ${"mountain".repeat(6)}`),
+    [
+      `${"a".repeat(15)} mountainmountainmoun-`,
+      `tain${"mountain".repeat(3)}`,
+    ],
   );
-  assert(pieces[0].endsWith("-"));
-  assert(pieces[0].length <= MESSAGE_PIECE_LIMIT);
+  assertEquals(
+    messagePieces(`${"a".repeat(25)} ${"b".repeat(50)}`)[0],
+    `${"a".repeat(25)} `,
+  );
+});
+
+Deno.test("piece boundaries keep spaces and punctuation out of a new bubble", () => {
+  for (
+    const input of [
+      `${"a".repeat(38)}   word`,
+      `${"a".repeat(39)}. word`,
+      `${"a".repeat(39)} !`,
+    ]
+  ) {
+    const pieces = messagePieces(input);
+    assert(pieces.every((piece) => piece.length <= MESSAGE_PIECE_LIMIT));
+    assert(pieces.every((piece) => !piece.startsWith(" ")));
+    assert(pieces.every((piece) => !/^[.!?,;:–—-]$/.test(piece)));
+    assertEquals(pieces.join("").replaceAll("-", ""), input);
+  }
 });
 
 Deno.test("pieces stay bounded, have no leading space or lone punctuation, and preserve text", () => {
