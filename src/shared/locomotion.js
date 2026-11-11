@@ -136,6 +136,7 @@ function beginStep(world, player, x, y, z) {
 
 /** @param {World} world @param {Player} player @param {number} dx @param {number} dy */
 function tryClimb(world, player, dx, dy) {
+  if (world.planeZ !== undefined) return false;
   if (player.z >= WORLD_TOP) return false;
   const tx = centerTile(player.x) + Math.sign(dx);
   const ty = centerTile(player.y) + Math.sign(dy);
@@ -151,6 +152,7 @@ function tryClimb(world, player, dx, dy) {
 
 /** @param {World} world @param {Player} player @param {number} x @param {number} y */
 function tryDescend(world, player, x, y) {
+  if (world.planeZ !== undefined) return false;
   if (player.z <= 0 || supported(world, x, y, player.z)) return false;
   if (!supported(world, x, y, player.z - 1)) return false;
   const crossedX = centerTile(x) - centerTile(player.x);
@@ -173,7 +175,6 @@ function updateVelocity(player, dx, dy, speed) {
   player.vy = (player.vy ?? 0) + (targetY - (player.vy ?? 0)) * blend;
   if (Math.abs(player.vx) < 0.015) player.vx = 0;
   if (Math.abs(player.vy) < 0.015) player.vy = 0;
-  if (dx) player.facingLeft = dx < 0;
 }
 
 /** @param {World} world @param {Player} player @param {number} x @param {number} y @returns {0|1|2} */
@@ -242,9 +243,17 @@ function movePart(world, player, dx, dy, speed, parts) {
 /** @param {World} world @param {string} id @param {number} dx @param {number} dy @param {number} [speed] tiles per second */
 export function moveEntity(world, id, dx, dy, speed = WALK_SPEED) {
   const player = world.players[id];
-  if (!player?.free || player.move) return false;
+  if (!player?.free || !Number.isFinite(dx) || !Number.isFinite(dy)) {
+    return false;
+  }
+  if (dx || dy) player.facing = { x: Math.sign(dx), y: Math.sign(dy) };
+  if (dx) player.facingLeft = dx < 0;
+  if (
+    player.move || (world.planeZ !== undefined && player.z !== world.planeZ)
+  ) return false;
   if (!supported(world, player.x, player.y, player.z)) {
-    return beginStep(world, player, player.x, player.y, player.z - 1);
+    return world.planeZ === undefined &&
+      beginStep(world, player, player.x, player.y, player.z - 1);
   }
   updateVelocity(player, dx, dy, speed);
   let remainingX = (player.vx ?? 0) * TICK_MS / 1000;

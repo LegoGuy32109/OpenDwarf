@@ -146,6 +146,7 @@ simulation.advanceTicks(21);
 
 | Method                                      | Contribution                                                |
 | ------------------------------------------- | ----------------------------------------------------------- |
+| `planar()`                                  | Set `planeZ=1`, permanent stone floor and unused air levels |
 | `bounds(box)`, `base(material)`             | Initially loaded area and base material                     |
 | `seed(number)`, `generator(id, params)`     | Seeded expansion through a registered generator             |
 | `fill(box, material)`, `tile(at, material)` | Ordered terrain paint operations                            |
@@ -169,11 +170,17 @@ location: the earlier `role: "shop"` shop tile and `world.shops` are gone (ADR
 older peer must reload or join the matching historical build. Every initial
 entity is an NPC. A joining participant is a player.
 
-The spawn room's recipe places Ulgar at (16, 12) on level 4, against the north
+The spawn room's recipe places Ulgar at (16, 12) on level 1, against the north
 wall. It blocks movement like any entity, so a player reaches it from a
 neighboring tile. The host's sale check and the interact target both read
 Ulgar's position from `world.players` (`traderAt` and `nearTrader` in
 `shop.js`).
+
+Built-in recipes call `planar()`. The optional serializable `planeZ` field is
+validated as `PLAY_Z=1`. Their spawn points, entities and initial drops must use
+that level. Terrain normalization runs after ordered paint operations, restoring
+ore-free stone at Z=0 and air at Z=2 through Z=7. Gameplay edits then apply only
+to Z=1. Definitions without `planeZ` retain explicit 3D fixture behavior.
 
 Definitions carry `version: 1`. Loading checks JSON values, coordinates,
 materials, entity IDs, entity roles (an unknown role is refused), and generator

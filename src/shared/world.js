@@ -92,7 +92,8 @@ export function addPlayer(world, id, spawn = { x: 7, y: 7, z: 0 }) {
     name: "",
     x: spawn.x,
     y: spawn.y,
-    z: spawn.z,
+    z: world.planeZ ?? spawn.z,
+    facing: { x: 0, y: 1 },
     facingLeft: false,
     move: null,
     typing: false,
@@ -138,6 +139,7 @@ function resolveMove(world, origin, dx, dy) {
   if (!isSolid(world, x, y, z) && isSolid(world, x, y, z - 1)) {
     return { x, y, z };
   }
+  if (world.planeZ !== undefined) return null;
   if (
     isSolid(world, x, y, z) && !isSolid(world, x, y, z + 1) &&
     !isSolid(world, origin.x, origin.y, z + 1)
@@ -161,6 +163,11 @@ export function startMove(world, id, dx, dy, sequence) {
     !Number.isInteger(dx) || !Number.isInteger(dy) ||
     Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)
   ) return { ok: false, reason: "invalid direction" };
+  player.facing = { x: dx, y: dy };
+  if (dx) player.facingLeft = dx < 0;
+  if (world.planeZ !== undefined && player.z !== world.planeZ) {
+    return { ok: false, reason: "outside playable plane" };
+  }
   const origin = { x: player.x, y: player.y, z: player.z };
   if (
     dx && dy &&
@@ -212,7 +219,6 @@ export function startMove(world, id, dx, dy, sequence) {
     sequence,
   };
   player.move = move;
-  if (dx) player.facingLeft = dx < 0;
   return { ok: true, move };
 }
 

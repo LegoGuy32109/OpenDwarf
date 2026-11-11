@@ -1,5 +1,10 @@
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { CHUNK_CELLS, chunkIndex, OPEN } from "../../src/shared/terrain.js";
+import {
+  CHUNK_CELLS,
+  chunkIndex,
+  OPEN,
+  STONE,
+} from "../../src/shared/terrain.js";
 import {
   COAL,
   DIAMOND,
@@ -55,21 +60,20 @@ Deno.test("chunk order does not change generated terrain", () => {
   assertEquals(backward(1, 1), first);
 });
 
-Deno.test("generated terrain is mostly stone with caves at every level", () => {
+Deno.test("generated terrain has permanent stone support and unused air levels", () => {
   const counts = survey(99, 12);
-  for (let z = 0; z < 8; z++) {
-    const total = 144 * 256;
-    const open = (counts[z].get(OPEN) ?? 0) / total;
-    assert(open > 0.03 && open < 0.4, `level ${z} is ${open} open`);
-    assertEquals(counts[z].get(0) ?? 0, 0, "no unknown tiles");
-  }
+  const total = 144 * 256;
+  assertEquals(counts[0], new Map([[STONE, total]]));
+  for (let z = 2; z < 8; z++) assertEquals(counts[z], new Map([[OPEN, total]]));
+  const open = (counts[1].get(OPEN) ?? 0) / total;
+  assert(open > 0.15 && open < 0.7, `play plane is ${open} open`);
 });
 
 Deno.test("caves continue across chunk borders", () => {
   const left = generateChunkData(5, 0, 0);
   const right = generateChunkData(5, 1, 0);
   let joined = 0;
-  for (let z = 0; z < 8; z++) {
+  for (let z = 1; z <= 1; z++) {
     for (let y = 0; y < 16; y++) {
       if (
         left[chunkIndex(15, y, z)] === OPEN &&
@@ -80,45 +84,21 @@ Deno.test("caves continue across chunk borders", () => {
   assert(joined > 0, "an open tile at the border has an open neighbor");
 });
 
-Deno.test("ore frequencies follow depth bands over many chunks", () => {
+Deno.test("all seven ores occur only on the plane at conservative frequencies", () => {
   const counts = survey(2026, 24);
-  const chunks = 24 * 24;
-  /** Ore tiles of one material in a level range, per chunk. */
-  const perChunk = (material: number, zMin: number, zMax: number) => {
-    let sum = 0;
-    for (let z = zMin; z <= zMax; z++) sum += counts[z].get(material) ?? 0;
-    return sum / chunks;
-  };
-  const report: Record<string, number> = {};
-  const bands: [string, number, number, number][] = [
-    ["coal", COAL, 5, 7],
-    ["iron surface", IRON_ORE, 5, 7],
-    ["iron middle", IRON_ORE, 2, 4],
-    ["gold", GOLD_ORE, 2, 4],
-    ["lapis", LAPIS, 2, 4],
-    ["redstone", REDSTONE, 2, 4],
-    ["diamond", DIAMOND, 0, 1],
-    ["emerald", EMERALD, 0, 1],
-  ];
-  for (const [name, material, zMin, zMax] of bands) {
-    report[name] = Number(perChunk(material, zMin, zMax).toFixed(2));
-  }
-  console.log("ore tiles per chunk by band", JSON.stringify(report));
-  // Coal and iron live near the surface; gold, lapis, redstone in the middle.
-  assertNoOre(counts, [0, 1, 2, 3, 4], [COAL]);
-  assertNoOre(counts, [0, 1], [GOLD_ORE, LAPIS, REDSTONE, IRON_ORE]);
-  assertNoOre(counts, [5, 6, 7], [GOLD_ORE, LAPIS, REDSTONE, DIAMOND, EMERALD]);
-  assertNoOre(counts, [2, 3, 4], [DIAMOND, EMERALD]);
-  // Every band has ore, and the rare ores are rarer than the common ones.
-  for (const [name, material, zMin, zMax] of bands) {
-    assert(perChunk(material, zMin, zMax) > 0, `${name} appears`);
-  }
-  assert(perChunk(COAL, 5, 7) > perChunk(IRON_ORE, 5, 7));
-  assert(perChunk(IRON_ORE, 5, 7) > perChunk(IRON_ORE, 2, 4));
-  assert(perChunk(REDSTONE, 2, 4) > perChunk(GOLD_ORE, 2, 4));
-  assert(perChunk(DIAMOND, 0, 1) < perChunk(GOLD_ORE, 2, 4));
-  assert(perChunk(EMERALD, 0, 1) < perChunk(DIAMOND, 0, 1));
-  assert(perChunk(DIAMOND, 0, 1) < 2, "diamond stays rare");
+  const ores = [COAL, IRON_ORE, GOLD_ORE, LAPIS, REDSTONE, DIAMOND, EMERALD];
+  assertNoOre(counts, [0, 2, 3, 4, 5, 6, 7], ores);
+  const frequency = (m: number) => (counts[1].get(m) ?? 0) / (24 * 24);
+  for (const ore of ores) assert(frequency(ore) > 0);
+  assert(frequency(COAL) > frequency(IRON_ORE));
+  assert(frequency(IRON_ORE) > frequency(GOLD_ORE));
+  assert(frequency(DIAMOND) < frequency(GOLD_ORE));
+  assert(frequency(EMERALD) < frequency(DIAMOND));
+  assert(frequency(DIAMOND) < 1);
+  assert(
+    ores.reduce((n, ore) => n + frequency(ore), 0) < 40,
+    "density stays below 16 percent of a plane",
+  );
 });
 
 Deno.test("ores come in clusters", () => {
@@ -126,7 +106,7 @@ Deno.test("ores come in clusters", () => {
   let ores = 0;
   for (let cx = 0; cx < 20; cx++) {
     const data = generateChunkData(77, cx, 0);
-    for (let z = 5; z <= 7; z++) {
+    for (let z = 1; z <= 1; z++) {
       for (let y = 0; y < 16; y++) {
         for (let x = 0; x < 16; x++) {
           if (data[chunkIndex(x, y, z)] !== COAL) continue;

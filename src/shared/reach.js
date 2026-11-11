@@ -22,6 +22,10 @@ export const CURSOR_ICON_DIM = 0.35;
  * @returns {boolean}
  */
 export function pathReach(world, player, tile) {
+  if (
+    world.planeZ !== undefined &&
+    (player.z !== world.planeZ || tile.z !== world.planeZ)
+  ) return false;
   const bounds = world.limits;
   if (
     bounds && !world.generateChunk &&

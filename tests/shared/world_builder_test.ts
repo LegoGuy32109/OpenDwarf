@@ -283,9 +283,9 @@ Deno.test("built-in recipes preserve terrain and build Ulgar as an NPC", () => {
     { name: ulgar.name, npc: ulgar.npc, role: ulgar.role, free: ulgar.free },
     { name: "Ulgar", npc: true, role: "trader", free: true },
   );
-  assertEquals({ x: ulgar.x, y: ulgar.y, z: ulgar.z }, { x: 16, y: 12, z: 4 });
+  assertEquals({ x: ulgar.x, y: ulgar.y, z: ulgar.z }, { x: 16, y: 12, z: 1 });
   assertEquals(room.world.players["npc-corner"].role, undefined);
-  assertEquals(readTile(room.world, 16, 15, 4), OPEN);
+  assertEquals(readTile(room.world, 16, 15, 1), OPEN);
   const test = buildWorld(authoredRecipe());
   assertEquals(Object.keys(test.world.players), []);
   assertEquals(readTile(test.world, 2, 1, 0), STONE);
