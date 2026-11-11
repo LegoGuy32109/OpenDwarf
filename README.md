@@ -72,6 +72,7 @@ its feature there:
 - [Sound events](docs/features/sound-events.md)
 - [Cursor](docs/features/cursor.md)
 - [Render performance](docs/features/render-performance.md)
+- [Aseprite and SPA tooling](docs/features/aseprite-and-spa.md)
 - [Frame stats and lag-spike logging](docs/features/frame-stats.md)
 
 - [Architecture rules](docs/features/architecture-rules.md)
