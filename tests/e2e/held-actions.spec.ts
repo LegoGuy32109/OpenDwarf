@@ -22,6 +22,7 @@ async function pair(host: Page, guest: Page) {
   await ready(host);
   await readWorld(host, (world) => {
     world.scene.world.planeZ = 1;
+    world.scene.zoom = world.scene.zoomTarget = 0.5;
   });
   const session = await readWorld(host, (world) => world.scene.sessionId);
   await guest.goto(`/join/${session}?harness=1`);
@@ -63,9 +64,9 @@ const count = (page: Page, kind: string) =>
     kind,
   );
 
-test("host owns guest throwing, visible flight, consumption and ordinary landing", async ({ browser }) => {
-  const host = await browser.newPage();
-  const guest = await browser.newPage();
+test("host owns guest throwing, visible flight, consumption and ordinary landing", async ({ context }) => {
+  const host = await context.newPage();
+  const guest = await context.newPage();
   const id = await pair(host, guest);
   await waitFor(guest, async () => await count(guest, "coin") === 3);
   // Observe in the page each frame so a short flight cannot pass between reads.
@@ -113,6 +114,9 @@ test("host owns guest throwing, visible flight, consumption and ordinary landing
   ).toBe(2);
   expect(await readWorld(guest, (world) => world.scene.world.throws ?? []))
     .toEqual([]);
+  await readWorld(guest, (world) => {
+    world.scene.zoom = world.scene.zoomTarget = 0.5;
+  });
   await evidenceShot(guest, "held-actions-guest-landing");
   // A throw cannot supply an origin/count or leave the plane.
   await readWorld(
@@ -137,9 +141,9 @@ test("host owns guest throwing, visible flight, consumption and ordinary landing
   await Promise.all([host.close(), guest.close()]);
 });
 
-test("guest mining expires without renewal and renewed holds finish on both peers", async ({ browser }) => {
-  const host = await browser.newPage();
-  const guest = await browser.newPage();
+test("guest mining expires without renewal and renewed holds finish on both peers", async ({ context }) => {
+  const host = await context.newPage();
+  const guest = await context.newPage();
   const id = await pair(host, guest);
   await readWorld(host, (world, id) => {
     world.edit({
@@ -151,11 +155,22 @@ test("guest mining expires without renewal and renewed holds finish on both peer
     });
   }, id);
   const target = { type: "mine-hold", x: 6, y: 5, z: 1 };
+  const began = readWorld(guest, (world) =>
+    new Promise<boolean>((resolve) => {
+      const start = world.scene.world.tick;
+      const sample = () => {
+        if (
+          world.scene.mineFeed?.entries.some((entry) =>
+            entry.id === world.scene.localId
+          )
+        ) resolve(true);
+        else if (world.scene.world.tick - start > 100) resolve(false);
+        else requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    }));
   await readWorld(guest, (world, target) => world.send(target), target);
-  await waitFor(
-    host,
-    async () => await readWorld(host, (world) => world.scene.mining.length > 0),
-  );
+  expect(await began).toBe(true);
   await evidenceShot(host, "held-actions-expired-lease");
   await waitTicks(host, 12);
   expect(
@@ -164,7 +179,15 @@ test("guest mining expires without renewal and renewed holds finish on both peer
       (world) => world.scene.world.chunks.get("0,0")![256 + 5 * 16 + 6],
     ),
   ).toBe(STONE);
-  expect(await readWorld(host, (world) => world.scene.mining)).toEqual([]);
+  await waitFor(
+    guest,
+    async () =>
+      await readWorld(
+        guest,
+        (world) => (world.scene.mineFeed?.entries.length ?? -1) === 0,
+      ),
+    { message: "expired mining feed" },
+  );
   for (let i = 0; i < 7; i++) {
     await readWorld(guest, (world, target) => world.send(target), target);
     await waitTicks(host, 4);
@@ -177,14 +200,15 @@ test("guest mining expires without renewal and renewed holds finish on both peer
         (world) =>
           world.scene.world.chunks.get("0,0")?.[256 + 5 * 16 + 6] === 1,
       ),
+    { message: "renewed mining completion" },
   );
   await evidenceShot(guest, "held-actions-renewed-mining-done");
   await Promise.all([host.close(), guest.close()]);
 });
 
-test("joining and reconnecting during host flight recover current visible throws", async ({ browser }) => {
-  const host = await browser.newPage();
-  const guest = await browser.newPage();
+test("joining and reconnecting during host flight recover current visible throws", async ({ context }) => {
+  const host = await context.newPage();
+  const guest = await context.newPage();
   await pair(host, guest);
   const session = await readWorld(host, (world) => world.scene.sessionId);
   await readWorld(host, (world) =>
@@ -217,7 +241,7 @@ test("joining and reconnecting during host flight recover current visible throws
       step();
     });
   });
-  const late = await browser.newPage();
+  const late = await context.newPage();
   await late.goto(`/join/${session}?harness=1`);
   await ready(late);
   await waitFor(
@@ -232,7 +256,13 @@ test("joining and reconnecting during host flight recover current visible throws
     late,
     (world) => world.wireDebug()?.state?.attempt,
   );
-  await readWorld(late, (world, session) => world.join(session), session);
+  const cancellations = await readWorld(late, (world, session) => {
+    let calls = 0;
+    Object.assign(world.scene, { cancelAction: () => calls++ });
+    world.join(session);
+    return calls;
+  }, session);
+  expect(cancellations).toBeGreaterThan(0);
   await waitFor(late, async () =>
     await readWorld(late, (world, oldAttempt) => {
       const state = world.wireDebug()?.state;

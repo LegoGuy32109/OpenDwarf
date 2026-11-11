@@ -21,7 +21,9 @@ import {
 import { startThrow, stepThrows } from "../../src/shared/throws.js";
 import {
   decodeControl,
+  decodeMotion,
   decodeState,
+  encodeMotionPlayers,
   encodeWorld,
   PROTOCOL_VERSION,
 } from "../../src/shared/wire.js";
@@ -254,4 +256,61 @@ Deno.test("simulation validates direct actions and advances authoritative flight
   simulation.advanceTicks(8);
   assertEquals(simulation.world.throws, []);
   assertEquals(inventoryOf(player).find((s) => s.kind === "coin")!.count, 1);
+});
+
+Deno.test("motion carries valid facing and rejects malformed octants", () => {
+  const { world, player } = setup();
+  player.facing = { x: -1, y: 1 };
+  const packet = {
+    type: "motion",
+    attempt: "a",
+    viewRevision: 0,
+    sightRevision: 0,
+    acknowledgedSequence: 0,
+    tick: 1,
+    planeZ: 1,
+    players: encodeMotionPlayers(world.players),
+  };
+  assertEquals(decodeMotion(packet)?.players.self.facing, player.facing);
+  assertEquals(decodeMotion(packet)?.planeZ, 1);
+  assertEquals(decodeMotion({ ...packet, planeZ: 2 }), null);
+  assertEquals(
+    decodeMotion({
+      ...packet,
+      players: { self: { ...packet.players.self, z: 2 } },
+    }),
+    null,
+  );
+  packet.players.self.facing = { x: 0, y: 0 };
+  assertEquals(decodeMotion(packet), null);
+});
+Deno.test("the final equipped item is spent once and cannot be thrown again", () => {
+  const { world, player } = setup("stone", 1);
+  assert(startThrow(world, player.id, 1, 0).ok);
+  assert(!inventoryOf(player).some((stack) => stack.kind === "stone"));
+  assert(!startThrow(world, player.id, 1, 0).ok);
+  fly(world);
+  assertEquals(droppedAt(world, { x: 9, y: 5, z: 1 }), [{
+    kind: "stone",
+    count: 1,
+  }]);
+});
+Deno.test("flight crosses a chunk boundary and stops at the nearest swept entity", () => {
+  const { world, player } = setup();
+  player.x = 14;
+  for (let x = 16; x <= 20; x++) writeTile(world, x, 5, 1, OPEN);
+  startThrow(world, player.id, 1, 0);
+  fly(world);
+  assertEquals(droppedAt(world, { x: 18, y: 5, z: 1 }), [{
+    kind: "coin",
+    count: 1,
+  }]);
+  addPlayer(world, "far", { x: 17, y: 5, z: 1 });
+  addPlayer(world, "near", { x: 15.1, y: 5.2, z: 1 });
+  startThrow(world, player.id, 1, 0);
+  fly(world);
+  assertEquals(droppedAt(world, { x: 15, y: 5, z: 1 }), [{
+    kind: "coin",
+    count: 1,
+  }]);
 });

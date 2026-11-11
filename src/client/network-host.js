@@ -528,6 +528,7 @@ export function startHost(scene, session, sounds = {}) {
           return {
             type: "motion",
             ...envelope,
+            planeZ: scene.world.planeZ,
             tick: scene.world.tick,
             players: encodeMotionPlayers(players),
             acknowledgedSequence: lastSequence,

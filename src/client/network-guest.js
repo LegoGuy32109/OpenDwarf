@@ -220,6 +220,7 @@ export function joinWorld(scene, session) {
       return;
     }
     if (decision === "drop" || !connected) return;
+    if (value.planeZ !== undefined) scene.world.planeZ = value.planeZ;
     const local = scene.world.players[playerId];
     for (const player of Object.values(value.players)) {
       if (player.id !== playerId) {

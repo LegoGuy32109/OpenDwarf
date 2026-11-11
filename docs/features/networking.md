@@ -67,20 +67,20 @@ instruction. Protocol version 6 requires a matching join/offer version and adds
 accepted action results to version 5's NPC flags and fixed-world bounds. Version
 7 adds the entity `role` (the trader, Ulgar) and removes the shop tile list,
 because the shopkeeper travels as an NPC entity. Version 8 adds validated
-`world.planeZ`, player octant `facing` in state and motion, and visible
-`world.throws` in reliable state. It accepts `mine-hold` and octant-only `throw`
-intents; the host owns leases, inventory consumption, flight, and landing.
-Complete snapshots are validated before scene mutation. Motion packets carry
-attempt, view, and sight revisions so delayed updates cannot restore an older
-view; motion is fenced by connection attempt, view revision, sight revision, and
-tick. The guest retains only the newest motion awaiting reliable sight. Older
-reliable state can refresh sight without rewinding newer remote positions. A
-reveal in such a state still applies, because the host drained it when it built
-the packet. Invalid motion is discarded. Malformed reliable state requests a
-full resync, and the host then sends the guest's whole remembered terrain again.
-Repeated recovery failure closes the connection with a refresh instruction. An
-incomplete join attempt expires after ten seconds, independently of player
-creation.
+`world.planeZ` in state and `planeZ` in motion, player octant `facing` in both,
+and visible `world.throws` in reliable state. It accepts `mine-hold` and
+octant-only `throw` intents; the host owns leases, inventory consumption,
+flight, and landing. Complete snapshots are validated before scene mutation.
+Motion packets carry attempt, view, and sight revisions so delayed updates
+cannot restore an older view; motion is fenced by connection attempt, view
+revision, sight revision, and tick. The guest retains only the newest motion
+awaiting reliable sight. Older reliable state can refresh sight without
+rewinding newer remote positions. A reveal in such a state still applies,
+because the host drained it when it built the packet. Invalid motion is
+discarded. Malformed reliable state requests a full resync, and the host then
+sends the guest's whole remembered terrain again. Repeated recovery failure
+closes the connection with a refresh instruction. An incomplete join attempt
+expires after ten seconds, independently of player creation.
 
 This is not rollback netcode. Input acknowledgments indicate the latest received
 direction, not completed movement. Input replay remains deferred. WebRTC uses
@@ -193,3 +193,8 @@ positions must be retained. Flight never travels on the replaceable motion
 channel. Throw refusals use `throw-result`; held-mining refusals use
 `mine-result`. Malformed throw intents with supplied origins or counts are
 rejected at the control boundary.
+
+When the plane is present, state and motion decoders reject entities outside it.
+Transport loss, channel closure, stop, and attempt replacement call the input
+adapter's optional `scene.cancelAction` callback. A session ownership guard
+prevents obsolete callbacks from cancelling a newer session's actions.

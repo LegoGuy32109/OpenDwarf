@@ -21,7 +21,7 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {import('./chat.js').ChatRecord} ChatRecord */
 /** @typedef {{attempt:string,viewRevision:number,sightRevision:number}} Envelope */
 /** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'limits'|'planeZ'|'throws'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
-/** @typedef {Envelope & {type:"motion",tick:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
+/** @typedef {Envelope & {type:"motion",tick:number,planeZ?:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
 export const PROTOCOL_VERSION = 8;
@@ -385,6 +385,10 @@ export function decodeMotion(value) {
   ) return null;
   const parsedPlayers = players(value.players);
   if (!parsedPlayers) return null;
+  if (
+    value.planeZ !== undefined && (value.planeZ !== PLAY_Z ||
+      Object.values(parsedPlayers).some((entity) => entity.z !== value.planeZ))
+  ) return null;
   const parsed = /** @type {MotionPacket} */ (value);
   return {
     type: "motion",
@@ -393,6 +397,7 @@ export function decodeMotion(value) {
     sightRevision: parsed.sightRevision,
     acknowledgedSequence: parsed.acknowledgedSequence,
     tick: parsed.tick,
+    ...(parsed.planeZ !== undefined ? { planeZ: parsed.planeZ } : {}),
     players: parsedPlayers,
   };
 }
