@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
@@ -23,16 +24,16 @@ test("the cursor draws the held item's icon and follows a change of held item", 
   await ready(page);
   // Row y 1 holds stone at x 2; row y 2 is open floor.
   await placeAt(page, 2, 2);
-  await page.keyboard.down("i"); // aim north at the stone
+  await facePlayer(page, 0, -1);
   await expect.poll(async () => (await cursor(page))?.tile).toEqual({
     x: 2,
     y: 1,
-    z: 0,
+    z: 1,
   });
   const pickaxe = await cursor(page);
   expectCursor(pickaxe, {
     held: "pickaxe",
-    tile: { x: 2, y: 1, z: 0 },
+    tile: { x: 2, y: 1, z: 1 },
     color: "#ffffff",
     opacity: 0.5,
   });
@@ -40,15 +41,15 @@ test("the cursor draws the held item's icon and follows a change of held item", 
   await evidenceShot(page, "cursor-rock-pickaxe");
   await page.keyboard.up("i");
   await hold(page, "stone");
-  await page.keyboard.down("k"); // aim south at open floor
+  await facePlayer(page, 0, 1);
   await expect.poll(async () => {
     const c = await cursor(page);
     return c && { held: c.held, tile: c.tile };
-  }).toEqual({ held: "stone", tile: { x: 2, y: 3, z: 0 } });
+  }).toEqual({ held: "stone", tile: { x: 2, y: 3, z: 1 } });
   const stone = await cursor(page);
   expectCursor(stone, {
     held: "stone",
-    tile: { x: 2, y: 3, z: 0 },
+    tile: { x: 2, y: 3, z: 1 },
     iconFrame: 0,
   });
   expect(stone.iconFrame).not.toBe(pickaxe.iconFrame);

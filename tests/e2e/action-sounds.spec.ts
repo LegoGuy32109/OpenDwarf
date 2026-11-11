@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import type { Page } from "@playwright/test";
 import { worldBuilder } from "../../src/shared/world-builder.js";
 import { OPEN, STONE } from "../../src/shared/terrain.js";
@@ -97,7 +98,10 @@ test("guest action sounds follow host acceptance exactly once, and refusals stay
   expect(await send(guest, { type: "hold", kind: "stone" })).toBe(true);
   await expect.poll(() => readWorld(guest, (world) => world.scene.heldFeed))
     .toBe("stone");
-  await guest.keyboard.down("l");
+  await facePlayer(host, 1, 0, id);
+  await expect.poll(() =>
+    readWorld(guest, (w) => w.scene.world.players[w.scene.localId].facing)
+  ).toEqual({ x: 1, y: 0 });
   await guest.keyboard.press("Space");
   await guest.keyboard.up("l");
   await expect.poll(() =>

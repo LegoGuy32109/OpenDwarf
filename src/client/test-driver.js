@@ -8,7 +8,7 @@ import { writeTile } from "../shared/terrain.js";
 
 /** @typedef {import('../shared/world.js').Tile} Tile */
 /** @typedef {{world:()=>import('../shared/world.js').World,isGuest:boolean,invalidate:()=>void,publish:()=>void}} FixtureServices */
-/** @typedef {{players?:{id:string,at?:Tile,inventory?:import('../shared/items.js').Stack[],held?:string}[],tiles?:import('../shared/world-builder.js').Paint[],drops?:{at:Tile,kind:string,count:number}[]}} WorldPatch */
+/** @typedef {{players?:{id:string,at?:Tile,facing?:{x:number,y:number},inventory?:import('../shared/items.js').Stack[],held?:string}[],tiles?:import('../shared/world-builder.js').Paint[],drops?:{at:Tile,kind:string,count:number}[]}} WorldPatch */
 /** @type {ReturnType<typeof createTestDriver>|undefined} */
 let driver;
 /** @param {import('../shared/world.js').World} world @param {NonNullable<WorldPatch['tiles']>} tiles */
@@ -38,6 +38,7 @@ function editPlayers(world, players) {
         vy: 0,
       });
     }
+    if (entry.facing) player.facing = { ...entry.facing };
     for (const stack of entry.inventory ?? []) {
       if (!addStack(inventoryOf(player), stack.kind, stack.count)) {
         throw new Error("Invalid fixture stack");

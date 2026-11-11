@@ -133,7 +133,7 @@ function vertexAttributes(gl) {
  */
 export async function createRenderer(canvas, options = {}) {
   let assetCount = 0;
-  const totalAssets = 8;
+  const totalAssets = 9;
   /** @param {string} source */
   const asset = async (source) => {
     const result = await image(source);

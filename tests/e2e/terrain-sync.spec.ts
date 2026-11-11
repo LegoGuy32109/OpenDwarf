@@ -8,7 +8,7 @@ const chunkKeys = (page: Page) =>
     [...__world.scene.world.chunks.keys()]
       .sort());
 /**
- * An open level-0 tile in a loaded chunk of column `cx`, or null. A player
+ * An open level-1 tile in a loaded chunk of column `cx`, or null. A player
  * placed in stone is pushed back by collision, so the walk needs open ground.
  */
 const openTile = (host: Page, cx: number) =>
@@ -20,7 +20,7 @@ const openTile = (host: Page, cx: number) =>
         continue;
       }
       for (let i = 0; i < 256; i++) {
-        if (chunk[i] === 1) {
+        if (chunk[256 + i] === 1) {
           return { x: cx * 16 + (i % 16), y: cy * 16 + Math.floor(i / 16), cy };
         }
       }
@@ -39,7 +39,7 @@ const place = (host: Page, own: boolean, x: number, y: number) =>
             at: {
               x: x,
               y: y,
-              z: 0,
+              z: 1,
             },
           }],
         });

@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { dropItems, giveItems, placePlayer, setTile } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
@@ -63,22 +64,23 @@ async function walkWest(page: Page) {
 }
 /** Hold each look key for some frames: the menu takes them, so the world aim stays still. */
 async function holdLookKeys(page: Page) {
+  const before = (await sceneState(page)).aim;
   for (const key of ["i", "k", "j", "l"]) {
     await page.keyboard.down(key);
     await waitFrames(page, 3);
-    expect((await sceneState(page)).aim).toEqual({ x: 0, y: 0 });
+    expect((await sceneState(page)).aim).toEqual(before);
     await page.keyboard.up(key);
   }
 }
 const STONE_TILE = { x: 4, y: 3 };
 /** Put stone south of the player at (4, 2), the tile "k" aims at. */
 const placeStone = (page: Page) =>
-  setTile(page, STONE_TILE.x, STONE_TILE.y, 0, STONE);
+  setTile(page, STONE_TILE.x, STONE_TILE.y, 1, STONE);
 const stoneTile = (page: Page) =>
   readWorld(
     page,
     (__world, [x, y]) =>
-      __world.scene.world.chunks.get("0,0")?.[y * 16 + x] ?? -1,
+      __world.scene.world.chunks.get("0,0")?.[256 + y * 16 + x] ?? -1,
     [STONE_TILE.x, STONE_TILE.y],
   );
 /** Confirm with the aim held on the stone: the menu acts on it and nothing is mined. */
@@ -94,7 +96,7 @@ async function expectNoMining(page: Page, confirm: () => Promise<void>) {
 async function openShop(page: Page) {
   await placePlayer(page, SHOP.x, SHOP.y + 1);
   await waitFrames(page, 2);
-  await page.keyboard.down("i");
+  await facePlayer(page, 0, -1);
   await page.keyboard.press("Space");
   await page.keyboard.up("i");
   await expect.poll(() => shopOpen(page)).toBe(true);
@@ -103,7 +105,7 @@ async function openGrid(page: Page) {
   await placePlayer(page, 4, 2);
   await dropItems(page, 4, 3, "coal", 1);
   await dropItems(page, 4, 3, "lapis", 2);
-  await page.keyboard.down("k");
+  await facePlayer(page, 0, 1);
   await page.keyboard.press("Space");
   await page.keyboard.up("k");
   await expect.poll(() => gridOpen(page)).toBe(true);
@@ -222,7 +224,7 @@ test("with the shop open the player walks with ESDF, the panel closes out of ran
   // Back in range, it opens again and Q closes it.
   await placePlayer(page, SHOP.x, SHOP.y + 1);
   await waitFrames(page, 2);
-  await page.keyboard.down("i");
+  await facePlayer(page, 0, -1);
   await page.keyboard.press("Space");
   await page.keyboard.up("i");
   await expect.poll(() => shopOpen(page)).toBe(true);

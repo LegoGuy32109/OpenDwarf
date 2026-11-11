@@ -11,8 +11,6 @@ import { tileKey } from "./visibility.js";
 /** @typedef {{x:number,y:number,z:number}} Tile */
 
 /** The cursor outline color and opacity, and the dimmed icon's opacity. */
-export const CURSOR_COLOR = "#ffb833";
-export const CURSOR_OPACITY = 0.6;
 export const CURSOR_ICON_DIM = 0.35;
 
 /**

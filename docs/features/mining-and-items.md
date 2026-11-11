@@ -38,8 +38,8 @@ items and inventories are both plain stack lists with one stack per kind, and
 panel and held item (#19), and the shop (#20) reuse them. `droppedItems(world)`
 keeps the stacks that lie on each tile for the session; nothing removes them but
 a pickup. `inventoryOf(player)` is an entity's inventory, which starts with one
-pickaxe. `heldItem` in `mining.js` still returns the pickaxe by default; #19
-replaces it with the entity's chosen item.
+pickaxe. `heldItem` in `mining.js` returns the chosen item, with the pickaxe as
+the default.
 
 ## Pickup
 
@@ -48,12 +48,12 @@ a number marks a stack of more than one. Interact on a highlighted tile that
 holds one stack picks it up into your inventory instead of mining, and the
 hearing log says "Picked up coal ×1" to you alone. A tile with several stacks
 opens the pickup grid: dark squares unfold into the 3×3 tiles around you, one
-per stack with its icon and count. IJKL, the look stick, or the D-pad moves the
-orange selector (the D-pad does not walk you while the grid is open), and a tap
-on a square selects it. Interact picks up the selected stack. With more than
-nine stacks a small gray plus shows in the bottom-right square, and moving down
-scrolls. ESDF still walks you. Q, Escape, the gamepad's B, the touch Back
-button, or walking out of reach closes the grid.
+per stack with its icon and count. IJKL, the controller right stick, or the
+D-pad moves the orange selector (the D-pad does not walk you while the grid is
+open), and a tap on a square selects it. Interact picks up the selected stack.
+With more than nine stacks a small gray plus shows in the bottom-right square,
+and moving down scrolls. ESDF still walks you. Q, Escape, the gamepad's B, the
+touch Back button, or walking out of reach closes the grid.
 
 A pickup is a host decision. Interact on a highlighted tile that holds dropped
 items calls `pickUp` on the host, or sends a `pickup` request with the tile from

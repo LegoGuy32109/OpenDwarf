@@ -27,17 +27,17 @@ import { FLOOR_Z, PLAY_Z } from "../../src/shared/single-plane.js";
 
 function planarWorld() {
   const world = createFixtureWorld();
-  world.planeZ = PLAY_Z;
   setChunk(world, 0, 0, createChunkData(OPEN));
   for (let y = 0; y < 16; y++) {
     for (let x = 0; x < 16; x++) writeTile(world, x, y, FLOOR_Z, STONE);
   }
   writeTile(world, 4, 4, PLAY_Z, STONE);
+  world.planeZ = PLAY_Z;
   return world;
 }
 Deno.test("planar surfaces use play/support levels and play-cell sight, ignoring upper solids", () => {
   const world = planarWorld(), sight = createVisibility();
-  writeTile(world, 5, 5, 7, STONE);
+  world.chunks.get("0,0")![7 * 256 + 5 * 16 + 5] = STONE;
   sight.visible.add("4,4,1");
   sight.visible.add("5,5,1");
   const wall = surfaceAt(world, 4, 4, 7, "entity", sight)!;

@@ -315,8 +315,9 @@ levels hear it, whether or not they see it.
 **Muffled sound**: A sound event from a source the listener cannot see. It plays
 through a low-pass filter, quieter.
 
-**Reach**: The tiles an entity can mine or place on: the 3×3×3 around its center
-tile that it sees now and reaches by an open path. See
+**Reach**: The tiles an entity can mine or place on: the 3×3 around its center
+tile on the playable plane that it sees now and reaches by an open path.
+Explicit legacy fixtures retain 3×3×3 reach. See
 [ADR 0009](docs/adr/0009-reach-free-cursor-and-controller.md).
 
 **Facing direction**: The octant an entity faces. It persists when the entity
@@ -330,8 +331,8 @@ selected direction.
 **Aimable**: An item capability that permits selecting a direction for its
 action. A bow is an example. It does not mean the item itself is thrown.
 
-**Cursor**: The outline on the highlighted tile with the held item's icon in its
-center, dimmed when interact would do nothing there.
+**Cursor**: Rounded half-opacity white corner brackets on the highlighted tile,
+with the held item's icon dimmed when interact would do nothing there.
 
 **Music cue**: The world host's message naming the track that started and the
 tick it started on, so every player hears the same music at the same point.

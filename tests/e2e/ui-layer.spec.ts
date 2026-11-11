@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
@@ -353,7 +354,7 @@ test.describe("phone", () => {
       });
     });
     await waitFrames(page, 3);
-    await page.keyboard.down("i");
+    await facePlayer(page, 0, -1);
     await tapUi(page, "btn:interact");
     await page.keyboard.up("i");
     await expect.poll(() => shopOpen(page)).toBe(true);

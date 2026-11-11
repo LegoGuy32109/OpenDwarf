@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { dropItems as drop } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
@@ -5,13 +6,13 @@ import { type Page } from "@playwright/test";
 import { holdUntil } from "./time.ts";
 import { ready } from "./ui.ts";
 const STONE = 2;
-// The authored ore row at level 0 sits at y 1: stone x 2, coal 3, iron 4 ... emerald 9.
+// The authored ore row at level 1 sits at y 1: stone x 2, coal 3, iron 4 ... emerald 9.
 const ROW_Y = 1;
 const tile = (page: Page, x: number, y = ROW_Y) =>
   readWorld(
     page,
     (__world, [tx, ty]) =>
-      __world.scene.world.chunks.get("0,0")?.[ty * 16 + tx] ?? -1,
+      __world.scene.world.chunks.get("0,0")?.[256 + ty * 16 + tx] ?? -1,
     [x, y],
   );
 const items = (page: Page) => readWorld(page, (__world) => __world.scene.items);
@@ -55,20 +56,32 @@ test("a joining player sees drops, and two pickups give the stack to one player"
   const guestTile = Math.round((await position(guest))!.x);
   expect([hostTile, guestTile]).toEqual([7, 8]);
   expect(await inventory(guest)).toEqual([{ kind: "pickaxe", count: 1 }]);
-  // A stack on the guest's tile, within reach of both.
+  // Both players face the same adjacent drop tile.
+  const guestId = await readWorld(guest, (w) => w.scene.localId);
+  await readWorld(
+    host,
+    (w, id) =>
+      w.edit({
+        players: [{ id, at: { x: 9, y: 2, z: 1 }, facing: { x: -1, y: 0 } }],
+      }),
+    guestId,
+  );
+  await facePlayer(host, 1, 0);
   await drop(host, 8, 2, "iron ore", 2);
   await expect.poll(() => items(guest)).toEqual([
-    { x: 8, y: 2, z: 0, stacks: [{ kind: "iron ore", count: 2 }] },
+    { x: 8, y: 2, z: 1, stacks: [{ kind: "iron ore", count: 2 }] },
   ]);
-  // The host aims east at it; the guest has no aim, so its own tile holds it.
-  await host.keyboard.down("l");
+  // The host claims the shared stack before the guest request arrives.
   await host.keyboard.press("Space");
-  await guest.keyboard.press("Space"); // arrives at the host after the host's own pickup
+  await readWorld(
+    guest,
+    (w) => w.send({ type: "pickup", x: 8, y: 2, z: 1, kind: "iron ore" }),
+  );
   // The guest is refused either by the host, or locally when the host's pickup
   // already reached it and the tile shows nothing to pick up. Either way only
   // the host gets the stack, which the inventories below check.
   await expect.poll(() => notice(guest)).toMatch(
-    /nothing to pick up|aim at a neighboring tile/,
+    /nothing to pick up/,
   );
   expect(await inventory(host)).toEqual([
     { kind: "pickaxe", count: 1 },
@@ -76,8 +89,7 @@ test("a joining player sees drops, and two pickups give the stack to one player"
   ]);
   expect(await inventory(guest)).toEqual([{ kind: "pickaxe", count: 1 }]);
   await expect.poll(() => items(guest)).toEqual([]);
-  await host.keyboard.up("l");
-  // A guest picks up on its own: only it hears the line.
+  // The guest picks up an adjacent stack: only it hears the line.
   await drop(host, 8, 2, "redstone");
   await expect.poll(() => items(guest)).toHaveLength(1);
   await guest.keyboard.press("Space");
@@ -98,7 +110,7 @@ test("a joining player sees drops, and two pickups give the stack to one player"
       type: "pickup",
       x: 2,
       y: 2,
-      z: 0,
+      z: 1,
       kind: "coal",
     }));
   await expect.poll(() => notice(guest)).toContain("out of reach");

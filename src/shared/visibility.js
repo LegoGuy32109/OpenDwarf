@@ -188,7 +188,9 @@ function visibleWithinRadius(world, position) {
   // One stone tile beyond loaded chunks is the farthest exterior surface visible.
   const minX = Math.floor(position.x) - FOV_RADIUS;
   const minY = Math.floor(position.y) - FOV_RADIUS;
-  for (let z = -1; z <= WORLD_TOP + 1; z++) {
+  const minZ = world.planeZ ?? -1;
+  const maxZ = world.planeZ ?? WORLD_TOP + 1;
+  for (let z = minZ; z <= maxZ; z++) {
     for (let y = minY; y <= minY + 2 * FOV_RADIUS + 1; y++) {
       for (let x = minX; x <= minX + 2 * FOV_RADIUS + 1; x++) {
         if (visibleTile(world, position, x, y, z, radiusSquared)) {
@@ -224,6 +226,13 @@ export function recomputeVisibility(world, state, position) {
   ) return false;
   const next = visibleWithinRadius(world, position);
   revealAdjacentWalls(world, next, position);
+  if (world.planeZ !== undefined) {
+    // Support inherits play-cell sight. Lower rays must not reveal hidden caves.
+    for (const key of [...next]) {
+      const [x, y, z] = parseTileKey(key);
+      if (z === world.planeZ) next.add(tileKey(x, y, z - 1));
+    }
+  }
   for (const key of state.visible) if (!next.has(key)) state.memory.add(key);
   for (const key of next) state.memory.delete(key);
   state.visible = next;

@@ -1,22 +1,14 @@
-# Reach and the free cursor
+# Reach and targeting
 
 [ADR 0009](../adr/0009-reach-free-cursor-and-controller.md) holds the decision.
 This page says how the code keeps it.
 
 ## Reach
 
-An entity reaches the 3×3×3 tiles around its center tile `C`. A target `T` is in
-reach when the entity sees `T` now and an open path leads to it. `pathReach` in
-`src/shared/reach.js` holds the path rule, and `inReach` adds sight:
-
-| Level of `T`  | `T` is in reach when                                                                             |
-| ------------- | ------------------------------------------------------------------------------------------------ |
-| Same as `C`   | it is an orthogonal neighbor, or `C` itself; a diagonal needs one of the two tiles between open  |
-| One above `C` | it is directly above `C`; any other tile needs the tile above `C` open, then the same-level rule |
-| One below `C` | never directly under `C`; any other tile needs the tile directly above `T` (on `C`'s level) open |
-
-The cursor's level is the view level (R and V). Mining a tile on another level
-works, so a dwarf can dig up and down, never under its own feet.
+Playable worlds restrict reach to Z=1. The default cursor selects the adjacent
+movement-facing tile and keeps that facing at rest. A diagonal requires an open
+corner path and current sight. Supporting floors and unused levels cannot be
+mined or placed on. Explicit legacy fixtures retain the 3D reach rule.
 
 `inReach` takes a `sees` function for the acting entity's current sight. The
 world host passes the per-peer visible set for a guest (all tiles in a master
@@ -33,17 +25,17 @@ runs the checks the host runs (`miningRefusal`, `placeRefusal`, the pickup
 reach), so a null answer means the host would refuse. `shop` means a trader NPC,
 Ulgar in the spawn room, stands on the tile within pickup reach.
 
-## Free cursor
+## Held target
 
-Starting an action does not lock the cursor. Mining goes on while its target
-stays in reach, the held item is unchanged and the tile is unchanged; the host
-cancels it otherwise. Clients send no `mine-cancel` when the aim moves. Interact
-on the tile being mined cancels it (`mine-cancel` from a guest). Interact on
-another tile cancels the mining and does the new action there.
+Holding a pickaxe starts mining immediately. The target stays pinned while
+moving toward it, turns retarget immediately, and release or interruption stops
+mining. Placement happens once on release. Eligible-item aim temporarily
+overrides movement-facing, then restores it after release or cancellation. See
+[controls and UI](controls-and-ui.md) for every input device.
 
 ## Dropped items
 
 A peer sees a dropped item when the item's tile or the floor under it is in its
 visible set (`itemSeen`). The host's `items` message to a guest and the host's
-own items view both use it, so mining around a corner shows the floor before the
-open tile above it.
+own items view both use it, so planar support inherits the playable cell
+visibility and cannot reveal items behind a hidden playable cell.

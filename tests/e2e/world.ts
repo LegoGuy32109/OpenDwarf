@@ -111,7 +111,7 @@ export function dropItems(
   y: number,
   kind: string,
   count = 1,
-  z = 0,
+  z = 1,
 ) {
   return readWorld(
     page,
@@ -155,4 +155,13 @@ export function placePlayer(
       }],
     });
   }, { x, y, z, id });
+}
+
+/** Set retained facing through the host fixture, leaving input behavior to interaction specs. */
+export function facePlayer(page: Page, x: number, y: number, id?: string) {
+  return readWorld(page, (world, { x, y, id }) => {
+    world.edit({
+      players: [{ id: id ?? world.scene.localId, facing: { x, y } }],
+    });
+  }, { x, y, id });
 }

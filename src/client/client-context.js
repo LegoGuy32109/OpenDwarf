@@ -265,6 +265,8 @@ export function createContext() {
     gamepadZoom: 0,
     gamepadIndex: -1,
     unsupportedGamepadId: "",
+    gamepadId: "",
+    gamepadActionBlocked: false,
     gamepadButtons: /** @type {Set<number>} */ (new Set()),
     /** Backspace on the keyboard repeats while the key is held. */
     backspaceTimer: /** @type {ReturnType<typeof setTimeout>|undefined} */ (

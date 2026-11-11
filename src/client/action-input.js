@@ -7,7 +7,7 @@ import {
 import { OPEN, readTile } from "../shared/terrain.js";
 import { highlightedTile } from "../shared/target.js";
 import { inReach } from "../shared/reach.js";
-import { COIN, STONE_ITEM } from "../shared/items.js";
+import { hasItemTag } from "../shared/items.js";
 import { registerActionCancellation } from "./action-cancellation.js";
 import { heldDisplay } from "./display.js";
 import {
@@ -31,12 +31,12 @@ import {
 /** @type {WeakMap<Context,ActionState>} */
 const states = new WeakMap();
 
-/** Local capability adapter until the host capability helper is integrated. @param {string} kind */
+/** Shared item capabilities govern every input device. @param {string} kind */
 export function actionCapabilities(kind) {
   return {
-    aim: kind === STONE_ITEM || kind === COIN,
-    place: kind === STONE_ITEM,
-    mine: kind === "pickaxe",
+    aim: hasItemTag(kind, "throwable") || hasItemTag(kind, "aimable"),
+    place: hasItemTag(kind, "placeable"),
+    mine: hasItemTag(kind, "mineable-tool"),
   };
 }
 

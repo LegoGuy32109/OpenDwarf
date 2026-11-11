@@ -35,7 +35,7 @@ export function cursorParams(held, preview) {
 /**
  * The local cursor for this frame, or null when none shows: the aimed tile
  * (or the tile being mined at rest) with its draw parameters.
- * @param {Pick<Scene,"world"|"localId"|"viewMode"|"pickupCells"|"aim"|"mining"|"viewZ"|"visibility"|"actionGesture">} scene
+ * @param {Pick<Scene,"world"|"localId"|"viewMode"|"pickupCells"|"aim"|"mining"|"viewZ"|"visibility"|"actionGesture"|"heldFeed"|"inventoryFeed">} scene
  */
 export function localCursor(scene) {
   const player = scene.world.players[scene.localId];
@@ -55,10 +55,17 @@ export function localCursor(scene) {
     highlightedTile(player, aim ?? facingOf(player), scene.viewZ, scene.world);
   if (!tile) return null;
   const at = { x: tile.x, y: tile.y, z: scene.viewZ };
-  const held = heldItem(player);
+  const held = scene.heldFeed ?? heldItem(player);
+  // Guest snapshots omit private equipment. Preview against the same reliable
+  // feeds that supply the action button, without mutating the shared player.
+  const actor = scene.heldFeed === undefined ? player : {
+    ...player,
+    held,
+    inventory: scene.inventoryFeed ?? [],
+  };
   const preview = interactPreview(
     scene.world,
-    player,
+    actor,
     at,
     (t) => tileVisibility(scene.visibility, t.x, t.y, t.z) === "visible",
   );

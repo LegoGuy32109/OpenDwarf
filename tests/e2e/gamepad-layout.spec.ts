@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import type { TestWorld } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
@@ -87,6 +88,7 @@ test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async 
   await page.locator("#world").click();
   // Stand under the stone at (2, 1) and aim north with the look stick.
   await placeAt(page, 2, 2);
+  await facePlayer(page, 0, -1);
   await page.evaluate(() => {
     (globalThis as unknown as {
       __pad: Pad;
@@ -101,7 +103,9 @@ test("the world buttons: ZR interacts, ZL sprints, A and B zoom, Y bags", async 
   expect(await scene(page, (s) => s.mining.length)).toBe(0);
   // ZR mines.
   await hold(page, ZR, true);
-  await expect.poll(() => scene(page, (s) => s.world.chunks.get("0,0")?.[18]))
+  await expect.poll(() =>
+    scene(page, (s) => s.world.chunks.get("0,0")?.[256 + 18])
+  )
     .toBe(1);
   await hold(page, ZR, false);
   await page.evaluate(() => {
@@ -154,6 +158,7 @@ test("B backs out of the shop, and X replaces it with the menu", async ({ page }
   await ready(page);
   await page.locator("#world").click();
   await placeAt(page, 16, 13);
+  await facePlayer(page, 0, -1);
   await waitFrames(page, 3);
   // The right stick aims north at Ulgar while ZR interacts.
   const openShop = async () => {

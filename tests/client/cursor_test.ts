@@ -66,6 +66,7 @@ Deno.test("local facing persists at rest and active aim overrides movement facin
   const other = addPlayer(world, "other", { x: 7, y: 5, z: 1 });
   assertEquals(directionMarker(scene, other), null);
   other.vx = 0.1;
+  other.facing = { x: 1, y: 0 };
   assertEquals(directionMarker(scene, other), { x: 1, y: 0, aiming: false });
 });
 
@@ -96,4 +97,36 @@ Deno.test("flight rendering hides unseen, remembered, and other-level throws", (
   scene.viewMode = "master";
   visibility.visible.clear();
   assertEquals(throwVisible(scene, entry), true);
+});
+
+import {
+  createChunkData,
+  OPEN,
+  setChunk,
+  STONE,
+  writeTile,
+} from "../../src/shared/terrain.js";
+Deno.test("guest cursor uses private held and inventory feeds without changing the snapshot player", () => {
+  const world = createFixtureWorld();
+  setChunk(world, 0, 0, createChunkData(OPEN));
+  const player = addPlayer(world, "guest", { x: 5, y: 5, z: 1 });
+  const visibility = createVisibility();
+  visibility.visible.add("5,6,1");
+  const scene = {
+    world,
+    localId: "guest",
+    viewMode: "entity" as const,
+    viewZ: 1,
+    aim: { x: 0, y: 1 },
+    visibility,
+    heldFeed: "stone",
+    inventoryFeed: [{ kind: "stone", count: 2 }],
+  };
+  assertEquals(localCursor(scene)?.held, "stone");
+  assertEquals(localCursor(scene)?.iconFrame, 0);
+  assertEquals(localCursor(scene)?.preview, "place");
+  writeTile(world, 5, 6, 1, STONE);
+  assertEquals(localCursor(scene)?.preview, null);
+  assertEquals(player.held, undefined);
+  assertEquals("inventory" in player, false);
 });

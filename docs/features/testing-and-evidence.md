@@ -53,31 +53,31 @@ spec gets `test.fixme` and an issue, never retries.
 
 ## Interact logic coverage
 
-`tests/client/interact_test.ts` calls `interact()` with a fake context and real
-world rules. It covers mining and cancellation, view levels, sight refusals,
-pickup priority, grid confirmation, placing, panel priority, and guest intents.
-It needs no browser, DOM, or connected peer. World progress uses explicit ticks.
+`tests/client/interact_test.ts` covers explicit NPC and pickup priority, grid
+confirmation, panel priority, and placement dispatch with a fake context and
+real world rules. `action_input_test.ts` covers held targets, lease renewal
+intents, turns, gesture cancellation, single release dispatch, and interruption.
+`tests/shared/held_actions_test.ts` proves host mining and throwing rules with
+controlled world ticks. Explicit legacy fixtures retain their 3D rule coverage.
 
-These e2e checks moved to unit tests:
-
-| Removed e2e check                                                                                       | Unit coverage                                                                                             |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Host mines, holds stone, places a wall, refuses its own tile and solid terrain, then mines placed stone | `interact_test` wall cycle and solid refusal, plus `placing_test` terrain and inventory rules             |
-| Aim moves freely, interact cancels mining, and no aim refuses mining                                    | `interact_test` current aim and cancellation                                                              |
-| Mining targets one level below or above while the cursor moves                                          | `interact_test` view levels and free cursor                                                               |
-| Mining drops stone and coal, pickup adds inventory and a system line, and no aim refuses mining         | `interact_test` wall cycle, target replacement, pickup and cancellation, plus `items_test` material drops |
-| A single stack is picked up without opening the grid                                                    | `interact_test` single stack priority                                                                     |
-
-Peer delivery, touch input, and phone icon evidence remain in e2e. Guest intent
-unit tests check messages sent by the client, not their delivery to the host.
+Browser journeys prove delivery and real input through the combined adapters.
+`mining.spec.ts` covers host/guest holds, turn retargeting, forward tunneling,
+and pointer cancellation. `integrated-portrait.spec.ts` exercises a guest's
+simultaneous movement and action fingers through actual pointer routing and
+host-authoritative flight. `planar-streaming.spec.ts` checks mining and release
+placement across chunk unload/replay, plus an actual keyboard stone throw.
+Portrait screenshots use Chromium phone emulation with explicit safe areas.
+Gamepad specs emulate browser controller reports. They do not claim physical
+iPhone or controller hardware testing.
 
 ## Browser specs wait on game time
 
 `openWorld` and page navigation can finish before asynchronous game startup.
 Call `await ready(page)` for each host and guest before `readWorld` or polling
-game state. A test that inspects the loading screen instead waits for the
-specific startup stage it needs. After startup, wait for the state being tested
-or for world ticks. Sleeps and retries can hide readiness races.
+game state. Joining fixtures also wait for the assigned peer ID before the host
+edits that participant. A test that inspects the loading screen instead waits
+for the specific startup stage it needs. After startup, wait for the state being
+tested or for world ticks. Sleeps and retries can hide readiness races.
 
 World time follows the wall clock and drops whatever a slow frame cannot catch
 up on, so a fixed sleep or a time limit lets less of the game happen on a loaded

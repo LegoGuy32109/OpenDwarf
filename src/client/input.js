@@ -103,11 +103,13 @@ function disconnectGamepad(ctx, pads) {
   }
   if (!unknown) ctx.unsupportedGamepadId = "";
   ctx.gamepadIndex = -1;
+  ctx.gamepadId = "";
   ctx.gamepadDirection = { x: 0, y: 0 };
   ctx.gamepadCamera = { x: 0, y: 0 };
   ctx.gamepadStick = { x: 0, y: 0 };
   ctx.gamepadZoom = 0;
   ctx.gamepadButtons.clear();
+  ctx.gamepadActionBlocked = true;
   return;
 }
 
@@ -210,18 +212,23 @@ function pollGamepad(ctx) {
   if (ctx.gamepadDebug) showGamepadDebug(ctx, pads, pad, active);
   if (!pad) return disconnectGamepad(ctx, pads);
   ctx.unsupportedGamepadId = "";
-  if (ctx.gamepadIndex !== pad.index) {
+  if (ctx.gamepadIndex !== pad.index || ctx.gamepadId !== pad.id) {
     if (ctx.gamepadIndex !== -1) cancelAction(ctx);
+    ctx.gamepadActionBlocked = true;
     ctx.gamepadIndex = pad.index;
+    ctx.gamepadId = pad.id;
     notify(ctx, `Controller connected: ${pad.id}`);
   }
   const buttons = new Set(
     pad.buttons.flatMap((button, index) => button.pressed ? [index] : []),
   );
+  if (!buttons.has(7)) ctx.gamepadActionBlocked = false;
   const menuOpen = readGamepadAxes(ctx, pad, buttons);
   gamepadActions(
     ctx,
-    (index) => buttons.has(index) && !ctx.gamepadButtons.has(index),
+    (index) =>
+      buttons.has(index) && !ctx.gamepadButtons.has(index) &&
+      (index !== 7 || !ctx.gamepadActionBlocked),
     menuOpen,
   );
   if (!buttons.has(7) && ctx.gamepadButtons.has(7)) {

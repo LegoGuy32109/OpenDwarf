@@ -2,7 +2,7 @@ import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { evidenceShot } from "./evidence.ts";
 import { ready } from "./ui.ts";
-test("a guest sees an item dropped around a corner once its floor is visible", async ({ browser }) => {
+test("a guest sees drops only on visible play cells, with hidden drops behind a wall", async ({ browser }) => {
   const host = await browser.newPage();
   const guest = await browser.newPage();
   await openWorld(host, "/?harness=1");
@@ -92,7 +92,7 @@ test("a guest sees an item dropped around a corner once its floor is visible", a
   await readWorld(host, (__world) => {
     __world.edit({
       drops: [{
-        at: { x: 7, y: 5, z: 1 },
+        at: { x: 7, y: 6, z: 1 },
         kind: "coal",
         count: 1,
       }],
@@ -111,7 +111,7 @@ test("a guest sees an item dropped around a corner once its floor is visible", a
       (__world) =>
         __world.scene.items.map((item) => `${item.x},${item.y},${item.z}`),
     );
-  await expect.poll(seen).toContain("7,5,1");
+  await expect.poll(seen).toContain("7,6,1");
   expect(await seen()).not.toContain("7,3,1");
   await evidenceShot(guest, "reach-item-around-corner");
   await Promise.all([host.close(), guest.close()]);

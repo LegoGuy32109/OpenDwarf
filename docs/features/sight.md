@@ -1,12 +1,14 @@
 # Sight and view modes
 
-`/entity` uses a 20-tile, three-axis field of view. Terrain leaving view is
-remembered with a warm tint; unseen terrain is black. Remote entities fade by
-their center's distance to the closest visible edge, and the fade persists when
-they stop. A sight change blends over 150 ms; the guest can briefly retain the
-last visible sprite position while it fades out. Entity view contains currently
-visible players and NPCs plus last observed terrain; undiscovered terrain is
-unknown.
+`/entity` uses a 20-tile field of view on Z=1 in playable worlds.
+Supporting-floor visibility follows the playable cell. Unused levels do not cast
+rays or reveal caves through the floor. Explicit legacy 3D fixtures retain the
+three-axis sight rule. Terrain leaving view is remembered with a warm tint;
+unseen terrain is black. Remote entities fade by their center's distance to the
+closest visible edge, and the fade persists when they stop. A sight change
+blends over 150 ms; the guest can briefly retain the last visible sprite
+position while it fades out. Entity view contains currently visible players and
+NPCs plus last observed terrain; undiscovered terrain is unknown.
 
 `/master` shows the full world and permits camera panning at every zoom. The
 camera keeps at least one loaded chunk column and row on screen but may pass the

@@ -17,8 +17,14 @@ state without facing). A local mining target stays pinned until it changes.
 
 `cursorParams(held, preview)` in `src/client/cursor.js` is the pure function for
 the draw parameters (color, opacity, icon frame, icon opacity), and
-`localCursor(scene)` finds the tile. `render.js` draws what they return, and
-`__od.cursor()` exposes the same state to the e2e specs.
+`localCursor(scene)` finds the tile. `render.js` draws what they return, and the
+shared test driver exposes the same state to browser specs. The manual
+`__od.cursor()` remains available for inspection.
+
+Guest cursors use the reliable private held-item and inventory feeds, matching
+the action button. Their preview uses a separate actor value because motion
+snapshots omit private equipment. It does not copy that equipment into the
+snapshot player.
 
 Visible moving entities show white direction chevrons. The local entity keeps
 its facing chevron at rest. Active local aiming overrides this marker and uses

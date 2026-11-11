@@ -81,7 +81,11 @@ test("each hears its own steps as own, and the other hears them in range", async
   expect(
     (await sounds(host)).some((sound) => isStep(sound, false) && sound.y > 5),
   ).toBe(false);
-  await holdUntil(guest, "e", async () => (await ownSteps(guest)) >= 2);
+  // Prediction may count a correction as distance. Keep walking until both
+  // local prediction and authoritative remote delivery have produced steps.
+  await holdUntil(guest, "e", async () =>
+    (await ownSteps(guest)) >= 2 &&
+    (await sounds(host)).filter((sound) => isStep(sound, false)).length >= 2);
   await expect.poll(async () =>
     (await sounds(host)).filter((sound) => isStep(sound, false)).length
   ).toBeGreaterThanOrEqual(2);
@@ -92,7 +96,7 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
   const { host, guest } = await pair(page, context);
   // Prove the stationary listener sees this tile before the wall changes sight.
   const seesSource = () =>
-    readWorld(guest, (world) => world.scene.visibility.visible.has("2,9,0"));
+    readWorld(guest, (world) => world.scene.visibility.visible.has("2,9,1"));
   await expect.poll(seesSource).toBe(true);
   // A stone wall between the host's side and the guest, across the whole room.
   await readWorld(host, (__world) => {
@@ -105,8 +109,8 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
             maxX: 5,
             minY: y,
             maxY: y,
-            minZ: 0,
-            maxZ: 0,
+            minZ: 1,
+            maxZ: 1,
           },
           material: terrain.STONE,
         }],
@@ -148,8 +152,8 @@ test("a source behind rock is muffled, one beyond 12 tiles is not heard", async 
             maxX: 5,
             minY: y,
             maxY: y,
-            minZ: 0,
-            maxZ: 0,
+            minZ: 1,
+            maxZ: 1,
           },
           material: terrain.OPEN,
         }],

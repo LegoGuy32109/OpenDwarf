@@ -43,8 +43,9 @@ zone. A drag can leave the button. The movement and action pointers coexist.
 Pickaxe drags never aim or throw. Pointer cancellation, focus loss, a hidden
 tab, menu or chat opening, held-item changes, and controller or network
 disconnects cancel an armed action without executing release. A fresh press is
-required. The pointer event boundary and host action intents are recorded in
-[the shared contracts](../single-plane-contracts.md).
+required. Reconnected or replacement controllers must first report ZR released
+before another action can arm. The pointer event boundary and host action
+intents are recorded in [the shared contracts](../single-plane-contracts.md).
 
 The browser fullscreen button uses the API when available. On Safari, adding the
 page to the Home Screen can hide browser controls. Pinch zoom remains a world
@@ -74,7 +75,7 @@ share one navigation model (`src/client/menu-nav.js`, applied in `panels.js` and
 
 | Action             | Keyboard  | Controller         | Touch                  |
 | ------------------ | --------- | ------------------ | ---------------------- |
-| Move the selection | IJKL      | D-pad, right stick | right stick            |
+| Move the selection | IJKL      | D-pad, right stick | tap a row or square    |
 | Confirm            | Space     | ZR                 | interact button, a tap |
 | Back one level     | Q, Escape | B                  | Back button            |
 | Open the menu      | Escape, Q | X                  | ESC button             |

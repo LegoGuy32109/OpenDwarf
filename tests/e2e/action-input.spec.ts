@@ -104,16 +104,18 @@ test("gamepad ZR arms, right stick aims, neutral cancels, disconnect interrupts"
   await setup(page, true);
   await equip(page, "coin");
   const pad = async (
-    change: { down?: boolean; aim?: number; connected?: boolean },
+    change: { down?: boolean; aim?: number; connected?: boolean; id?: string },
   ) => {
     await page.evaluate((change) => {
       const p = (globalThis as unknown as {
         __inputPad: {
           connected: boolean;
+          id: string;
           axes: number[];
           buttons: { pressed: boolean }[];
         };
       }).__inputPad;
+      if (change.id !== undefined) p.id = change.id;
       if (change.down !== undefined) p.buttons[7].pressed = change.down;
       if (change.aim !== undefined) p.axes[3] = change.aim;
       if (change.connected !== undefined) p.connected = change.connected;
@@ -129,6 +131,25 @@ test("gamepad ZR arms, right stick aims, neutral cancels, disconnect interrupts"
   await pad({ down: true, aim: -1 });
   await pad({ connected: false });
   expect((await gesture(page)).down).toBe(false);
+  await pad({ connected: true });
+  expect((await gesture(page)).down).toBe(false);
+  await pad({ down: false });
+  expect(await inventory(page, "coin")).toBe(8);
+  await pad({ down: true, aim: -1 });
+  expect((await gesture(page)).aiming).toBe(true);
+  await pad({ down: false });
+  await waitTicks(page, 2);
+  expect(await inventory(page, "coin")).toBe(7);
+  await pad({ down: true, aim: -1 });
+  await pad({ id: "Replacement test pad" });
+  expect((await gesture(page)).down).toBe(false);
+  await pad({ down: false });
+  expect(await inventory(page, "coin")).toBe(7);
+  await pad({ down: true });
+  expect((await gesture(page)).down).toBe(true);
+  await pad({ down: false });
+  await waitTicks(page, 2);
+  expect(await inventory(page, "coin")).toBe(6);
   const z = await readWorld(page, (w) => w.scene.viewZ);
   await page.keyboard.press("r");
   await page.keyboard.press("v");
@@ -171,16 +192,23 @@ test.describe("touch", () => {
     // Reset the moving footprint to a tile center so this checks release input,
     // without racing the host occupancy refusal at a tile boundary.
     await placePlayer(page, 6, 6);
+    // CDP ends the supplied pointer: lift action while movement stays held.
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [right],
     });
     await waitTicks(page, 2);
     expect(await inventory(page, "stone")).toBe(7);
+    expect((await gesture(page)).down).toBe(false);
+    expect(await readWorld(page, (w) => w.ui.state.sticks.move.active)).toBe(
+      true,
+    );
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchEnd",
       touchPoints: [],
     });
+    await waitTicks(page, 2);
+    expect(await inventory(page, "stone")).toBe(7);
     await evidenceShot(page, "132-touch-move-release");
     await cdp.detach();
   });

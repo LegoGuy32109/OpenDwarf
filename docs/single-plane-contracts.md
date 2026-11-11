@@ -137,3 +137,21 @@ Do not copy another branch's implementation just to pass a check. Coordinate
 shared changes. Capture and inspect portrait screenshots and interaction video.
 GitHub issue/PR creation and own-branch pushes are authorized. Do not merge,
 promote production, deploy the shell, or edit another worker's branch.
+
+## Integrated implementation
+
+The release candidate combines the four worker heads without changing the
+interview decisions or defaults. `action-input.js` now reads `hasItemTag` for
+mining, placement, and directional eligibility. Real pointer events flow through
+`ui-pointer.js` into the shared gesture and host intent paths.
+
+Playable visibility casts rays only at Z=1. Supporting-floor visibility inherits
+the playable cell, so lower rays cannot disclose caves or dropped items behind
+walls. Explicit legacy fixtures retain three-axis sight. Reconnected and
+replacement controllers must report ZR released before arming another action.
+
+Shared browser fixtures use Z=1 offsets and explicit retained facing. They do
+not inject gestures or flight in integrated interaction journeys. Presentation
+unit fixtures seed the supporting floor before enabling its permanent edit
+guard. See [release validation](features/single-plane-release.md) for coverage
+and results.
