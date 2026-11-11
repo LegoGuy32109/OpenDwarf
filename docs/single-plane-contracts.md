@@ -105,6 +105,25 @@ integrated. To stay independently type-checkable, it may initially gate the
 existing stone/coin constants behind a local adapter and replace it at
 integration.
 
+## Coordination amendments
+
+The world worker also owns `src/shared/authored-terrain.js`. Its
+`createAuthoredWorld` helper is imported by unit tests, not production code.
+Keep it as an explicit legacy 3D fixture built with the world builder and no
+`planeZ`. Every built-in playable/browser recipe, including `authoredRecipe`,
+still uses the playable plane. Add tests that prove this distinction.
+
+Add optional `scene.cancelAction?:()=>void` for immediate transport-related
+cancellation. Client input initializes and binds an idempotent callback that
+clears local held mining and armed gestures without performing release. Host
+actions calls it on guest transport/channel closure, guest stop, and
+join-attempt replacement. Guard late callbacks so an obsolete connection cannot
+cancel a newer session. Presentation owns adding the optional `Scene` type.
+
+Integration replaces any temporary local item-capability adapter with
+`hasItemTag` and owns README links. Workers should report integration-only
+coverage gaps rather than modifying another worker's files.
+
 ## Merge and validation
 
 Independent branches must pass `deno task verify`. Test the owned behavior in
