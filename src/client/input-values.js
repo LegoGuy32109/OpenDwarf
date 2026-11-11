@@ -6,6 +6,7 @@
  * events (`input.js` does); `interact.js`, `panels.js`, and `loop.js` read here.
  */
 
+import { facingOf } from "../shared/single-plane.js";
 import { isPickupGridOpen } from "./pickup-grid.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
@@ -89,4 +90,16 @@ export function cameraInput(ctx) {
 export function shopDirection(ctx) {
   return stickDirection(ctx.cameraStick.x, ctx.cameraStick.y, 0.18).y ||
     ctx.gamepadDpad.y;
+}
+
+/** Retained movement-facing unless a live eligible gesture overrides it. @param {Context} ctx */
+export function actionDirection(ctx) {
+  const gesture = ctx.scene.actionGesture;
+  if (gesture?.down && gesture.aiming) return { x: gesture.x, y: gesture.y };
+  const direction = ctx.scene.chatOpen ? { x: 0, y: 0 } : inputDirection(ctx);
+  if (direction.x || direction.y) {
+    return stickDirection(direction.x, direction.y, 0.18);
+  }
+  const player = ctx.scene.world.players[ctx.scene.localId];
+  return player ? facingOf(player) : { x: 0, y: 1 };
 }
