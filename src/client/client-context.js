@@ -1,6 +1,8 @@
 // @ts-check
 // Client state construction. Startup owns the DOM and supplies this state to features.
 
+import { cancelPendingAction } from "./action-cancellation.js";
+import { createActionGesture } from "../shared/single-plane.js";
 import { createWorld } from "../shared/world.js";
 import { createVisibility } from "../shared/visibility.js";
 import { layoutFromParams } from "../shared/spawn-room.js";
@@ -107,7 +109,10 @@ export function createContext() {
     loading: /** @type {string|null} */ ("Connecting to world…"),
     /** What `ui.js` laid out this frame, for the renderer. */
     ui: /** @type {import('./scene-types.js').Scene["ui"]} */ (undefined),
-    aim: { x: 0, y: 0 },
+    aim: { x: 0, y: 1 },
+    actionGesture: createActionGesture(),
+    /** Transport interruptions consume input without executing release. */
+    cancelAction: () => cancelPendingAction(ctx),
     /** Mining actions to draw, with progress from 0 to 1. */
     mining:
       /** @type {{id:string,x:number,y:number,z:number,progress:number}[]} */ ([]),

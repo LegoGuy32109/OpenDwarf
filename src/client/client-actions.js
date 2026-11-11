@@ -1,6 +1,7 @@
 // @ts-check
 // Actions shared by client features and the startup adapters.
 
+import { cancelPendingAction } from "./action-cancellation.js";
 import { setTyping } from "../shared/world.js";
 import { setHeldItem } from "../shared/held-item.js";
 /** @typedef {import("./client-context.js").Context} Context */
@@ -42,6 +43,7 @@ export function setViewMode(ctx, mode) {
 
 /** Choose the held item. The host checks the inventory and cancels mining. @param {Context} ctx @param {string} kind */
 export function holdItem(ctx, kind) {
+  cancelPendingAction(ctx);
   const { scene } = ctx;
   if (ctx.isAdmin) {
     ctx.guest?.send({ type: "hold", kind });

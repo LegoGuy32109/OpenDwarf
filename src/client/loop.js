@@ -39,7 +39,9 @@ import {
   itemsDisplay,
   miningDisplay,
 } from "./display.js";
+import { updateAction } from "./action-input.js";
 import {
+  actionDirection,
   cameraInput,
   inputDirection,
   panelLookInput,
@@ -169,6 +171,7 @@ function stepWorld(ctx, now) {
   ctx.accumulator += catchUpMs(now - state.last, document.hidden);
   state.last = now;
   while (ctx.accumulator >= TICK_MS) {
+    updateAction(ctx);
     if (ctx.simulation) simulationStep(ctx, ctx.simulation);
     else {
       advanceTicks(scene.world);
@@ -242,7 +245,7 @@ function steerCamera(ctx, local, now, dt) {
     scene.camera.y += masterPanStep(cameraY, dt, scene.zoom);
   } else {
     // An open menu zeroes `look`: its selector takes the look control.
-    scene.aim = stickDirection(cameraX, cameraY, 0.18);
+    scene.aim = actionDirection(ctx);
     const pos = local
       ? renderPosition(local, scene.world.tick + ctx.accumulator / TICK_MS)
       : { x: 7, y: 7, z: 0 };

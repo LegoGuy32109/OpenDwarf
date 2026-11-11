@@ -8,7 +8,6 @@
  * own. `input-values.js` turns that state into directions.
  */
 
-import { WORLD_TOP } from "../shared/world.js";
 import { TEXT_SIZE_KEY, TEXT_SIZES } from "../shared/chat.js";
 import { VOICES_KEY, VOICES_LEVELS } from "./chatter.js";
 import { MUSIC_KEY, MUSIC_LEVELS } from "./music.js";
@@ -18,6 +17,13 @@ import { createPointerRouter } from "./ui-pointer.js";
 import { clamp, notify } from "./context.js";
 import { openLevel, panelLookInput, stickDirection } from "./input-values.js";
 import { interact } from "./interact.js";
+import {
+  actionPointer,
+  cancelAction,
+  pressAction,
+  releaseAction,
+  updateAction,
+} from "./action-input.js";
 import {
   chatKey,
   closeChat,
@@ -43,12 +49,6 @@ import { joinSession } from "./session.js";
 import { MENU_ROWS } from "./menu-nav.js";
 
 /** @typedef {import('./client-context.js').Context} Context */
-
-/** @param {Context} ctx @param {number} step */
-function changeLayer(ctx, step) {
-  ctx.scene.viewZ = clamp(ctx.scene.viewZ + step, 0, WORLD_TOP);
-  ctx.scene.hudUntil = performance.now() + 500;
-}
 
 /** Sprint doubles walk speed. It needs stamina and stays off while locked. @param {Context} ctx */
 function toggleSprint(ctx) {
@@ -94,6 +94,7 @@ function disconnectGamepad(ctx, pads) {
 
   const unknown = [...pads].find((candidate) => candidate?.connected);
   if (ctx.gamepadIndex !== -1) {
+    cancelAction(ctx);
     notify(ctx, "Controller disconnected");
     if (scene.inputMode === "gamepad") scene.inputMode = "keyboard";
   } else if (unknown && unknown.id !== ctx.unsupportedGamepadId) {
@@ -195,10 +196,8 @@ function gamepadActions(ctx, newlyPressed, menuOpen) {
     if (scene.chatOpen) closeChat(ctx);
     toggleMenu(ctx);
   }
-  if (!scene.chatOpen && newlyPressed(7)) confirmOrInteract(ctx);
+  if (!scene.chatOpen && newlyPressed(7)) confirmOrInteract(ctx, "gamepad");
   if (!scene.chatOpen && !scene.menu) {
-    if (newlyPressed(4)) changeLayer(ctx, -1);
-    if (newlyPressed(5)) changeLayer(ctx, 1);
     if (newlyPressed(6) && !menuOpen) toggleSprint(ctx);
   }
 }
@@ -212,6 +211,7 @@ function pollGamepad(ctx) {
   if (!pad) return disconnectGamepad(ctx, pads);
   ctx.unsupportedGamepadId = "";
   if (ctx.gamepadIndex !== pad.index) {
+    if (ctx.gamepadIndex !== -1) cancelAction(ctx);
     ctx.gamepadIndex = pad.index;
     notify(ctx, `Controller connected: ${pad.id}`);
   }
@@ -224,6 +224,9 @@ function pollGamepad(ctx) {
     (index) => buttons.has(index) && !ctx.gamepadButtons.has(index),
     menuOpen,
   );
+  if (!buttons.has(7) && ctx.gamepadButtons.has(7)) {
+    releaseAction(ctx, "gamepad");
+  }
   ctx.gamepadButtons = buttons;
 }
 
@@ -235,10 +238,10 @@ function pressMenuButton(ctx, id) {
 /**
  * Space, ZR, or the interact button: confirm in the open menu, or interact
  * with the world. A newly opened menu ignores the press that is still held.
- * @param {Context} ctx
+ * @param {Context} ctx @param {string} [source]
  */
-function confirmOrInteract(ctx) {
-  if (openLevel(ctx) === null) return interact(ctx);
+function confirmOrInteract(ctx, source = "keyboard") {
+  if (openLevel(ctx) === null) return pressAction(ctx, source);
   if (!ctx.nav.armed) return;
   if (ctx.scene.menu) menuConfirm(ctx, (id) => pressMenuButton(ctx, id));
   else interact(ctx);
@@ -274,7 +277,7 @@ function steerMenu(ctx, pressed, now) {
 
 /** @type {Record<string,(ctx:Context)=>unknown>} */
 const UI_ACTIONS = {
-  "btn:interact": confirmOrInteract,
+  "btn:interact": (ctx) => confirmOrInteract(ctx, "pointer"),
   "btn:nav-back": goBack,
   "btn:sprint": toggleSprint,
   "btn:chat": openChat,
@@ -365,6 +368,7 @@ function chooseEffects(ctx, id) {
 /** A tap on a UI element. @param {Context} ctx @param {import('./ui-types.js').UiElement} element */
 function uiAction(ctx, element) {
   const id = element.id;
+  if (["btn:bag", "btn:chat", "btn:menu"].includes(id)) cancelAction(ctx);
   if (id.startsWith("key:")) return pressKey(ctx, element);
   if (id.startsWith("slot:")) return ctx.bag.tap(id.slice(5));
   if (id.startsWith("row:")) return ctx.shop.tapRow(id.slice(4));
@@ -377,42 +381,25 @@ function uiAction(ctx, element) {
 }
 
 /**
- * Pinch and two-finger level drags work on the world only: a pointer that
- * starts on a UI element never joins a gesture.
+ * Pinch zoom uses world pointers only: a pointer that starts on a UI element
+ * never joins a gesture.
  * @param {Context} ctx
  */
 function bindWorldGesture(ctx) {
   const { scene } = ctx;
   /** @type {Map<number,{x:number,y:number}>} */
   const pointers = new Map();
-  /** @type {{mode:"pending"|"pinch"|"layer",distance:number,y:number,zoom:number,z:number}|null} */
+  /** @type {{distance:number,zoom:number}|null} */
   let gesture = null;
-  let updateQueued = false;
   const updateGesture = () => {
-    updateQueued = false;
     if (!gesture || pointers.size !== 2) return;
     const [a, b] = [...pointers.values()];
-    if (!a || !b) return;
     const distance = Math.hypot(a.x - b.x, a.y - b.y);
-    const dy = (a.y + b.y) / 2 - gesture.y;
-    const distanceChange = Math.abs(distance - gesture.distance);
-    if (gesture.mode === "pending") {
-      if (distanceChange > 12 && distanceChange > Math.abs(dy) * 0.7) {
-        gesture.mode = "pinch";
-      } else if (Math.abs(dy) > 14 && Math.abs(dy) > distanceChange * 1.2) {
-        gesture.mode = "layer";
-      }
-    }
-    if (gesture.mode === "pinch") {
-      scene.zoomTarget = clamp(
-        gesture.zoom * distance / Math.max(1, gesture.distance),
-        0.25,
-        2,
-      );
-    } else if (gesture.mode === "layer") {
-      const steps = Math.floor(Math.abs(dy) / 48);
-      scene.viewZ = clamp(gesture.z - Math.sign(dy) * steps, 0, WORLD_TOP);
-    }
+    scene.zoomTarget = clamp(
+      gesture.zoom * distance / Math.max(1, gesture.distance),
+      0.25,
+      2,
+    );
   };
   /** @param {PointerEvent} event */
   const down = (event) => {
@@ -423,11 +410,8 @@ function bindWorldGesture(ctx) {
       const [a, b] = [...pointers.values()];
       if (!a || !b) return;
       gesture = {
-        mode: "pending",
         distance: Math.hypot(a.x - b.x, a.y - b.y),
-        y: (a.y + b.y) / 2,
         zoom: scene.zoomTarget,
-        z: scene.viewZ,
       };
       scene.touchGesture = true;
     }
@@ -436,10 +420,7 @@ function bindWorldGesture(ctx) {
   const move = (event) => {
     if (event.pointerType !== "touch" || !pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (!updateQueued) {
-      updateQueued = true;
-      requestAnimationFrame(updateGesture);
-    }
+    updateGesture();
   };
   /** @param {PointerEvent} event */
   const release = (event) => {
@@ -460,6 +441,7 @@ const MENU_KEYS = { KeyI: [0, -1], KeyK: [0, 1], KeyJ: [-1, 0], KeyL: [1, 0] };
 function escapeKey(ctx, event) {
   event.preventDefault();
   if (event.repeat) return;
+  cancelAction(ctx);
   goBack(ctx);
 }
 /** @type {Record<string,(ctx:Context)=>unknown>} */
@@ -476,7 +458,10 @@ function commandKey(ctx, event) {
   if (!Object.hasOwn(KEY_ACTIONS, event.code)) return false;
   if (event.code === "KeyB" && event.repeat) return false;
   event.preventDefault();
-  if (!event.repeat) KEY_ACTIONS[event.code](ctx);
+  if (!event.repeat) {
+    if (["KeyB", "KeyT", "Slash"].includes(event.code)) cancelAction(ctx);
+    KEY_ACTIONS[event.code](ctx);
+  }
   return true;
 }
 
@@ -555,8 +540,6 @@ function worldKey(ctx, event) {
   ) {
     event.preventDefault();
   }
-  if (event.code === "KeyR" && !event.repeat) changeLayer(ctx, 1);
-  if (event.code === "KeyV" && !event.repeat) changeLayer(ctx, -1);
   if (event.code === "KeyU" || event.code === "KeyN") {
     scene.hudUntil = performance.now() + 500;
   }
@@ -577,12 +560,19 @@ function keyDown(ctx, event) {
  */
 export function createInput(ctx) {
   const { scene, ui, canvas } = ctx;
+  let cancellingPointer = false;
   /** The pointer routing over the UI layer. Elements act on pointer down. */
   const router = createPointerRouter({
     layout: () => currentLayout(ctx),
     onAction: (element) => uiAction(ctx, element),
+    onInteract: (event) =>
+      actionPointer(ctx, event, () => confirmOrInteract(ctx, "pointer")),
     onRelease: (element) => {
       if (element.id === "key:backspace") stopBackspaceRepeat(ctx);
+      if (element.id === "btn:interact") {
+        if (cancellingPointer) cancelAction(ctx);
+        else releaseAction(ctx, "pointer");
+      }
     },
     onStick: (id, state) => {
       const stick = id === "stick:move" ? "move" : "look";
@@ -638,7 +628,9 @@ export function createInput(ctx) {
     });
     /** @param {PointerEvent} event @param {boolean} cancelled */
     const finish = (event, cancelled) => {
+      cancellingPointer = cancelled;
       router.up(point(event), cancelled);
+      cancellingPointer = false;
       world.release(event);
     };
     canvas.addEventListener("pointerup", (event) => {
@@ -664,6 +656,7 @@ export function createInput(ctx) {
     document.addEventListener("keyup", (event) => {
       if (event.code === "Space") {
         event.preventDefault();
+        releaseAction(ctx, "keyboard");
         ctx.confirmKeyHeld = false;
         // Arm the open menu now, so a quick press after the release counts.
         ctx.nav.update(openLevel(ctx), false);
@@ -674,7 +667,8 @@ export function createInput(ctx) {
         scene.hudUntil = performance.now() + 500;
       }
     });
-    globalThis.addEventListener("blur", () => {
+    const cancelInputs = () => {
+      cancelAction(ctx);
       ctx.held.clear();
       ctx.pressed.clear();
       ctx.confirmKeyHeld = false;
@@ -685,6 +679,10 @@ export function createInput(ctx) {
       ctx.gamepadCamera = { x: 0, y: 0 };
       ctx.gamepadStick = { x: 0, y: 0 };
       ctx.gamepadZoom = 0;
+    };
+    globalThis.addEventListener("blur", cancelInputs);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) cancelInputs();
     });
     canvas.addEventListener("wheel", (event) => {
       event.preventDefault();
@@ -706,7 +704,10 @@ export function createInput(ctx) {
 
   return {
     bind,
-    poll: () => pollGamepad(ctx),
+    poll: () => {
+      pollGamepad(ctx);
+      updateAction(ctx);
+    },
     steerMenu: (/** @type {number} */ now) =>
       steerMenu(ctx, router.pressed(), now),
     router,
