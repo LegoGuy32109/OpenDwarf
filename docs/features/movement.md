@@ -2,10 +2,14 @@
 
 Players and the corner NPC use continuous x/y centers and half-tile square
 footprints. They stop between tiles, slide along flat walls, and block one
-another when footprints overlap. A one-level climb or descent is a short
-committed step with reserved origin and landing footprints. The renderer
-interpolates elevation during the step. See
-[movement design](../movement-design.md) and
+another when footprints overlap. Playable worlds set `world.planeZ=1`.
+Continuous movement, NPC movement and legacy tile move intents remain on that
+plane. Walls refuse climbing and unsupported ground refuses descending. The host
+and local prediction call the same shared movement rules.
+
+Explicit low-level fixtures without `planeZ` retain one-level climbs and
+descents, with reserved origin and landing footprints and elevation
+interpolation. See [movement design](../movement-design.md) and
 [ADR 0002](../adr/0002-continuous-horizontal-positions.md).
 
 On a keyboard, ESDF moves the player continuously in eight directions. Keyboard
@@ -23,3 +27,14 @@ tick, and the joining browser predicts its own movement immediately. See
 
 The corner NPC follows an E, S, W, N loop around four tiles and pauses one
 second after every two loops. It uses the same move rules as players.
+
+Facing starts south (`{x:0,y:1}`) and follows nonzero intended movement as an
+eight-direction octant. Blocked movement still turns the entity. Neutral input
+preserves facing. Horizontal input continues to update `facingLeft` for sprite
+flipping. A malformed off-plane entity cannot move until its state is corrected.
+
+In a planar world, targeting defaults to the adjacent tile in retained facing.
+An explicit aim can override that direction. Targets and reach must remain at
+Z=1, including while a player is stationary. The existing diagonal reach rule
+still requires at least one open side, so actions cannot pass through a closed
+corner. Legacy fixtures without `planeZ` retain their previous 3D target rules.

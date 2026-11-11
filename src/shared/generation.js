@@ -9,7 +9,6 @@ import {
   hasChunk,
   OPEN,
   STONE,
-  WORLD_TOP,
 } from "./terrain.js";
 import {
   COAL,
@@ -21,30 +20,61 @@ import {
   REDSTONE,
 } from "./materials.js";
 
+import { FLOOR_Z, PLAY_Z } from "./single-plane.js";
+
 /**
- * Generated terrain (ADR 0003): solid stone with caves, and ores in clusters by
- * depth band. The world host calls the generator through `world.generateChunk`.
+ * Generated terrain (ADR 0003): solid stone with caves, and ore clusters on the
+ * playable plane. The world host calls the generator through `world.generateChunk`.
  * It is a pure function of the session seed and the chunk coordinates, so the
  * same seed always gives the same chunk. Caves read global tile coordinates, so
  * they continue across chunk borders; ore clusters stay inside their chunk.
  */
 
 /**
- * An ore cluster rule. `attempts` is the average number of clusters per chunk
- * in the band, and each cluster is a random walk of `min` to `max` tiles.
- * @typedef {{material:number,zMin:number,zMax:number,attempts:number,min:number,max:number}} OreBand
+ * An ore cluster rule. `attempts` is the average number of clusters per chunk,
+ * and each cluster is a horizontal random walk of `min` to `max` tiles.
+ * @typedef {{material:number,attempts:number,min:number,max:number}} OreRule
  */
 
-/** @type {readonly OreBand[]} */
-const ORE_BANDS = Object.freeze([
-  { material: COAL, zMin: 5, zMax: 7, attempts: 6, min: 5, max: 10 },
-  { material: IRON_ORE, zMin: 5, zMax: 7, attempts: 3, min: 3, max: 7 },
-  { material: IRON_ORE, zMin: 2, zMax: 4, attempts: 1, min: 3, max: 6 },
-  { material: GOLD_ORE, zMin: 2, zMax: 4, attempts: 1.5, min: 2, max: 5 },
-  { material: LAPIS, zMin: 2, zMax: 4, attempts: 1.5, min: 3, max: 6 },
-  { material: REDSTONE, zMin: 2, zMax: 4, attempts: 2, min: 3, max: 7 },
-  { material: DIAMOND, zMin: 0, zMax: 1, attempts: 0.7, min: 1, max: 3 },
-  { material: EMERALD, zMin: 0, zMax: 1, attempts: 0.4, min: 1, max: 2 },
+/** @type {readonly OreRule[]} */
+const ORE_RULES = Object.freeze([
+  { material: COAL, attempts: 3, min: 4, max: 8 },
+  {
+    material: IRON_ORE,
+    attempts: 2,
+    min: 3,
+    max: 6,
+  },
+  {
+    material: GOLD_ORE,
+    attempts: 0.6,
+    min: 2,
+    max: 4,
+  },
+  {
+    material: LAPIS,
+    attempts: 0.7,
+    min: 2,
+    max: 4,
+  },
+  {
+    material: REDSTONE,
+    attempts: 1,
+    min: 3,
+    max: 5,
+  },
+  {
+    material: DIAMOND,
+    attempts: 0.25,
+    min: 1,
+    max: 3,
+  },
+  {
+    material: EMERALD,
+    attempts: 0.12,
+    min: 1,
+    max: 2,
+  },
 ]);
 
 /** Chunks generated around a player: every chunk within this many chunks. */
@@ -144,44 +174,41 @@ function noise(seed, channel, x, y, z) {
 /** Horizontal and vertical size of one noise cell, in tiles. */
 const CAVE_SCALE_XY = 11;
 const CAVE_SCALE_Z = 3;
-/** Tunnels form where both noise fields sit near 0.5; a wider band opens more cave. */
-const TUNNEL_WIDTH = 0.11;
+/** Tunnels form where the noise field sits near 0.5; a wider band opens more cave. */
+const TUNNEL_WIDTH = 0.14;
 
 /**
  * Whether the cave noise opens the tile at global coordinates x, y, z.
  * @param {number} seed @param {number} x @param {number} y @param {number} z
  */
 export function isCaveTile(seed, x, y, z) {
+  if (z !== PLAY_Z) return false;
   const nx = x / CAVE_SCALE_XY;
   const ny = y / CAVE_SCALE_XY;
   const nz = z / CAVE_SCALE_Z;
   const a = noise(seed >>> 0, 1, nx, ny, nz) - 0.5;
-  if (Math.abs(a) > TUNNEL_WIDTH) return false;
-  const b = noise(seed >>> 0, 2, nx, ny, nz) - 0.5;
-  return Math.abs(b) <= TUNNEL_WIDTH;
+  return Math.abs(a) <= TUNNEL_WIDTH;
 }
 
 /** @param {number} seed @param {number} cx @param {number} cy @param {Uint8Array} data */
 function carveCaves(seed, cx, cy, data) {
   const originX = cx * CHUNK_EDGE;
   const originY = cy * CHUNK_EDGE;
-  for (let z = 0; z <= WORLD_TOP; z++) {
-    for (let y = 0; y < CHUNK_EDGE; y++) {
-      for (let x = 0; x < CHUNK_EDGE; x++) {
-        if (isCaveTile(seed, originX + x, originY + y, z)) {
-          data[chunkIndex(x, y, z)] = OPEN;
-        }
+  for (let y = 0; y < CHUNK_EDGE; y++) {
+    for (let x = 0; x < CHUNK_EDGE; x++) {
+      if (isCaveTile(seed, originX + x, originY + y, PLAY_Z)) {
+        data[chunkIndex(x, y, PLAY_Z)] = OPEN;
       }
     }
   }
 }
 
 /** Grow one cluster as a random walk from a start tile, replacing stone only. */
-/** @param {Uint8Array} data @param {() => number} random @param {OreBand} band */
+/** @param {Uint8Array} data @param {() => number} random @param {OreRule} band */
 function placeCluster(data, random, band) {
   let x = Math.floor(random() * CHUNK_EDGE);
   let y = Math.floor(random() * CHUNK_EDGE);
-  let z = band.zMin + Math.floor(random() * (band.zMax - band.zMin + 1));
+  const z = PLAY_Z;
   const size = band.min + Math.floor(random() * (band.max - band.min + 1));
   for (let placed = 0, steps = 0; placed < size && steps < size * 6; steps++) {
     const index = chunkIndex(x, y, z);
@@ -189,17 +216,16 @@ function placeCluster(data, random, band) {
       data[index] = band.material;
       placed++;
     }
-    const axis = Math.floor(random() * 3);
+    const axis = Math.floor(random() * 2);
     const delta = random() < 0.5 ? -1 : 1;
     if (axis === 0) x = Math.max(0, Math.min(CHUNK_EDGE - 1, x + delta));
     else if (axis === 1) y = Math.max(0, Math.min(CHUNK_EDGE - 1, y + delta));
-    else z = Math.max(band.zMin, Math.min(band.zMax, z + delta));
   }
 }
 
 /** @param {number} seed @param {number} cx @param {number} cy @param {Uint8Array} data */
 function placeOres(seed, cx, cy, data) {
-  ORE_BANDS.forEach((band, bandIndex) => {
+  ORE_RULES.forEach((band, bandIndex) => {
     const random = createRandom(hash(seed, cx, cy, 1000 + bandIndex));
     let clusters = Math.floor(band.attempts);
     if (random() < band.attempts - clusters) clusters++;
@@ -212,7 +238,8 @@ function placeOres(seed, cx, cy, data) {
  * @param {number} seed @param {number} cx @param {number} cy
  */
 export function generateChunkData(seed, cx, cy) {
-  const data = createChunkData(STONE);
+  const data = createChunkData(OPEN);
+  data.fill(STONE, chunkIndex(0, 0, FLOOR_Z), chunkIndex(0, 0, PLAY_Z + 1));
   carveCaves(seed >>> 0, cx, cy, data);
   placeOres(seed >>> 0, cx, cy, data);
   return data;

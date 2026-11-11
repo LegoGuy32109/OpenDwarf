@@ -9,7 +9,6 @@ import {
   roomSpawnTile,
   SHELL,
   SHOPKEEPER_TILE,
-  STAIRS,
   TUNNEL,
   TUNNEL_ORES,
 } from "../../src/shared/spawn-room.js";
@@ -55,8 +54,6 @@ Deno.test("spawn room is 9 by 7, enclosed, with one doorway into stone", () => {
     for (let x = ROOM.minX; x <= ROOM.maxX; x++) add(x, y, ROOM_Z);
   }
   add(DOORWAY.x, DOORWAY.y, DOORWAY.z);
-  for (const { x, y, z } of STAIRS) add(x, y, z);
-  add(STAIRS[1].x, STAIRS[1].y, STAIRS[1].z + 1);
   for (let x = TUNNEL.minX; x <= SHELL.maxX; x++) add(x, TUNNEL.y, TUNNEL.z);
   for (let z = SHELL.minZ; z <= SHELL.maxZ; z++) {
     for (let y = SHELL.minY; y <= SHELL.maxY; y++) {
@@ -72,7 +69,7 @@ Deno.test("spawn room is 9 by 7, enclosed, with one doorway into stone", () => {
   assertEquals(isSolid(world, DOORWAY.x, DOORWAY.y, ROOM_Z), false);
   assertEquals(isSolid(world, DOORWAY.x, DOORWAY.y + 1, ROOM_Z), true);
   assertEquals(isSolid(world, DOORWAY.x, DOORWAY.y + 1, ROOM_Z - 1), true);
-  assertEquals(isSolid(world, 16, 15, ROOM_Z + 1), true, "ceiling");
+  assertEquals(isSolid(world, 16, 15, ROOM_Z + 1), false, "unused air");
   assertEquals(isSolid(world, 16, 15, ROOM_Z - 1), true, "floor");
   assertEquals(isSolid(world, ROOM.minX - 1, 15, ROOM_Z), true);
   assertEquals(world.changes?.size ?? 0, 0);
@@ -81,7 +78,7 @@ Deno.test("spawn room is 9 by 7, enclosed, with one doorway into stone", () => {
 Deno.test("another seed changes the caves but keeps the room whole", () => {
   const world = createSpawnRoomWorld(seedFromText("another world"));
   assertEquals(isSolid(world, 16, 15, ROOM_Z), false);
-  assertEquals(isSolid(world, 16, 15, ROOM_Z + 1), true);
+  assertEquals(isSolid(world, 16, 15, ROOM_Z + 1), false);
   assertEquals(isSolid(world, ROOM.minX - 1, 15, ROOM_Z), true);
   assertEquals(isSolid(world, DOORWAY.x, DOORWAY.y + 1, ROOM_Z), true);
 });
@@ -97,26 +94,6 @@ function loadWalkArea(
       }
     }
   }
-}
-
-function walkLevel(
-  world: ReturnType<typeof createSpawnRoomWorld>,
-  x: number,
-  y: number,
-  z: number,
-  nx: number,
-  ny: number,
-) {
-  if (!isSolid(world, nx, ny, z) && isSolid(world, nx, ny, z - 1)) return z;
-  else if (
-    z < 7 && isSolid(world, nx, ny, z) && !isSolid(world, nx, ny, z + 1) &&
-    !isSolid(world, x, y, z + 1)
-  ) return z + 1;
-  else if (
-    !isSolid(world, nx, ny, z) && !isSolid(world, nx, ny, z - 1) &&
-    isSolid(world, nx, ny, z - 2)
-  ) return z - 1;
-  return -1;
 }
 
 /** Count the tiles a player can walk to from the spawn tile with the move rules, in a square of chunks. */
@@ -135,7 +112,9 @@ function walkable(world: ReturnType<typeof createSpawnRoomWorld>, r: number) {
       const nx = x + dx;
       const ny = y + dy;
       if (nx < min || ny < min || nx > max || ny > max) continue;
-      const nz = walkLevel(world, x, y, z, nx, ny);
+      const nz = !isSolid(world, nx, ny, z) && isSolid(world, nx, ny, z - 1)
+        ? z
+        : -1;
       const key = `${nx},${ny},${nz}`;
       if (nz < 0 || seen.has(key)) continue;
       seen.add(key);
@@ -145,11 +124,11 @@ function walkable(world: ReturnType<typeof createSpawnRoomWorld>, r: number) {
   return { tiles: seen.size, levels };
 }
 
-Deno.test("the tunnel opens into a cave network that reaches every level", () => {
+Deno.test("the flat tunnel opens into a useful connected cave network", () => {
   const { tiles, levels } = walkable(createSpawnRoomWorld(), 3);
-  // Thousands of tiles within three chunks of spawn, from z 0 to the top.
-  assert(tiles > 5000, `only ${tiles} tiles are walkable from spawn`);
-  assertEquals([...levels].sort(), [0, 1, 2, 3, 4, 5, 6, 7]);
+  // Connected room, tunnel and cave stay on the playing plane.
+  assert(tiles > 500, `only ${tiles} tiles are walkable from spawn`);
+  assertEquals([...levels].sort(), [1]);
 });
 
 Deno.test("every spawn tile and the shopkeeper tile are open room floor", () => {
@@ -169,50 +148,23 @@ Deno.test("every spawn tile and the shopkeeper tile are open room floor", () => 
   );
 });
 
-Deno.test("a player walks out the doorway, and down the stairs into the tunnel", () => {
+Deno.test("a player walks from spawn into the flat east tunnel without stairs", () => {
   const world = createSpawnRoomWorld();
-  const spawn = roomSpawnTile(0);
-  addPlayer(world, "self", spawn);
-  // To the doorway: straight south from the spawn tile, then out.
-  const south = Array(DOORWAY.y - spawn.y).fill([0, 1]) as Array<
-    [number, number]
-  >;
-  assertEquals(walk(world, "self", south), DOORWAY);
-  // Blocked beyond the doorway: it opens into solid stone.
-  assertEquals(startMove(world, "self", 0, 1, 99).ok, false);
-  // Back up to the room, around Ulgar's tile, to the stairs, down and along the tunnel.
-  const north = Array(DOORWAY.y - STAIRS[0].y - 1).fill([0, -1]) as Array<
-    [number, number]
-  >;
-  assertEquals(walk(world, "self", north), {
-    x: DOORWAY.x,
-    y: STAIRS[0].y + 1,
-    z: ROOM_Z,
-  });
-  const east = Array(STAIRS[0].x - 1 - DOORWAY.x).fill([1, 0]) as Array<
-    [number, number]
-  >;
-  walk(world, "self", east);
-  walk(world, "self", [[0, -1]]);
-  assertEquals(walk(world, "self", [[1, 0]]), {
-    ...STAIRS[0],
-    z: ROOM_Z - 1,
-  });
-  assertEquals(walk(world, "self", [[1, 0]]), STAIRS[1]);
-  const tunnel = Array(TUNNEL.maxX - STAIRS[1].x).fill([1, 0]) as Array<
-    [number, number]
-  >;
-  assertEquals(walk(world, "self", tunnel), {
+  addPlayer(world, "self", roomSpawnTile(0));
+  walk(world, "self", [[1, 0], [1, 0], [1, 0], [1, 0], [0, -1], [0, -1], [
+    0,
+    -1,
+  ]]);
+  assertEquals(walk(world, "self", Array(6).fill([1, 0])), {
     x: TUNNEL.maxX,
     y: TUNNEL.y,
-    z: TUNNEL.z,
+    z: ROOM_Z,
   });
-  // And back up into the room.
-  const back = Array(TUNNEL.maxX - STAIRS[0].x).fill([-1, 0]) as Array<
-    [number, number]
-  >;
-  assertEquals(walk(world, "self", back), { ...STAIRS[0], z: ROOM_Z - 1 });
-  assertEquals(walk(world, "self", [[-1, 0]]).z, ROOM_Z);
+  assertEquals(walk(world, "self", Array(6).fill([-1, 0])), {
+    x: ROOM.maxX,
+    y: TUNNEL.y,
+    z: ROOM_Z,
+  });
 });
 
 Deno.test("several players may spawn on one tile", () => {
