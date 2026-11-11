@@ -75,5 +75,5 @@ and guest terrain after unload/replay.
 - [Landscape fixture](https://raw.githubusercontent.com/LegoGuy32109/OpenDwarf/evidence/134-integrated-release/134-landscape.png)
 - [Keyboard fixture](https://raw.githubusercontent.com/LegoGuy32109/OpenDwarf/evidence/134-integrated-release/134-portrait-keyboard.png)
 
-These are Chromium phone emulation and browser gamepad reports, with physical
-keyboard input. No physical iPhone or controller hardware test is claimed.
+These are Chromium phone emulation and browser gamepad reports, with keyboard
+events. No physical iPhone or controller hardware test is claimed.
