@@ -43,6 +43,10 @@ export function placeRefusal(world, player, tile, sees = () => true) {
     !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
     !Number.isInteger(tile.z) || tile.z < 0 || tile.z > WORLD_TOP
   ) return "invalid tile";
+  if (
+    world.planeZ !== undefined &&
+    (tile.z !== world.planeZ || player.z !== world.planeZ)
+  ) return "not on the play plane";
   const stone = inventoryOf(player).find((stack) => stack.kind === STONE_ITEM);
   if (heldItem(player) !== STONE_ITEM || !stone) return "no stone held";
   if (stone.count < 1) return "no stone";

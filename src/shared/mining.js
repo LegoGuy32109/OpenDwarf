@@ -6,6 +6,7 @@ import { materialInfo } from "./materials.js";
 import { inReach } from "./reach.js";
 import { MINE_HIT_MS, recordSound } from "./sound.js";
 import { OPEN, readTile, WORLD_TOP, writeTile } from "./terrain.js";
+import { MINING_LEASE_TICKS } from "./single-plane.js";
 import { TICK_MS } from "./world.js";
 
 /** @typedef {import('./world.js').World} World */
@@ -23,6 +24,7 @@ import { TICK_MS } from "./world.js";
  * @property {string} held the item in hand when mining started
  * @property {number} startTick
  * @property {number} durationTicks
+ * @property {number} [leaseUntil]
  * @property {number} [hits] mining hit sounds recorded so far
  */
 /** @typedef {{ok:true,action:MiningAction}|{ok:false,reason:string}} StartResult */
@@ -79,6 +81,10 @@ export function miningRefusal(world, player, tile, sees = SEES_ALL) {
     !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
     !Number.isInteger(tile.z) || tile.z < 0 || tile.z > WORLD_TOP
   ) return "invalid tile";
+  if (
+    world.planeZ !== undefined &&
+    (tile.z !== world.planeZ || player.z !== world.planeZ)
+  ) return "not on the play plane";
   if (heldItem(player) !== PICKAXE) return "no pickaxe";
   if (
     tile.z === player.z && tile.x === centerTile(player.x) &&
@@ -142,6 +148,13 @@ export function cancelMining(world, playerId) {
 export function miningCancelReason(world, action, sees = SEES_ALL) {
   const player = world.players[action.playerId];
   if (!player) return "gone";
+  if (action.leaseUntil !== undefined && world.tick >= action.leaseUntil) {
+    return "lease expired";
+  }
+  if (
+    world.planeZ !== undefined &&
+    (action.z !== world.planeZ || player.z !== world.planeZ)
+  ) return "not on the play plane";
   if (!inReach(world, player, action, sees)) return "out of reach";
   if (heldItem(player) !== action.held) return "held item changed";
   if (readTile(world, action.x, action.y, action.z) !== action.material) {
@@ -230,4 +243,20 @@ export function decalFrame(progress) {
     0,
     Math.min(DECAL_FRAMES - 1, Math.floor(progress * DECAL_FRAMES)),
   );
+}
+
+/** Renew a held action without resetting its progress. A changed target stops the old action even when refused.
+ * @param {World} world @param {string} playerId @param {Tile} tile @param {Sees} [sees] @returns {StartResult}
+ */
+export function holdMining(world, playerId, tile, sees = SEES_ALL) {
+  const current = miningActions(world).get(playerId);
+  if (
+    current &&
+    (current.x !== tile.x || current.y !== tile.y || current.z !== tile.z ||
+      miningCancelReason(world, current, sees))
+  ) cancelMining(world, playerId);
+  const result = startMining(world, playerId, tile, sees);
+  if (result.ok) result.action.leaseUntil = world.tick + MINING_LEASE_TICKS;
+  else cancelMining(world, playerId);
+  return result;
 }

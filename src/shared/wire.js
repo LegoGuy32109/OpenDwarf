@@ -8,6 +8,8 @@ import {
   record,
   tile,
 } from "./wire-parse.js";
+import { hasItemTag } from "./items.js";
+import { PLAY_Z, THROW_RANGE } from "./single-plane.js";
 import { WORLD_TOP } from "./terrain.js";
 import { ROLES } from "./world.js";
 import { decodeChunks, MAX_REVEAL_CHUNKS } from "./chunk-wire.js";
@@ -18,11 +20,11 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {Omit<Player,'typing'|'message'|'messageUntil'>} MotionPlayer */
 /** @typedef {import('./chat.js').ChatRecord} ChatRecord */
 /** @typedef {{attempt:string,viewRevision:number,sightRevision:number}} Envelope */
-/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'limits'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
-/** @typedef {Envelope & {type:"motion",tick:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
+/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'limits'|'planeZ'|'throws'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
+/** @typedef {Envelope & {type:"motion",tick:number,planeZ?:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const MAX_PACKET_BYTES = 256 * 1024;
 const MAX_ENTITIES = 1024;
 
@@ -72,6 +74,10 @@ const PLAYER_REQUIRED = {
 };
 /** @type {import('./wire-parse.js').FieldRules} */
 const PLAYER_OPTIONAL = {
+  facing: (value) =>
+    record(value) && Number.isInteger(value.x) && Number.isInteger(value.y) &&
+    finite(value.x, -1, 1) && finite(value.y, -1, 1) &&
+    (value.x !== 0 || value.y !== 0),
   viewMotion: (value) => movement(value, true),
   npc: boolean,
   role: (value) => ROLES.includes(/** @type {string} */ (value)),
@@ -97,6 +103,7 @@ export function encodeMotionPlayers(players) {
       y: value.y,
       z: value.z,
       facingLeft: value.facingLeft,
+      ...(value.facing ? { facing: { ...value.facing } } : {}),
       move: value.move,
       ...(value.viewMotion ? { viewMotion: value.viewMotion } : {}),
       ...(value.npc !== undefined ? { npc: value.npc } : {}),
@@ -234,11 +241,15 @@ function chatRecords(value) {
 }
 
 /** Wire form of a world snapshot: players keep only wire fields. Terrain travels as `reveal`. */
-/** @param {Pick<World,'tick'|'players'|'limits'>} world */
+/** @param {Pick<World,'tick'|'players'|'limits'|'planeZ'|'throws'>} world */
 export function encodeWorld(world) {
   return {
     tick: world.tick,
     players: encodeMotionPlayers(world.players),
+    ...(world.planeZ !== undefined ? { planeZ: world.planeZ } : {}),
+    ...(world.throws
+      ? { throws: world.throws.map((entry) => ({ ...entry })) }
+      : {}),
     ...(world.limits ? { limits: { ...world.limits } } : {}),
   };
 }
@@ -258,8 +269,31 @@ function validWorldLimits(b) {
   return true;
 }
 
+/** @param {unknown} value */
+function validThrows(value) {
+  if (!Array.isArray(value) || value.length > 4096) return false;
+  const ids = new Set();
+  return value.every((entry) => {
+    if (
+      !record(entry) || !identifier(entry.id) || ids.has(entry.id) ||
+      !identifier(entry.owner) || !hasItemTag(entry.kind, "throwable") ||
+      !tile(entry) ||
+      entry.z !== PLAY_Z ||
+      !finite(entry.dx, -1, 1) || !finite(entry.dy, -1, 1) ||
+      Math.abs(Math.hypot(entry.dx, entry.dy) - 1) > 1e-9 ||
+      (entry.dx !== 0 && entry.dy !== 0 &&
+        Math.abs(Math.abs(entry.dx) - Math.abs(entry.dy)) > 1e-9) ||
+      !finite(entry.remaining, 0, THROW_RANGE)
+    ) return false;
+    ids.add(entry.id);
+    return true;
+  });
+}
+
 /** @param {Record<string,unknown>} world */
 function worldMetadata(world) {
+  if (world.planeZ !== undefined && world.planeZ !== PLAY_Z) return false;
+  if (world.throws !== undefined && !validThrows(world.throws)) return false;
   if (world.limits !== undefined) {
     if (!validWorldLimits(world.limits)) return false;
   }
@@ -308,6 +342,10 @@ export function decodeState(value) {
   if (
     !parsedPlayers || !Object.hasOwn(parsedPlayers, value.playerId) || !chat
   ) return null;
+  if (
+    world.planeZ !== undefined &&
+    Object.values(parsedPlayers).some((entity) => entity.z !== world.planeZ)
+  ) return null;
   if (!stateVisibility(value)) return null;
   const parsed = /** @type {StatePacket} */ (value);
   return {
@@ -326,6 +364,12 @@ export function decodeState(value) {
     world: {
       tick: parsed.world.tick,
       players: parsedPlayers,
+      ...(parsed.world.planeZ !== undefined
+        ? { planeZ: parsed.world.planeZ }
+        : {}),
+      ...(parsed.world.throws
+        ? { throws: parsed.world.throws.map((entry) => ({ ...entry })) }
+        : {}),
       ...(parsed.world.limits ? { limits: { ...parsed.world.limits } } : {}),
     },
     reveal,
@@ -341,6 +385,10 @@ export function decodeMotion(value) {
   ) return null;
   const parsedPlayers = players(value.players);
   if (!parsedPlayers) return null;
+  if (
+    value.planeZ !== undefined && (value.planeZ !== PLAY_Z ||
+      Object.values(parsedPlayers).some((entity) => entity.z !== value.planeZ))
+  ) return null;
   const parsed = /** @type {MotionPacket} */ (value);
   return {
     type: "motion",
@@ -349,6 +397,7 @@ export function decodeMotion(value) {
     sightRevision: parsed.sightRevision,
     acknowledgedSequence: parsed.acknowledgedSequence,
     tick: parsed.tick,
+    ...(parsed.planeZ !== undefined ? { planeZ: parsed.planeZ } : {}),
     players: parsedPlayers,
   };
 }
