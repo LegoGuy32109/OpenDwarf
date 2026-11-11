@@ -267,6 +267,8 @@ function lines(paint, element, ts, color) {
 /** @typedef {{paint:Painter,element:UiElement,rect:import('./ui-types.js').Rect,ts:number,bw:number,state:DrawState,color:Color,down:boolean}} ElementPaint */
 /** @type {Partial<Record<UiElement["kind"],(ctx:ElementPaint)=>void>>} */
 const ELEMENT_PAINTERS = {
+  action: paintAction,
+  aimwell: paintAimWell,
   scrim: paintScrim,
   panel: paintPanel,
   text: paintText,
@@ -728,4 +730,43 @@ function drawStick(paint, element, ts, knob) {
   const red = rgb(0xe34d52);
   paint.rect(kx - 5 * ts, ky - ts, 10 * ts, 2 * ts, red);
   paint.rect(kx - ts, ky - 5 * ts, 2 * ts, 10 * ts, red);
+}
+
+/** @param {ElementPaint} ctx */
+function paintAction({ paint, element, rect, ts, down }) {
+  // A small corner radius retains the broad square thumb target.
+  const radius = 8;
+  const face = rgb(0xffffff, down ? 0.25 : 0.1);
+  for (let y = 0; y < rect.h; y += 2) {
+    const d = Math.max(0, radius - Math.min(y, rect.h - y - 2));
+    const inset = radius - Math.sqrt(Math.max(0, radius * radius - d * d));
+    paint.rect(rect.x + inset, rect.y + y, rect.w - 2 * inset, 2, face);
+  }
+  outline(
+    paint,
+    { x: rect.x + 4, y: rect.y + 4, w: rect.w - 8, h: rect.h - 8 },
+    1,
+    rgb(0xffffff, 0.5),
+  );
+  roundIcon(paint, element, ts, down, PALETTE.white);
+}
+
+/** @param {ElementPaint} ctx */
+function paintAimWell({ paint, element }) {
+  const cx = element.cx ?? 0, cy = element.cy ?? 0;
+  disc(paint, cx, cy, 32, rgb(0x17191e, 0.8), 2);
+  ring(paint, cx, cy, 12, 1, rgb(0xffffff, 0.4), 1);
+  for (let n = 0; n < 8; n++) {
+    const a = n * Math.PI / 4;
+    const dx = Math.round(Math.cos(a)), dy = Math.round(Math.sin(a));
+    const selected = dx === element.dx && dy === element.dy;
+    disc(
+      paint,
+      cx + Math.cos(a) * 23,
+      cy + Math.sin(a) * 23,
+      selected ? 4 : 2,
+      selected ? PALETTE.amber : rgb(0xffffff, 0.5),
+      1,
+    );
+  }
 }

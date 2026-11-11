@@ -213,7 +213,7 @@ test.describe("phone", () => {
   test("a finger that starts on a control never joins a world pinch", async ({ page }) => {
     await openWorld(page, "/?harness=1");
     await ready(page);
-    const stick = await uiCenter(page, "stick:look");
+    const stick = await uiCenter(page, "stick:move");
     const touch = await page.context().newCDPSession(page);
     const send = (type: "touchStart" | "touchMove" | "touchEnd", points: {
       x: number;
@@ -260,11 +260,9 @@ test.describe("phone", () => {
       for (
         const id of [
           "stick:move",
-          "stick:look",
           "btn:interact",
           "btn:sprint",
           "btn:chat",
-          "btn:log",
           "btn:menu",
           "btn:bag",
           "btn:fullscreen",

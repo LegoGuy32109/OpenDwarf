@@ -1,4 +1,5 @@
 // @ts-check
+import { throwVisible } from "./render-items.js";
 import { terrainBands } from "../shared/terrain-bands.js";
 
 import {
@@ -15,7 +16,12 @@ import {
 } from "../shared/speech.js";
 import { Z_LEVELS_BELOW } from "../shared/world.js";
 import { materialInfo, ORE_FRAMES } from "../shared/materials.js";
-import { CURSOR_ICON_SIZE, CURSOR_OUTLINE, localCursor } from "./cursor.js";
+import {
+  CURSOR_ICON_SIZE,
+  CURSOR_OUTLINE,
+  directionMarker,
+  localCursor,
+} from "./cursor.js";
 import { DECAL_FRAMES, decalFrame } from "../shared/mining.js";
 import { cycleIndex, ITEM_FRAMES, itemInfo } from "../shared/items.js";
 import { entityOpacity, tileVisibility } from "../shared/visibility.js";
@@ -34,7 +40,9 @@ import {
   elevationMask,
   playerOccluded,
   shadowMaskToAtlasId,
+  surfaceColor,
   surfaceGrid,
+  terrainUv,
 } from "../shared/surface.js";
 
 const TILE = 64;
@@ -43,12 +51,9 @@ const FLOATS_PER_QUAD = 48;
 const WHITE = [1, 1, 1, 1];
 /** @type {[number,number,number,number]} */
 const FLOOR_UV = [0, 5 / 31, 1, 1 / 31];
-/** @type {[number,number,number,number]} */
-const REMEMBERED_TINT = [1, 0.86, 0.34, 0.95];
 /** The gold tint of a trader NPC, multiplied into the sprite. */
 const TRADER_TINT = [1, 0.78, 0.25];
-/** Floor colors per depth, so a frame allocates none. @type {[number,number,number,number][]} */
-const DEPTH_COLORS = DEPTH_TINTS.map(([r, g, b]) => [r, g, b, 1]);
+
 const VERTEX = `#version 300 es
 precision highp float;
 layout(location=0) in vec2 a_position;
@@ -186,10 +191,12 @@ export async function createRenderer(canvas, options = {}) {
     asset("assets/ores.png"),
     asset("assets/items.png"),
     asset("assets/cracks.png"),
+    asset("assets/terrain.png"),
   ]).then((images) => {
-    const [floor, sprite, edge, ceiling, ores, items, cracks] =
+    const [floor, sprite, edge, ceiling, ores, items, cracks, terrain] =
       /** @type {HTMLImageElement[]} */ (images);
     textures.floor = texture(gl, floor);
+    textures.terrain = texture(gl, terrain);
     textures.sprite = texture(gl, sprite);
     textures.edge = texture(gl, edge);
     textures.ceiling = texture(gl, ceiling);
@@ -542,9 +549,10 @@ export async function createRenderer(canvas, options = {}) {
       scene.visibility,
     );
     for (let y = top; y <= bottom; y++) {
-      for (let x = left; x <= right; x++) drawFloorTile(surface, x, y);
+      for (let x = left; x <= right; x++) drawFloorTile(scene, surface, x, y);
     }
     flush();
+    if (scene.world.planeZ !== undefined) return;
     // The authored edge atlas covers the corner mask; narrow bands preserve the old ledge shading.
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
@@ -561,8 +569,8 @@ export async function createRenderer(canvas, options = {}) {
     }
     flush();
   }
-  /** @param {import('../shared/surface.js').SurfaceLookup} surface @param {number} x @param {number} y */
-  function drawFloorTile(surface, x, y) {
+  /** @param {Scene} scene @param {import('../shared/surface.js').SurfaceLookup} surface @param {number} x @param {number} y */
+  function drawFloorTile(scene, surface, x, y) {
     const tile = surface(x, y);
     if (!tile) return;
     // An ore keeps the stone's depth tint, so it reads as a wall at the
@@ -571,14 +579,22 @@ export async function createRenderer(canvas, options = {}) {
     const oreFrame = materialInfo(tile.material)?.oreFrame;
     const ore = oreFrame !== null && oreFrame !== undefined;
     quad(
-      ore ? textures.ores : textures.floor,
+      ore
+        ? textures.ores
+        : scene.world.planeZ !== undefined
+        ? textures.terrain
+        : textures.floor,
       false,
       x * TILE,
       y * TILE,
       TILE,
       TILE,
-      ore ? [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES] : FLOOR_UV,
-      tile.seen === "remembered" ? REMEMBERED_TINT : DEPTH_COLORS[tile.depth],
+      ore
+        ? [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES]
+        : scene.world.planeZ !== undefined
+        ? terrainUv(tile, x, y)
+        : FLOOR_UV,
+      surfaceColor(tile, scene.world.planeZ !== undefined),
     );
   }
 
@@ -697,6 +713,77 @@ export async function createRenderer(canvas, options = {}) {
     } else drawTilesPerFrame(scene, left, top, right, bottom);
   }
 
+  /** A world-space quadrilateral in the shared batch. @param {number[]} points @param {[number,number,number,number]} color */
+  function worldQuad(points, color) {
+    quad(textures.white, false, 0, 0, 1, 1, [0, 0, 1, 1], color);
+    const at = used - FLOATS_PER_QUAD;
+    const order = [0, 1, 2, 2, 1, 3];
+    for (let i = 0; i < 6; i++) {
+      vertices[at + i * 8] = points[order[i] * 2];
+      vertices[at + i * 8 + 1] = points[order[i] * 2 + 1];
+    }
+  }
+
+  /** A rounded line without overlapping alpha samples. @param {number} x0 @param {number} y0 @param {number} x1 @param {number} y1 @param {number} width @param {[number,number,number,number]} color @param {boolean} [caps] */
+  function worldStroke(x0, y0, x1, y1, width, color, caps = true) {
+    const length = Math.hypot(x1 - x0, y1 - y0);
+    if (!length) return;
+    const dx = (x1 - x0) / length, dy = (y1 - y0) / length, r = width / 2;
+    worldQuad([
+      x0 - dy * r,
+      y0 + dx * r,
+      x1 - dy * r,
+      y1 + dx * r,
+      x0 + dy * r,
+      y0 - dx * r,
+      x1 + dy * r,
+      y1 - dx * r,
+    ], color);
+    if (!caps) return;
+    for (
+      const [x, y, angle] of [[x0, y0, Math.atan2(dy, dx) + Math.PI / 2], [
+        x1,
+        y1,
+        Math.atan2(dy, dx) - Math.PI / 2,
+      ]]
+    ) {
+      for (let n = 0; n < 6; n++) {
+        const a = angle + n * Math.PI / 6, b = a + Math.PI / 6;
+        worldQuad([
+          x,
+          y,
+          x + Math.cos(a) * r,
+          y + Math.sin(a) * r,
+          x + Math.cos(b) * r,
+          y + Math.sin(b) * r,
+          x + Math.cos(b) * r,
+          y + Math.sin(b) * r,
+        ], color);
+      }
+    }
+  }
+
+  /** A curved target corner with two short arms. @param {number} x @param {number} y @param {number} sx @param {number} sy @param {[number,number,number,number]} color */
+  function targetCorner(x, y, sx, sy, color) {
+    const radius = 6, half = CURSOR_OUTLINE / 2;
+    const cx = x - sx * radius, cy = y - sy * radius;
+    worldStroke(x - sx * 13, y, cx, y, CURSOR_OUTLINE, color, false);
+    worldStroke(x, cy, x, y - sy * 13, CURSOR_OUTLINE, color, false);
+    for (let n = 0; n < 6; n++) {
+      const a = n * Math.PI / 12, b = a + Math.PI / 12;
+      worldQuad([
+        cx + sx * Math.sin(a) * (radius - half),
+        cy + sy * Math.cos(a) * (radius - half),
+        cx + sx * Math.sin(a) * (radius + half),
+        cy + sy * Math.cos(a) * (radius + half),
+        cx + sx * Math.sin(b) * (radius - half),
+        cy + sy * Math.cos(b) * (radius - half),
+        cx + sx * Math.sin(b) * (radius + half),
+        cy + sy * Math.cos(b) * (radius + half),
+      ], color);
+    }
+  }
+
   /** @param {Frame} frame */
   function drawCursor(frame) {
     const { scene } = frame;
@@ -711,38 +798,14 @@ export async function createRenderer(canvas, options = {}) {
         b,
         cursor.opacity,
       ]);
-      const w = CURSOR_OUTLINE;
-      quad(textures.white, false, px, py, TILE, w, [0, 0, 1, 1], line);
-      quad(
-        textures.white,
-        false,
-        px,
-        py + TILE - w,
-        TILE,
-        w,
-        [0, 0, 1, 1],
-        line,
-      );
-      quad(
-        textures.white,
-        false,
-        px,
-        py + w,
-        w,
-        TILE - 2 * w,
-        [0, 0, 1, 1],
-        line,
-      );
-      quad(
-        textures.white,
-        false,
-        px + TILE - w,
-        py + w,
-        w,
-        TILE - 2 * w,
-        [0, 0, 1, 1],
-        line,
-      );
+      const inset = 3;
+      for (const sx of [-1, 1]) {
+        for (const sy of [-1, 1]) {
+          const x = px + (sx < 0 ? inset : TILE - inset),
+            y = py + (sy < 0 ? inset : TILE - inset);
+          targetCorner(x, y, sx, sy, line);
+        }
+      }
       if (cursor.iconFrame !== null) {
         const side = TILE * CURSOR_ICON_SIZE;
         quad(
@@ -786,6 +849,21 @@ export async function createRenderer(canvas, options = {}) {
     const itemTiles = (scene.items ?? []).filter((entry) =>
       entry.z === scene.viewZ
     );
+    for (const entry of scene.world.throws ?? []) {
+      if (!throwVisible(scene, entry)) continue;
+      const icon = itemInfo(entry.kind)?.frame;
+      if (icon === undefined) continue;
+      const side = TILE * 0.5;
+      quad(
+        textures.items,
+        false,
+        (entry.x + 0.5) * TILE - side / 2,
+        (entry.y + 0.5) * TILE - side / 2,
+        side,
+        side,
+        [0, icon / ITEM_FRAMES, 1, 1 / ITEM_FRAMES],
+      );
+    }
     const itemNow = performance.now();
     for (const entry of itemTiles) {
       const stack = entry.stacks[cycleIndex(entry.stacks.length, itemNow)];
@@ -848,7 +926,7 @@ export async function createRenderer(canvas, options = {}) {
         ? scene.renderOffset
         : { x: 0, y: 0, z: 0 };
       const uv = player.facingLeft ? [1, 0, -1, 1] : [0, 0, 1, 1];
-      const depthTint = pos.z < scene.viewZ
+      const depthTint = scene.world.planeZ === undefined && pos.z < scene.viewZ
         ? DEPTH_TINTS[Math.min(scene.viewZ - Math.floor(pos.z), 5)]
         : [1, 1, 1];
       const tint = player.role === "trader"
@@ -864,6 +942,33 @@ export async function createRenderer(canvas, options = {}) {
         /** @type {[number,number,number,number]} */ (uv),
         /** @type {[number,number,number,number]} */ ([...tint, visible]),
       );
+      const marker = directionMarker(scene, player);
+      if (marker) {
+        const length = Math.hypot(marker.x, marker.y);
+        const dx = marker.x / length, dy = marker.y / length;
+        const cx = (pos.x + offset.x + 0.5) * TILE + dx * 25;
+        const cy = (pos.y + offset.y + 0.5) * TILE + dy * 25;
+        const color =
+          /** @type {[number,number,number,number]} */ (marker.aiming
+            ? [1, 0.72, 0.2, visible * 0.85]
+            : [1, 1, 1, visible * 0.5]);
+        worldStroke(
+          cx - dx * 6 - dy * 6,
+          cy - dy * 6 + dx * 6,
+          cx,
+          cy,
+          2,
+          color,
+        );
+        worldStroke(
+          cx,
+          cy,
+          cx - dx * 6 + dy * 6,
+          cy - dy * 6 - dx * 6,
+          2,
+          color,
+        );
+      }
     }
     flush();
     return { players, opacity };
