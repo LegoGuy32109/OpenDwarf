@@ -66,17 +66,21 @@ The wire uses validated JSON and rejects incompatible versions with a refresh
 instruction. Protocol version 6 requires a matching join/offer version and adds
 accepted action results to version 5's NPC flags and fixed-world bounds. Version
 7 adds the entity `role` (the trader, Ulgar) and removes the shop tile list,
-because the shopkeeper travels as an NPC entity. Complete snapshots are
-validated before scene mutation. Motion packets carry attempt, view, and sight
-revisions so delayed updates cannot restore an older view; motion is fenced by
-connection attempt, view revision, sight revision, and tick. The guest retains
-only the newest motion awaiting reliable sight. Older reliable state can refresh
-sight without rewinding newer remote positions. A reveal in such a state still
-applies, because the host drained it when it built the packet. Invalid motion is
-discarded. Malformed reliable state requests a full resync, and the host then
-sends the guest's whole remembered terrain again. Repeated recovery failure
-closes the connection with a refresh instruction. An incomplete join attempt
-expires after ten seconds, independently of player creation.
+because the shopkeeper travels as an NPC entity. Version 8 adds validated
+`world.planeZ`, player octant `facing` in state and motion, and visible
+`world.throws` in reliable state. It accepts `mine-hold` and octant-only `throw`
+intents; the host owns leases, inventory consumption, flight, and landing.
+Complete snapshots are validated before scene mutation. Motion packets carry
+attempt, view, and sight revisions so delayed updates cannot restore an older
+view; motion is fenced by connection attempt, view revision, sight revision, and
+tick. The guest retains only the newest motion awaiting reliable sight. Older
+reliable state can refresh sight without rewinding newer remote positions. A
+reveal in such a state still applies, because the host drained it when it built
+the packet. Invalid motion is discarded. Malformed reliable state requests a
+full resync, and the host then sends the guest's whole remembered terrain again.
+Repeated recovery failure closes the connection with a refresh instruction. An
+incomplete join attempt expires after ten seconds, independently of player
+creation.
 
 This is not rollback netcode. Input acknowledgments indicate the latest received
 direction, not completed movement. Input replay remains deferred. WebRTC uses
@@ -109,12 +113,12 @@ nonnegative safe integers. Coordinates `x` and `y` retain JavaScript number
 precision without quantization. Player `z` is an integer level. Decoders bound
 coordinates and validate entity records before accepting a packet.
 
-A state holds `world` (tick, explicit player fields, including NPC flag and
-role, and optional fixed-world bounds), `reveal`, `visibility`, `mode`,
-`playerId`, `chat`, and `acknowledgedSequence`. Motion holds `tick`, explicit
-player records, and `acknowledgedSequence`. Chat has its own reliable packet
-with a tick and chat records. Control commands have separate schemas in
-`control-wire.js`.
+A state holds `world` (tick, explicit player fields, including NPC flag and role
+and facing, optional fixed-world bounds, play plane, and visible throws),
+`reveal`, `visibility`, `mode`, `playerId`, `chat`, and `acknowledgedSequence`.
+Motion holds `tick`, explicit player records, and `acknowledgedSequence`. Chat
+has its own reliable packet with a tick and chat records. Control commands have
+separate schemas in `control-wire.js`.
 
 Each reveal chunk is a base64 string of byte pairs: material, then run length
 minus one (1–256 cells per run). Decoding must fill exactly 2,048 cells, ordered
@@ -180,3 +184,12 @@ most 2 s of missed ticks and drops the rest, so a long stall does not run
 hundreds of ticks at once. Drawing, input polling, camera, and UI work stay in
 the frame and do not run in the background. A guest keeps only its local
 prediction ticking.
+
+Flight updates use the reliable snapshot sender, including its coalescing and
+backpressure behavior. The host publishes whenever a recipient's visible flight
+changes, including removal on landing or loss of sight. The guest replaces its
+flight list and preserves the plane during state merges even when newer motion
+positions must be retained. Flight never travels on the replaceable motion
+channel. Throw refusals use `throw-result`; held-mining refusals use
+`mine-result`. Malformed throw intents with supplied origins or counts are
+rejected at the control boundary.

@@ -1,4 +1,5 @@
 // @ts-check
+import { bindActionCancellation } from "./guest-action-cancel.js";
 
 // The guest side of a session: it sends intents and draws what the host sends.
 
@@ -48,11 +49,13 @@ const RESULT_NOTICES = new Map([
   ["pickup-result", { max: 40, prefix: "Cannot pick up: " }],
   ["talk-result", { max: 60, prefix: "" }],
   ["place-result", { max: 40, prefix: "" }],
+  ["throw-result", { max: 40, prefix: "Cannot throw: " }],
   ["mine-result", { max: 40, prefix: "Cannot mine: " }],
 ]);
 
 /** @param {Scene} scene @param {string} session */
 export function joinWorld(scene, session) {
+  const cancelAction = bindActionCancellation(scene);
   /** @type {RTCPeerConnection|null} */
   let peer = null;
   /** @type {RTCDataChannel|null} */
@@ -124,6 +127,7 @@ export function joinWorld(scene, session) {
 
   function requestJoin() {
     if (closed) return;
+    cancelAction();
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
     retryNotBefore = 0;
@@ -168,7 +172,9 @@ export function joinWorld(scene, session) {
   }
 
   function scheduleRetry() {
-    if (closed || retryTimer) return;
+    if (closed) return;
+    cancelAction();
+    if (retryTimer) return;
     scene.status = "Visitor disconnected; retrying…";
     scene.telemetry?.("connection", { status: "reconnecting" });
     retryTimer = setTimeout(
@@ -189,6 +195,7 @@ export function joinWorld(scene, session) {
 
   /** @param {string} message */
   function endWithError(message) {
+    cancelAction();
     closed = true;
     connected = false;
     if (retryTimer) clearTimeout(retryTimer);
@@ -290,6 +297,8 @@ export function joinWorld(scene, session) {
   /** @param {World} snapshot @param {'master'|'entity'} incomingMode @param {import('../shared/visibility.js').Visibility} visibility */
   function finishState(snapshot, incomingMode, visibility) {
     scene.world.limits = snapshot.limits;
+    scene.world.planeZ = snapshot.planeZ;
+    scene.world.throws = snapshot.throws ?? [];
     scene.viewMode = incomingMode;
     scene.visibility = visibility;
     scene.localId = playerId;
@@ -542,6 +551,7 @@ export function joinWorld(scene, session) {
             }, replaceable);
           incomingChannel.onclose = () => {
             if (peer !== nextPeer || closed) return;
+            cancelAction();
             connected = false;
             nextPeer.close();
             scheduleRetry();
@@ -689,11 +699,13 @@ export function joinWorld(scene, session) {
     },
     /** @param {number} [holdMs] */
     dropConnection(holdMs = 0) {
+      cancelAction();
       retryNotBefore = performance.now() +
         Math.max(0, Math.min(10_000, holdMs));
       peer?.close();
     },
     close() {
+      cancelAction();
       closed = true;
       clearInterval(watchdog);
       if (retryTimer) clearTimeout(retryTimer);

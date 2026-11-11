@@ -18,7 +18,9 @@ is occupied shows "Something is in the way". Placing has no timer: one stone
 leaves the inventory, and the tile becomes stone at once.
 
 On a phone, the interact button shows the stone icon while stone is held and the
-pickaxe otherwise. It still acts on `pointerdown`.
+pickaxe otherwise. Placement dispatch belongs to the input adapter: one `place`
+intent on release, provided the gesture did not enter and cancel directional
+aiming. Holding the button does not repeatedly place.
 
 ## Rules
 
@@ -27,6 +29,7 @@ for its own player and for every guest. It rejects, in this order:
 
 | Reason                    | Case                                                                                           |
 | ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `not on the play plane`   | target or player is outside `world.planeZ` in a planar world                                   |
 | `no stone held`           | stone is not the held item, or the inventory has none                                          |
 | `Something is in the way` | the target is the entity's own tile                                                            |
 | `out of reach`            | the tile is not in [reach](reach.md): the 3×3×3 around the entity, by an open path, seen       |
@@ -41,10 +44,11 @@ tile it walks into.
 
 A guest sends `{type:"place", x, y, z}`. `decodeControl` in `wire.js` checks the
 shape, and the host calls `placeStone`. A refusal comes back as
-`{type:"place-result", reason}` and shows as a notice. A success sends no
-answer. The tile goes through `writeTile`, so `drainTileChanges` adds it to the
-pending reveal of each peer that sees it, the same way as a mined tile. The
-guest's inventory count follows through the inventory message.
+`{type:"place-result", reason}` and shows as a notice. A success sends an
+attempt-scoped `action-result` confirmation. The tile goes through `writeTile`,
+so `drainTileChanges` adds it to the pending reveal of each peer that sees it,
+the same way as a mined tile. The guest's inventory count follows through the
+inventory message.
 
 ## Not yet
 

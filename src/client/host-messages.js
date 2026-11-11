@@ -5,7 +5,8 @@
 
 import { pickUp, pickupLine } from "../shared/items.js";
 import { setHeldItem } from "../shared/held-item.js";
-import { cancelMining, startMining } from "../shared/mining.js";
+import { cancelMining, holdMining, startMining } from "../shared/mining.js";
+import { startThrow } from "../shared/throws.js";
 import { placeStone } from "../shared/placing.js";
 import { setNickname, setTyping, submitMessage } from "../shared/world.js";
 
@@ -70,6 +71,10 @@ export const hostMessages = new Map([
     return true;
   }],
   ["mine", (peer, message) => {
+    if (peer.scene.world.planeZ !== undefined) {
+      peer.reply({ type: "mine-result", reason: "use mine-hold" });
+      return true;
+    }
     const result = startMining(
       peer.scene.world,
       peer.playerId,
@@ -77,6 +82,26 @@ export const hostMessages = new Map([
       peer.sees(),
     );
     if (!result.ok) peer.reply({ type: "mine-result", reason: result.reason });
+    return true;
+  }],
+  ["mine-hold", (peer, message) => {
+    const result = holdMining(
+      peer.scene.world,
+      peer.playerId,
+      tileOf(message),
+      peer.sees(),
+    );
+    if (!result.ok) peer.reply({ type: "mine-result", reason: result.reason });
+    return true;
+  }],
+  ["throw", (peer, message) => {
+    const result = startThrow(
+      peer.scene.world,
+      peer.playerId,
+      message.dx,
+      message.dy,
+    );
+    if (!result.ok) peer.reply({ type: "throw-result", reason: result.reason });
     return true;
   }],
   ["place", (peer, message) => {
