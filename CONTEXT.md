@@ -319,6 +319,17 @@ through a low-pass filter, quieter.
 tile that it sees now and reaches by an open path. See
 [ADR 0009](docs/adr/0009-reach-free-cursor-and-controller.md).
 
+**Facing direction**: The octant an entity faces. It persists when the entity
+stops moving and supplies the default direction for an action.
+
+**Aim direction**: The octant selected for an aimed item action.
+
+**Throwable**: An item capability that permits throwing the item itself in a
+selected direction.
+
+**Aimable**: An item capability that permits selecting a direction for its
+action. A bow is an example. It does not mean the item itself is thrown.
+
 **Cursor**: The outline on the highlighted tile with the held item's icon in its
 center, dimmed when interact would do nothing there.
 

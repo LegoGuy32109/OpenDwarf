@@ -93,9 +93,14 @@ Decisions:
 - [ADR 0009: Reach, a free cursor, and the controller layout](docs/adr/0009-reach-free-cursor-and-controller.md)
 - [ADR 0010: The shopkeeper is an NPC entity](docs/adr/0010-shopkeeper-as-npc-entity.md)
 
+- [ADR 0011: Single-plane gameplay with 3D chunks](docs/adr/0011-single-plane-gameplay-with-3d-chunks.md)
+
 <!-- Add a line here for each new ADR. -->
 
-Design notes: [movement](docs/movement-design.md),
+Design notes:
+[single-plane portrait design](docs/single-plane-portrait-design.md),
+[implementation contracts](docs/single-plane-contracts.md),
+[movement](docs/movement-design.md),
 [multiplayer protocol](docs/multiplayer-protocol-design.md),
 [sight boundary](docs/sight-boundary-design.md),
 [live-session vision](docs/live-session-vision.md), and

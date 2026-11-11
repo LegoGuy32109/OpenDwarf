@@ -35,6 +35,7 @@ const DRAG_SLOP = 8;
  * @param {(element:UiElement)=>void} options.onAction a button was pressed
  * @param {(element:UiElement)=>void} [options.onRelease] a pressed button's pointer lifted
  * @param {(stick:string,state:{x:number,y:number,knobX:number,knobY:number,active:boolean})=>void} options.onStick
+ * @param {(event:import('../shared/single-plane.js').ActionPointerEvent)=>void} [options.onInteract] action-button gesture events
  * @param {(list:string,pixels:number)=>void} options.onScroll
  */
 export function createPointerRouter(
