@@ -197,4 +197,10 @@ rejected at the control boundary.
 When the plane is present, state and motion decoders reject entities outside it.
 Transport loss, channel closure, stop, and attempt replacement call the input
 adapter's optional `scene.cancelAction` callback. A session ownership guard
-prevents obsolete callbacks from cancelling a newer session's actions.
+prevents obsolete callbacks from cancelling a newer session's actions. Within a
+guest session, each accepted offer also owns a revision captured before ICE
+lookup. Replacing the join attempt or receiving another offer invalidates that
+revision. Negotiation checks ownership after each asynchronous step and before
+handling a failure, so obsolete work cannot replace the current peer or cancel
+its held action. Data-channel and connection callbacks use the same ownership
+check. Failures in the current offer still cancel and retry.

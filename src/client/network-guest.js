@@ -65,6 +65,8 @@ export function joinWorld(scene, session) {
   let connected = false;
   let closed = false;
   let attempt = "";
+  // Attempts can receive overlapping offers before either finishes ICE setup.
+  let offerRevision = 0;
   let attemptStarted = 0;
   /** @type {ReturnType<typeof setTimeout>|null} */
   let retryTimer = null;
@@ -127,6 +129,7 @@ export function joinWorld(scene, session) {
 
   function requestJoin() {
     if (closed) return;
+    offerRevision++;
     cancelAction();
     if (retryTimer) clearTimeout(retryTimer);
     retryTimer = null;
@@ -518,25 +521,36 @@ export function joinWorld(scene, session) {
     const offer =
       /** @type {{description:RTCSessionDescriptionInit,attempt:string,version?:number}} */ (message
         .data);
-    if (offer.attempt !== attempt) return;
+    if (closed || offer.attempt !== attempt) return;
     if (offer.version !== PROTOCOL_VERSION) {
       endWithError("Different game versions. Refresh both pages to reconnect.");
       return;
     }
+    const revision = ++offerRevision;
+    const offerAttempt = offer.attempt;
+    /** @type {RTCPeerConnection|null} */
+    let ownedPeer = null;
+    const ownsOffer = () =>
+      !closed && revision === offerRevision &&
+      offerAttempt === attempt && (ownedPeer === null || peer === ownedPeer);
     void (async () => {
       try {
+        const iceServers = await ice(session);
+        if (!ownsOffer()) return;
         const nextPeer = new RTCPeerConnection({
-          iceServers: await ice(session),
+          iceServers,
           iceTransportPolicy: forceRelay ? "relay" : "all",
         });
-        if (closed || offer.attempt !== attempt) {
-          nextPeer.close();
-          return;
-        }
-        peer?.close();
+        ownedPeer = nextPeer;
+        const previousPeer = peer;
         peer = nextPeer;
+        previousPeer?.close();
         nextPeer.ondatachannel = (event) => {
           const incomingChannel = event.channel;
+          if (!ownsOffer()) {
+            incomingChannel.close();
+            return;
+          }
           if (incomingChannel.label === "world") channel = incomingChannel;
           else if (incomingChannel.label === "motion") {
             motionChannel = incomingChannel;
@@ -547,11 +561,11 @@ export function joinWorld(scene, session) {
           const replaceable = incomingChannel.label === "motion";
           incomingChannel.onmessage = (incoming) =>
             deliver(() => {
-              if (peer !== nextPeer || closed) return;
+              if (!ownsOffer()) return;
               receiveRaw(incoming.data, replaceable);
             }, replaceable);
           incomingChannel.onclose = () => {
-            if (peer !== nextPeer || closed) return;
+            if (!ownsOffer()) return;
             cancelAction();
             connected = false;
             nextPeer.close();
@@ -559,7 +573,7 @@ export function joinWorld(scene, session) {
           };
         };
         nextPeer.onconnectionstatechange = () => {
-          if (peer !== nextPeer) return;
+          if (!ownsOffer()) return;
           if (
             nextPeer.connectionState === "failed" ||
             nextPeer.connectionState === "closed" ||
@@ -569,16 +583,21 @@ export function joinWorld(scene, session) {
           }
         };
         await nextPeer.setRemoteDescription(offer.description);
-        await nextPeer.setLocalDescription(await nextPeer.createAnswer());
+        if (!ownsOffer()) return;
+        const answer = await nextPeer.createAnswer();
+        if (!ownsOffer()) return;
+        await nextPeer.setLocalDescription(answer);
+        if (!ownsOffer()) return;
         await gathered(nextPeer);
-        if (peer === nextPeer && offer.attempt === attempt) {
+        if (ownsOffer()) {
           await signaling.send("host", "answer", {
             playerId,
             description: nextPeer.localDescription,
-            attempt,
+            attempt: offerAttempt,
           });
         }
       } catch (error) {
+        if (!ownsOffer()) return;
         scene.status = "Join failed";
         console.error(error);
         scheduleRetry();

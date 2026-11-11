@@ -89,3 +89,35 @@ and guest terrain after unload/replay.
 
 These are Chromium phone emulation and browser gamepad reports, with keyboard
 events. No physical iPhone or controller hardware test is claimed.
+
+## Async offer review follow-up
+
+Review of PR139 found that an old offer's ICE lookup could reject after a new
+join attempt had started. Its catch handler cancelled the new attempt's held
+action and scheduled another reconnect. The session guard could not distinguish
+offers within the same `joinWorld` call.
+
+Each offer now captures ownership before ICE lookup. A new join attempt or
+duplicate offer invalidates that ownership. Both successful and failed async
+steps check it, as do peer and channel callbacks. An obsolete offer cannot
+replace the current peer or cancel its action; a current failure still retries.
+
+Nine controlled-promise tests exercise the real `joinWorld` handler. They cover
+old-attempt ICE rejection, duplicate-offer ICE success, superseded remote,
+answer and local-description failures, closed-session rejection, current ICE and
+peer failures, and superseded negotiation success. Running the first seven
+regressions against the previous implementation produced six failures and one
+pass; all nine pass with the fix.
+
+After the fix, `deno task verify` passed 766 tests with zero failures and 19
+existing ignored tests. Smoke passed all 13 checks. The affected browser run
+passed all 95 checks across five repetitions:
+
+```sh
+PORT=8159 E2E_WORKERS=4 deno task e2e signaling.spec.ts direct-join.spec.ts handshake.spec.ts live-sessions.spec.ts wire.spec.ts held-actions.spec.ts base-path.spec.ts network-motion.spec.ts --repeat-each=5
+```
+
+The subsequent final `PORT=8159 E2E_WORKERS=4 deno task e2e` run passed 142
+checks with one credential-dependent real-Xirsys test skipped. Both sound-event
+scenarios, including the muffled-source case from #129, passed again. No browser
+failures remain in this follow-up run.
