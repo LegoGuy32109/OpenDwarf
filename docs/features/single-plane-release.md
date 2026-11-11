@@ -27,11 +27,23 @@ source of behavior and defaults.
 
 ## Validation status
 
-The candidate has passed `deno task verify` with 757 passed, zero failed, and 19
-existing ignored tests. `PORT=8159 E2E_WORKERS=4 deno task e2e:smoke` passed all
-13 checks. The five-repeat run of 27 changed/new browser specs passed 435
-checks. The additional streaming/stone-throw spec and full browser suite remain
-pending. Do not close #134 before all final checks pass.
+`deno task verify` passed with 757 passed, zero failed, and 19 existing ignored
+tests. `PORT=8159 E2E_WORKERS=4 deno task e2e:smoke` passed all 13 checks.
+
+The five-repeat run of 27 changed/new specs passed 435 checks. The added
+streaming/stone-throw spec passed 10 checks. Screenshot review then found and
+fixed the guest cursor's use of snapshot equipment instead of private feeds. The
+seven affected journeys passed another 35 checks across five repetitions,
+followed by another 13-pass smoke run. All 28 changed/new browser spec files
+passed five repetitions, including the affected recheck after the cursor fix.
+
+`PORT=8159 E2E_WORKERS=4 deno task e2e` passed 142 checks with one
+credential-dependent real-Xirsys test skipped. There are no unresolved local
+acceptance failures. The coordinator owns the final review and merge.
+
+The public preview passed `deno task smoke /b/t134-integrated-release/ e1b9753`:
+a host and guest joined code commit `e1b9753`, with no page or console errors.
+No production promotion or shell deployment was performed.
 
 The first combined unit run found three fixture failures, corrected by making
 retained facing explicit and seeding support before enabling its edit guard. The
