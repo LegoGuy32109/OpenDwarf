@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { giveItems, openWorld, placePlayer, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
@@ -67,15 +68,18 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     await expect.poll(() => localId(guest)).toMatch(/^peer-/);
     const guestId = await localId(guest);
     await say(guest, "/nick Gus");
-    await placePlayer(host, 15, 14, 4);
-    await placePlayer(host, 17, 12, 4, guestId);
+    await placePlayer(host, 15, 14, 1);
+    await placePlayer(host, 17, 12, 1, guestId);
     await giveItems(host, "coal", 3, guestId);
     await giveItems(host, "lapis", 2, guestId);
     await giveItems(host, "stone", 4, guestId);
     await expect.poll(() => stack(guest, "lapis")).toBe(2);
     await waitFrames(guest, 3);
     await guest.bringToFront();
-    await guest.keyboard.down("j");
+    await facePlayer(host, -1, 0, guestId);
+    await expect.poll(() =>
+      readWorld(guest, (w) => w.scene.world.players[w.scene.localId].facing)
+    ).toEqual({ x: -1, y: 0 });
     await guest.keyboard.press("Space");
     await guest.keyboard.up("j");
     await expect.poll(() => shopOpen(guest)).toBe(true);
@@ -144,7 +148,7 @@ test("a guest sells one kind and then all ore by speaking, and Ulgar's reply mat
     expect(await sendSale(guest, { kind: "diamond" })).toBe(true);
     // Moving away does not cancel a confirmed sale: the reply still arrives.
     await expect.poll(() => heard(guest)).toContain("Gus: Sell all diamond");
-    await placePlayer(host, 17, 15, 4, guestId);
+    await placePlayer(host, 17, 15, 1, guestId);
     await expect.poll(() => shopOpen(guest)).toBe(false);
     const fullReplies = lines("full", { name: "diamond", count: 1, coins: 20 });
     expect(fullReplies).toContain(await answered(guest, 4, fullReplies));

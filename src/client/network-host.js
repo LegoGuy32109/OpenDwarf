@@ -3,6 +3,7 @@
 // The host side of a session: it owns the world, validates every guest action,
 // and sends each guest its view.
 
+import { visibleThrows as flightView } from "./host-action-view.js";
 import { build } from "./build.js";
 import { droppedEntries, droppedItems, inventoryOf } from "../shared/items.js";
 import { heldItem, miningEntries } from "../shared/mining.js";
@@ -169,6 +170,7 @@ export function startHost(scene, session, sounds = {}) {
     let lastSequence = 0;
     /** What this peer was last told about visible mining, to send only changes. */
     let lastMining = "";
+    let lastThrows = "";
     /** What this peer was last told about dropped items and its inventory. */
     let lastItems = "";
     let lastInventory = "";
@@ -338,6 +340,8 @@ export function startHost(scene, session, sounds = {}) {
         sounds.simulation &&
         [
           "mine",
+          "mine-hold",
+          "throw",
           "mine-cancel",
           "place",
           "hold",
@@ -366,12 +370,15 @@ export function startHost(scene, session, sounds = {}) {
               tell(playerId, result.line);
             } else if (
               !result.ok &&
-              ["mine", "place", "pickup", "talk"].includes(
-                String(message.type),
-              )
+              ["mine", "mine-hold", "throw", "place", "pickup", "talk"]
+                .includes(
+                  String(message.type),
+                )
             ) {
               hostPeer.reply({
-                type: `${message.type}-result`,
+                type: `${
+                  message.type === "mine-hold" ? "mine" : message.type
+                }-result`,
                 reason: result.reason,
               });
             }
@@ -402,7 +409,8 @@ export function startHost(scene, session, sounds = {}) {
       deadline.start(attempt);
       joined = true;
       lastSequence = 0;
-      lastMining =
+      lastThrows =
+        lastMining =
         lastItems =
         lastInventory =
         lastHeld =
@@ -493,6 +501,9 @@ export function startHost(scene, session, sounds = {}) {
             world: encodeWorld({
               ...view.world,
               limits: scene.world.limits,
+              planeZ: scene.world.planeZ,
+              floorStyle: scene.world.floorStyle,
+              throws: visibleThrows(),
             }),
             chat: chatView(scene.world, playerId, chatBands),
             mode,
@@ -518,6 +529,7 @@ export function startHost(scene, session, sounds = {}) {
           return {
             type: "motion",
             ...envelope,
+            planeZ: scene.world.planeZ,
             tick: scene.world.tick,
             players: encodeMotionPlayers(players),
             acknowledgedSequence: lastSequence,
@@ -739,9 +751,18 @@ export function startHost(scene, session, sounds = {}) {
       channel.send(JSON.stringify({ type: "music", ...cue }));
     }
 
+    function visibleThrows() {
+      return flightView(scene.world, sight.visible, mode === "master");
+    }
+
     function tickPeer() {
       sendMining();
       sendItems();
+      const throws = JSON.stringify(visibleThrows());
+      if (throws !== lastThrows) {
+        lastThrows = throws;
+        publishToPeer();
+      }
       stamina = simulation.state(playerId).stamina;
       const player = scene.world.players[playerId];
       const position = player

@@ -1,5 +1,6 @@
 // @ts-check
 
+import { facingOf } from "./single-plane.js";
 import { centerTile } from "./locomotion.js";
 import { chunkCoord, hasChunk } from "./terrain.js";
 
@@ -8,6 +9,10 @@ import { chunkCoord, hasChunk } from "./terrain.js";
 /** Return the adjacent tile selected for an entity action, or null outside the loaded chunks. */
 /** @param {Player} player @param {{x:number,y:number}} aim @param {number} z @param {import('./world.js').World} world */
 export function adjacentTarget(player, aim, z, world) {
+  if (
+    world.planeZ !== undefined &&
+    (z !== world.planeZ || player.z !== world.planeZ)
+  ) return null;
   if (
     !Number.isInteger(z) || Math.abs(z - player.z) > 1 ||
     !Number.isInteger(aim.x) || !Number.isInteger(aim.y) ||
@@ -26,6 +31,9 @@ export function adjacentTarget(player, aim, z, world) {
  */
 /** @param {Player} player @param {{x:number,y:number}} aim @param {number} z @param {import('./world.js').World} world */
 export function highlightedTile(player, aim, z, world) {
+  if (world.planeZ !== undefined && !aim.x && !aim.y) {
+    return adjacentTarget(player, facingOf(player), z, world);
+  }
   if (aim.x || aim.y) return adjacentTarget(player, aim, z, world);
   if (!Number.isInteger(z) || Math.abs(z - player.z) > 1) return null;
   return { x: centerTile(player.x), y: centerTile(player.y), z };

@@ -27,16 +27,17 @@ shell code needs `deno task deploy`. See
 
 ## Controls
 
-| Action           | Keyboard              | Touch                         |
-| ---------------- | --------------------- | ----------------------------- |
-| Move             | ESDF                  | left stick                    |
-| Sprint           | H                     | button beside the right stick |
-| Aim, pan         | IJKL                  | right stick                   |
-| View level, zoom | R/V, U/N, mouse wheel | two-finger drag, pinch        |
-| Interact, mine   | Space                 | pickaxe button                |
-| Inventory        | B                     | bag button                    |
-| Chat, command    | T, `/`                | speech bubble button          |
-| Menu             | Escape, Q             | ESC button                    |
+| Action                     | Keyboard                 | Touch                 |
+| -------------------------- | ------------------------ | --------------------- |
+| Move and retain facing     | ESDF                     | left stick            |
+| Sprint                     | H                        | RUN above bag         |
+| Aim an armed coin or stone | IJKL while holding Space | drag action button    |
+| Zoom                       | U/N, mouse wheel         | pinch                 |
+| Mine                       | hold Space with pickaxe  | hold action button    |
+| Place or throw             | release Space            | release action button |
+| Inventory                  | B                        | bag at bottom right   |
+| Chat, command              | T, `/`                   | chat at bottom left   |
+| Menu                       | Escape, Q                | ESC at top center     |
 
 Gamepad buttons and the rest are in
 [controls and UI](docs/features/controls-and-ui.md).
@@ -55,12 +56,14 @@ its feature there:
 - [Inventory and shop](docs/features/inventory-and-shop.md)
 - [NPC conversations](docs/features/npc-conversations.md)
 - [Placing](docs/features/placing.md)
-- [Reach and the free cursor](docs/features/reach.md)
+- [Reach and targeting](docs/features/reach.md)
 - [Chat](docs/features/chat.md)
 - [Chatter](docs/features/chatter.md)
 - [Music](docs/features/music.md)
 - [Sound effects](docs/features/sound-effects.md)
 - [Controls and UI](docs/features/controls-and-ui.md)
+- [Portrait presentation](docs/features/portrait-presentation.md)
+- [Single-plane release validation](docs/features/single-plane-release.md)
 - [Networking](docs/features/networking.md)
 - [Sessions and signaling](docs/features/sessions-and-signaling.md)
 - [Shell and builds](docs/features/shell-and-builds.md)
@@ -108,9 +111,10 @@ Design notes:
 
 ## Credits
 
-The stone floor, the ore tiles (`public/assets/floor.png`, `ores.png`), and the
-item icons (`items.png`, from `art/excalibur/item/`), and the breaking cracks
-(`cracks.png`, from `art/excalibur/block/`) come from
+The stone floor, the ore tiles (`public/assets/floor.png`, `ores.png`), the
+terrain variants (`public/assets/terrain.png`), the item icons (`items.png`,
+from `art/excalibur/item/`), and the breaking cracks (`cracks.png`, from
+`art/excalibur/block/`) come from
 [Excalibur](https://www.curseforge.com/minecraft/texture-packs/excalibur) by
 Maffhew, licensed
 [CC BY-NC-ND 3.0](http://creativecommons.org/licenses/by-nc-nd/3.0/us/). The

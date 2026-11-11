@@ -3,6 +3,8 @@
 
 export const PLAY_Z = 1;
 export const FLOOR_Z = 0;
+/** The authored room floor alone keeps its tiled/brick appearance. */
+export const SPAWN_FLOOR = { minX: 12, maxX: 20, minY: 12, maxY: 18 };
 export const THROW_RANGE = 4;
 export const THROW_SPEED = 10;
 export const ACTION_DEADZONE_PX = 16;

@@ -17,7 +17,9 @@ import {
   moveEntity,
   speedTilesPerSecond,
 } from "./locomotion.js";
-import { cancelMining, startMining, stepMining } from "./mining.js";
+import { cancelMining, holdMining, startMining, stepMining } from "./mining.js";
+import { startThrow, stepThrows } from "./throws.js";
+import { decodeControl } from "./control-wire.js";
 import { placeStone } from "./placing.js";
 import { pickUp, pickupLine } from "./items.js";
 import { setHeldItem } from "./held-item.js";
@@ -193,8 +195,12 @@ export function createSimulation(definition, options = {}) {
       return { ok: true };
     },
     "mine": (id, _message, tile) => {
-      return startMining(world, id, tile, sees(id));
+      return world.planeZ === undefined
+        ? startMining(world, id, tile, sees(id))
+        : { ok: false, reason: "use mine-hold" };
     },
+    "mine-hold": (id, _message, tile) => holdMining(world, id, tile, sees(id)),
+    "throw": (id, message) => startThrow(world, id, message.dx, message.dy),
     "mine-cancel": (id, _message) => {
       cancelMining(world, id);
       return { ok: true };
@@ -232,11 +238,16 @@ export function createSimulation(definition, options = {}) {
       ? world.players[id]
       : undefined;
     if (!player) return { ok: false, reason: "unknown player" };
-    const tile = {
-      x: Number(message.x),
-      y: Number(message.y),
-      z: Number(message.z),
-    };
+    if (
+      ["mine", "mine-hold", "throw", "place", "pickup", "hold"].includes(
+        String(message.type),
+      ) && !decodeControl(message)
+    ) return { ok: false, reason: "invalid action" };
+    const tile = /** @type {import("./world.js").Tile} */ ({
+      x: message.x,
+      y: message.y,
+      z: message.z,
+    });
     if (
       typeof message.type !== "string" ||
       !Object.hasOwn(actionsByType, message.type)
@@ -311,6 +322,7 @@ export function createSimulation(definition, options = {}) {
           stepStamina(state.stamina);
         }
         stepMining(world, sees);
+        stepThrows(world);
         const made = generateAround(world, Object.values(world.players));
         let remaining = 2 - made;
         for (const view of views) {

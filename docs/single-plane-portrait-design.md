@@ -363,3 +363,26 @@ and its
 and
 [domain-modeling](https://github.com/mattpocock/skills/blob/main/skills/engineering/domain-modeling/SKILL.md)
 workflows. Use the existing repository's documentation layout.
+
+## Superseding preview decision: natural palette (issue 140)
+
+Josh's preview feedback keeps the spawn's existing tiled/brick floor. Outside
+that authored room floor, use only plain stone, andesite, granite and diorite.
+Plain stone should cover roughly 75% of a broad generated area, with the other
+quarter split among coherent patches of the three accents. Verify observed
+coverage at broad positive and negative coordinates; smooth-noise values are not
+uniform. Generated terrain must not select polished textures, bricks, tuff or
+deepslate.
+
+This supersedes the initial broad stone-family and varied-floor palette scope.
+The existing Excalibur paving remains an explicit opt-in of the room recipe,
+confined to its interior supporting floor at X=12–20, Y=12–18. Room walls,
+doorway, tunnels and outside cave floors use the natural palette. Source-tile
+and actual-room inspection preserves the preview's paving treatment rather than
+substituting a differently named brick tile.
+
+Keep deterministic spatial patches, negative-coordinate seams, unload/reload
+stability, ore art and rules, floor/wall brightness, exact remembered tint,
+dynamic/cached parity and `dwarf.png` unchanged. See the
+[palette and source-art notes](../art/excalibur/README.md) and
+[release report](features/single-plane-release.md).

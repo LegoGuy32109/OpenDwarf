@@ -11,44 +11,61 @@ Q does what Escape does: it goes back one menu level (see
 [Menu navigation](#menu-navigation)). While chat is open, Q types a "q". The
 menu's root page shows the same build line in small text at the bottom.
 
-In entity view, IJKL points the cursor (see [cursor](cursor.md)) at one of the
-eight neighboring tiles. R/V selects the view level; the cursor appears at the
-player's level or one level above or below. In master view, IJKL pans the camera
-at the same screen speed at every zoom (see [sight](sight.md)). Holding U/N
-smoothly zooms out/in. The mouse wheel also zooms. Space, the gamepad's ZR
-(button 7), or the large round pickaxe button right of the move stick interacts
-(see [mining and items](mining-and-items.md)). B, the gamepad's Y (button 2), or
-the bag button opens the inventory (see
-[inventory and shop](inventory-and-shop.md)). Movement keys are in
-[movement](movement.md); chat keys are in [chat](chat.md).
+In entity view, ESDF or the left movement stick sets the retained facing octant.
+Releasing movement stops walking and keeps that target. Facing starts south.
+IJKL and the gamepad right stick select temporary directional aim only while an
+eligible item action is armed. In master view they pan the camera horizontally
+in the world plane. Holding U/N smoothly zooms out/in; the mouse wheel and touch
+pinch also zoom. There are no level-change keys or touch gestures.
 
-A brief bitmap HUD shows the zoom and the view level during changes.
+Space, ZR (button 7), or the action button starts a press. Explicit NPC, pickup,
+and panel interactions consume one press. Holding the control never repeats a
+pickup or a panel confirmation. B, Y (button 2), or the bag button opens the
+inventory. Movement keys are in [movement](movement.md); chat keys are in
+[chat](chat.md).
 
-On a touch screen, the left stick moves the player and the right stick points at
-a neighbor in entity view or pans in master view. Both sticks have a visible
-center deadzone and eight direction guides. The fullscreen button uses the
-browser API when available; on Safari, adding the page to the Home Screen can
-hide browser controls. Pinch to zoom or drag two fingers vertically to change
-view levels. The sprint button sits at the right stick's bottom right. The
-sticks draw at 60% opacity; round buttons have a see-through face (white at 10%)
-with a solid border and full-opacity icons. The on-screen ESC button opens the
-menu, and the speech bubble button opens chat.
+The pickaxe mines immediately on press and stops on release. The client sends
+`mine-hold` every four world ticks. Turning retargets immediately. Forward
+motion keeps the current block pinned while it remains solid and reachable, then
+acquires the next adjacent solid block as the player advances. It never mines a
+distant block or automatically picks up the drops.
+
+All placement happens once on release at the current crosshaired tile. A coin
+tap does nothing. Coin and stone support directional aim: hold Space or ZR,
+select an octant with IJKL or the right stick, and release the action control to
+throw. Returning aim to neutral before release cancels. Once a gesture has
+aimed, releasing at neutral never falls back to placement. Aim can leave neutral
+again during the same press. Movement continues independently while aiming;
+ending the gesture restores movement-facing targeting.
+
+Touch action drags use the vector from the press origin and a 16 CSS pixel dead
+zone. A drag can leave the button. The movement and action pointers coexist.
+Pickaxe drags never aim or throw. Pointer cancellation, focus loss, a hidden
+tab, menu or chat opening, held-item changes, and controller or network
+disconnects cancel an armed action without executing release. A fresh press is
+required. Reconnected or replacement controllers must first report ZR released
+before another action can arm. The pointer event boundary and host action
+intents are recorded in [the shared contracts](../single-plane-contracts.md).
+
+The browser fullscreen button uses the API when available. On Safari, adding the
+page to the Home Screen can hide browser controls. Pinch zoom remains a world
+gesture; pointers starting on controls do not join it.
 
 With a gamepad connected to the device, press a button while the page is
-focused. The left stick or D-pad moves, and the right stick points at a neighbor
-in entity view or pans in master view. In the world, ZR (7) interacts, ZL (6)
-toggles sprint, A (1) zooms in while held, B (0) zooms out while held, Y (2)
-opens the bag, X (3) opens the menu, and L/R (4/5) change the view level (the
-names are the Nintendo Switch labels on the browser's standard indices). With a
-menu open, the controls change as [Menu navigation](#menu-navigation) lists. In
-a menu a stick steps once when it leaves center; a new direction steps only 200
-ms after the last step, so a sweep across a diagonal does not step twice; a held
-direction repeats after 400 ms, then every 200 ms (`src/client/stick-step.js`,
-shared by the menus). The D-pad and IJKL keep their own timing in the bag, the
-pickup grid, and the shop. The browser can report a standard layout or the raw
-layout of the Afterglow Wireless Deluxe Controller. The Afterglow Wireless
-Deluxe Controller's USB connection charges it but does not send input. Pair that
-model over Bluetooth to play.
+focused. The left stick or D-pad moves, and the right stick selects
+eligible-item aim while ZR is held or pans in master view. In the world, ZR (7)
+arms the action, ZL (6) toggles sprint, A (1) zooms in while held, B (0) zooms
+out while held, Y (2) opens the bag, and X (3) opens the menu (the names are the
+Nintendo Switch labels on the browser's standard indices). With a menu open, the
+controls change as [Menu navigation](#menu-navigation) lists. In a menu a stick
+steps once when it leaves center; a new direction steps only 200 ms after the
+last step, so a sweep across a diagonal does not step twice; a held direction
+repeats after 400 ms, then every 200 ms (`src/client/stick-step.js`, shared by
+the menus). The D-pad and IJKL keep their own timing in the bag, the pickup
+grid, and the shop. The browser can report a standard layout or the raw layout
+of the Afterglow Wireless Deluxe Controller. The Afterglow Wireless Deluxe
+Controller's USB connection charges it but does not send input. Pair that model
+over Bluetooth to play.
 
 ## Menu navigation
 
@@ -58,7 +75,7 @@ share one navigation model (`src/client/menu-nav.js`, applied in `panels.js` and
 
 | Action             | Keyboard  | Controller         | Touch                  |
 | ------------------ | --------- | ------------------ | ---------------------- |
-| Move the selection | IJKL      | D-pad, right stick | right stick            |
+| Move the selection | IJKL      | D-pad, right stick | tap a row or square    |
 | Confirm            | Space     | ZR                 | interact button, a tap |
 | Back one level     | Q, Escape | B                  | Back button            |
 | Open the menu      | Escape, Q | X                  | ESC button             |
@@ -131,7 +148,8 @@ Three client modules make the layer, and `render.js` keeps the one draw path:
   in a scrolling list act on release without a drag; the fullscreen button acts
   on release, because the browser starts fullscreen only from one. Each stick
   follows one pointer. A pointer that starts on no element belongs to the world,
-  and only those pointers join a pinch or a two-finger level drag.
+  and only those pointers join a pinch. The action button uses optional
+  press/move/release/cancel events; other buttons keep their normal behavior.
 - `src/client/ui-draw.js` draws a layout through a painter that `render.js`
   provides (rectangles, text, item icons, the QR texture).
 
@@ -161,3 +179,18 @@ load, and the browser's user agent. With no error and no boot after 15 seconds,
 it lists the stylesheet and module files still pending, which names the host,
 such as jsDelivr. After the boot it stays hidden. The text can be selected and
 copied from a phone.
+
+## Input validation
+
+`action-gesture.js` owns the pure gesture transitions. `action-input.js` owns
+capability gating, cancellation, target selection, mining renewal, and action
+dispatch. `tests/client/action_gesture_test.ts` and `action_input_test.ts` cover
+these rules with controlled world ticks and transport records. Explicit pickup,
+NPC, and panel priority remain in `interact_test.ts`.
+
+`tests/e2e/action-input.spec.ts` exercises keyboard placement and interruptions,
+keyboard and gamepad aim cancellation, movement during aim, and simultaneous
+touch movement and release placement. Host mining leases and throw flight need
+the host-actions implementation. Pointer drag aiming needs the presentation
+router callback. Combined delivery and rendering checks belong to integration
+issue #134.

@@ -1,5 +1,6 @@
 // @ts-check
 // Serializable world construction, shared by browser and headless sessions.
+import { FLOOR_Z, PLAY_Z } from "./single-plane.js";
 import { MAX_MATERIAL } from "./materials.js";
 import { identifier } from "./wire-parse.js";
 import { addPlayer, ROLES } from "./world.js";
@@ -12,6 +13,7 @@ import {
   chunkIndex,
   createChunkData,
   localCoord,
+  OPEN,
   setChunk,
   STONE,
   WORLD_TOP,
@@ -22,7 +24,7 @@ import {
 /** @typedef {{id:string,params?:Record<string,unknown>}} Component */
 /** @typedef {{id:string,at:Tile,name?:string,role?:'trader',behavior?:Component,inventory?:import('./items.js').Stack[],held?:string,free?:boolean}} EntityDefinition */
 /** @typedef {{bounds:Box,material:number}} Paint */
-/** @typedef {{version:1,seed:number,base:number,bounds:Box,generator:Component|null,paints:Paint[],entities:EntityDefinition[],spawns:Tile[],drops:{at:Tile,kind:string,count:number}[],pinned:{cx:number,cy:number}[],unloadGraceTicks:number}} WorldDefinition */
+/** @typedef {{version:1,planeZ?:number,floorStyle?:'spawn-room',seed:number,base:number,bounds:Box,generator:Component|null,paints:Paint[],entities:EntityDefinition[],spawns:Tile[],drops:{at:Tile,kind:string,count:number}[],pinned:{cx:number,cy:number}[],unloadGraceTicks:number}} WorldDefinition */
 /** @typedef {{paints?:Paint[],entities?:EntityDefinition[],spawns?:Tile[]}} Structure */
 /** @typedef {(seed:number,params:Record<string,unknown>) => (cx:number,cy:number)=>Uint8Array} GeneratorFactory */
 /** @type {Map<string,GeneratorFactory>} */
@@ -110,6 +112,28 @@ function validateWorldDefinition(definition) {
   if (!Number.isSafeInteger(definition.seed)) {
     throw new RangeError("Invalid world seed");
   }
+  if (definition.planeZ !== undefined && definition.planeZ !== PLAY_Z) {
+    throw new RangeError("Invalid playable plane");
+  }
+  if (definition.planeZ !== undefined) {
+    for (
+      const at of [
+        ...definition.spawns,
+        ...definition.entities.map((e) => e.at),
+        ...definition.drops.map((d) => d.at),
+      ]
+    ) {
+      if (at.z !== definition.planeZ) {
+        throw new RangeError("Entity or spawn outside playable plane");
+      }
+    }
+  }
+  if (
+    definition.floorStyle !== undefined &&
+    (definition.floorStyle !== "spawn-room" || definition.planeZ !== PLAY_Z)
+  ) {
+    throw new RangeError("Invalid authored floor style");
+  }
   box(definition.bounds);
   material(definition.base);
   if (definition.generator && !generators.has(definition.generator.id)) {
@@ -149,6 +173,11 @@ export function worldBuilder() {
     unloadGraceTicks: 600,
   };
   const api = {
+    /** Restrict this playable recipe to the shared plane. */
+    planar() {
+      definition.planeZ = PLAY_Z;
+      return api;
+    },
     /** @param {number} value */
     seed(value) {
       definition.seed = value;
@@ -310,6 +339,10 @@ function terrainGenerator(definition) {
     for (const paint of definition.paints) {
       paintChunk(data, cx, cy, definition, paint);
     }
+    if (definition.planeZ !== undefined) {
+      data.fill(STONE, chunkIndex(0, 0, FLOOR_Z), chunkIndex(0, 0, PLAY_Z));
+      data.fill(OPEN, chunkIndex(0, 0, PLAY_Z + 1));
+    }
     return data;
   };
 }
@@ -364,6 +397,10 @@ export function buildWorld(input) {
   freeze(definition);
   /** @type {import('./world.js').World} */
   const world = { tick: 0, chunks: new Map(), players: {} };
+  if (definition.planeZ !== undefined) world.planeZ = definition.planeZ;
+  if (definition.floorStyle !== undefined) {
+    world.floorStyle = definition.floorStyle;
+  }
   if (!definition.generator) world.limits = { ...definition.bounds };
   const generate = terrainGenerator(definition);
   seedTerrain(world, definition, generate);
@@ -377,7 +414,10 @@ export function buildWorld(input) {
     definition,
     spawn() {
       const points = definition.spawns;
-      return { ...(points[ordinal++ % points.length] ?? { x: 7, y: 7, z: 0 }) };
+      return {
+        ...(points[ordinal++ % points.length] ??
+          { x: 7, y: 7, z: definition.planeZ ?? 0 }),
+      };
     },
   };
 }

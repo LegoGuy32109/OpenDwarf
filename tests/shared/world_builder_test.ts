@@ -283,9 +283,9 @@ Deno.test("built-in recipes preserve terrain and build Ulgar as an NPC", () => {
     { name: ulgar.name, npc: ulgar.npc, role: ulgar.role, free: ulgar.free },
     { name: "Ulgar", npc: true, role: "trader", free: true },
   );
-  assertEquals({ x: ulgar.x, y: ulgar.y, z: ulgar.z }, { x: 16, y: 12, z: 4 });
+  assertEquals({ x: ulgar.x, y: ulgar.y, z: ulgar.z }, { x: 16, y: 12, z: 1 });
   assertEquals(room.world.players["npc-corner"].role, undefined);
-  assertEquals(readTile(room.world, 16, 15, 4), OPEN);
+  assertEquals(readTile(room.world, 16, 15, 1), OPEN);
   const test = buildWorld(authoredRecipe());
   assertEquals(Object.keys(test.world.players), []);
   assertEquals(readTile(test.world, 2, 1, 0), STONE);
@@ -483,4 +483,21 @@ Deno.test("participant IDs and queued actions cannot address object prototype pr
   assertEquals(Object.keys(sim.world.players), []);
   assertEquals(sim.join("toString").id, "toString");
   assert(Object.hasOwn(sim.world.players, "toString"));
+});
+
+Deno.test("only explicit planar room definitions opt into authored floor styling", () => {
+  const replay = buildWorld(JSON.parse(JSON.stringify(roomRecipe())));
+  assertEquals(replay.world.floorStyle, "spawn-room");
+  assertEquals(buildWorld(authoredRecipe(32)).world.floorStyle, undefined);
+  for (const floorStyle of ["all-bricks", false, 1]) {
+    assertThrows(() =>
+      buildWorld(
+        {
+          ...roomRecipe(),
+          floorStyle,
+        } as unknown as import("../../src/shared/world-builder.js").WorldDefinition,
+      )
+    );
+  }
+  assertThrows(() => buildWorld({ ...roomRecipe(), planeZ: undefined }));
 });

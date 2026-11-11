@@ -19,7 +19,7 @@ for (const phone of [false, true]) {
         "graphics",
       );
       await expect(page.locator("#boot-detail")).toContainText(
-        "Textures ready: 7/8",
+        "Textures ready: 8/9",
       );
       await expect(page.locator("#boot-loading")).toBeVisible();
       await expect(page.locator("#boot-log")).toContainText(

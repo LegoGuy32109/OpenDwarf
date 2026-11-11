@@ -68,6 +68,7 @@ Deno.test("a mesh is stale after a tile write in its chunk or a chunk it reads a
     const [x, y] of [[5, 5], [16, 5], [5, 16], [16, 16]] as const
   ) {
     const world = loadedWorld();
+    writeTile(world, x, y, Z, STONE);
     const mesh = buildTerrainMesh(world, 0, 0, Z, visibility);
     const before = world.chunks.size;
     const material = writeTile(world, x, y, Z, OPEN) ? OPEN : STONE;

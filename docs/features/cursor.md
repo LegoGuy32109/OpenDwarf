@@ -1,11 +1,12 @@
 # Cursor
 
 The world **Cursor** is the outline on the highlighted tile (ADR 0009). It shows
-in entity view when the pickup grid is closed, on the tile the look control aims
-at, or at rest on the tile being mined.
+in entity view when the pickup grid is closed. It follows active aiming, or the
+current target direction, and retains movement-facing at rest (south for older
+state without facing). A local mining target stays pinned until it changes.
 
-- A 2 px outline in `CURSOR_COLOR` at `CURSOR_OPACITY` (`src/shared/reach.js`),
-  with no fill.
+- Four rounded white corner brackets, 2 world pixels wide at half opacity, with
+  no fill. Curves use non-overlapping geometry to preserve the alpha.
 - The held item's icon (its item sheet frame) sits in the center at half a tile.
   It is at full opacity when `interactPreview` names an action for the tile, and
   at `CURSOR_ICON_DIM` when it returns null. `sees` is the local visibility
@@ -16,8 +17,20 @@ at, or at rest on the tile being mined.
 
 `cursorParams(held, preview)` in `src/client/cursor.js` is the pure function for
 the draw parameters (color, opacity, icon frame, icon opacity), and
-`localCursor(scene)` finds the tile. `render.js` draws what they return, and
-`__od.cursor()` exposes the same state to the e2e specs.
+`localCursor(scene)` finds the tile. `render.js` draws what they return, and the
+shared test driver exposes the same state to browser specs. The manual
+`__od.cursor()` remains available for inspection.
+
+Guest cursors use the reliable private held-item and inventory feeds, matching
+the action button. Their preview uses a separate actor value because motion
+snapshots omit private equipment. It does not copy that equipment into the
+snapshot player.
+
+Visible moving entities show white direction chevrons. The local entity keeps
+its facing chevron at rest. Active local aiming overrides this marker and uses
+amber, while retained movement-facing remains available after aiming ends.
+Stationary remote entities have no chevron. The renderer uses the same sight
+opacity as each entity sprite, so hidden entities do not gain a marker.
 
 ## Potential improvements
 

@@ -2,7 +2,7 @@ import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { evidenceShot } from "./evidence.ts";
 import { displayStatus, hasUi, logLines, ready, tapUi, uiRect } from "./ui.ts";
-test("the hearing log opens by touch beside the move stick and lists chat and system lines", async ({ browser }) => {
+test("the hearing log retains keyboard access without a touch button and lists chat and system lines", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 780 },
     deviceScaleFactor: 2,
@@ -36,7 +36,8 @@ test("the hearing log opens by touch beside the move stick and lists chat and sy
       (__world) => __world.scene.systemLine("You picked up 3 coal"),
     );
     expect(await hasUi(phone, "panel:log")).toBe(false);
-    await tapUi(phone, "btn:log");
+    expect(await hasUi(phone, "btn:log")).toBe(false);
+    await phone.keyboard.press("Backquote");
     await expect.poll(() => hasUi(phone, "panel:log")).toBe(true);
     await expect.poll(async () => (await logLines(phone)).sort()).toEqual([
       "A visitor is now Ada",
@@ -54,7 +55,8 @@ test("the hearing log opens by touch beside the move stick and lists chat and sy
       guest,
       (__world) => __world.send({ type: "message", text: "second" }),
     );
-    await tapUi(phone, "btn:log");
+    expect(await hasUi(phone, "btn:log")).toBe(false);
+    await phone.keyboard.press("Backquote");
     await expect.poll(async () =>
       (await logLines(phone)).filter((line) => line.startsWith("Ada:"))
     ).toEqual(["Ada: hello dwarf", "Ada: second"]);

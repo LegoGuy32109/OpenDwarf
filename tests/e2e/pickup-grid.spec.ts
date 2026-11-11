@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { dropItems as drop } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
@@ -69,7 +70,7 @@ test("keyboard: interact opens the grid, IJKL selects, interact picks up, Escape
   await startHost(page);
   await page.keyboard.press("Backquote"); // show the hearing log in the video
   await setUp(page, KINDS.slice(0, 4));
-  await page.keyboard.down("k"); // aim south at the tile
+  await facePlayer(page, 0, 1);
   await page.keyboard.press("Space");
   await page.keyboard.up("k");
   await expect.poll(async () => (await cells(page)).length).toBe(4);
@@ -101,7 +102,7 @@ test("keyboard: interact opens the grid, IJKL selects, interact picks up, Escape
   await expect.poll(async () => (await cells(page)).length).toBe(0);
   expect(await menuOpen(page)).toBe(false);
   // Open it again, then walk out of reach: it closes.
-  await page.keyboard.down("k");
+  await facePlayer(page, 0, 1);
   await page.keyboard.press("Space");
   await page.keyboard.up("k");
   await expect.poll(async () => (await cells(page)).length).toBe(3);
@@ -207,7 +208,7 @@ test.describe("touch", () => {
     await startHost(page);
     await placeAt(page, 4, 2);
     for (const [i, kind] of KINDS.slice(0, 6).entries()) {
-      await drop(page, 4, 2, kind, i + 1);
+      await drop(page, 4, 3, kind, i + 1);
     }
     // No aim: the player's own tile holds the stacks, so the interact button opens the grid.
     await tapUi(page, "btn:interact");

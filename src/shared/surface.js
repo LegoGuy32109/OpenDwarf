@@ -3,6 +3,7 @@
 import { isSolid, WORLD_EDGE, Z_LEVELS_BELOW } from "./world.js";
 import { tileVisibility } from "./visibility.js";
 import { centerTile } from "./locomotion.js";
+import { FLOOR_Z, PLAY_Z, SPAWN_FLOOR } from "./single-plane.js";
 import { readTile } from "./terrain.js";
 
 /** @typedef {import('./visibility.js').Visibility} Visibility */
@@ -24,11 +25,28 @@ export function shadowMaskToAtlasId(mask) {
     ((mask & 4) >> 2) | (mask & 8 ? 2 : 0);
 }
 
-/** @typedef {{z:number,depth:number,seen:string,material:number}} Surface The top solid tile at a column: its level, its depth below `viewZ`, how it is seen, and its material. */
+/** @typedef {{z:number,depth:number,seen:string,material:number,authoredFloor?:boolean}} Surface The top solid tile at a column: its level, its depth below `viewZ`, how it is seen, and its material. */
 /** @typedef {(x:number,y:number)=>(Surface|null)} SurfaceLookup */
 
 /** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility @returns {Surface|null} */
 export function surfaceAt(world, x, y, viewZ, mode, visibility) {
+  if (world.planeZ !== undefined) {
+    const z = isSolid(world, x, y, PLAY_Z) ? PLAY_Z : FLOOR_Z;
+    if (!isSolid(world, x, y, z)) return null;
+    // Sight belongs to the playable cell, including its permanent support.
+    const seen = mode === "master"
+      ? "visible"
+      : tileVisibility(visibility, x, y, PLAY_Z, world);
+    return seen === "unseen" ? null : {
+      z,
+      depth: 0,
+      seen,
+      material: readTile(world, x, y, z),
+      authoredFloor: world.floorStyle === "spawn-room" && z === FLOOR_Z &&
+        x >= SPAWN_FLOOR.minX && x <= SPAWN_FLOOR.maxX &&
+        y >= SPAWN_FLOOR.minY && y <= SPAWN_FLOOR.maxY,
+    };
+  }
   for (let depth = 0; depth <= Z_LEVELS_BELOW; depth++) {
     const z = viewZ - depth;
     if (!isSolid(world, x, y, z)) continue;
@@ -89,6 +107,7 @@ export function surfaceGrid(
  * @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility @param {SurfaceLookup} [lookup]
  */
 export function ceilingMask(world, x, y, viewZ, mode, visibility, lookup) {
+  if (world.planeZ !== undefined) return 0;
   let mask = 0;
   for (let corner = 0; corner < 4; corner++) {
     const tx = x + (corner & 1), ty = y + (corner >> 1);
@@ -207,3 +226,79 @@ function cornerSurface(world, x, y, viewZ, mode, visibility, lookup, corner) {
     ? lookup(tx, ty)
     : surfaceAt(world, tx, ty, viewZ, mode, visibility);
 }
+
+/** Exact remembered multiplier, shared by both terrain paths. @type {[number,number,number,number]} */
+export const REMEMBERED_TINT = [1, 0.86, 0.34, 0.95];
+/** Atlas order shared with scripts/make-terrain-sheet.ts. */
+export const NATURAL_TERRAIN_TEXTURES = [
+  "stone",
+  "andesite",
+  "diorite",
+  "granite",
+];
+/** Authored room paving only; never selected by natural terrain noise. */
+export const TERRAIN_TEXTURES = [
+  ...NATURAL_TERRAIN_TEXTURES,
+  "smooth_stone",
+  "polished_andesite",
+  "polished_diorite",
+  "polished_granite",
+];
+export const TERRAIN_FRAMES = TERRAIN_TEXTURES.length;
+
+/** Smooth coordinate noise makes coherent patches independent of chunks and load order. @param {number} x @param {number} y */
+export function terrainPatch(x, y) {
+  const scale = 7;
+  const gx = Math.floor(x / scale), gy = Math.floor(y / scale);
+  const fx = smooth(x / scale - gx), fy = smooth(y / scale - gy);
+  const a = hash(gx, gy) * (1 - fx) + hash(gx + 1, gy) * fx;
+  const b = hash(gx, gy + 1) * (1 - fx) + hash(gx + 1, gy + 1) * fx;
+  return a * (1 - fy) + b * fy;
+}
+/** Render variants never change terrain material, mining time, or drops. @param {number} x @param {number} y @param {number} _z */
+export function terrainFrame(x, y, _z) {
+  // Smooth noise is concentrated around its middle. This measured upper
+  // quartile, rather than 0.75, leaves approximately 75% plain stone.
+  if (terrainPatch(x, y) < 0.663) return 0;
+  // An independently offset field gives each accent coherent patches rather
+  // than nested rings around the rarest noise peaks. Both levels share them.
+  const accent = terrainPatch(x + 18713, y - 31777);
+  return accent < 0.395 ? 1 : accent < 0.606 ? 2 : 3;
+}
+/** @param {Surface} tile @param {number} x @param {number} y @returns {[number,number,number,number]} */
+export function terrainUv(tile, x, y) {
+  const frame = tile.authoredFloor && tile.z === FLOOR_Z
+    ? NATURAL_TERRAIN_TEXTURES.length +
+      Math.min(3, Math.floor(terrainPatch(x, y) * 4))
+    : terrainFrame(x, y, tile.z);
+  return [
+    0,
+    frame / TERRAIN_FRAMES,
+    1,
+    1 / TERRAIN_FRAMES,
+  ];
+}
+/** Floors use a neutral dark multiplier; walls retain the texture's full value. @param {Surface} tile @param {boolean} planar @returns {[number,number,number,number]} */
+export function surfaceColor(tile, planar) {
+  if (tile.seen === "remembered") return REMEMBERED_TINT;
+  if (planar) return tile.z === FLOOR_Z ? FLOOR_COLOR : WHITE_COLOR;
+  return DEPTH_COLORS[tile.depth];
+}
+
+/** @param {number} t */
+function smooth(t) {
+  return t * t * (3 - 2 * t);
+}
+/** @param {number} a @param {number} b */
+function hash(a, b) {
+  let n = Math.imul(a, 374761393) ^ Math.imul(b, 668265263);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+/** @type {[number,number,number,number]} */
+const FLOOR_COLOR = [0.62, 0.62, 0.62, 1];
+/** @type {[number,number,number,number]} */
+const WHITE_COLOR = [1, 1, 1, 1];
+/** @type {[number,number,number,number][]} */
+const DEPTH_COLORS = DEPTH_TINTS.map(([r, g, b]) => [r, g, b, 1]);

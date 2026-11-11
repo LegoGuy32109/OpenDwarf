@@ -7,7 +7,9 @@ import {
   DEPTH_TINTS,
   elevationMask,
   shadowMaskToAtlasId,
+  surfaceColor,
   surfaceGrid,
+  terrainUv,
 } from "../shared/surface.js";
 import { CHUNK_EDGE, chunkVersion, getChunk } from "../shared/terrain.js";
 
@@ -39,11 +41,18 @@ const SIDE = CHUNK_EDGE;
 
 /** The texture each pass of a mesh draws with, in draw order. */
 /** @type {readonly MeshPass[]} */
-export const MESH_PASSES = ["floor", "ores", "edge", "bands", "ceiling"];
+export const MESH_PASSES = [
+  "floor",
+  "terrain",
+  "ores",
+  "edge",
+  "bands",
+  "ceiling",
+];
 
-/** @typedef {"floor"|"ores"|"edge"|"bands"|"ceiling"} MeshPass */
+/** @typedef {"floor"|"terrain"|"ores"|"edge"|"bands"|"ceiling"} MeshPass */
 /** @typedef {{data:Float32Array,used:number}} QuadBuffer */
-/** @typedef {{viewZ:number,chunks:(Uint8Array|null)[],versions:number[],tiles:number}} MeshStamp What a mesh was built from: the level, and the data and version of the chunk and its right, lower and diagonal neighbors, which its edge tiles read. */
+/** @typedef {{viewZ:number,planeZ?:number,floorStyle?:'spawn-room',chunks:(Uint8Array|null)[],versions:number[],tiles:number}} MeshStamp What a mesh was built from: the level, and the data and version of the chunk and its right, lower and diagonal neighbors, which its edge tiles read. */
 /** @typedef {MeshStamp&{parts:Record<MeshPass,Float32Array>}} TerrainMesh A stamp and the vertices of each pass. */
 
 /** @returns {QuadBuffer} */
@@ -106,7 +115,10 @@ function sources(world, cx, cy) {
  * @param {MeshStamp} mesh @param {import('../shared/world.js').World} world @param {number} cx @param {number} cy @param {number} viewZ
  */
 export function meshIsFresh(mesh, world, cx, cy, viewZ) {
-  if (mesh.viewZ !== viewZ) return false;
+  if (
+    mesh.viewZ !== viewZ || mesh.planeZ !== world.planeZ ||
+    mesh.floorStyle !== world.floorStyle
+  ) return false;
   const now = sources(world, cx, cy);
   for (let i = 0; i < 4; i++) {
     if (
@@ -120,8 +132,8 @@ export function meshIsFresh(mesh, world, cx, cy, viewZ) {
 /** @typedef {ReturnType<typeof surfaceGrid>} SurfaceLookup */
 /** @typedef {{world:import('../shared/world.js').World,left:number,top:number,viewZ:number,visibility:import('../shared/visibility.js').Visibility,surface:SurfaceLookup}} MeshFrame */
 
-/** @param {number} left @param {number} top @param {SurfaceLookup} surface @param {QuadBuffer} floor @param {QuadBuffer} ores */
-function meshFloor(left, top, surface, floor, ores) {
+/** @param {number} left @param {number} top @param {SurfaceLookup} surface @param {QuadBuffer} floor @param {QuadBuffer} ores @param {QuadBuffer} terrain @param {boolean} planar */
+function meshFloor(left, top, surface, floor, ores, terrain, planar) {
   let tiles = 0;
   for (let y = top; y < top + SIDE; y++) {
     for (let x = left; x < left + SIDE; x++) {
@@ -137,17 +149,17 @@ function meshFloor(left, top, surface, floor, ores) {
           TILE,
           TILE,
           [0, oreFrame / ORE_FRAMES, 1, 1 / ORE_FRAMES],
-          DEPTH_COLORS[tile.depth],
+          planar ? surfaceColor(tile, true) : DEPTH_COLORS[tile.depth],
         );
       } else {
         quad(
-          floor,
+          planar ? terrain : floor,
           x * TILE,
           y * TILE,
           TILE,
           TILE,
-          FLOOR_UV,
-          DEPTH_COLORS[tile.depth],
+          planar ? terrainUv(tile, x, y) : FLOOR_UV,
+          planar ? surfaceColor(tile, true) : DEPTH_COLORS[tile.depth],
         );
       }
     }
@@ -206,27 +218,40 @@ export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
     visibility,
   );
   const floor = buffer(), ores = buffer(), edge = buffer(), bands = buffer();
-  const ceiling = buffer();
+  const ceiling = buffer(), terrain = buffer();
   /** @param {number} x @param {number} y @param {number} w @param {number} h @param {number} alpha */
   const emitBand = (x, y, w, h, alpha) =>
     quad(bands, x, y, w, h, WHITE_UV, alpha === 0.28 ? BAND_DARK : BAND_LIGHT);
   const frame = { world, left, top, viewZ, visibility, surface };
-  const tiles = meshFloor(left, top, surface, floor, ores);
-  meshShadow(frame, edge, elevationMask, EDGE_COLOR);
-  for (let y = top; y < top + SIDE; y++) {
-    for (let x = left; x < left + SIDE; x++) {
-      terrainBands(surface, x, y, TILE, emitBand);
+  const tiles = meshFloor(
+    left,
+    top,
+    surface,
+    floor,
+    ores,
+    terrain,
+    world.planeZ !== undefined,
+  );
+  if (world.planeZ === undefined) {
+    meshShadow(frame, edge, elevationMask, EDGE_COLOR);
+    for (let y = top; y < top + SIDE; y++) {
+      for (let x = left; x < left + SIDE; x++) {
+        terrainBands(surface, x, y, TILE, emitBand);
+      }
     }
+    meshShadow(frame, ceiling, ceilingMask, CEILING_COLOR);
   }
-  meshShadow(frame, ceiling, ceilingMask, CEILING_COLOR);
   /** @param {QuadBuffer} out */
   const sealed = (out) => out.data.slice(0, out.used);
   return {
     viewZ,
+    planeZ: world.planeZ,
+    floorStyle: world.floorStyle,
     chunks,
     versions: chunks.map(chunkVersion),
     parts: {
       floor: sealed(floor),
+      terrain: sealed(terrain),
       ores: sealed(ores),
       edge: sealed(edge),
       bands: sealed(bands),

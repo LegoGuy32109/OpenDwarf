@@ -11,8 +11,6 @@ import { tileKey } from "./visibility.js";
 /** @typedef {{x:number,y:number,z:number}} Tile */
 
 /** The cursor outline color and opacity, and the dimmed icon's opacity. */
-export const CURSOR_COLOR = "#ffb833";
-export const CURSOR_OPACITY = 0.6;
 export const CURSOR_ICON_DIM = 0.35;
 
 /**
@@ -22,6 +20,10 @@ export const CURSOR_ICON_DIM = 0.35;
  * @returns {boolean}
  */
 export function pathReach(world, player, tile) {
+  if (
+    world.planeZ !== undefined &&
+    (player.z !== world.planeZ || tile.z !== world.planeZ)
+  ) return false;
   const bounds = world.limits;
   if (
     bounds && !world.generateChunk &&

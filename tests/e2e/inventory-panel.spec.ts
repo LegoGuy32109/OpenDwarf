@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { giveItems } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
@@ -20,11 +21,9 @@ const tile = (page: Page, x: number, y = 1) =>
   readWorld(
     page,
     (__world, [tx, ty]) =>
-      __world.scene.world.chunks.get("0,0")?.[ty * 16 + tx] ?? -1,
+      __world.scene.world.chunks.get("0,0")?.[256 + ty * 16 + tx] ?? -1,
     [x, y],
   );
-const notice = (page: Page) =>
-  readWorld(page, (__world) => __world.scene.notice?.text ?? "");
 /** The host's own held item. */
 const held = (page: Page) =>
   readWorld(page, (__world) => {
@@ -108,9 +107,10 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
     )
   ).toBe(false);
   // A held diamond prevents mining. Aim north at the stone and interact.
-  await page.keyboard.down("i");
+  await facePlayer(page, 0, -1);
   await page.keyboard.press("Space");
-  await expect.poll(() => notice(page)).toContain("no pickaxe");
+  await waitTicks(page, 4);
+  expect(await readWorld(page, (w) => w.scene.mining)).toEqual([]);
   expect(await tile(page, 2)).not.toBe(OPEN);
   await page.keyboard.up("i");
   // Switch back to the pickaxe: Escape closes the panel, not the menu.
@@ -124,9 +124,10 @@ test("B opens the panel, IJKL moves the selection, and interact holds an item", 
   await clickUi(page, "slot:pickaxe"); // a tap holds it
   await expect.poll(() => held(page)).toBe("pickaxe");
   await page.keyboard.press("b");
-  await page.keyboard.down("i");
-  await page.keyboard.press("Space");
+  await facePlayer(page, 0, -1);
+  await page.keyboard.down("Space");
   await expect.poll(() => tile(page, 2)).toBe(OPEN);
+  await page.keyboard.up("Space");
   await page.keyboard.up("i");
 });
 test("a joining player holds an item through the host and others see its bubble", async ({ browser }) => {

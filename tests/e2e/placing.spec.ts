@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { giveItems as give } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
@@ -10,14 +11,14 @@ type Stack = {
 };
 const OPEN = 1;
 const STONE = 2;
-// The authored ore row is at y 1 of level 0, with stone at x 2. Row y 2 is open floor.
+// The authored ore row is at y 1 of level 1, with stone at x 2. Row y 2 is open floor.
 const ROW_Y = 1;
 const od = (page: Page) => readWorld(page, (__world) => __world.scene.localId);
 const tile = (page: Page, x: number, y = ROW_Y) =>
   readWorld(
     page,
     (__world, [tx, ty]) =>
-      __world.scene.world.chunks.get("0,0")?.[ty * 16 + tx] ?? -1,
+      __world.scene.world.chunks.get("0,0")?.[256 + ty * 16 + tx] ?? -1,
     [x, y],
   );
 const notice = (page: Page) =>
@@ -39,10 +40,8 @@ async function startHost(page: Page) {
   await ready(page);
 }
 /** Aim with a look key, press interact, and let go. Interact reads the held look keys itself. */
-async function interactAim(page: Page, key: string) {
-  await page.keyboard.down(key);
+async function interactAim(page: Page, _key: string) {
   await page.keyboard.press("Space");
-  await page.keyboard.up(key);
 }
 test(
   "a guest places stone and the host sees it",
@@ -108,6 +107,10 @@ test(
       })
     ).toBe("stone 5,3");
     // North of the guest is the ore row; place on the open tile to the east.
+    await facePlayer(host, 1, 0, guestId);
+    await expect.poll(() =>
+      readWorld(guest, (w) => w.scene.world.players[w.scene.localId].facing)
+    ).toEqual({ x: 1, y: 0 });
     await interactAim(guest, "l");
     await expect.poll(() => tile(host, 6, 3)).toBe(STONE);
     await expect.poll(() => tile(guest, 6, 3)).toBe(STONE);
@@ -116,7 +119,7 @@ test(
     // A place out of the guest's reach is refused by the host.
     await readWorld(
       guest,
-      (__world) => __world.send({ type: "place", x: 9, y: 3, z: 0 }),
+      (__world) => __world.send({ type: "place", x: 9, y: 3, z: 1 }),
     );
     await expect.poll(() => notice(guest)).toBe("out of reach");
     expect(await tile(host, 9, 3)).toBe(OPEN);

@@ -2,32 +2,31 @@
 
 A normal page starts the spawn room through `roomRecipe` in
 `src/shared/world-recipes.js` and the shared [world builder](world-building.md):
-a 9×7 room at z 4 in the 2×2 spawn chunks, one doorway in its south wall that
-opens into solid stone, two stair tiles down to a tunnel at z 2, and the
-shopkeeper NPC Ulgar against the north wall. The spawn chunks are generated from
-the world seed like any other chunk. The room, stairs and tunnel are then dug
-into a solid stone `SHELL`, so caves never break into them. The tunnel runs on
-east until it opens into a generated cave. The host and every joining player
-spawn inside the room, and the corner NPC walks a square in its south west
+a 9×7 room at Z=1 in the 2×2 spawn chunks, one doorway in its south wall that
+opens into solid stone, a flat east tunnel, and the shopkeeper NPC Ulgar against
+the north wall. The room and tunnel are carved into a solid stone shell on the
+playing plane, so generated caves cannot break into the room. The host and
+joining players spawn inside it. The optional corner NPC patrols its southwest
 corner.
 
-Every world uses the same seed for now, `WORLD_SEED` in
-`src/shared/generation.js`, made from the text `opendwarf-1`. That seed was
-chosen because its cave network meets the tunnel: from the room, a player can
-walk to more than 5,000 tiles on every level within three chunks of spawn.
-`tests/shared/spawn_room_test.ts` checks this. If you change the seed or the
-cave noise, run that test to find out whether the tunnel still reaches a large
-cave. `?layout=test` loads the older layout below. A page with `?harness=1` uses
-that test layout unless it adds `?layout=room`, so the motion and sight specs
-keep their pillar and staircase. Browser tests construct these recipes before
-boot through `tests/e2e/world.ts`. They add the corner NPC only when requested.
+All built-in playable recipes set `world.planeZ=PLAY_Z` (1). Z=0 is permanent,
+ore-free stone support. Z=2 through Z=7 are air. Chunk storage still allocates
+all eight levels. Gameplay edits through `writeTile` can change only Z=1. Mining
+a wall exposes the supporting floor without removing it.
 
-The test layout is one 16×16 tile square across z levels 0–7, with eight view
-levels, a staircase, and a center pillar. `?world=32` starts an expanded 32×32
-authored area with four fixed 16×16 chunks and the same eight levels. The
-expanded area includes a second pillar. A seven-step staircase on the south edge
-reaches the top landing; a full-height pillar tests occlusion. The view can show
-five lower levels, with deeper floors turning blue before they disappear.
+Every world uses `WORLD_SEED` in `src/shared/generation.js`, made from the text
+`opendwarf-1`, unless `?seed=` replaces it. The east exit searches for a natural
+cave with at least 96 connected cells beyond the room shell, then carves a flat
+connection to it. A bounded search falls back to an east gallery. The default
+seed gives more than 500 walkable cells within three chunks of spawn, all at
+Z=1. `tests/shared/spawn_room_test.ts` checks connectivity.
+
+`?layout=test` selects planar obstacles and an ore row, with no staircase.
+`?world=32` expands the authored region from 16×16 to 32×32. Browser tests
+construct the same playable recipes through `tests/e2e/world.ts`, adding a
+corner NPC only when requested. `createAuthoredWorld` in `authored-terrain.js`
+is an explicit legacy unit-test helper, with no production imports and no
+`planeZ`, so engine tests can continue to cover 3D climbs and descents.
 
 Terrain is stored per 16×16 chunk in a map keyed by chunk coordinates, which can
 be negative ([ADR 0003](../adr/0003-chunked-terrain-generated-on-demand.md)).
@@ -48,16 +47,22 @@ ore sits in the authored area.
 The world host creates generated terrain from the session seed in
 `src/shared/generation.js`: every chunk within one chunk of any player is
 created, at most two per 50 ms tick, nearest first, and an existing chunk,
-including the authored area, is never replaced. A chunk is solid stone with
-noise caves that continue across chunk borders (`isCaveTile`), and ore clusters
-by depth band: coal and iron at z 5–7, gold, lapis, redstone and some iron at z
-2–4, and diamond and emerald at z 0–1. A chunk takes well under one millisecond
-to generate. When the host is in master view it also generates the chunks the
-camera's view covers (`generateInView`), nearest the view center first and
-within what is left of the tick's two-chunk budget after the players' chunks, so
-panning at zoom 0.25 keeps finding terrain. `?seed=` replaces the world seed for
-tests, and the spawn chunks use it too. Joining players never generate; they
-receive generated terrain only for tiles they see.
+including the authored area, is never replaced. A chunk has stone support, an XY
+cave field on Z=1, and air above. The smooth noise field uses global tile
+coordinates (`isCaveTile`), so caves continue across chunk borders. Ore clusters
+take horizontal random walks through stone on Z=1. All seven ores remain
+available: coal and iron are common, followed by redstone, lapis and gold, with
+diamond and emerald rare. Attempts per chunk are 3 coal, 2 iron, 1 redstone, 0.7
+lapis, 0.6 gold, 0.25 diamond and 0.12 emerald. Fractional attempts use seeded
+probability. Veins replace stone only, preserve cave openings, and stay within
+their chunk. Total ore occupies less than 16% of the playing plane in the
+distribution survey. A chunk takes well under one millisecond to generate. When
+the host is in master view it also generates the chunks the camera's view covers
+(`generateInView`), nearest the view center first and within what is left of the
+tick's two-chunk budget after the players' chunks, so panning at zoom 0.25 keeps
+finding terrain. `?seed=` replaces the world seed for tests, and the spawn
+chunks use it too. Joining players never generate; they receive generated
+terrain only for tiles they see.
 
 Terrain changes the world host sends to guests are described in
 [sight](sight.md) and [networking](networking.md); mining writes terrain through

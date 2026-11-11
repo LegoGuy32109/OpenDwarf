@@ -83,7 +83,7 @@ test("standard gamepad moves the player and handles buttons", async ({ page }) =
     pad.buttons[5].pressed = true;
   });
   await expect.poll(() => readWorld(page, (__world) => __world.scene.aim))
-    .toEqual({ x: 0, y: 0 });
+    .toEqual({ x: 1, y: 0 });
   await expect.poll(() => readWorld(page, (__world) => __world.scene.viewZ))
     .toBe(1);
   await page.evaluate(() => {
@@ -201,7 +201,7 @@ test("attached Afterglow layout uses its D-pad and shoulder buttons", async ({ p
     pad.buttons[4].pressed = true;
   });
   await expect.poll(() => readWorld(page, (__world) => __world.scene.viewZ))
-    .toBe(0);
+    .toBe(1);
   await expect.poll(() =>
     readWorld(page, (__world) => __world.scene.zoomTarget)
   ).toBeLessThan(zoomedIn);
@@ -369,7 +369,7 @@ test("phone controls fit safe area and move", async ({ browser }) => {
   await landscape.setViewportSize({ width: 844, height: 390 });
   await openWorld(landscape, "/?harness=1");
   await ready(landscape);
-  for (const id of ["stick:move", "stick:look"]) {
+  for (const id of ["stick:move", "btn:interact"]) {
     const rect = await uiRect(landscape, id);
     expect(rect.x).toBeGreaterThanOrEqual(0);
     expect(rect.y + rect.h).toBeLessThanOrEqual(390);
@@ -379,7 +379,7 @@ test("phone controls fit safe area and move", async ({ browser }) => {
   });
   await context.close();
 });
-test("view commands, layer keys and held zoom work in the rendered world", async ({ page }) => {
+test("view commands preserve the plane and held zoom works", async ({ page }) => {
   await openWorld(page, "/?harness=1&seed=snapshot");
   await ready(page);
   const scene = () => readWorld(page, (__world) => __world.scene);
@@ -388,17 +388,17 @@ test("view commands, layer keys and held zoom work in the rendered world", async
   for (let i = 0; i < 10; i++) {
     await page.keyboard.press("r");
   }
-  await expect.poll(async () => (await scene()).viewZ).toBe(7);
+  await expect.poll(async () => (await scene()).viewZ).toBe(1);
   await readWorld(page, (__world) => {
     __world.scene.camera.y = 750;
   });
-  await expect(page).toHaveScreenshot("master-upper-staircase.png", {
+  await expect(page).toHaveScreenshot("master-planar.png", {
     maxDiffPixelRatio: 0.02,
   });
   for (let i = 0; i < 10; i++) {
     await page.keyboard.press("v");
   }
-  await expect.poll(async () => (await scene()).viewZ).toBe(0);
+  await expect.poll(async () => (await scene()).viewZ).toBe(1);
   const before = (await scene()).zoom;
   await page.keyboard.down("n");
   await expect.poll(async () => (await scene()).zoomTarget).toBeGreaterThan(
@@ -411,26 +411,32 @@ test("view commands, layer keys and held zoom work in the rendered world", async
   await say(page, "/entity");
   await expect.poll(async () => (await scene()).viewMode).toBe("entity");
 });
-test("entity look selects an octant without panning the camera", async ({ page }) => {
+test("movement-facing persists and idle IJKL does not pan the entity camera", async ({ page }) => {
   await openWorld(page, "/?harness=1");
   await ready(page);
-  const scene = () =>
-    readWorld(page, (__world) => {
-      const { aim, camera } = __world.scene;
-      return { aim: { ...aim }, camera: { ...camera } };
-    });
-  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: 0 });
+  await expect.poll(() => readWorld(page, (w) => w.scene.aim)).toEqual({
+    x: 0,
+    y: 1,
+  });
+  const before = await readWorld(page, (w) => ({ ...w.scene.camera }));
   await page.keyboard.down("i");
   await page.keyboard.down("l");
-  await expect.poll(async () => (await scene()).aim).toEqual({ x: 1, y: -1 });
-  const before = (await scene()).camera;
   await waitTicks(page, 4);
-  const after = (await scene()).camera;
-  expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(1);
+  expect(await readWorld(page, (w) => ({ ...w.scene.aim }))).toEqual({
+    x: 0,
+    y: 1,
+  });
+  expect(await readWorld(page, (w) => ({ ...w.scene.camera }))).toEqual(before);
   await page.keyboard.up("l");
-  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: -1 });
   await page.keyboard.up("i");
-  await expect.poll(async () => (await scene()).aim).toEqual({ x: 0, y: 0 });
+  await page.keyboard.down("s");
+  await waitTicks(page, 2);
+  await page.keyboard.up("s");
+  await waitTicks(page, 2);
+  expect(await readWorld(page, (w) => ({ ...w.scene.aim }))).toEqual({
+    x: -1,
+    y: 0,
+  });
 });
 test("Ctrl+R keeps browser refresh available and leaves the view level", async ({ page }) => {
   await openWorld(page, "/?harness=1");
@@ -459,7 +465,7 @@ test("Ctrl+R keeps browser refresh available and leaves the view level", async (
   await expect.poll(() => readWorld(page, (__world) => __world.scene.viewZ))
     .toBe(1);
 });
-test("two-finger drag changes layer and pinch smoothly changes zoom", async ({ browser }) => {
+test("two-finger drag preserves the plane and pinch smoothly changes zoom", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 3,
@@ -475,10 +481,7 @@ test("two-finger drag changes layer and pinch smoothly changes zoom", async ({ b
     y: number;
     id: number;
   }[]) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points });
-  await readWorld(page, (__world) => {
-    __world.scene
-      .viewZ = 3;
-  });
+
   await touch("touchStart", [{ x: 140, y: 300, id: 1 }, {
     x: 240,
     y: 300,

@@ -39,20 +39,25 @@ export const PICKAXE = "pickaxe";
  * The sheet is one column of 16×16 frames; `frame` counts down from the top
  * and `ITEM_FRAMES` is the frame count. `scripts/make-item-sheet.ts` draws it.
  * Add new kinds at the end, because the frames and the wire use them.
- * @typedef {{kind:string,name:string,frame:number}} ItemInfo
+ * @typedef {{kind:string,name:string,frame:number,tags:readonly string[]}} ItemInfo
  * @type {readonly ItemInfo[]}
  */
 export const ITEM_KINDS = Object.freeze([
-  { kind: STONE_ITEM, name: "stone", frame: 0 },
-  { kind: "coal", name: "coal", frame: 1 },
-  { kind: "iron ore", name: "iron ore", frame: 2 },
-  { kind: "gold ore", name: "gold ore", frame: 3 },
-  { kind: "lapis", name: "lapis", frame: 4 },
-  { kind: "redstone", name: "redstone", frame: 5 },
-  { kind: "diamond", name: "diamond", frame: 6 },
-  { kind: "emerald", name: "emerald", frame: 7 },
-  { kind: COIN, name: "coin", frame: 8 },
-  { kind: PICKAXE, name: "pickaxe", frame: 9 },
+  {
+    kind: STONE_ITEM,
+    name: "stone",
+    frame: 0,
+    tags: ["placeable", "throwable"],
+  },
+  { kind: "coal", name: "coal", frame: 1, tags: [] },
+  { kind: "iron ore", name: "iron ore", frame: 2, tags: [] },
+  { kind: "gold ore", name: "gold ore", frame: 3, tags: [] },
+  { kind: "lapis", name: "lapis", frame: 4, tags: [] },
+  { kind: "redstone", name: "redstone", frame: 5, tags: [] },
+  { kind: "diamond", name: "diamond", frame: 6, tags: [] },
+  { kind: "emerald", name: "emerald", frame: 7, tags: [] },
+  { kind: COIN, name: "coin", frame: 8, tags: ["throwable"] },
+  { kind: PICKAXE, name: "pickaxe", frame: 9, tags: ["mineable-tool"] },
 ]);
 
 /** Number of 16×16 frames in the item sprite sheet. */
@@ -258,4 +263,9 @@ export function droppedEntries(world) {
     z: entry.z,
     stacks: copyStacks(entry.stacks),
   }));
+}
+
+/** Item capabilities shared by host validation and input. @param {unknown} kind @param {string} tag */
+export function hasItemTag(kind, tag) {
+  return itemInfo(kind)?.tags?.includes(tag) ?? false;
 }

@@ -17,7 +17,7 @@ same shapes.
 
 | Ticket area  | Owned production files                                                                                                                                                                                                                                                          |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| World        | `src/shared/world.js`, `locomotion.js`, `generation.js`, `world-recipes.js`, `spawn-room.js`, `world-builder.js`, `terrain.js`, `reach.js`, `target.js`, world/terrain feature docs                                                                                             |
+| World        | `src/shared/world.js`, `locomotion.js`, `generation.js`, `world-recipes.js`, `spawn-room.js`, `world-builder.js`, `terrain.js`, `reach.js`, `target.js`, `src/shared/authored-terrain.js` (approved legacy unit-test helper), world/terrain feature docs                        |
 | Host actions | `src/shared/mining.js`, `placing.js`, `items.js`, `simulation.js`, `wire.js`, `control-wire.js`, `action-wire.js`, new `throws.js` and item-action modules, `src/client/network-host.js`, `network-guest.js`, host action/network adapters, mining/placing/network feature docs |
 | Client input | `src/client/input.js`, `input-values.js`, `interact.js`, `loop.js`, `client-context.js`, `client-actions.js`, gesture modules, input/interaction feature docs                                                                                                                   |
 | Presentation | `src/client/ui-*`, `scene-types.js`, `cursor.js`, `render.js`, `terrain-mesh.js`, `src/shared/surface.js`, texture build scripts and terrain art, portrait/cursor/render feature docs                                                                                           |
@@ -38,6 +38,12 @@ shared-fixture updates, README links, full validation, and merging.
 - `world.planeZ?:number`: world worker sets 1 on every built-in playable recipe.
   Host actions validates this field in snapshots. Explicit low-level legacy
   fixtures without it may retain their 3D engine behavior.
+- `world.floorStyle?:"spawn-room"`: preview correction #140 adds an explicit
+  room-recipe opt-in. Definitions and reliable snapshots validate it with
+  `planeZ=1`; guests preserve or clear it with each state. Presentation applies
+  paving only to supporting floors in `SPAWN_FLOOR` (X=12–20, Y=12–18), never
+  walls or tunnels, and includes it in the mesh cache stamp. Natural palettes
+  remain coordinate-based and require no new material IDs.
 - `player.facing?:{x:number,y:number}`: nonzero octant from intended movement.
   World worker owns updates and spawn defaults. Host actions carries it in
   snapshots and motion, and validates octants. Do not change `facingLeft` usage.
@@ -137,3 +143,21 @@ Do not copy another branch's implementation just to pass a check. Coordinate
 shared changes. Capture and inspect portrait screenshots and interaction video.
 GitHub issue/PR creation and own-branch pushes are authorized. Do not merge,
 promote production, deploy the shell, or edit another worker's branch.
+
+## Integrated implementation
+
+The release candidate combines the four worker heads without changing the
+interview decisions or defaults. `action-input.js` now reads `hasItemTag` for
+mining, placement, and directional eligibility. Real pointer events flow through
+`ui-pointer.js` into the shared gesture and host intent paths.
+
+Playable visibility casts rays only at Z=1. Supporting-floor visibility inherits
+the playable cell, so lower rays cannot disclose caves or dropped items behind
+walls. Explicit legacy fixtures retain three-axis sight. Reconnected and
+replacement controllers must report ZR released before arming another action.
+
+Shared browser fixtures use Z=1 offsets and explicit retained facing. They do
+not inject gestures or flight in integrated interaction journeys. Presentation
+unit fixtures seed the supporting floor before enabling its permanent edit
+guard. See [release validation](features/single-plane-release.md) for coverage
+and results.

@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { evidenceShot } from "./evidence.ts";
 import { expect, test } from "./fixtures.ts";
 import { worldBuilder } from "../../src/shared/world-builder.js";
@@ -80,7 +81,11 @@ test("a custom trader NPC reaches a guest and opens through real keyboard input"
   expect(await readWorld(guest, (w) => w.scene.world.limits)).toEqual(
     definition().bounds,
   );
-  await guest.keyboard.down("j");
+  const guestId = await readWorld(guest, (w) => w.scene.localId);
+  await facePlayer(host, -1, 0, guestId);
+  await expect.poll(() =>
+    readWorld(guest, (w) => w.scene.world.players[w.scene.localId].facing)
+  ).toEqual({ x: -1, y: 0 });
   await guest.keyboard.press("Space");
   await guest.keyboard.up("j");
   await expect.poll(() =>
@@ -104,8 +109,8 @@ test("a declared mining fixture completes through the browser simulation runner"
   await configureWorld(page, setup);
   await page.goto("/?harness=1");
   await ready(page);
-  await page.keyboard.down("l");
-  await page.keyboard.press("Space");
+  await facePlayer(page, 1, 0);
+  await page.keyboard.down("Space");
   await waitFor(
     page,
     () =>
@@ -115,8 +120,8 @@ test("a declared mining fixture completes through the browser simulation runner"
       ),
     { maxTicks: 40 },
   );
+  await page.keyboard.up("Space");
   await page.keyboard.press("Space");
-  await page.keyboard.up("l");
   await expect.poll(() =>
     readWorld(
       page,

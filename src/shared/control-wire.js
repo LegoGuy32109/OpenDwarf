@@ -37,6 +37,11 @@ const RULES = {
   move,
   cancel: (value) => counter(value.sequence),
   mine: coordinates,
+  "mine-hold": coordinates,
+  throw: (value) =>
+    integer(value.dx, -1, 1) && integer(value.dy, -1, 1) &&
+    (value.dx !== 0 || value.dy !== 0) &&
+    Object.keys(value).every((key) => ["type", "dx", "dy"].includes(key)),
   place: coordinates,
   "mine-cancel": () => true,
   pickup: (value) => text(value.kind, 24) && coordinates(value),

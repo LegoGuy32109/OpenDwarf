@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
 import { type Page } from "@playwright/test";
@@ -213,7 +214,7 @@ test.describe("phone", () => {
   test("a finger that starts on a control never joins a world pinch", async ({ page }) => {
     await openWorld(page, "/?harness=1");
     await ready(page);
-    const stick = await uiCenter(page, "stick:look");
+    const stick = await uiCenter(page, "stick:move");
     const touch = await page.context().newCDPSession(page);
     const send = (type: "touchStart" | "touchMove" | "touchEnd", points: {
       x: number;
@@ -260,11 +261,9 @@ test.describe("phone", () => {
       for (
         const id of [
           "stick:move",
-          "stick:look",
           "btn:interact",
           "btn:sprint",
           "btn:chat",
-          "btn:log",
           "btn:menu",
           "btn:bag",
           "btn:fullscreen",
@@ -355,7 +354,7 @@ test.describe("phone", () => {
       });
     });
     await waitFrames(page, 3);
-    await page.keyboard.down("i");
+    await facePlayer(page, 0, -1);
     await tapUi(page, "btn:interact");
     await page.keyboard.up("i");
     await expect.poll(() => shopOpen(page)).toBe(true);

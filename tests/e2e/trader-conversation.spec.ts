@@ -33,7 +33,11 @@ const thinking = (host: Page, id: string) =>
 async function talkToUlgar(page: Page, aim: string[]) {
   // A hidden tab draws no frames, so the menu would not see the key release.
   await page.bringToFront();
-  for (const key of aim) await page.keyboard.down(key);
+  const movement = aim.map((k) => ({ i: "e", k: "d", j: "s", l: "f" }[k]!));
+  for (const key of movement) await page.keyboard.down(key);
+  await waitTicks(page, 1);
+  for (const key of movement) await page.keyboard.up(key);
+  await waitTicks(page, 1);
   await page.keyboard.press("Space");
   for (const key of aim) await page.keyboard.up(key);
   await expect.poll(() => shopOpen(page)).toBe(true);
@@ -67,9 +71,9 @@ test("two players ask what Ulgar buys, and Ulgar answers each in order by name",
     const guestId = await localId(guest);
     await say(host, "/nick Hana");
     await say(guest, "/nick Gus");
-    await placePlayer(host, 16, 13, 4);
-    await placePlayer(host, 17, 13, 4, guestId);
-    await placePlayer(host, 16, 16, 4, await localId(watcher));
+    await placePlayer(host, 16, 13, 1);
+    await placePlayer(host, 17, 13, 1, guestId);
+    await placePlayer(host, 16, 16, 1, await localId(watcher));
     await waitFrames(host, 3);
     await waitFrames(guest, 3);
     await talkToUlgar(host, ["i"]);
@@ -118,14 +122,14 @@ test("walking out of range closes the menu, and the pending reply still arrives"
   const watcher = await joinGuest();
   try {
     await say(host, "/nick Hana");
-    await placePlayer(host, 16, 13, 4);
-    await placePlayer(host, 15, 15, 4, await localId(watcher));
+    await placePlayer(host, 16, 13, 1);
+    await placePlayer(host, 15, 15, 1, await localId(watcher));
     await waitFrames(host, 3);
     await talkToUlgar(host, ["i"]);
     await askWhatYouBuy(host);
     await expect.poll(() => heard(watcher)).toContain(`Hana: ${ASK}`);
     // Out of range: the menu closes and the thought icon goes with it.
-    await placePlayer(host, 16, 16, 4);
+    await placePlayer(host, 16, 16, 1);
     await expect.poll(() => shopOpen(host)).toBe(false);
     await expect.poll(() => thinking(host, "self")).toBe(false);
     // The reply that was being prepared finishes normally.
@@ -146,7 +150,7 @@ test("a conversation with Ulgar shows both thought icons and a reply that names 
   await openWorld(page, "/?harness=1&layout=room");
   await ready(page);
   await say(page, "/nick Hana");
-  await placePlayer(page, 16, 13, 4);
+  await placePlayer(page, 16, 13, 1);
   await waitFrames(page, 3);
   await talkToUlgar(page, ["i"]);
   await expect.poll(() => thinking(page, "self")).toBe(true);

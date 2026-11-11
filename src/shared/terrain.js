@@ -23,7 +23,7 @@ export const STONE = 2;
 
 /** @typedef {Uint8Array} ChunkData One material byte per tile, `z * 256 + localY * 16 + localX`. */
 /** @typedef {{x:number,y:number,z:number,material:number}} TileChange */
-/** @typedef {{chunks:Map<string,ChunkData>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>}} TerrainStore */
+/** @typedef {{chunks:Map<string,ChunkData>,planeZ?:number,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>}} TerrainStore */
 
 /** @param {number} cx @param {number} cy */
 export function chunkKey(cx, cy) {
@@ -213,6 +213,7 @@ export function readTile(world, x, y, z) {
  * @param {TerrainStore} world @param {number} x @param {number} y @param {number} z @param {number} material
  */
 export function writeTile(world, x, y, z, material) {
+  if (world.planeZ !== undefined && z !== world.planeZ) return false;
   if (
     !Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(z) ||
     z < 0 || z > WORLD_TOP

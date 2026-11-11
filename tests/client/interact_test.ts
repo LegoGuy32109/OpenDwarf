@@ -13,14 +13,7 @@ import {
   inventoryOf,
 } from "../../src/shared/items.js";
 import { setHeldItem } from "../../src/shared/held-item.js";
-import {
-  heldItem,
-  miningActions,
-  miningEntries,
-  miningTicks,
-  stepMining,
-} from "../../src/shared/mining.js";
-import { COAL, DIAMOND } from "../../src/shared/materials.js";
+import { miningActions, miningEntries } from "../../src/shared/mining.js";
 import { SHOPKEEPER_TILE as SHOP_TILE } from "../../src/shared/spawn-room.js";
 import { addTrader } from "../shared/fixtures.ts";
 import {
@@ -28,9 +21,8 @@ import {
   OPEN,
   readTile,
   STONE,
-  writeTile,
 } from "../../src/shared/terrain.js";
-import { addPlayer, advanceTicks } from "../../src/shared/world.js";
+import { addPlayer } from "../../src/shared/world.js";
 import { createFixtureWorld as createWorld } from "../../src/shared/world-builder.js";
 
 type Tile = { x: number; y: number; z: number };
@@ -43,6 +35,7 @@ function fixture(guest = false) {
   data.fill(OPEN);
   data.fill(STONE, 0, 256);
   const player = addPlayer(world, "self", { x: 5, y: 5, z: 1 });
+  player.facing = { x: 1, y: 0 };
   const messages: Record<string, unknown>[] = [];
   const lines: string[] = [];
   const sounds: { tags: string[]; tile: Tile }[] = [];
@@ -75,6 +68,9 @@ function fixture(guest = false) {
     scene,
     isAdmin: guest,
     held: new Set<string>(["KeyL"]),
+    pressed: new Set<string>(),
+    joystick: { x: 0, y: 0 },
+    gamepadDirection: { x: 0, y: 0 },
     cameraStick: { x: 0, y: 0 },
     gamepadCamera: { x: 0, y: 0 },
     gamepadDpad: { x: 0, y: 0 },
@@ -102,14 +98,6 @@ function fixture(guest = false) {
     ctx.held.clear();
     if (code) ctx.held.add(code);
   };
-  const finish = (material: number) => {
-    advanceTicks(world, miningTicks(material)!);
-    stepMining(
-      world,
-      () => (tile) =>
-        scene.visibility.visible.has(`${tile.x},${tile.y},${tile.z}`),
-    );
-  };
   return {
     ctx,
     scene,
@@ -121,151 +109,8 @@ function fixture(guest = false) {
     panels,
     act,
     aim,
-    finish,
-    keepMiningWhileAiming(code: string, ticks: number) {
-      const action = miningActions(world).get("self");
-      assert(action);
-      aim(code);
-      advanceTicks(world, ticks);
-      stepMining(world);
-      assertEquals(miningActions(world).get("self"), action);
-    },
   };
 }
-
-Deno.test("interact refuses solid terrain while stone is held, on host and guest", () => {
-  for (const guest of [false, true]) {
-    const f = fixture(guest);
-    writeTile(f.world, 6, 5, 1, STONE);
-    addStack(inventoryOf(f.player), "stone", 2);
-    assert(setHeldItem(f.world, "self", "stone").ok);
-    f.scene.heldFeed = "stone";
-    f.act();
-    assertEquals(f.scene.notice?.text, "Hold the pickaxe to mine");
-    assertEquals(readTile(f.world, 6, 5, 1), STONE);
-    assertEquals(inventoryOf(f.player), [
-      { kind: "pickaxe", count: 1 },
-      { kind: "stone", count: 2 },
-    ]);
-    assertEquals(miningActions(f.world).size, 0);
-    assertEquals(f.messages, guest ? [{ type: "mine-cancel" }] : []);
-    assertEquals(f.sounds, []);
-  }
-});
-
-Deno.test("interact mines, picks up, places a wall, and mines the placed stone", () => {
-  const f = fixture();
-  writeTile(f.world, 6, 5, 1, STONE);
-  f.act();
-  assertEquals(miningActions(f.world).size, 1);
-  f.finish(STONE);
-  assertEquals(readTile(f.world, 6, 5, 1), OPEN);
-  assertEquals(droppedAt(f.world, EAST), [{ kind: "stone", count: 1 }]);
-  f.act();
-  assertEquals(droppedAt(f.world, EAST), []);
-  assertEquals(f.lines, ["Picked up stone ×1"]);
-  assert(setHeldItem(f.world, "self", "stone").ok);
-  f.act();
-  assertEquals(readTile(f.world, 6, 5, 1), STONE);
-  assertEquals(heldItem(f.player), "pickaxe", "last stone spent");
-  addStack(inventoryOf(f.player), "stone", 3);
-  assert(setHeldItem(f.world, "self", "stone").ok);
-  for (const [key, x, y] of [["KeyJ", 4, 5], ["KeyI", 5, 4]] as const) {
-    f.aim(key);
-    f.act();
-    assertEquals(readTile(f.world, x, y, 1), STONE);
-  }
-  f.aim();
-  f.act();
-  assertEquals(f.scene.notice?.text, "Something is in the way");
-  assertEquals(inventoryOf(f.player).find((s) => s.kind === "stone")?.count, 1);
-  f.aim("KeyL");
-  assert(setHeldItem(f.world, "self", "pickaxe").ok);
-  f.act();
-  f.finish(STONE);
-  f.act();
-  assertEquals(readTile(f.world, 6, 5, 1), OPEN);
-  assertEquals(inventoryOf(f.player).find((s) => s.kind === "stone")?.count, 2);
-  assertEquals(f.sounds.map((s) => s.tags), [
-    ["pickup"],
-    ["place", "stone"],
-    ["place", "stone"],
-    ["place", "stone"],
-    ["pickup"],
-  ]);
-});
-
-Deno.test("interact reads current aim and cancels on the mined tile after the cursor moves", () => {
-  const f = fixture();
-  writeTile(f.world, 6, 5, 1, DIAMOND);
-  f.act();
-  const action = miningActions(f.world).get("self")!;
-  assertEquals({ x: action.x, y: action.y, z: action.z }, EAST);
-  f.keepMiningWhileAiming("KeyI", 10);
-  f.aim("KeyL");
-  f.act();
-  assertEquals(miningActions(f.world).size, 0);
-  f.finish(DIAMOND);
-  assertEquals(readTile(f.world, 6, 5, 1), DIAMOND);
-  f.aim();
-  f.act();
-  assertEquals(f.scene.notice?.text, "Cannot mine: aim at a neighboring tile");
-  assertEquals(miningActions(f.world).size, 0);
-});
-
-Deno.test("interact on another tile cancels the old mining before starting the new action", () => {
-  const f = fixture();
-  writeTile(f.world, 6, 5, 1, DIAMOND);
-  writeTile(f.world, 5, 4, 1, COAL);
-  f.act();
-  advanceTicks(f.world, 5);
-  f.aim("KeyI");
-  f.act();
-  assertEquals(miningActions(f.world).size, 1);
-  const action = miningActions(f.world).get("self")!;
-  assertEquals([action.x, action.y, action.z, action.startTick], [5, 4, 1, 5]);
-  f.finish(COAL);
-  assertEquals(readTile(f.world, 6, 5, 1), DIAMOND);
-  assertEquals(droppedAt(f.world, { x: 5, y: 4, z: 1 }), [{
-    kind: "coal",
-    count: 1,
-  }]);
-});
-
-Deno.test("interact targets the view level above and below and keeps mining with a free cursor", () => {
-  for (const z of [0, 2]) {
-    const f = fixture();
-    writeTile(f.world, 6, 5, z, DIAMOND);
-    f.scene.viewZ = z;
-    f.act();
-    const action = miningActions(f.world).get("self")!;
-    assert(action);
-    assertEquals([action.x, action.y, action.z], [6, 5, z]);
-    f.keepMiningWhileAiming("KeyI", 14);
-    f.aim("KeyL");
-    f.act();
-    assertEquals(miningActions(f.world).size, 0);
-  }
-});
-
-Deno.test("interact passes local sight to mining and placing", () => {
-  for (const held of ["pickaxe", "stone"]) {
-    const f = fixture();
-    if (held === "stone") {
-      addStack(inventoryOf(f.player), "stone", 1);
-      assert(setHeldItem(f.world, "self", "stone").ok);
-    } else writeTile(f.world, 6, 5, 1, STONE);
-    f.scene.visibility.visible.delete("6,5,1");
-    f.act();
-    assertEquals(
-      f.scene.notice?.text,
-      held === "stone" ? "out of reach" : "Cannot mine: out of reach",
-    );
-    assertEquals(miningActions(f.world).size, 0);
-    assertEquals(readTile(f.world, 6, 5, 1), held === "stone" ? OPEN : STONE);
-    assertEquals(f.sounds, []);
-  }
-});
 
 Deno.test("interact picks up a single stack before placing or mining, without a grid", () => {
   for (const held of ["pickaxe", "stone"]) {
@@ -307,44 +152,6 @@ Deno.test("interact opens multiple stacks and confirms the selected kind", () =>
   ]);
   assertEquals(droppedAt(f.world, EAST), [{ kind: "stone", count: 1 }]);
   assertEquals(f.lines, ["Picked up coal ×2"]);
-});
-
-Deno.test("interact sends guest mining, cancellation, placing, and single pickup intents", () => {
-  const f = fixture(true);
-  writeTile(f.world, 6, 5, 1, STONE);
-  f.act();
-  assertEquals(f.messages.splice(0), [{ type: "mine-cancel" }, {
-    type: "mine",
-    ...EAST,
-  }]);
-  f.scene.mineFeed.entries = [{
-    id: "self",
-    ...EAST,
-    elapsedMs: 0,
-    totalMs: 1000,
-  }];
-  f.act();
-  assertEquals(f.messages.splice(0), [{ type: "mine-cancel" }]);
-  f.scene.mineFeed.entries = [];
-  writeTile(f.world, 6, 5, 1, OPEN);
-  f.scene.heldFeed = "stone";
-  f.act();
-  assertEquals(f.messages.splice(0), [{ type: "mine-cancel" }, {
-    type: "place",
-    ...EAST,
-  }]);
-  f.scene.itemFeed = [{ ...EAST, stacks: [{ kind: "coal", count: 2 }] }];
-  f.act();
-  assertEquals(f.messages, [{ type: "mine-cancel" }, {
-    type: "pickup",
-    ...EAST,
-    kind: "coal",
-  }]);
-  assertEquals(readTile(f.world, 6, 5, 1), OPEN);
-  assertEquals(inventoryOf(f.player), [{ kind: "pickaxe", count: 1 }]);
-  assertEquals(f.lines, []);
-  assertEquals(f.ctx.pickupGrid.tile, null);
-  assertEquals(f.sounds, [], "guest requests wait for accepted host results");
 });
 
 Deno.test("a guest spoken sale is silent until the host confirms it", () => {

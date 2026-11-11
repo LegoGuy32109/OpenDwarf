@@ -20,14 +20,14 @@ const panelShowsChunks = async (page: Page) => {
 };
 /** Place the host's own player on a tile, as if it had walked there. */
 const placeHost = (page: Page, x: number, y: number) => placePlayer(page, x, y);
-/** Dig a tunnel along x at level 0 through chunk 5,5 with the host's own write path. */
+/** Dig a tunnel along x at level 1 through chunk 5,5 with the host's own write path. */
 const digTunnel = (page: Page) =>
   readWorld(
     page,
     (world) =>
       world.edit({
         tiles: [{
-          bounds: { minX: 83, maxX: 92, minY: 88, maxY: 88, minZ: 0, maxZ: 0 },
+          bounds: { minX: 83, maxX: 92, minY: 88, maxY: 88, minZ: 1, maxZ: 1 },
           material: world.materials.OPEN,
         }],
       }),
@@ -41,6 +41,12 @@ test("a host that walks away unloads the far chunks and finds its tunnel when it
   await placeHost(page, 8.5 + 16 * 5, 8.5 + 16 * 5);
   await expect.poll(() => hasChunk(page, "5,5")).toBe(true);
   await digTunnel(page);
+  expect(
+    await readWorld(
+      page,
+      (w) => w.materials.readTile(w.scene.world, 88, 88, 1),
+    ),
+  ).toBe(1);
   const tunnel = await bytes(page, "5,5");
   await placeHost(page, 8.5 + 16 * 15, 8.5 + 16 * 15);
   await expect.poll(() => hasChunk(page, "15,15")).toBe(true);

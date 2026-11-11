@@ -94,55 +94,26 @@ function circleClearOfBox(circle: UiElement, box: UiElement) {
 function controlsApart(screen: typeof PORTRAIT, scale: number) {
   const layout = layoutUi(view(screen, { scale }));
   const move = layout.byId.get("stick:move")!;
-  const look = layout.byId.get("stick:look")!;
-  const interact = layout.byId.get("btn:interact")!;
-  const sprint = layout.byId.get("btn:sprint")!;
-  // A button box must stay clear of the stick circles, as the old CSS checks did.
-  assert(circleClearOfBox(move, interact));
-  assert(circleClearOfBox(look, interact));
-  // Sprint may overlap the look stick's outer edge: it is later in draw order,
-  // so it takes those touches, and it stays out of the stick's inner 60%.
-  assert(
-    layout.elements.indexOf(sprint) > layout.elements.indexOf(look),
-    "sprint is hit before the look stick",
-  );
-  assert(
-    Math.hypot(sprint.cx! - look.cx!, sprint.cy! - look.cy!) - sprint.r! >=
-      0.6 * look.r!,
-    `sprint clear of the look stick's middle at ${scale}`,
-  );
-  assert(circleClearOfBox(move, sprint));
-  // Interact sits between the sticks, at least as large as sprint; sprint sits
-  // at the look stick's bottom right.
-  assert(interact.rect.x >= move.rect.x + move.rect.w);
-  assert(interact.rect.x + interact.rect.w <= look.rect.x);
-  assert(interact.rect.w >= sprint.rect.w);
-  assert(sprint.cx! > look.cx! && sprint.cy! > look.cy!);
-  const row = ["btn:chat", "btn:log", "btn:menu", "btn:bag"].map((id) =>
-    layout.byId.get(id)!
-  );
-  for (const [index, button] of row.entries()) {
-    for (const other of row.slice(index + 1)) {
+  const controls = [
+    "stick:move",
+    "btn:interact",
+    "btn:sprint",
+    "btn:chat",
+    "btn:menu",
+    "btn:bag",
+  ].map((id) => layout.byId.get(id)!);
+  assertEquals(layout.byId.has("stick:look"), false);
+  assertEquals(layout.byId.has("btn:log"), false);
+  for (const [i, a] of controls.entries()) {
+    for (const b of controls.slice(i + 1)) {
       assert(
-        Math.hypot(button.cx! - other.cx!, button.cy! - other.cy!) >
-          button.r! + other.r!,
-        `${button.id} and ${other.id} apart`,
-      );
-    }
-    for (const round of [interact, sprint]) {
-      assert(
-        Math.hypot(button.cx! - round.cx!, button.cy! - round.cy!) >
-          button.r! + round.r!,
-        `${button.id} and ${round.id} apart`,
-      );
-    }
-    for (const stick of [move, look]) {
-      assert(
-        circleClearOfBox(stick, button),
-        `${button.id} clear of ${stick.id}`,
+        a.rect.x + a.rect.w <= b.rect.x || b.rect.x + b.rect.w <= a.rect.x ||
+          a.rect.y + a.rect.h <= b.rect.y || b.rect.y + b.rect.h <= a.rect.y,
+        `${a.id} overlaps ${b.id}`,
       );
     }
   }
+  assert(circleClearOfBox(move, layout.byId.get("btn:interact")!));
 }
 
 for (const [name, screen] of Object.entries(SCREENS)) {
@@ -152,11 +123,9 @@ for (const [name, screen] of Object.entries(SCREENS)) {
       for (
         const id of [
           "stick:move",
-          "stick:look",
           "btn:interact",
           "btn:sprint",
           "btn:chat",
-          "btn:log",
           "btn:menu",
           "btn:bag",
         ]
@@ -207,7 +176,7 @@ for (const [name, screen] of Object.entries(SCREENS)) {
     const shopPanel = shop.byId.get("panel:shop")!;
     inside(screen as typeof PORTRAIT, shopPanel);
     for (
-      const id of ["btn:interact", "btn:sprint", "stick:move", "stick:look"]
+      const id of ["btn:interact", "btn:sprint", "stick:move"]
     ) {
       const control = shop.byId.get(id)!;
       const overlapsX = control.rect.x < shopPanel.rect.x + shopPanel.rect.w &&
@@ -298,8 +267,11 @@ Deno.test("hit testing finds the topmost element and honors round shapes", () =>
   const plain = layoutUi(view(PORTRAIT));
   const interact = plain.byId.get("btn:interact")!;
   assertEquals(hitTest(plain, interact.cx!, interact.cy!)?.id, "btn:interact");
-  // The corner of a round button's box belongs to the world.
-  assertEquals(hitTest(plain, interact.rect.x + 1, interact.rect.y + 1), null);
+  // The square action button takes corner presses too.
+  assertEquals(
+    hitTest(plain, interact.rect.x + 1, interact.rect.y + 1)?.id,
+    "btn:interact",
+  );
   const move = plain.byId.get("stick:move")!;
   assertEquals(hitTest(plain, move.cx!, move.cy!)?.id, "stick:move");
   assertEquals(hitTest(plain, 195, 300), null);
@@ -458,15 +430,15 @@ Deno.test("buttons act on pointer down, and several fingers work at once", () =>
 
 Deno.test("a stick follows one pointer", () => {
   const { r, layout, events } = router(view(PORTRAIT));
-  const look = layout.byId.get("stick:look")!;
+  const look = layout.byId.get("stick:move")!;
   r.down({ id: 1, x: look.cx!, y: look.cy! - 50 });
   r.down({ id: 2, x: look.cx! + 50, y: look.cy! });
   assertEquals(events.length, 1);
   r.move({ id: 1, x: look.cx! + 50, y: look.cy! });
-  assertEquals(events.at(-1), "stick:stick:look:1,0:true");
+  assertEquals(events.at(-1), "stick:stick:move:1,0:true");
   // The second pointer never moves the stick.
   r.move({ id: 2, x: look.cx! - 50, y: look.cy! });
-  assertEquals(events.at(-1), "stick:stick:look:1,0:true");
+  assertEquals(events.at(-1), "stick:stick:move:1,0:true");
 });
 
 Deno.test("a pointer on empty space belongs to the world", () => {
@@ -546,4 +518,84 @@ Deno.test("the item list rows read Sell all [ore] with count and total coins", (
     `${STACKS[2].count} coins`,
   ]);
   assertEquals(layout.byId.get("row:all")!.text, "Sell all ore");
+});
+
+Deno.test("the action pointer retains its origin outside bounds, independently of movement", () => {
+  const layout = layoutUi(view(PORTRAIT));
+  const events:
+    import("../../src/shared/single-plane.js").ActionPointerEvent[] = [];
+  const sticks: boolean[] = [];
+  const ordinary: string[] = [];
+  const r = createPointerRouter({
+    layout: () => layout,
+    onAction: (el) => ordinary.push(el.id),
+    onRelease: (el) => ordinary.push(el.id),
+    onInteract: (event) => events.push(event),
+    onStick: (_id, state) => sticks.push(state.active),
+    onScroll: () => {},
+  });
+  const move = layout.byId.get("stick:move")!;
+  const action = layout.byId.get("btn:interact")!;
+  const x = action.cx!, y = action.cy!;
+  r.down({ id: 1, x: move.cx! + 40, y: move.cy! });
+  r.down({ id: 2, x, y });
+  r.down({ id: 3, x, y }); // A second finger cannot steal the action gesture.
+  r.move({ id: 3, x: 0, y: 0 });
+  r.up({ id: 3, x: 0, y: 0 });
+  r.move({ id: 2, x: -50, y: -80 });
+  r.up({ id: 2, x: -50, y: -80 });
+  assertEquals(events, [
+    { phase: "press", x, y, originX: x, originY: y },
+    { phase: "move", x: -50, y: -80, originX: x, originY: y },
+    { phase: "release", x: -50, y: -80, originX: x, originY: y },
+  ]);
+  assertEquals(sticks, [true]);
+  assertEquals(ordinary, []);
+  assert(r.pressed().has("stick:move"));
+  r.down({ id: 4, x, y });
+  r.releaseAll();
+  assertEquals(events.at(-1)?.phase, "cancel");
+  assertEquals(events.at(-1)?.originX, x);
+  assertEquals(sticks, [true, false]);
+});
+
+Deno.test("small portrait controls stay low and show the equipped icon and active aim well", () => {
+  const screen = {
+    width: 320,
+    height: 568,
+    safe: { top: 24, right: 0, bottom: 24, left: 0 },
+  };
+  const gesture = {
+    down: true,
+    aiming: true,
+    everAimed: true,
+    x: 0,
+    y: -1,
+    originX: 0,
+    originY: 0,
+    knobX: 0,
+    knobY: -20,
+  };
+  for (const scale of [1, 1.5, 2]) {
+    const layout = layoutUi(
+      view(screen, { scale, held: "coin", actionGesture: gesture }),
+    );
+    for (
+      const id of [
+        "stick:move",
+        "btn:interact",
+        "btn:chat",
+        "btn:bag",
+        "btn:sprint",
+        "btn:menu",
+        "action:well",
+      ]
+    ) inside(screen, layout.byId.get(id)!);
+    const action = layout.byId.get("btn:interact")!;
+    assertEquals(action.item, "coin");
+    assert(action.rect.w >= 72);
+    assert(layout.byId.get("stick:move")!.rect.y > screen.height * 0.58);
+    assertEquals(layout.byId.get("action:well")!.dy, -1);
+    assertEquals(layoutUi(view(screen)).byId.has("action:well"), false);
+  }
 });

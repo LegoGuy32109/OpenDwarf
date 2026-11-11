@@ -57,7 +57,7 @@ const picture = async (page: Page) => {
     },
   });
 };
-test("master view redraws a mined tile, a placed tile and a level change on the next frame", async ({ page }) => {
+test("master view redraws a mined tile, a placed tile and ignores level keys on the next frame", async ({ page }) => {
   await openMasterView(page);
   const tile = await aimAtStone(page);
   expect(tile, "a stone tile far from the player").not.toBeNull();
@@ -74,9 +74,9 @@ test("master view redraws a mined tile, a placed tile and a level change on the 
   expect(await picture(page)).toEqual(original);
   await page.keyboard.press("r");
   await expect.poll(() => readWorld(page, (__world) => __world.scene.viewZ))
-    .toBe(z + 1);
+    .toBe(z);
   const above = await picture(page);
-  expect(above).not.toEqual(original);
+  expect(above).toEqual(original);
   await page.keyboard.press("v");
   await expect.poll(() => readWorld(page, (__world) => __world.scene.viewZ))
     .toBe(z);

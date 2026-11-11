@@ -1,3 +1,4 @@
+import { facePlayer } from "./world.ts";
 import { giveItems as give } from "./world.ts";
 import { openWorld, readWorld } from "./world.ts";
 import { expect, test } from "./fixtures.ts";
@@ -5,8 +6,8 @@ import { type Page } from "@playwright/test";
 import { evidenceShot } from "./evidence.ts";
 import { holdUntil, waitFor, waitFrames, waitTicks } from "./time.ts";
 import { ready, shopOpen, shopRow, tapUi, uiRect } from "./ui.ts";
-// Ulgar, the shopkeeper NPC, stands at (16, 12) on level 4, in the spawn room.
-const SHOP = { x: 16, y: 12, z: 4 };
+// Ulgar, the shopkeeper NPC, stands at (16, 12) on level 1, in the spawn room.
+const SHOP = { x: 16, y: 12, z: 1 };
 const position = (page: Page) =>
   readWorld(page, (__world) => {
     const scene = __world.scene;
@@ -89,13 +90,19 @@ async function openItems(page: Page) {
 }
 /** With the aim held, interact. Interact reads the held aim keys at once. */
 async function interactAiming(page: Page, ...keys: string[]) {
-  for (const key of keys) {
-    await page.keyboard.down(key);
+  const x = Number(keys.includes("l")) - Number(keys.includes("j"));
+  const y = Number(keys.includes("k")) - Number(keys.includes("i"));
+  if (x || y) {
+    const movement = [
+      ...(x < 0 ? ["s"] : x > 0 ? ["f"] : []),
+      ...(y < 0 ? ["e"] : y > 0 ? ["d"] : []),
+    ];
+    for (const key of movement) await page.keyboard.down(key);
+    await waitTicks(page, 1);
+    for (const key of movement) await page.keyboard.up(key);
+    await waitTicks(page, 1);
   }
   await page.keyboard.press("Space");
-  for (const key of keys) {
-    await page.keyboard.up(key);
-  }
 }
 /** The IJKL keys that aim from the player's tile at the shopkeeper's tile. */
 async function aimAtShopkeeper(page: Page) {
@@ -107,42 +114,43 @@ async function aimAtShopkeeper(page: Page) {
     ...(dy < 0 ? ["i"] : dy > 0 ? ["k"] : []),
   ];
 }
-/** Start mining and keep the aim held until the tile is open, because a new aim cancels. */
-async function mineAiming(page: Page, key: string, tile: {
+/** Hold the pickaxe action until the movement-facing wall opens. */
+async function mineAiming(page: Page, _key: string, tile: {
   x: number;
   y: number;
   z: number;
 }) {
-  await page.keyboard.down(key);
+  await facePlayer(page, 0, -1);
+  await page.keyboard.down("Space");
   try {
-    await page.keyboard.press("Space");
     await expect.poll(() => tileAt(page, tile.x, tile.y, tile.z)).toBe(1);
   } finally {
-    await page.keyboard.up(key);
+    await page.keyboard.up("Space");
   }
 }
 test("the host mines ore, sells it to the shopkeeper, and gets coins", async ({ page }) => {
   await startHost(page);
   await expect.poll(() => coins(page)).toBe(0);
-  // Down the stairs into the tunnel, then mine coal and iron ore.
+  // Walk into the flat tunnel, then mine coal and iron ore.
   // Ulgar blocks the way north on its own column, so the route bends east first.
   await walkUntil(page, "e", (p) => p.y <= 13.2);
   await walkUntil(page, "f", (p) => p.x >= 17.8);
   await walkUntil(page, "e", (p) => p.y <= 12.1);
-  await walkUntil(page, "f", (p) => p.z === 2 && p.x >= 21.2);
+  await walkUntil(page, "f", (p) => p.z === 1 && p.x >= 21.2);
   await placeAt(page, 22, 12); // the coal is one tile north of tile 22
   await waitFrames(page, 2);
-  await mineAiming(page, "i", { x: 22, y: 11, z: 2 }); // coal
+  await mineAiming(page, "i", { x: 22, y: 11, z: 1 }); // coal
   await interactAiming(page, "i"); // pick the coal up
   await expect.poll(async () => (await inventory(page)).length).toBe(2);
   await placeAt(page, 25, 12); // the iron ore is one tile north of tile 25
   await waitFrames(page, 2);
-  await mineAiming(page, "i", { x: 25, y: 11, z: 2 }); // iron ore
+  await mineAiming(page, "i", { x: 25, y: 11, z: 1 }); // iron ore
   await interactAiming(page, "i"); // pick the iron ore up
   await expect.poll(async () => (await inventory(page)).length).toBe(3);
   expect(await coins(page)).toBe(0);
-  // Back up the stairs to the shopkeeper, who stands on the north wall.
-  await walkUntil(page, "s", (p) => p.z === 4 && p.x <= 17.2);
+  // Return to the shopkeeper, who stands on the north wall.
+  await walkUntil(page, "s", (p) => p.z === 1 && p.x <= 17.2);
+  await placeAt(page, 17, 13);
   await interactAiming(page, ...(await aimAtShopkeeper(page)));
   await expect.poll(() => shopOpen(page)).toBe(true);
   await openItems(page);
@@ -201,7 +209,7 @@ test("a guest sells through the host, and the host rejects what it does not hold
     const session = await readWorld(host, (__world) => __world.scene.sessionId);
     await openWorld(guest, `/join/${session}?harness=1&layout=room`);
     await ready(guest);
-    await expect.poll(async () => (await position(guest))?.z).toBe(4);
+    await expect.poll(async () => (await position(guest))?.z).toBe(1);
     const id = await readWorld(guest, (__world) => __world.scene.localId);
     await give(host, "coal", 3, id);
     await give(host, "stone", 2, id);
@@ -277,7 +285,7 @@ test("the shop works by touch on a phone", async ({ browser }) => {
     // From the tile south of Ulgar, with the aim held north, interact opens the shop.
     await placeAt(phone, SHOP.x, SHOP.y + 1);
     await waitFrames(phone, 2);
-    await phone.keyboard.down("i");
+    await facePlayer(phone, 0, -1);
     await tapUi(phone, "btn:interact");
     await phone.keyboard.up("i");
     await expect.poll(() => shopOpen(phone)).toBe(true);
@@ -345,7 +353,8 @@ test("a gamepad moves the selection and sells", async ({ page }) => {
           requestAnimationFrame(() => resolve());
         });
       }), button);
-  // The look stick aims north at Ulgar while ZR interacts.
+  await facePlayer(page, 0, -1);
+  // ZR interacts with the movement-facing tile.
   await page.evaluate(() => {
     (globalThis as unknown as { __pad: { axes: number[] } }).__pad.axes[3] = -1;
   });
