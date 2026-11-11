@@ -15,7 +15,7 @@
  * the browser lets start only from a release).
  * @typedef {object} UiElement
  * @property {string} id
- * @property {"scrim"|"panel"|"text"|"button"|"round"|"stick"|"slot"|"row"|"key"|"chatbar"|"line"|"image"|"icon"|"zone"} kind
+ * @property {"action"|"aimwell"|"scrim"|"panel"|"text"|"button"|"round"|"stick"|"slot"|"row"|"key"|"chatbar"|"line"|"image"|"icon"|"zone"} kind
  * @property {Rect} rect
  * @property {boolean} [hit]
  * @property {boolean} [blocks]
@@ -27,6 +27,8 @@
  * @property {"left"|"center"|"right"} [align]
  * @property {number} [scale] glyph scale in CSS pixels per font pixel
  * @property {string} [glyph] a drawn symbol: "x", "fullscreen", "bag", "sprint", "item"
+ * @property {number} [dx]
+ * @property {number} [dy]
  * @property {string} [item] an item kind to draw
  * @property {number} [count]
  * @property {boolean} [on] a toggled button, or the selected row or slot
@@ -63,6 +65,7 @@
  * @property {boolean} [fullscreen] show the fullscreen button
  * @property {boolean} [fullscreenOn]
  * @property {{tools:boolean,players:number,joinOpen:boolean,qr:boolean,offline?:boolean}} [host]
+ * @property {import("../shared/single-plane.js").ActionGesture} [actionGesture]
  * @property {string} [held] the held item kind
  * @property {{value:number,on:boolean,locked:boolean}} [stamina]
  * @property {{open:boolean,pressed?:boolean}} [logButton]

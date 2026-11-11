@@ -25,6 +25,7 @@ const DRAG_SLOP = 8;
  * @property {UiElement} element
  * @property {number} startX
  * @property {number} startY
+ * @property {number} lastX
  * @property {number} lastY
  * @property {boolean} moved
  */
@@ -39,7 +40,7 @@ const DRAG_SLOP = 8;
  * @param {(list:string,pixels:number)=>void} options.onScroll
  */
 export function createPointerRouter(
-  { layout, onAction, onRelease, onStick, onScroll },
+  { layout, onAction, onRelease, onInteract, onStick, onScroll },
 ) {
   /** @type {Map<number,Tracked>} */
   const tracked = new Map();
@@ -56,6 +57,17 @@ export function createPointerRouter(
       size,
     );
     onStick(element.id, { ...vector, active: true });
+  }
+
+  /** @param {Tracked} entry @param {PointerPoint} point @param {import('../shared/single-plane.js').ActionPointerEvent['phase']} phase */
+  function interact(entry, point, phase) {
+    onInteract?.({
+      phase,
+      x: point.x,
+      y: point.y,
+      originX: entry.startX,
+      originY: entry.startY,
+    });
   }
 
   return {
@@ -75,6 +87,7 @@ export function createPointerRouter(
           element,
           startX: point.x,
           startY: point.y,
+          lastX: point.x,
           lastY: point.y,
           moved: false,
         };
@@ -83,22 +96,41 @@ export function createPointerRouter(
         updateStick(entry, point.x, point.y);
         return "ui";
       }
+      if (
+        element.id === "btn:interact" && onInteract &&
+        [...tracked.values()].some((entry) =>
+          entry.element.id === "btn:interact"
+        )
+      ) return "ui";
       if (element.act) {
         tracked.set(point.id, {
           element,
           startX: point.x,
           startY: point.y,
+          lastX: point.x,
           lastY: point.y,
           moved: false,
         });
       }
-      if (element.act === "down") onAction(element);
+      if (element.id === "btn:interact" && onInteract) {
+        interact(
+          /** @type {Tracked} */ (tracked.get(point.id)),
+          point,
+          "press",
+        );
+      } else if (element.act === "down") onAction(element);
       return "ui";
     },
     /** @param {PointerPoint} point */
     move(point) {
       const entry = tracked.get(point.id);
       if (!entry) return;
+      if (entry.element.id === "btn:interact" && onInteract) {
+        entry.lastX = point.x;
+        entry.lastY = point.y;
+        interact(entry, point, "move");
+        return;
+      }
       if (entry.element.act === "stick") {
         updateStick(entry, point.x, point.y);
         return;
@@ -121,6 +153,10 @@ export function createPointerRouter(
       if (!entry) return;
       tracked.delete(point.id);
       const { element } = entry;
+      if (element.id === "btn:interact" && onInteract) {
+        interact(entry, point, cancelled ? "cancel" : "release");
+        return;
+      }
       if (element.act === "stick") {
         sticks.delete(element.id);
         onStick(element.id, {
@@ -166,8 +202,8 @@ export function createPointerRouter(
     },
     /** Let go of everything, as when the page loses focus. */
     releaseAll() {
-      for (const id of [...tracked.keys()]) {
-        this.up({ id, x: 0, y: 0 }, true);
+      for (const [id, entry] of [...tracked]) {
+        this.up({ id, x: entry.lastX, y: entry.lastY }, true);
       }
     },
   };

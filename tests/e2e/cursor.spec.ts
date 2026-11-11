@@ -33,8 +33,8 @@ test("the cursor draws the held item's icon and follows a change of held item", 
   expectCursor(pickaxe, {
     held: "pickaxe",
     tile: { x: 2, y: 1, z: 0 },
-    color: "#ffb833",
-    opacity: 0.6,
+    color: "#ffffff",
+    opacity: 0.5,
   });
   expect(pickaxe.iconFrame).not.toBeNull();
   await evidenceShot(page, "cursor-rock-pickaxe");

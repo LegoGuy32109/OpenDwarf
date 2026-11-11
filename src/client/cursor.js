@@ -2,11 +2,8 @@
 // The world cursor's draw parameters (ADR 0009, Cursor): a 2 px outline with
 // the held item's icon in its center.
 
-import {
-  CURSOR_COLOR,
-  CURSOR_ICON_DIM,
-  CURSOR_OPACITY,
-} from "../shared/reach.js";
+import { CURSOR_ICON_DIM } from "../shared/reach.js";
+import { facingOf } from "../shared/single-plane.js";
 import { interactPreview } from "../shared/interact-preview.js";
 import { itemInfo } from "../shared/items.js";
 import { heldItem } from "../shared/mining.js";
@@ -28,8 +25,8 @@ export const CURSOR_ICON_SIZE = 0.5;
  */
 export function cursorParams(held, preview) {
   return {
-    color: CURSOR_COLOR,
-    opacity: CURSOR_OPACITY,
+    color: "#ffffff",
+    opacity: 0.5,
     iconFrame: itemInfo(held)?.frame ?? null,
     iconOpacity: preview === null ? CURSOR_ICON_DIM : 1,
   };
@@ -38,21 +35,24 @@ export function cursorParams(held, preview) {
 /**
  * The local cursor for this frame, or null when none shows: the aimed tile
  * (or the tile being mined at rest) with its draw parameters.
- * @param {Scene} scene
+ * @param {Pick<Scene,"world"|"localId"|"viewMode"|"pickupCells"|"aim"|"mining"|"viewZ"|"visibility"|"actionGesture">} scene
  */
 export function localCursor(scene) {
   const player = scene.world.players[scene.localId];
   if (scene.viewMode !== "entity" || !player || scene.pickupCells?.length) {
     return null;
   }
-  // At rest the aim is the player's own tile: interact still works there, but the
-  // cursor only shows for an aimed tile or the tile being mined.
-  const resting = scene.aim.x === 0 && scene.aim.y === 0;
-  const tile = resting
-    ? (scene.mining ?? []).find((entry) =>
-      entry.id === scene.localId && entry.z === scene.viewZ
-    )
-    : highlightedTile(player, scene.aim, scene.viewZ, scene.world);
+  const aiming = scene.actionGesture?.aiming;
+  const aim = aiming
+    ? scene.actionGesture
+    : scene.aim.x || scene.aim.y
+    ? scene.aim
+    : facingOf(player);
+  const mining = (scene.mining ?? []).find((entry) =>
+    entry.id === scene.localId && entry.z === scene.viewZ
+  );
+  const tile = mining ??
+    highlightedTile(player, aim ?? facingOf(player), scene.viewZ, scene.world);
   if (!tile) return null;
   const at = { x: tile.x, y: tile.y, z: scene.viewZ };
   const held = heldItem(player);
@@ -63,4 +63,24 @@ export function localCursor(scene) {
     (t) => tileVisibility(scene.visibility, t.x, t.y, t.z) === "visible",
   );
   return { tile: at, held, preview, ...cursorParams(held, preview) };
+}
+
+/** Visible entities carry movement direction; the local entity retains facing at rest. @param {Pick<Scene,"localId"|"actionGesture">} scene @param {import('../shared/world.js').Player} player */
+export function directionMarker(scene, player) {
+  const local = player.id === scene.localId;
+  if (local && scene.actionGesture?.aiming) {
+    return { ...scene.actionGesture, aiming: true };
+  }
+  const moving = Boolean(player.move || player.vx || player.vy);
+  if (!local && !moving) return null;
+  const direction = player.facing ??
+    (player.move
+      ? {
+        x: Math.sign(player.move.target.x - player.move.origin.x),
+        y: Math.sign(player.move.target.y - player.move.origin.y),
+      }
+      : moving
+      ? { x: Math.sign(player.vx ?? 0), y: Math.sign(player.vy ?? 0) }
+      : facingOf(player));
+  return { ...direction, aiming: false };
 }

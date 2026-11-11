@@ -90,6 +90,8 @@ function uiView(ctx) {
       offline: ui.offline,
     },
     held: heldDisplay(ctx),
+    actionGesture:
+      (/** @type {import("./scene-types.js").Scene} */ (scene)).actionGesture,
     stamina: {
       value: stamina.value,
       on: stamina.sprint,
