@@ -163,7 +163,7 @@ test.describe("phone", () => {
     await expectChat(page, false);
     expect(await noFocus(page)).toEqual({ active: "BODY", fields: 0 });
   });
-  test("shift, the symbols page, backspace, and the 120 character limit", async ({ page }) => {
+  test("shift, the symbols page, backspace, and the 240 character limit", async ({ page }) => {
     await openWorld(page, "/?harness=1");
     await ready(page);
     await tapUi(page, "btn:chat");
@@ -179,10 +179,12 @@ test.describe("phone", () => {
     await tapUi(page, "key:backspace");
     expect(await chatDraft(page)).toBe("Hi 1");
     await tapUi(page, "key:page");
-    for (let i = 0; i < 130; i++) {
+    for (let i = 0; i < 250; i++) {
       await tapUi(page, "key:a");
     }
-    expect((await chatDraft(page)).length).toBe(120);
+    expect((await chatDraft(page)).length).toBe(240);
+    await tapUi(page, "key:b");
+    expect((await chatDraft(page)).length).toBe(240);
     await tapUi(page, "key:close");
     await expectChat(page, false);
     // Close drops the draft.

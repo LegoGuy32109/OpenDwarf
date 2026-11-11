@@ -4,7 +4,7 @@
 /** @typedef {import('./ui-types.js').Insets} Insets */
 
 /** The most characters a chat message holds. */
-export const CHAT_LIMIT = 120;
+export const CHAT_LIMIT = 240;
 
 /** @type {Insets} */
 export const NO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };

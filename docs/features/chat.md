@@ -3,7 +3,7 @@
 `T` opens chat, `/` opens a command, and Escape opens the menu. The on-screen A
 button opens chat with an in-game keyboard drawn at the bottom of the safe area,
 so the system keyboard never opens on a phone (see
-[controls and UI](controls-and-ui.md)). It holds 120 characters. A physical
+[controls and UI](controls-and-ui.md)). It holds 240 characters. A physical
 keyboard types through `keydown`: letters, Backspace, Enter sends, and Escape
 closes. Paste and dictation are not supported. Use `/nick Josh Hale` to set a
 name. Names are unique within a world. `/master` and `/entity` switch the view
@@ -24,7 +24,12 @@ bubble's speech (`speechDurationMs` in `src/shared/speech.js`, with the voice
 from `voiceFromId`). A bubble expires two seconds after its speech ends, and
 never sooner than `bubbleTicks` counted from its start. A speaker keeps at most
 `MAX_BUBBLES` (3) bubbles that have started, and at most `MAX_QUEUED` (5)
-waiting; a message sent to a full queue is dropped.
+waiting messages; each waiting message counts once, even when it has several
+pieces. The world host splits each message into pieces of at most 40 characters
+in `src/shared/message-pieces.js`. It prefers sentence ends, clause marks,
+spaces, then hyphenated word breaks. A message of up to 240 characters is
+accepted as a whole, and the host refuses a longer message. A message sent to a
+full queue is dropped.
 
 `chatView` sends only bubbles whose start has come, each with `startTick`. A
 bubble that waits never leaves the host: not its text, and not in the talking
@@ -44,9 +49,10 @@ the speaker has a queued message, a small white speech bubble with a dark
 outline, three rising dots and a short tail appears beside the upper left of the
 head, within five blocks.
 
-The hearing log keeps each message text it receives once, and a message enters
-it when its bubble starts, so unheard and waiting messages never enter it. The
-world host adds join, leave, and name change system lines to its own log and
-sends them to guests as `system` packets on the reliable channel. Chat uses the
-reliable `world` channel with snapshots and player input (see
-[networking](networking.md)).
+The hearing log keeps each complete message once. Its pieces enter the log as
+they start, where they join into one line, so unheard and waiting messages never
+enter the log. When fewer than 40 characters remain, the chat bar shows the
+remaining count. The world host adds join, leave, and name change system lines
+to its own log and sends them to guests as `system` packets on the reliable
+channel. Chat uses the reliable `world` channel with snapshots and player input
+(see [networking](networking.md)).

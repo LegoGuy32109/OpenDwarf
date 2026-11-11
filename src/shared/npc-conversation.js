@@ -10,6 +10,7 @@ import {
   sellItems,
 } from "./shop.js";
 import { speechDurationMs, syllableCount, voiceFromId } from "./speech.js";
+import { DIALOGUE } from "./dialogue.js";
 import { bubbleStart, submitMessage, TICK_MS } from "./world.js";
 
 /**
@@ -26,19 +27,15 @@ import { bubbleStart, submitMessage, TICK_MS } from "./world.js";
 /** @typedef {{id:string,line:string,replies?:readonly string[]}} Choice */
 
 /** The silent context a trader's menu shows. */
-export const TRADER_DESCRIPTION = "An ore buyer with coin to trade.";
+export const TRADER_DESCRIPTION = DIALOGUE.traderDescription;
 
 /** The authored answers to "What do you buy?". The host picks one. Each reads after "<name>, ", so it starts in lower case unless it starts with "I". */
-export const BUY_REPLIES = Object.freeze([
-  "I buy coal, iron, lapis, redstone, gold, emeralds and diamonds.",
-  "anything that glitters out of the rock is ore or gems. Never stone.",
-  "bring me ore and gems and I pay in coin. Stone and tools I leave.",
-]);
+export const BUY_REPLIES = DIALOGUE.buyReplies;
 
 /** The trader's choices, in menu order. Only a choice with replies is answered. @type {readonly Choice[]} */
 export const TRADER_CHOICES = Object.freeze([
-  { id: "sell", line: "I have ore to trade" },
-  { id: "buys", line: "What do you buy?", replies: BUY_REPLIES },
+  { id: "sell", line: DIALOGUE.choices.sell },
+  { id: "buys", line: DIALOGUE.choices.buys, replies: BUY_REPLIES },
 ]);
 
 /** The choice id of a spoken sale. It carries a `sale` request: one ore kind or all ore. */
@@ -64,45 +61,46 @@ const pieces = (count) => `${count} piece${count === 1 ? "" : "s"}`;
  * sell, and `full` is a sale refused because the coin stack is full.
  * @type {Readonly<Record<"kind"|"all"|"nothing"|"full",readonly ((facts:SaleFacts)=>string)[]>>}
  */
-export const SALE_REPLIES = Object.freeze({
-  kind: [
-    ({ name, count, coins }) =>
-      `${items(count, name)}? Here's ${coinsText(coins)}.`,
-    ({ name, count, coins }) =>
-      `that's ${items(count, name)} for ${coinsText(coins)}. Fair trade.`,
-    ({ name, count, coins }) =>
-      `I'll take the lot, ${items(count, name)}. ${
-        coinsText(coins)
-      }, counted out.`,
-  ],
-  all: [
-    ({ count, coins }) =>
-      `${pieces(count)} of ore? Here's ${coinsText(coins)}.`,
-    ({ count, coins }) =>
-      `that's the lot, ${pieces(count)} for ${coinsText(coins)}.`,
-    ({ count, coins }) =>
-      `I'll take all of it, ${pieces(count)}. ${coinsText(coins)} for you.`,
-  ],
-  nothing: [
-    () => "you have none of that to sell me.",
-    () => "no ore of that sort in your pack. Come back with some.",
-    () => "no ore, no coin. Mine something first.",
-  ],
-  full: [
-    ({ coins }) =>
-      `I owe you ${
-        coinsText(coins)
-      }, but you cannot carry more than ${MAX_STACK_COUNT} coins.`,
-    ({ coins }) =>
-      `${
-        coinsText(coins)
-      } is more coin than your purse holds. Spend some first.`,
-    ({ coins }) =>
-      `your purse is full. I cannot pay you ${
-        coinsText(coins)
-      } until you spend some.`,
-  ],
-});
+export const SALE_REPLIES = Object.freeze(
+  /** @type {Readonly<Record<"kind"|"all"|"nothing"|"full",readonly ((facts:SaleFacts)=>string)[]>>} */ ({
+    kind: DIALOGUE.saleReplies.kind.map(
+      (line) => (/** @type {SaleFacts} */ facts) =>
+        render(line, {
+          items: items(facts.count, facts.name),
+          coinsText: coinsText(facts.coins),
+          maxStackCount: MAX_STACK_COUNT,
+        }, ["items", "coinsText"]),
+    ),
+    all: DIALOGUE.saleReplies.all.map(
+      (line) => (/** @type {SaleFacts} */ facts) =>
+        render(line, {
+          pieces: pieces(facts.count),
+          coinsText: coinsText(facts.coins),
+          maxStackCount: MAX_STACK_COUNT,
+        }, ["pieces", "coinsText"]),
+    ),
+    nothing: DIALOGUE.saleReplies.nothing.map((line) => () =>
+      render(line, {}, [])
+    ),
+    full: DIALOGUE.saleReplies.full.map(
+      (line) => (/** @type {SaleFacts} */ facts) =>
+        render(line, {
+          coinsText: coinsText(facts.coins),
+          maxStackCount: MAX_STACK_COUNT,
+        }, ["coinsText", "maxStackCount"]),
+    ),
+  }),
+);
+
+/** @param {string} template @param {Record<string,string|number>} values @param {string[]} allowed */
+function render(template, values, allowed) {
+  return template.replace(/\{(\w+)\}/g, (_match, key) => {
+    if (!allowed.includes(key) || !Object.hasOwn(values, key)) {
+      throw new Error(`Unsupported dialogue placeholder {${key}}`);
+    }
+    return String(values[key]);
+  });
+}
 
 /** The NPC's thinking time bounds, in milliseconds. */
 export const THINK_MIN_MS = 1000;

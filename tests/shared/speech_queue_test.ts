@@ -40,9 +40,19 @@ Deno.test("the second and third quick messages start when the previous speech en
   }
   const first = 10;
   const second = first + speechTicks("one", "speaker");
-  const third = second + speechTicks(LONG, "speaker");
-  assertEquals(starts(world), [first, second, third]);
-  assert(third - second > 60, "a long message takes a while to speak");
+  const longPieces = world.players.speaker.messages!.filter((bubble) =>
+    bubble.group === 2
+  );
+  const longEnd = second + longPieces.reduce(
+    (sum, bubble) => sum + speechTicks(bubble.text, "speaker"),
+    0,
+  );
+  assertEquals(starts(world), [
+    first,
+    ...longPieces.map((bubble) => bubble.start),
+    longEnd,
+  ]);
+  assert(longEnd - second > 20, "a long message takes a while to speak");
 });
 
 Deno.test("a message sent after the previous speech ended starts now", () => {
@@ -63,17 +73,23 @@ Deno.test("a bubble expires two seconds after its speech, never before bubbleTic
   const long = "Welcome, traveler. Something, another. History!";
   assert(speechTicks(long, "speaker") + 40 > bubbleTicks(long));
   submitMessage(world, "speaker", long);
-  const bubble = world.players.speaker.messages!.at(-1)!;
-  assertEquals(bubble.start, 500);
-  assertEquals(bubble.until, 500 + speechTicks(long, "speaker") + 40);
-  // A longer text with few syllables still lasts as long as bubbleTicks.
+  const longPieces = world.players.speaker.messages!.filter((bubble) =>
+    bubble.group === 2
+  );
+  assertEquals(longPieces[0].start, 500);
+  assert(
+    longPieces.every((bubble) =>
+      bubble.until >= bubble.start! + speechTicks(bubble.text, "speaker") + 40
+    ),
+  );
+  // A long token with few syllables still gives each piece enough linger.
   const dense = "x".repeat(120);
   world.tick = 1000;
   submitMessage(world, "speaker", dense);
-  assertEquals(
-    world.players.speaker.messages!.at(-1)!.until,
-    1000 + bubbleTicks(dense),
+  const densePieces = world.players.speaker.messages!.filter((bubble) =>
+    bubble.group === 3
   );
+  assert(densePieces.every((bubble) => bubble.until === bubble.start! + 100));
 });
 
 Deno.test("a queued bubble's text is in no feed before it starts", () => {
@@ -231,4 +247,56 @@ Deno.test("the hearing log takes a message only when it starts", () => {
   hear();
   hear();
   assertEquals(log.lines.map((line) => line.text), ["first", "second"]);
+});
+
+Deno.test("a 240-character message queues ordered pieces as one waiting message", () => {
+  const world = setup();
+  const text = "x".repeat(240);
+  assert(submitMessage(world, "speaker", text));
+  const pieces = world.players.speaker.messages!;
+  assertEquals(pieces.map((bubble) => bubble.part), [0, 1, 2, 3, 4, 5, 6]);
+  assert(pieces.every((bubble) => bubble.group === 1 && bubble.parts === 7));
+  assert(pieces.every((bubble) => bubble.text.length <= 40));
+  assertEquals(pieces.map((bubble) => bubble.start), [
+    0,
+    ...pieces.slice(0, -1).map((bubble) =>
+      bubble.start! + speechTicks(bubble.text, "speaker")
+    ),
+  ]);
+  assertEquals(
+    pieces.map((bubble) => bubble.text).join("").replaceAll("-", ""),
+    text,
+  );
+  for (let i = 0; i < MAX_QUEUED - 1; i++) {
+    assert(submitMessage(world, "speaker", `queued ${i}`));
+  }
+  assertEquals(submitMessage(world, "speaker", "over limit"), false);
+  assertEquals(
+    new Set(
+      world.players.speaker.messages!.filter((bubble) =>
+        bubble.start! > world.tick
+      ).map((bubble) => bubble.group),
+    ).size,
+    MAX_QUEUED,
+  );
+});
+
+Deno.test("the host refuses over-limit messages and applies the same split to guest actions", async () => {
+  const { decodeControl } = await import("../../src/shared/control-wire.js");
+  const world = setup();
+  const guestText = "word, ".repeat(40);
+  assertEquals(guestText.length, 240);
+  const guestAction = decodeControl({ type: "message", text: guestText });
+  assert(guestAction);
+  assert(submitMessage(world, "speaker", String(guestAction.text)));
+  const guestPieces = world.players.speaker.messages!.map((bubble) =>
+    bubble.text
+  );
+  const hostWorld = setup();
+  assert(submitMessage(hostWorld, "speaker", guestText));
+  assertEquals(
+    guestPieces,
+    hostWorld.players.speaker.messages!.map((bubble) => bubble.text),
+  );
+  assertEquals(submitMessage(world, "speaker", "z".repeat(241)), false);
 });

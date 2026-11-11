@@ -291,12 +291,27 @@ Deno.test("chat validates each record and does not accept client expiry clocks",
   assertEquals(Object.hasOwn(localClock.chat[0], "name"), false);
   for (
     const bad of [
-      { ...record, text: "x".repeat(121) },
+      { ...record, text: "x".repeat(241) },
       { ...record, expiresTick: undefined },
       { ...record, expiresTick: -1 },
       { ...record, text: undefined },
       { ...record, z: 9 },
       { ...record, bubbles: [{ text: "", expiresTick: 5 }] },
+      { ...record, bubbles: [{ text: "x".repeat(41), expiresTick: 5 }] },
+      {
+        ...record,
+        bubbles: [{ text: "hi", expiresTick: 5, group: 1, part: 0 }],
+      },
+      {
+        ...record,
+        bubbles: [{
+          text: "hi",
+          expiresTick: 5,
+          group: 1,
+          part: 2,
+          parts: 2,
+        }],
+      },
       { ...record, bubbles: Array(4).fill({ text: "a", expiresTick: 5 }) },
       { ...record, bubbles: [{ text: "a", expiresTick: -1 }] },
       { ...record, text: undefined, talking: true, bubbles: [] },
@@ -306,14 +321,24 @@ Deno.test("chat validates each record and does not accept client expiry clocks",
     ...packet,
     chat: [{
       ...record,
-      bubbles: [{ text: "hi", expiresTick: 90, hidden: 1 }, {
-        text: "hello",
-        expiresTick: 100,
-      }],
+      bubbles: [{
+        text: "hi",
+        expiresTick: 90,
+        hidden: 1,
+        group: 3,
+        part: 1,
+        parts: 2,
+      }, { text: "hello", expiresTick: 100 }],
     }],
   });
   assertEquals(stacked?.chat[0].bubbles, [
-    { text: "hi", expiresTick: 90 },
+    {
+      text: "hi",
+      expiresTick: 90,
+      group: 3,
+      part: 1,
+      parts: 2,
+    },
     { text: "hello", expiresTick: 100 },
   ]);
   assertEquals(decodeChat({ ...packet, chat: [record, record] }), null);
@@ -349,7 +374,7 @@ Deno.test("control requires integer octants, bounded strings, and proper types",
       { type: "input", dx: "1", dy: 0, sequence: 20 },
       { type: "input", dx: 1, dy: 0, sequence: -1 },
       { type: "typing", typing: "true" },
-      { type: "message", text: "x".repeat(121) },
+      { type: "message", text: "x".repeat(241) },
       { type: "mode", mode: "admin" },
       { type: "talk", npc: "npc-ulgar" },
       { type: "talk", npc: 7, choice: "buys" },
