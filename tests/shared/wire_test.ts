@@ -515,3 +515,29 @@ Deno.test("a music cue needs a media key, a 12 digit hash, and a bounded tick", 
     ]
   ) assertEquals(decodeMusicCue(bad), null);
 });
+
+Deno.test("authored spawn floor style survives snapshots and rejects unknown or nonplanar styles", () => {
+  const packet = snapshot();
+  packet.world.planeZ = 1;
+  packet.world.players.guest.z = 1;
+  packet.world.floorStyle = "spawn-room";
+  assertEquals(decodeState(packet)?.world.floorStyle, "spawn-room");
+  for (const floorStyle of ["bricks-everywhere", false, 1, {}]) {
+    assertEquals(
+      decodeState({
+        ...packet,
+        world: { ...packet.world, floorStyle },
+      }),
+      null,
+    );
+  }
+  assertEquals(
+    decodeState({
+      ...packet,
+      world: { ...packet.world, planeZ: undefined },
+    }),
+    null,
+  );
+  delete packet.world.floorStyle;
+  assertEquals(decodeState(packet)?.world.floorStyle, undefined);
+});

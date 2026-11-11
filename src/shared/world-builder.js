@@ -24,7 +24,7 @@ import {
 /** @typedef {{id:string,params?:Record<string,unknown>}} Component */
 /** @typedef {{id:string,at:Tile,name?:string,role?:'trader',behavior?:Component,inventory?:import('./items.js').Stack[],held?:string,free?:boolean}} EntityDefinition */
 /** @typedef {{bounds:Box,material:number}} Paint */
-/** @typedef {{version:1,planeZ?:number,seed:number,base:number,bounds:Box,generator:Component|null,paints:Paint[],entities:EntityDefinition[],spawns:Tile[],drops:{at:Tile,kind:string,count:number}[],pinned:{cx:number,cy:number}[],unloadGraceTicks:number}} WorldDefinition */
+/** @typedef {{version:1,planeZ?:number,floorStyle?:'spawn-room',seed:number,base:number,bounds:Box,generator:Component|null,paints:Paint[],entities:EntityDefinition[],spawns:Tile[],drops:{at:Tile,kind:string,count:number}[],pinned:{cx:number,cy:number}[],unloadGraceTicks:number}} WorldDefinition */
 /** @typedef {{paints?:Paint[],entities?:EntityDefinition[],spawns?:Tile[]}} Structure */
 /** @typedef {(seed:number,params:Record<string,unknown>) => (cx:number,cy:number)=>Uint8Array} GeneratorFactory */
 /** @type {Map<string,GeneratorFactory>} */
@@ -127,6 +127,12 @@ function validateWorldDefinition(definition) {
         throw new RangeError("Entity or spawn outside playable plane");
       }
     }
+  }
+  if (
+    definition.floorStyle !== undefined &&
+    (definition.floorStyle !== "spawn-room" || definition.planeZ !== PLAY_Z)
+  ) {
+    throw new RangeError("Invalid authored floor style");
   }
   box(definition.bounds);
   material(definition.base);
@@ -392,6 +398,9 @@ export function buildWorld(input) {
   /** @type {import('./world.js').World} */
   const world = { tick: 0, chunks: new Map(), players: {} };
   if (definition.planeZ !== undefined) world.planeZ = definition.planeZ;
+  if (definition.floorStyle !== undefined) {
+    world.floorStyle = definition.floorStyle;
+  }
   if (!definition.generator) world.limits = { ...definition.bounds };
   const generate = terrainGenerator(definition);
   seedTerrain(world, definition, generate);

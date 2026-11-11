@@ -121,3 +121,74 @@ The subsequent final `PORT=8159 E2E_WORKERS=4 deno task e2e` run passed 142
 checks with one credential-dependent real-Xirsys test skipped. Both sound-event
 scenarios, including the muffled-source case from #129, passed again. No browser
 failures remain in this follow-up run.
+
+## Preview palette correction 140
+
+Josh's superseding preview decision keeps the existing spawn paving and limits
+natural terrain to plain stone, andesite, diorite and granite. The atlas now
+contains those four natural textures plus the original four authored paving
+textures. The room recipe explicitly opts into its old paving selection only for
+supporting floors at X=12–20, Y=12–18. Room walls, placed walls, doorway,
+tunnels and natural caves use the natural selection. Other recipes never acquire
+paving from their coordinates alone. The authored opt-in is validated in
+definitions and reliable snapshots, cleared when absent from a guest's new
+state, and included in cache invalidation. No material IDs or ore rules changed.
+
+Inspection compared the actual spawn screenshot and enlarged local Excalibur
+source tiles, including `stone_bricks.png`. The existing preview uses square
+paving and offset bricks from its smooth/polished source tiles; those exact
+floor tiles and their four-way selection are retained. Those tiles are never
+selected outside the authored floor. Aseprite batch mode rebuilt the eight-frame
+atlas without opening its UI. `dwarf.png` is unchanged.
+
+The two fixed coordinate fields retain the seven-tile interpolation grid. The
+natural mask uses a measured 0.663 threshold rather than assuming interpolated
+noise is uniform; an independently offset field splits accent patches. Every
+tile in four 512×512 windows was sampled (1,048,576 total), including distant
+positive and negative coordinates:
+
+| Window origin  |  Stone | Andesite | Diorite | Granite |
+| -------------- | -----: | -------: | ------: | ------: |
+| (-1024, -1024) | 74.31% |    8.59% |   8.93% |   8.17% |
+| (0, 0)         | 73.95% |    8.68% |   9.05% |   8.32% |
+| (-8192, 4096)  | 75.39% |    7.77% |   8.57% |   8.27% |
+| (4096, -8192)  | 74.24% |    8.94% |   8.93% |   7.90% |
+
+Regression checks bound stone to 72–78% and each accent to 6–11% in each window,
+and require at least 88% matching horizontal neighbors. Observed neighbor
+agreement was 90.8–91.4%. Natural floors and walls share patch frames but retain
+the 0.62 floor brightness and full wall brightness; remembered tint remains
+exactly `[1, 0.86, 0.34, 0.95]`. Tests also cover negative chunk seams, actual
+unload/reload, spawn-only paving, walls built inside the room, ore mesh frames,
+and dynamic/cached parity.
+
+Validation after this correction: `deno task verify` passed 770 tests with zero
+failures and 19 existing ignored tests. The affected browser specs passed all
+135 checks across five repetitions:
+
+```sh
+PORT=8159 E2E_WORKERS=4 EVIDENCE=1 deno task e2e terrain-palette.spec.ts single-plane-world.spec.ts portrait-presentation.spec.ts mesh-cache.spec.ts game.spec.ts world-building.spec.ts terrain-sync.spec.ts chunk-unload.spec.ts planar-streaming.spec.ts integrated-portrait.spec.ts --repeat-each=5
+```
+
+Final `PORT=8159 E2E_WORKERS=4 deno task e2e:smoke` passed all 13 checks. The
+first diagnostic repeated run was stopped after two screenshot comparisons found
+the old palette in `phone-world` and `master-planar` baselines. Those images
+were reviewed and refreshed; the restarted five-repeat run passed all 135
+checks. All eight rebuilt atlas frames were compared with their source PNGs and
+had zero differing pixels. `dwarf.png` retains SHA-256
+`959ec782de4594f11a7c25106a652955fe56f884fd4f12f79563b669986b7afc`. The
+preceding async-offer fix's full 142-pass/one-credential-skip run remains
+recorded above; this palette correction reran affected coverage and final smoke
+without repeating the unrelated full suite.
+
+Published screenshots were inspected after the final repeated run. The room uses
+the actual standard recipe and NPCs; the cave view teleports into generated
+negative-coordinate terrain without painting a terrain fixture. The overview
+uses cached master rendering at half zoom, while the close cave view uses the
+entity renderer. The guest-room image confirms the authored style reaches a
+joining phone viewport.
+
+- [Actual spawn room](https://raw.githubusercontent.com/LegoGuy32109/OpenDwarf/evidence/140-natural-palette/140-actual-spawn-room.png)
+- [Actual natural cave](https://raw.githubusercontent.com/LegoGuy32109/OpenDwarf/evidence/140-natural-palette/140-actual-natural-cave.png)
+- [Natural cave overview](https://raw.githubusercontent.com/LegoGuy32109/OpenDwarf/evidence/140-natural-palette/140-natural-cave-overview.png)
+- [Guest spawn room](https://raw.githubusercontent.com/LegoGuy32109/OpenDwarf/evidence/140-natural-palette/140-guest-spawn-room.png)

@@ -484,3 +484,20 @@ Deno.test("participant IDs and queued actions cannot address object prototype pr
   assertEquals(sim.join("toString").id, "toString");
   assert(Object.hasOwn(sim.world.players, "toString"));
 });
+
+Deno.test("only explicit planar room definitions opt into authored floor styling", () => {
+  const replay = buildWorld(JSON.parse(JSON.stringify(roomRecipe())));
+  assertEquals(replay.world.floorStyle, "spawn-room");
+  assertEquals(buildWorld(authoredRecipe(32)).world.floorStyle, undefined);
+  for (const floorStyle of ["all-bricks", false, 1]) {
+    assertThrows(() =>
+      buildWorld(
+        {
+          ...roomRecipe(),
+          floorStyle,
+        } as unknown as import("../../src/shared/world-builder.js").WorldDefinition,
+      )
+    );
+  }
+  assertThrows(() => buildWorld({ ...roomRecipe(), planeZ: undefined }));
+});

@@ -1,6 +1,6 @@
 // @ts-check
 
-import { PLAY_Z } from "./single-plane.js";
+import { PLAY_Z, SPAWN_FLOOR } from "./single-plane.js";
 import { buildWorld } from "./world-builder.js";
 import { roomRecipe } from "./world-recipes.js";
 import { COAL, GOLD_ORE, IRON_ORE } from "./materials.js";
@@ -12,7 +12,7 @@ import { WORLD_SEED } from "./generation.js";
 /** The z level of the room floor. The floor stone lies at `ROOM_Z - 1`. */
 export const ROOM_Z = PLAY_Z;
 /** Open interior of the spawn room, inclusive. The walls ring it. */
-export const ROOM = { minX: 12, maxX: 20, minY: 12, maxY: 18 };
+export const ROOM = SPAWN_FLOOR;
 /** The one doorway, in the south wall. The tile beyond it is solid stone. */
 export const DOORWAY = { x: 16, y: ROOM.maxY + 1, z: ROOM_Z };
 /** The flat tunnel runs east from the room to the generated cave. */

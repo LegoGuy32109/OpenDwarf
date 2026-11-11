@@ -75,6 +75,7 @@ test("guests receive the host's planar terrain without generating their own cave
     const data = await readWorld(guest, (world) => ({
       z: world.scene.world.players[world.scene.localId]?.z,
       generates: Boolean(world.scene.world.generateChunk),
+      floorStyle: world.scene.world.floorStyle,
       chunks: Object.fromEntries(
         [...world.scene.world.chunks].map((
           [key, chunk],
@@ -83,6 +84,19 @@ test("guests receive the host's planar terrain without generating their own cave
     }));
     expect(data.z).toBe(1);
     expect(data.generates).toBe(false);
+    expect(data.floorStyle).toBe("spawn-room");
+    const guestPalette = await readWorld(guest, async (api) => {
+      const { surfaceAt } = await import("../../src/shared/surface.js");
+      const sample = (x: number, y: number) =>
+        surfaceAt(api.scene.world, x, y, 1, "master", api.scene.visibility)!
+          .authoredFloor;
+      return {
+        room: sample(16, 15),
+        wall: sample(11, 15),
+        tunnel: sample(21, 12),
+      };
+    });
+    expect(guestPalette).toEqual({ room: true, wall: false, tunnel: false });
     let known = 0;
     for (const [key, chunk] of Object.entries(data.chunks)) {
       for (let index = 0; index < chunk.length; index++) {

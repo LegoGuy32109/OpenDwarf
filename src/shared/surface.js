@@ -3,7 +3,7 @@
 import { isSolid, WORLD_EDGE, Z_LEVELS_BELOW } from "./world.js";
 import { tileVisibility } from "./visibility.js";
 import { centerTile } from "./locomotion.js";
-import { FLOOR_Z, PLAY_Z } from "./single-plane.js";
+import { FLOOR_Z, PLAY_Z, SPAWN_FLOOR } from "./single-plane.js";
 import { readTile } from "./terrain.js";
 
 /** @typedef {import('./visibility.js').Visibility} Visibility */
@@ -25,7 +25,7 @@ export function shadowMaskToAtlasId(mask) {
     ((mask & 4) >> 2) | (mask & 8 ? 2 : 0);
 }
 
-/** @typedef {{z:number,depth:number,seen:string,material:number}} Surface The top solid tile at a column: its level, its depth below `viewZ`, how it is seen, and its material. */
+/** @typedef {{z:number,depth:number,seen:string,material:number,authoredFloor?:boolean}} Surface The top solid tile at a column: its level, its depth below `viewZ`, how it is seen, and its material. */
 /** @typedef {(x:number,y:number)=>(Surface|null)} SurfaceLookup */
 
 /** @param {World} world @param {number} x @param {number} y @param {number} viewZ @param {string} mode @param {Visibility} visibility @returns {Surface|null} */
@@ -37,9 +37,15 @@ export function surfaceAt(world, x, y, viewZ, mode, visibility) {
     const seen = mode === "master"
       ? "visible"
       : tileVisibility(visibility, x, y, PLAY_Z, world);
-    return seen === "unseen"
-      ? null
-      : { z, depth: 0, seen, material: readTile(world, x, y, z) };
+    return seen === "unseen" ? null : {
+      z,
+      depth: 0,
+      seen,
+      material: readTile(world, x, y, z),
+      authoredFloor: world.floorStyle === "spawn-room" && z === FLOOR_Z &&
+        x >= SPAWN_FLOOR.minX && x <= SPAWN_FLOOR.maxX &&
+        y >= SPAWN_FLOOR.minY && y <= SPAWN_FLOOR.maxY,
+    };
   }
   for (let depth = 0; depth <= Z_LEVELS_BELOW; depth++) {
     const z = viewZ - depth;
@@ -223,20 +229,22 @@ function cornerSurface(world, x, y, viewZ, mode, visibility, lookup, corner) {
 
 /** Exact remembered multiplier, shared by both terrain paths. @type {[number,number,number,number]} */
 export const REMEMBERED_TINT = [1, 0.86, 0.34, 0.95];
-export const TERRAIN_FRAMES = 10;
 /** Atlas order shared with scripts/make-terrain-sheet.ts. */
-export const TERRAIN_TEXTURES = [
+export const NATURAL_TERRAIN_TEXTURES = [
   "stone",
   "andesite",
   "diorite",
   "granite",
-  "tuff",
-  "cobbled_deepslate",
+];
+/** Authored room paving only; never selected by natural terrain noise. */
+export const TERRAIN_TEXTURES = [
+  ...NATURAL_TERRAIN_TEXTURES,
   "smooth_stone",
   "polished_andesite",
   "polished_diorite",
   "polished_granite",
 ];
+export const TERRAIN_FRAMES = TERRAIN_TEXTURES.length;
 
 /** Smooth coordinate noise makes coherent patches independent of chunks and load order. @param {number} x @param {number} y */
 export function terrainPatch(x, y) {
@@ -247,17 +255,25 @@ export function terrainPatch(x, y) {
   const b = hash(gx, gy + 1) * (1 - fx) + hash(gx + 1, gy + 1) * fx;
   return a * (1 - fy) + b * fy;
 }
-/** Render variants never change terrain material, mining time, or drops. @param {number} x @param {number} y @param {number} z */
-export function terrainFrame(x, y, z) {
-  const count = z === FLOOR_Z ? 4 : 6;
-  return (z === FLOOR_Z ? 6 : 0) +
-    Math.min(count - 1, Math.floor(terrainPatch(x, y) * count));
+/** Render variants never change terrain material, mining time, or drops. @param {number} x @param {number} y @param {number} _z */
+export function terrainFrame(x, y, _z) {
+  // Smooth noise is concentrated around its middle. This measured upper
+  // quartile, rather than 0.75, leaves approximately 75% plain stone.
+  if (terrainPatch(x, y) < 0.663) return 0;
+  // An independently offset field gives each accent coherent patches rather
+  // than nested rings around the rarest noise peaks. Both levels share them.
+  const accent = terrainPatch(x + 18713, y - 31777);
+  return accent < 0.395 ? 1 : accent < 0.606 ? 2 : 3;
 }
 /** @param {Surface} tile @param {number} x @param {number} y @returns {[number,number,number,number]} */
 export function terrainUv(tile, x, y) {
+  const frame = tile.authoredFloor && tile.z === FLOOR_Z
+    ? NATURAL_TERRAIN_TEXTURES.length +
+      Math.min(3, Math.floor(terrainPatch(x, y) * 4))
+    : terrainFrame(x, y, tile.z);
   return [
     0,
-    terrainFrame(x, y, tile.z) / TERRAIN_FRAMES,
+    frame / TERRAIN_FRAMES,
     1,
     1 / TERRAIN_FRAMES,
   ];

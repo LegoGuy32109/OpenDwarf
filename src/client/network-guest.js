@@ -302,6 +302,7 @@ export function joinWorld(scene, session) {
   function finishState(snapshot, incomingMode, visibility) {
     scene.world.limits = snapshot.limits;
     scene.world.planeZ = snapshot.planeZ;
+    scene.world.floorStyle = snapshot.floorStyle;
     scene.world.throws = snapshot.throws ?? [];
     scene.viewMode = incomingMode;
     scene.visibility = visibility;

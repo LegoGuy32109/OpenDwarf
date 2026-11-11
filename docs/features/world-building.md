@@ -182,6 +182,12 @@ that level. Terrain normalization runs after ordered paint operations, restoring
 ore-free stone at Z=0 and air at Z=2 through Z=7. Gameplay edits then apply only
 to Z=1. Definitions without `planeZ` retain explicit 3D fixture behavior.
 
+The room recipe also sets the optional `floorStyle: "spawn-room"` field. This
+authored presentation opt-in requires `planeZ=1` and retains paving only within
+the room's interior supporting floor. Other recipes keep natural stone-family
+patches, including at those coordinates. The style travels in reliable world
+snapshots; it does not change materials, floor permanence, mining or ore rules.
+
 Definitions carry `version: 1`. Loading checks JSON values, coordinates,
 materials, entity IDs, entity roles (an unknown role is refused), and generator
 names. A simulation also resolves behavior names. The loaded definition is

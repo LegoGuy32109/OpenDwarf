@@ -20,7 +20,7 @@ import { unpackVisibility } from "./visibility-wire.js";
 /** @typedef {Omit<Player,'typing'|'message'|'messageUntil'>} MotionPlayer */
 /** @typedef {import('./chat.js').ChatRecord} ChatRecord */
 /** @typedef {{attempt:string,viewRevision:number,sightRevision:number}} Envelope */
-/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'limits'|'planeZ'|'throws'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
+/** @typedef {Envelope & {type:"state",world:Pick<World,'tick'|'players'|'limits'|'planeZ'|'floorStyle'|'throws'>,reveal:Map<string,import('./terrain.js').ChunkData>,visibility:import('./visibility-wire.js').WireVisibility|null,mode:"entity"|"master",playerId:string,chat:ChatRecord[],acknowledgedSequence:number}} StatePacket */
 /** @typedef {Envelope & {type:"motion",tick:number,planeZ?:number,players:World['players'],acknowledgedSequence:number}} MotionPacket */
 /** @typedef {Envelope & {type:"chat",tick:number,chat:ChatRecord[]}} ChatPacket */
 
@@ -241,12 +241,13 @@ function chatRecords(value) {
 }
 
 /** Wire form of a world snapshot: players keep only wire fields. Terrain travels as `reveal`. */
-/** @param {Pick<World,'tick'|'players'|'limits'|'planeZ'|'throws'>} world */
+/** @param {Pick<World,'tick'|'players'|'limits'|'planeZ'|'floorStyle'|'throws'>} world */
 export function encodeWorld(world) {
   return {
     tick: world.tick,
     players: encodeMotionPlayers(world.players),
     ...(world.planeZ !== undefined ? { planeZ: world.planeZ } : {}),
+    ...(world.floorStyle !== undefined ? { floorStyle: world.floorStyle } : {}),
     ...(world.throws
       ? { throws: world.throws.map((entry) => ({ ...entry })) }
       : {}),
@@ -293,6 +294,10 @@ function validThrows(value) {
 /** @param {Record<string,unknown>} world */
 function worldMetadata(world) {
   if (world.planeZ !== undefined && world.planeZ !== PLAY_Z) return false;
+  if (
+    world.floorStyle !== undefined &&
+    (world.floorStyle !== "spawn-room" || world.planeZ !== PLAY_Z)
+  ) return false;
   if (world.throws !== undefined && !validThrows(world.throws)) return false;
   if (world.limits !== undefined) {
     if (!validWorldLimits(world.limits)) return false;
@@ -366,6 +371,9 @@ export function decodeState(value) {
       players: parsedPlayers,
       ...(parsed.world.planeZ !== undefined
         ? { planeZ: parsed.world.planeZ }
+        : {}),
+      ...(parsed.world.floorStyle !== undefined
+        ? { floorStyle: parsed.world.floorStyle }
         : {}),
       ...(parsed.world.throws
         ? { throws: parsed.world.throws.map((entry) => ({ ...entry })) }

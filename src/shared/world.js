@@ -46,7 +46,7 @@ const MOVE_TICKS = 10;
 /** @typedef {{text:string,until:number,start?:number,group?:number,part?:number,parts?:number,softHyphen?:boolean}} Bubble */
 /** @typedef {{id:string,name:string,x:number,y:number,z:number,facingLeft:boolean,facing?:import('./single-plane.js').Direction,move:Move|null,typing:boolean,message:string,messageUntil:number,messages?:Bubble[],messageSequence?:number,viewMotion?:ViewMotion,free?:boolean,size?:number,vx?:number,vy?:number,previousX?:number,previousY?:number,npc?:boolean,role?:'trader',held?:string}} Player */
 /** @typedef {import('./terrain.js').ChunkData} ChunkData */
-/** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>,limits?:WorldBounds,planeZ?:number,throws?:import('./single-plane.js').ThrownItem[]}} World */
+/** @typedef {{tick:number,chunks:Map<string,ChunkData>,players:Record<string,Player>,generateChunk?:((cx:number,cy:number)=>ChunkData)|null,changes?:Map<string,import('./terrain.js').TileChange>,pinned?:Set<string>,edits?:Map<string,Map<number,number>>,limits?:WorldBounds,planeZ?:number,floorStyle?:'spawn-room',throws?:import('./single-plane.js').ThrownItem[]}} World */
 
 /**
  * A tile blocks movement and sight unless its material is open. Unknown

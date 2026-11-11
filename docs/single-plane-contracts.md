@@ -38,6 +38,12 @@ shared-fixture updates, README links, full validation, and merging.
 - `world.planeZ?:number`: world worker sets 1 on every built-in playable recipe.
   Host actions validates this field in snapshots. Explicit low-level legacy
   fixtures without it may retain their 3D engine behavior.
+- `world.floorStyle?:"spawn-room"`: preview correction #140 adds an explicit
+  room-recipe opt-in. Definitions and reliable snapshots validate it with
+  `planeZ=1`; guests preserve or clear it with each state. Presentation applies
+  paving only to supporting floors in `SPAWN_FLOOR` (X=12–20, Y=12–18), never
+  walls or tunnels, and includes it in the mesh cache stamp. Natural palettes
+  remain coordinate-based and require no new material IDs.
 - `player.facing?:{x:number,y:number}`: nonzero octant from intended movement.
   World worker owns updates and spawn defaults. Host actions carries it in
   snapshots and motion, and validates octants. Do not change `facingLeft` usage.

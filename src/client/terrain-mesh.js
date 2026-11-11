@@ -52,7 +52,7 @@ export const MESH_PASSES = [
 
 /** @typedef {"floor"|"terrain"|"ores"|"edge"|"bands"|"ceiling"} MeshPass */
 /** @typedef {{data:Float32Array,used:number}} QuadBuffer */
-/** @typedef {{viewZ:number,planeZ?:number,chunks:(Uint8Array|null)[],versions:number[],tiles:number}} MeshStamp What a mesh was built from: the level, and the data and version of the chunk and its right, lower and diagonal neighbors, which its edge tiles read. */
+/** @typedef {{viewZ:number,planeZ?:number,floorStyle?:'spawn-room',chunks:(Uint8Array|null)[],versions:number[],tiles:number}} MeshStamp What a mesh was built from: the level, and the data and version of the chunk and its right, lower and diagonal neighbors, which its edge tiles read. */
 /** @typedef {MeshStamp&{parts:Record<MeshPass,Float32Array>}} TerrainMesh A stamp and the vertices of each pass. */
 
 /** @returns {QuadBuffer} */
@@ -115,7 +115,10 @@ function sources(world, cx, cy) {
  * @param {MeshStamp} mesh @param {import('../shared/world.js').World} world @param {number} cx @param {number} cy @param {number} viewZ
  */
 export function meshIsFresh(mesh, world, cx, cy, viewZ) {
-  if (mesh.viewZ !== viewZ || mesh.planeZ !== world.planeZ) return false;
+  if (
+    mesh.viewZ !== viewZ || mesh.planeZ !== world.planeZ ||
+    mesh.floorStyle !== world.floorStyle
+  ) return false;
   const now = sources(world, cx, cy);
   for (let i = 0; i < 4; i++) {
     if (
@@ -243,6 +246,7 @@ export function buildTerrainMesh(world, cx, cy, viewZ, visibility) {
   return {
     viewZ,
     planeZ: world.planeZ,
+    floorStyle: world.floorStyle,
     chunks,
     versions: chunks.map(chunkVersion),
     parts: {

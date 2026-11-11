@@ -1,6 +1,6 @@
 // @ts-check
 // Built-in recipes use the same declarative builder as custom worlds.
-import { PLAY_Z } from "./single-plane.js";
+import { PLAY_Z, SPAWN_FLOOR } from "./single-plane.js";
 import { worldBuilder } from "./world-builder.js";
 import { isCaveTile, WORLD_SEED } from "./generation.js";
 import { OPEN, STONE, WORLD_TOP } from "./terrain.js";
@@ -111,10 +111,7 @@ export function roomRecipe(seed = WORLD_SEED, options = { npc: true }) {
       },
       {
         bounds: {
-          minX: 12,
-          maxX: 20,
-          minY: 12,
-          maxY: 18,
+          ...SPAWN_FLOOR,
           minZ: PLAY_Z,
           maxZ: PLAY_Z,
         },
@@ -200,7 +197,7 @@ export function roomRecipe(seed = WORLD_SEED, options = { npc: true }) {
       maxZ: PLAY_Z,
     }, OPEN);
   }
-  return b.definition();
+  return { ...b.definition(), floorStyle: /** @type {const} */ ("spawn-room") };
 }
 
 /** Find a natural cave with at least 96 connected cells, beyond the room shell.

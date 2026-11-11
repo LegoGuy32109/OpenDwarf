@@ -502,6 +502,7 @@ export function startHost(scene, session, sounds = {}) {
               ...view.world,
               limits: scene.world.limits,
               planeZ: scene.world.planeZ,
+              floorStyle: scene.world.floorStyle,
               throws: visibleThrows(),
             }),
             chat: chatView(scene.world, playerId, chatBands),
