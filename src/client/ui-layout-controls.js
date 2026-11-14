@@ -30,10 +30,14 @@ export function layoutControls(ctx) {
   const gutter = 12;
   const small = Math.min(56, 44 * s, width * 0.15);
   const rowY = bottom - gutter - small;
+  // The world pickup grid reaches below the entity. Keep its cells above a
+  // compact action footer instead of covering them with the broad action zone.
+  const regionHeight = view.pickupOpen
+    ? Math.max(small, Math.min(72, H * 0.12))
+    : Math.min(240 * s, H * (view.bag?.open || view.shop?.open ? 0.28 : 0.48));
   const regionY = Math.max(
     top + small + 2 * gutter,
-    bottom - gutter -
-      Math.min(240 * s, H * (view.bag?.open || view.shop?.open ? 0.28 : 0.48)),
+    bottom - gutter - regionHeight,
   );
   const regionH = bottom - gutter - regionY;
   const usable = width - 2 * gutter - Math.min(56, width * 0.15) - gap;

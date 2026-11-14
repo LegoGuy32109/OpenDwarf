@@ -663,3 +663,14 @@ Deno.test("priority buttons own touches over movement and the full action panel 
     }
   }
 });
+
+Deno.test("an open pickup grid keeps the touch regions below its world cells", () => {
+  const screen = { width: 844, height: 390, safe: undefined };
+  const ordinary = layoutUi(view(screen));
+  const pickup = layoutUi(view(screen, { pickupOpen: true }));
+  for (const id of ["stick:move", "btn:interact"]) {
+    assert(pickup.byId.get(id)!.rect.y > ordinary.byId.get(id)!.rect.y);
+    assert(pickup.byId.get(id)!.rect.y > screen.height / 2 + 120);
+  }
+  assertEquals(hitTest(pickup, screen.width / 2, screen.height / 2 + 64), null);
+});

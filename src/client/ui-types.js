@@ -71,6 +71,7 @@
  * @property {{value:number,on:boolean,locked:boolean}} [stamina]
  * @property {{open:boolean,pressed?:boolean}} [logButton]
  * @property {boolean} [bagOpenButton]
+ * @property {boolean} [pickupOpen] reserve room for the world pickup grid
  * @property {{move:Knob,look:Knob}} [sticks]
  * @property {{open:boolean,draft:string,page:"letters"|"symbols",shift:boolean}} [chat]
  * @property {{open:boolean,page:string,row?:string,scale:number,textSize:string,sizes:readonly string[],voices?:string,voiceLevels?:readonly string[],music?:string,musicLevels?:readonly string[],effects?:string,effectsLevels?:readonly string[],mode:string,build?:string,audio?:string}} [menu]

@@ -99,6 +99,7 @@ function uiView(ctx) {
     },
     logButton: { open: ui.logOpen },
     bagOpenButton: bag.isOpen,
+    pickupOpen: scene.pickupCells.length > 0,
     chat: scene.chatOpen
       ? {
         open: true,

@@ -172,7 +172,9 @@ travel even outside the region. The stick is hidden while idle. The broad
 lower-right action panel uses its entire rectangle as the hit area and centers
 the equipped item. Chat, sprint, and bag take priority over the regions behind
 them. Portrait and landscape share these rules and respect safe areas. Opening
-an inventory or shop reduces the lower regions to leave room for the panel.
+an inventory or shop reduces the lower regions to leave room for the panel. The
+world pickup grid uses a compact action footer so its lower cells remain visible
+and receive taps.
 
 Aiming uses the world arrow as feedback. It does not draw a second joystick well
 above the action panel. Drag dead zones, return-to-center cancellation, and

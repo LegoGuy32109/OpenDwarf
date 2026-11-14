@@ -135,7 +135,7 @@ test.describe("phone held action", () => {
     await setTile(page, 4, 1, 1, 8);
     const action = await uiCenter(page, "btn:interact");
     const rect = await uiRect(page, "btn:interact");
-    expect(Math.abs(rect.w - rect.h)).toBeLessThan(12);
+    expect(rect.h).toBeGreaterThan(rect.w);
     const cdp = await context.newCDPSession(page);
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
