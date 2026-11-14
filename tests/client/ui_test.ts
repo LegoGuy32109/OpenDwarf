@@ -106,6 +106,10 @@ function controlsApart(screen: typeof PORTRAIT, scale: number) {
   assertEquals(layout.byId.has("btn:log"), false);
   for (const [i, a] of controls.entries()) {
     for (const b of controls.slice(i + 1)) {
+      // Chat deliberately overlays the floating movement region.
+      if (
+        [a.id, b.id].includes("stick:move") && [a.id, b.id].includes("btn:chat")
+      ) continue;
       assert(
         a.rect.x + a.rect.w <= b.rect.x || b.rect.x + b.rect.w <= a.rect.x ||
           a.rect.y + a.rect.h <= b.rect.y || b.rect.y + b.rect.h <= a.rect.y,
@@ -420,7 +424,7 @@ Deno.test("buttons act on pointer down, and several fingers work at once", () =>
   // One finger holds the move stick; a second taps interact while it is down.
   assertEquals(r.down({ id: 1, x: move.cx! + 50, y: move.cy! }), "ui");
   assertEquals(r.down({ id: 2, x: interact.cx!, y: interact.cy! }), "ui");
-  assertEquals(events, ["stick:stick:move:1,0:true", "act:btn:interact"]);
+  assertEquals(events, ["stick:stick:move:0,0:true", "act:btn:interact"]);
   assertEquals(r.pressed().has("btn:interact"), true);
   r.up({ id: 2, x: 0, y: 0 });
   r.up({ id: 1, x: 0, y: 0 });
@@ -434,7 +438,7 @@ Deno.test("a stick follows one pointer", () => {
   r.down({ id: 1, x: look.cx!, y: look.cy! - 50 });
   r.down({ id: 2, x: look.cx! + 50, y: look.cy! });
   assertEquals(events.length, 1);
-  r.move({ id: 1, x: look.cx! + 50, y: look.cy! });
+  r.move({ id: 1, x: look.cx! + 50, y: look.cy! - 50 });
   assertEquals(events.at(-1), "stick:stick:move:1,0:true");
   // The second pointer never moves the stick.
   r.move({ id: 2, x: look.cx! - 50, y: look.cy! });
@@ -559,7 +563,7 @@ Deno.test("the action pointer retains its origin outside bounds, independently o
   assertEquals(sticks, [true, false]);
 });
 
-Deno.test("small portrait controls stay low and show the equipped icon and active aim well", () => {
+Deno.test("small portrait regions stay low and use world arrows instead of an aim well", () => {
   const screen = {
     width: 320,
     height: 568,
@@ -588,14 +592,74 @@ Deno.test("small portrait controls stay low and show the equipped icon and activ
         "btn:bag",
         "btn:sprint",
         "btn:menu",
-        "action:well",
       ]
     ) inside(screen, layout.byId.get(id)!);
     const action = layout.byId.get("btn:interact")!;
     assertEquals(action.item, "coin");
     assert(action.rect.w >= 72);
-    assert(layout.byId.get("stick:move")!.rect.y > screen.height * 0.58);
-    assertEquals(layout.byId.get("action:well")!.dy, -1);
+    assert(layout.byId.get("stick:move")!.rect.y > screen.height * 0.45);
+    assertEquals(layout.byId.has("action:well"), false);
     assertEquals(layoutUi(view(screen)).byId.has("action:well"), false);
+  }
+});
+
+Deno.test("floating movement keeps the touch origin, clamps outside, and resets on cancel", () => {
+  const layout = layoutUi(view(PORTRAIT));
+  const element = layout.byId.get("stick:move")!;
+  const states: {
+    x: number;
+    y: number;
+    knobX: number;
+    knobY: number;
+    active: boolean;
+    originX?: number;
+    originY?: number;
+  }[] = [];
+  const r = createPointerRouter({
+    layout: () => layout,
+    onAction: () => {},
+    onStick: (_id, state) => states.push(state),
+    onScroll: () => {},
+  });
+  const x = element.rect.x + 8, y = element.rect.y + 8;
+  r.down({ id: 1, x, y });
+  assertEquals(states.at(-1), {
+    x: 0,
+    y: 0,
+    knobX: 0,
+    knobY: 0,
+    active: true,
+    originX: x,
+    originY: y,
+  });
+  r.move({ id: 1, x: x + 1000, y: y - 1000 });
+  const moved = states.at(-1)!;
+  assertEquals([moved.x, moved.y, moved.originX, moved.originY], [1, -1, x, y]);
+  assert(
+    Math.abs(Math.hypot(moved.knobX, moved.knobY) - element.r! * 0.6) < 0.001,
+  );
+  assert(r.has(1));
+  r.releaseAll();
+  assertEquals(states.at(-1)!.active, false);
+  const x2 = element.rect.x + element.rect.w - 8;
+  r.down({ id: 2, x: x2, y });
+  assertEquals(states.at(-1)!.originX, x2);
+  assertEquals(states.at(-1)!.x, 0);
+});
+
+Deno.test("priority buttons own touches over movement and the full action panel is active", () => {
+  const { r, layout, events } = router(view(PORTRAIT));
+  const chat = layout.byId.get("btn:chat")!;
+  r.down({ id: 1, x: chat.cx!, y: chat.cy! });
+  assertEquals(events, ["act:btn:chat"]);
+  for (const id of ["btn:sprint", "btn:bag"]) {
+    const button = layout.byId.get(id)!;
+    assertEquals(hitTest(layout, button.cx!, button.cy!)?.id, id);
+  }
+  const action = layout.byId.get("btn:interact")!.rect;
+  for (const x of [action.x + 1, action.x + action.w - 1]) {
+    for (const y of [action.y + 1, action.y + action.h - 1]) {
+      assertEquals(hitTest(layout, x, y)?.id, "btn:interact");
+    }
   }
 });

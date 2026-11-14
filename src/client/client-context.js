@@ -110,6 +110,7 @@ export function createContext() {
     /** What `ui.js` laid out this frame, for the renderer. */
     ui: /** @type {import('./scene-types.js').Scene["ui"]} */ (undefined),
     aim: { x: 0, y: 1 },
+    movementInput: { x: 0, y: 0 },
     actionGesture: createActionGesture(),
     /** Transport interruptions consume input without executing release. */
     cancelAction: () => cancelPendingAction(ctx),
@@ -153,8 +154,22 @@ export function createContext() {
   /** The sticks, the log, and the other UI state that no game module owns. */
   const ui = {
     sticks: {
-      move: { active: false, x: 0, y: 0, dir: "center" },
-      look: { active: false, x: 0, y: 0, dir: "center" },
+      move: {
+        active: false,
+        x: 0,
+        y: 0,
+        dir: "center",
+        originX: /** @type {number|undefined} */ (undefined),
+        originY: /** @type {number|undefined} */ (undefined),
+      },
+      look: {
+        active: false,
+        x: 0,
+        y: 0,
+        dir: "center",
+        originX: /** @type {number|undefined} */ (undefined),
+        originY: /** @type {number|undefined} */ (undefined),
+      },
     },
     /** A newer main exists than the build this host runs. */
     updateAvailable: false,

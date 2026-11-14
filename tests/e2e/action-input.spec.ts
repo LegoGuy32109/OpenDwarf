@@ -175,6 +175,11 @@ test.describe("touch", () => {
       type: "touchStart",
       touchPoints: [left],
     });
+    left.y += 30;
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [left],
+    });
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [left, right],

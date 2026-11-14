@@ -587,6 +587,8 @@ export function createInput(ctx) {
         active: state.active,
         x: state.knobX,
         y: state.knobY,
+        originX: state.originX,
+        originY: state.originY,
         dir: state.x || state.y ? `${state.x},${state.y}` : "center",
       };
       if (stick === "move") ctx.joystick = { x: state.x, y: state.y };

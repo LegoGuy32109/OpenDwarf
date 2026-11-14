@@ -126,7 +126,7 @@ test.describe("single-plane presentation", () => {
         }];
       });
       await waitFrames(page);
-      expect(await hasUi(page, "action:well")).toBe(true);
+      expect(await hasUi(page, "action:well")).toBe(false);
       await evidenceShot(page, `133-${screen.name}-aim`);
       await waitTicks(page, 8);
       await readWorld(page, (api) => {

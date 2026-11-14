@@ -337,8 +337,8 @@ test("phone controls fit safe area and move", async ({ browser }) => {
   await page.mouse.move(box!.x + box!.width / 2 + 10, box!.y + box!.height / 2);
   await expect.poll(() => stickDirection(page, "move")).toBe("center");
   await page.mouse.move(
-    box!.x + box!.width * 0.75,
-    box!.y + box!.height * 0.25,
+    box!.x + box!.width / 2 + 35,
+    box!.y + box!.height / 2 - 35,
   );
   await expect.poll(() => stickDirection(page, "move")).toBe("1,-1");
   await page.mouse.move(box!.x + box!.width * 0.8, box!.y + box!.height / 2);

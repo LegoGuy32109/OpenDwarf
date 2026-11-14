@@ -16,6 +16,24 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
     <base href="/">
     <title>Open Dwarf</title></head><body></body></html>`;
 
+Deno.test("local builds serve palette JSON with its MIME type while remote builds keep CDN asset delivery", async () => {
+  const path = "https://dwarf.joshhale.me/assets/ui/palettes/gold.json";
+  const local = createApp(
+    createBuilds({ store: createMemoryStore(), localBuild: true }),
+  );
+  const response = await local(new Request(path));
+  assertEquals(response.status, 200);
+  assertEquals(
+    response.headers.get("content-type"),
+    "application/json; charset=utf-8",
+  );
+  assertEquals((await response.json()).body, "#F5B630");
+  const remote = createApp(createBuilds({ store: createMemoryStore() }));
+  const unavailable = await remote(new Request(path));
+  assertEquals(unavailable.status, 404);
+  await unavailable.body?.cancel();
+});
+
 /** A stubbed network: GitHub knows a few refs, jsDelivr has a page for some commits. */
 function network(
   refs: Record<string, string>,

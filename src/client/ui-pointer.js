@@ -35,7 +35,7 @@ const DRAG_SLOP = 8;
  * @param {()=>UiLayout} options.layout the layout for the current frame
  * @param {(element:UiElement)=>void} options.onAction a button was pressed
  * @param {(element:UiElement)=>void} [options.onRelease] a pressed button's pointer lifted
- * @param {(stick:string,state:{x:number,y:number,knobX:number,knobY:number,active:boolean})=>void} options.onStick
+ * @param {(stick:string,state:{x:number,y:number,knobX:number,knobY:number,active:boolean,originX?:number,originY?:number})=>void} options.onStick
  * @param {(event:import('../shared/single-plane.js').ActionPointerEvent)=>void} [options.onInteract] action-button gesture events
  * @param {(list:string,pixels:number)=>void} options.onScroll
  */
@@ -52,11 +52,16 @@ export function createPointerRouter(
     const { element } = entry;
     const size = (element.r ?? 1) * 2;
     const vector = stickVector(
-      x - (element.cx ?? 0),
-      y - (element.cy ?? 0),
+      x - (element.floating ? entry.startX : element.cx ?? 0),
+      y - (element.floating ? entry.startY : element.cy ?? 0),
       size,
     );
-    onStick(element.id, { ...vector, active: true });
+    onStick(element.id, {
+      ...vector,
+      active: true,
+      originX: element.floating ? entry.startX : undefined,
+      originY: element.floating ? entry.startY : undefined,
+    });
   }
 
   /** @param {Tracked} entry @param {PointerPoint} point @param {import('../shared/single-plane.js').ActionPointerEvent['phase']} phase */

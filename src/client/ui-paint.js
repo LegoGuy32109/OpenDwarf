@@ -268,7 +268,6 @@ function lines(paint, element, ts, color) {
 /** @type {Partial<Record<UiElement["kind"],(ctx:ElementPaint)=>void>>} */
 const ELEMENT_PAINTERS = {
   action: paintAction,
-  aimwell: paintAimWell,
   scrim: paintScrim,
   panel: paintPanel,
   text: paintText,
@@ -676,11 +675,12 @@ function sprintGlyph(paint, element, ts, oy, ink) {
 /**
  * A stick: the base, eight octant guides, the dead zone ring, and the knob.
  * @param {Painter} paint @param {UiElement} element @param {number} ts
- * @param {{active:boolean,x:number,y:number}} knob
+ * @param {import("./ui-types.js").Knob} knob
  */
 function drawStick(paint, element, ts, knob) {
-  const cx = element.cx ?? 0;
-  const cy = element.cy ?? 0;
+  if (element.floating && !knob.active) return;
+  const cx = knob.originX ?? element.cx ?? 0;
+  const cy = knob.originY ?? element.cy ?? 0;
   const r = element.r ?? 0;
   const cell = Math.max(1, 2 * ts);
   disc(paint, cx, cy, r, rgb(0x484d53), cell);
@@ -749,24 +749,4 @@ function paintAction({ paint, element, rect, ts, down }) {
     rgb(0xffffff, 0.5),
   );
   roundIcon(paint, element, ts, down, PALETTE.white);
-}
-
-/** @param {ElementPaint} ctx */
-function paintAimWell({ paint, element }) {
-  const cx = element.cx ?? 0, cy = element.cy ?? 0;
-  disc(paint, cx, cy, 32, rgb(0x17191e, 0.8), 2);
-  ring(paint, cx, cy, 12, 1, rgb(0xffffff, 0.4), 1);
-  for (let n = 0; n < 8; n++) {
-    const a = n * Math.PI / 4;
-    const dx = Math.round(Math.cos(a)), dy = Math.round(Math.sin(a));
-    const selected = dx === element.dx && dy === element.dy;
-    disc(
-      paint,
-      cx + Math.cos(a) * 23,
-      cy + Math.sin(a) * 23,
-      selected ? 4 : 2,
-      selected ? PALETTE.amber : rgb(0xffffff, 0.5),
-      1,
-    );
-  }
 }

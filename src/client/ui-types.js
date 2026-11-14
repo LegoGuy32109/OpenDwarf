@@ -15,7 +15,7 @@
  * the browser lets start only from a release).
  * @typedef {object} UiElement
  * @property {string} id
- * @property {"action"|"aimwell"|"scrim"|"panel"|"text"|"button"|"round"|"stick"|"slot"|"row"|"key"|"chatbar"|"line"|"image"|"icon"|"zone"} kind
+ * @property {"action"|"scrim"|"panel"|"text"|"button"|"round"|"stick"|"slot"|"row"|"key"|"chatbar"|"line"|"image"|"icon"|"zone"} kind
  * @property {Rect} rect
  * @property {boolean} [hit]
  * @property {boolean} [blocks]
@@ -45,6 +45,7 @@
  * @property {number} [cx] circle center
  * @property {number} [cy]
  * @property {number} [r]
+ * @property {boolean} [floating] a stick starts at its pointer origin
  */
 
 /**
@@ -79,7 +80,7 @@
  * @property {{open:boolean,level:"conversation"|"items",title:string,choices:readonly {name:string,text:string,on:boolean}[],rows:readonly ShopRow[],selected:string,scroll:number}} [shop]
  * @property {{open:boolean,status:string,stats:string,items:readonly {id:string}[]}} [sessions]
  */
-/** @typedef {{active:boolean,x:number,y:number}} Knob the knob offset from the stick center in CSS pixels */
+/** @typedef {{active:boolean,x:number,y:number,originX?:number,originY?:number}} Knob the knob offset from the stick center in CSS pixels */
 
 /**
  * @typedef {object} UiLayout
@@ -99,6 +100,6 @@
 /**
  * @typedef {object} DrawState
  * @property {ReadonlySet<string>} pressed ids held down now
- * @property {{move:{active:boolean,x:number,y:number},look:{active:boolean,x:number,y:number}}} sticks
+ * @property {{move:Knob,look:Knob}} sticks
  * @property {number} now milliseconds, for the blinking caret
  */

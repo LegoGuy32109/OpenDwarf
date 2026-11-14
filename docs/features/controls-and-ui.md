@@ -166,6 +166,18 @@ With `?harness`, `window.__od.ui` gives specs the current layout, so a spec taps
 an element by its rectangle. `?safe=top,right,bottom,left` simulates safe-area
 insets in CSS pixels.
 
+The lower-left touch region starts a floating movement stick wherever the thumb
+lands. Its origin stays fixed until release, and its knob clamps at maximum
+travel even outside the region. The stick is hidden while idle. The broad
+lower-right action panel uses its entire rectangle as the hit area and centers
+the equipped item. Chat, sprint, and bag take priority over the regions behind
+them. Portrait and landscape share these rules and respect safe areas. Opening
+an inventory or shop reduces the lower regions to leave room for the panel.
+
+Aiming uses the world arrow as feedback. It does not draw a second joystick well
+above the action panel. Drag dead zones, return-to-center cancellation, and
+release-only placement or throwing retain the same action rules.
+
 ## Boot errors
 
 The page cannot draw anything until its files load, so a failure there used to

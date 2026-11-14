@@ -56,6 +56,7 @@ test("real portrait drag throws once while moving, center cancels, and touch rel
     touchPoints: typeof left[],
   ) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints });
   await touch("touchStart", [left, right]);
+  left.y += 30;
   await touch("touchMove", [left, north]);
   await waitTicks(guest, 2);
   expect(await readWorld(guest, (w) => w.scene.aim)).toEqual({ x: 0, y: -1 });

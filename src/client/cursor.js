@@ -1,6 +1,5 @@
 // @ts-check
-// The world cursor's draw parameters (ADR 0009, Cursor): a 2 px outline with
-// the held item's icon in its center.
+// Pixel-art target brackets and independent movement/aim indicators.
 
 import { CURSOR_ICON_DIM } from "../shared/reach.js";
 import { facingOf } from "../shared/single-plane.js";
@@ -12,8 +11,7 @@ import { tileVisibility } from "../shared/visibility.js";
 
 /** @typedef {import('./scene-types.js').Scene} Scene */
 
-/** Outline width in CSS pixels at the world's tile scale, and the icon's share of a tile. */
-export const CURSOR_OUTLINE = 2;
+/** The held icon's share of a tile. */
 export const CURSOR_ICON_SIZE = 0.5;
 
 /**
@@ -26,7 +24,7 @@ export const CURSOR_ICON_SIZE = 0.5;
 export function cursorParams(held, preview) {
   return {
     color: "#ffffff",
-    opacity: 0.5,
+    opacity: 0.25,
     iconFrame: itemInfo(held)?.frame ?? null,
     iconOpacity: preview === null ? CURSOR_ICON_DIM : 1,
   };
@@ -72,22 +70,32 @@ export function localCursor(scene) {
   return { tile: at, held, preview, ...cursorParams(held, preview) };
 }
 
-/** Visible entities carry movement direction; the local entity retains facing at rest. @param {Pick<Scene,"localId"|"actionGesture">} scene @param {import('../shared/world.js').Player} player */
-export function directionMarker(scene, player) {
+/** Movement first, throwing last so aiming wins where their pixels overlap.
+ * @param {Pick<Scene,"localId"|"actionGesture"|"movementInput">} scene
+ * @param {import('../shared/world.js').Player} player
+ */
+export function directionMarkers(scene, player) {
   const local = player.id === scene.localId;
-  if (local && scene.actionGesture?.aiming) {
-    return { ...scene.actionGesture, aiming: true };
+  const input = local ? scene.movementInput : undefined;
+  const moving = input
+    ? Boolean(input.x || input.y)
+    : Boolean(player.move || player.vx || player.vy);
+  const markers = [];
+  if (moving) {
+    const direction = input ?? player.facing ??
+      (player.move
+        ? {
+          x: Math.sign(player.move.target.x - player.move.origin.x),
+          y: Math.sign(player.move.target.y - player.move.origin.y),
+        }
+        : { x: Math.sign(player.vx ?? 0), y: Math.sign(player.vy ?? 0) });
+    if (direction.x || direction.y) {
+      markers.push({ ...direction, aiming: false });
+    }
   }
-  const moving = Boolean(player.move || player.vx || player.vy);
-  if (!local && !moving) return null;
-  const direction = player.facing ??
-    (player.move
-      ? {
-        x: Math.sign(player.move.target.x - player.move.origin.x),
-        y: Math.sign(player.move.target.y - player.move.origin.y),
-      }
-      : moving
-      ? { x: Math.sign(player.vx ?? 0), y: Math.sign(player.vy ?? 0) }
-      : facingOf(player));
-  return { ...direction, aiming: false };
+  if (local && scene.actionGesture?.aiming) {
+    const { x, y } = scene.actionGesture;
+    if (x || y) markers.push({ x, y, aiming: true });
+  }
+  return markers;
 }

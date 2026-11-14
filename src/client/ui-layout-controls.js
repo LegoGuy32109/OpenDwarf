@@ -1,5 +1,4 @@
 // @ts-check
-import { clamp } from "./ui-kit.js";
 import { PICKAXE } from "../shared/items.js";
 
 /** @typedef {import('./ui-layout-context.js').LayoutContext} LayoutContext */
@@ -30,26 +29,45 @@ export function layoutControls(ctx) {
   const gap = 8;
   const gutter = 12;
   const small = Math.min(56, 44 * s, width * 0.15);
-  const stick = Math.min(clamp(W * 0.29, 104, 140) * s, width * 0.34, H * 0.32);
-  const action = Math.min(
-    90 * s,
-    width - stick - small - 4 * gap - 2 * gutter,
-    H * 0.28,
-  );
   const rowY = bottom - gutter - small;
-  const stickY = rowY - gap - stick;
-  const actionX = right - gutter - small - gap - action;
-  const actionY = rowY - gap - action;
+  const regionY = Math.max(
+    top + small + 2 * gutter,
+    bottom - gutter -
+      Math.min(240 * s, H * (view.bag?.open || view.shop?.open ? 0.28 : 0.48)),
+  );
+  const regionH = bottom - gutter - regionY;
+  const usable = width - 2 * gutter - Math.min(56, width * 0.15) - gap;
+  const moveW = (usable - gap) * (W > H ? 0.46 : 0.40);
+  const actionX = left + gutter + moveW + gap;
+  const actionW = usable - moveW - gap;
+  const radius = Math.min(64 * s, moveW * 0.48, H * 0.16);
+  const moveRect = box(left + gutter, regionY, moveW, regionH);
+  const actionRect = box(actionX, regionY, actionW, regionH);
+  controlRects.push(moveRect, actionRect);
   add({
     id: "stick:move",
     kind: "stick",
-    rect: box(left + gutter, stickY, stick, stick),
+    rect: moveRect,
     hit: true,
-    round: true,
+    round: false,
+    floating: true,
     act: "stick",
-    cx: left + gutter + stick / 2,
-    cy: stickY + stick / 2,
-    r: stick / 2,
+    cx: moveRect.x + moveW / 2,
+    cy: regionY + regionH / 2,
+    r: radius,
+  });
+  add({
+    id: "btn:interact",
+    kind: "action",
+    rect: actionRect,
+    hit: true,
+    round: false,
+    act: "down",
+    cx: actionX + actionW / 2,
+    cy: regionY + regionH / 2,
+    r: Math.min(actionW, regionH) / 2,
+    glyph: "item",
+    item: view.held ?? PICKAXE,
   });
   /** @param {string} id @param {number} x @param {number} y @param {number} size @param {Partial<UiElement>} extra */
   function button(id, x, y, size, extra) {
@@ -84,31 +102,6 @@ export function layoutControls(ctx) {
     text: "ESC",
     scale: ts,
   });
-  button("btn:interact", actionX, actionY, action, {
-    kind: "action",
-    round: false,
-    glyph: "item",
-    item: view.held ?? PICKAXE,
-  });
-  const gesture = view.actionGesture;
-  if (gesture?.down && gesture.aiming) {
-    const size = 64;
-    add({
-      id: "action:well",
-      kind: "aimwell",
-      rect: box(
-        actionX + (action - size) / 2,
-        actionY - size - gap,
-        size,
-        size,
-      ),
-      cx: actionX + action / 2,
-      cy: actionY - gap - size / 2,
-      r: size / 2,
-      dx: gesture.x,
-      dy: gesture.y,
-    });
-  }
-  controlsTop = Math.min(stickY, actionY, rowY - gap - small);
+  controlsTop = regionY;
   return { controlsTop, controlRects };
 }

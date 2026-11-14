@@ -235,6 +235,7 @@ function steerZoom(ctx, dt) {
 /** @param {Context} ctx @param {import('../shared/world.js').Player|undefined} local @param {number} now @param {number} dt */
 function steerCamera(ctx, local, now, dt) {
   const { scene, bag, canvas } = ctx;
+  scene.movementInput = scene.chatOpen ? { x: 0, y: 0 } : inputDirection(ctx);
   const look = cameraInput(ctx);
   // The look control steers the open inventory panel, not the aim or camera.
   const panelLook = panelLookInput(ctx);

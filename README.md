@@ -76,6 +76,7 @@ its feature there:
 - [Cursor](docs/features/cursor.md)
 - [Render performance](docs/features/render-performance.md)
 - [Aseprite and SPA tooling](docs/features/aseprite-and-spa.md)
+- [Arrow masks and palettes](docs/features/arrow-palettes.md)
 - [Frame stats and lag-spike logging](docs/features/frame-stats.md)
 
 - [Architecture rules](docs/features/architecture-rules.md)
